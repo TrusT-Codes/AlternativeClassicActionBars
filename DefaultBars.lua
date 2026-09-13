@@ -4576,11 +4576,21 @@ function BTV:ResetCastBarLayout()
 			x = native.x,
 			y = native.y,
 		}
-
-		self:ApplyCastBarPosition()
 	end
 
-	self:SetCastBarScale(1)
+	-- Direct write, not SetCastBarScale(1) - that setter compensates
+	-- the stored position using the OLD scale to keep the bottom-left
+	-- corner fixed, which would inflate the native position we just
+	-- restored above instead of leaving it alone.
+	BTVanillaDB.castBarScale = 1
+
+	local frame = getglobal(self.CAST_BAR_FRAME_NAME)
+
+	if frame then
+		frame:SetScale(1)
+	end
+
+	self:ApplyCastBarPosition()
 end
 
 function BTV:StartCastBarDrag()
@@ -4999,11 +5009,21 @@ function BTV:ResetExpBarLayout()
 			x = native.x,
 			y = native.y,
 		}
-
-		self:ApplyExpBarPosition()
 	end
 
-	self:SetExpBarScale(1)
+	-- Direct write, not SetExpBarScale(1) - that setter compensates
+	-- the stored position using the OLD scale to keep the bottom-left
+	-- corner fixed, which would inflate the native position we just
+	-- restored above instead of leaving it alone.
+	BTVanillaDB.expBarScale = 1
+
+	local frame = getglobal(self.EXP_BAR_FRAME_NAME)
+
+	if frame then
+		frame:SetScale(1)
+	end
+
+	self:ApplyExpBarPosition()
 end
 
 function BTV:StartExpBarDrag()
