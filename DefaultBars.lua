@@ -2113,11 +2113,23 @@ local function InstallReanchorGuard(frame, flagName)
 		if self[flagName] then
 			return nativeSetPoint(self, unpack(arg))
 		end
+
+		-- TEMPORARY diagnostic: proves/disproves whether native code is
+		-- trying to re-anchor this frame and getting swallowed. Remove
+		-- once the Latency Bar native-position capture bug is resolved.
+		if flagName == "btvApplyingLatencyBarPosition" then
+			print(string.format("[BTVDiag] swallowed native SetPoint on %s: %s %s %s %s %s",
+				tostring(self:GetName()), tostring(arg[1]), tostring(arg[2]), tostring(arg[3]), tostring(arg[4]), tostring(arg[5])))
+		end
 	end
 
 	frame.ClearAllPoints = function(self)
 		if self[flagName] then
 			return nativeClearAllPoints(self)
+		end
+
+		if flagName == "btvApplyingLatencyBarPosition" then
+			print(string.format("[BTVDiag] swallowed native ClearAllPoints on %s", tostring(self:GetName())))
 		end
 	end
 
