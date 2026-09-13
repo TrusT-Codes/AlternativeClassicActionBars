@@ -1255,33 +1255,49 @@ local function GetSimpleElementCoordinateRange(frame, extraMaxYPixels)
 	-- applies a topFudge/hit-rect trim that puts its own top edge a
 	-- measured 20 units below the container's raw top, so a cfg.y that
 	-- puts the CONTAINER's top at the screen edge still leaves the
-	-- trimmed overlay's top visibly short of it). Measuring the
-	-- container-vs-overlay offset directly (rather than hardcoding any
-	-- element-specific constant) keeps this correct regardless of which
-	-- element/inset is involved, and is a no-op (0) for elements whose
-	-- overlay is SetAllPoints(container) with no trim at all.
-	local leftInset, topInset = 0, 0
+	-- trimmed overlay's top visibly short of it; Latency Bar's own
+	-- BTV.LATENCY_BAR_OVERLAY_INSET is a further, markedly asymmetric
+	-- case - left/right and top/bottom trims are each independently
+	-- tracked below rather than assuming the left/top side's trim also
+	-- applies to the right/bottom side). Measuring the container-vs-
+	-- overlay offset directly (rather than hardcoding any element-
+	-- specific constant) keeps this correct regardless of which element/
+	-- inset is involved, and is a no-op (0) for elements whose overlay is
+	-- SetAllPoints(container) with no trim at all.
+	local leftInset, rightInset, topInset, bottomInset = 0, 0, 0, 0
 
 	if overlay and frame then
-		-- frame:GetLeft()/GetTop() are in the CONTAINER's own local unit
-		-- system (its own SetScale multiplies how far they resolve into
-		-- UIParent's space), while the overlay's own scale is always 1 -
-		-- so its GetLeft()/GetTop() are already directly comparable to
-		-- screenWidthUnits/screenHeightUnits. Must multiply the
-		-- container's edge by its own scale before diffing against the
-		-- overlay's edge, or this inset silently picks up a
+		-- frame:GetLeft()/GetTop()/etc. are in the CONTAINER's own local
+		-- unit system (its own SetScale multiplies how far they resolve
+		-- into UIParent's space), while the overlay's own scale is
+		-- always 1 - so its GetLeft()/GetTop()/etc. are already directly
+		-- comparable to screenWidthUnits/screenHeightUnits. Must
+		-- multiply the container's edge by its own scale before diffing
+		-- against the overlay's edge, or this inset silently picks up a
 		-- position-dependent error whenever scale isn't 1.
 		local containerLeft = frame:GetLeft()
 		local overlayLeft = overlay:GetLeft()
+		local containerRight = frame:GetRight()
+		local overlayRight = overlay:GetRight()
 		local containerTop = frame:GetTop()
 		local overlayTop = overlay:GetTop()
+		local containerBottom = frame:GetBottom()
+		local overlayBottom = overlay:GetBottom()
 
 		if containerLeft and overlayLeft then
 			leftInset = overlayLeft - (containerLeft * scale)
 		end
 
+		if containerRight and overlayRight then
+			rightInset = (containerRight * scale) - overlayRight
+		end
+
 		if containerTop and overlayTop then
 			topInset = (containerTop * scale) - overlayTop
+		end
+
+		if containerBottom and overlayBottom then
+			bottomInset = overlayBottom - (containerBottom * scale)
 		end
 	end
 
@@ -1292,25 +1308,30 @@ local function GetSimpleElementCoordinateRange(frame, extraMaxYPixels)
 	end
 
 	-- frameWidth/frameHeight: the container's raw size converted into the
-	-- same "real, comparable to screenWidthUnits" space as leftInset/
-	-- topInset above. Real right edge: (x*scale) + leftInset +
-	-- frameWidth*scale <= screenWidth, i.e.
-	-- x <= (screenWidth - leftInset)/scale - frameWidth. Real top edge:
-	-- (x*scale) - topInset <= screenHeight+extra, i.e.
-	-- x <= (screenHeight + extra + topInset)/scale - the height term
-	-- cancels the /scale entirely since minY's frameHeight is also
-	-- multiplied by scale on the real-edge side.
+	-- same "real, comparable to screenWidthUnits" space as the insets
+	-- above. Real right edge: (x*scale) + frameWidth*scale - rightInset
+	-- <= screenWidth, i.e. x <= (screenWidth + rightInset)/scale -
+	-- frameWidth. Real top edge: (x*scale) - topInset <= screenHeight+
+	-- extra, i.e. x <= (screenHeight + extra + topInset)/scale - the
+	-- height term cancels the /scale entirely since minY's frameHeight
+	-- is also multiplied by scale on the real-edge side. Real bottom
+	-- edge (minY): (y - frameHeight)*scale + bottomInset >= 0, i.e.
+	-- y >= frameHeight - bottomInset/scale.
 	local frameWidth = (frame and frame:GetWidth()) or 0
 	local frameHeight = (frame and frame:GetHeight()) or 0
 
 	local minX = 0
-	local maxX = (screenWidthUnits - leftInset) / scale - frameWidth
+	local maxX = (screenWidthUnits + rightInset) / scale - frameWidth
 
-	local minY = frameHeight
+	local minY = frameHeight - bottomInset / scale
 	local maxY = (screenHeightUnits + extraY + topInset) / scale
 
 	if maxX < minX then
 		maxX = minX
+	end
+
+	if minY < 0 then
+		minY = 0
 	end
 
 	if maxY < minY then
@@ -4308,8 +4329,8 @@ local function CreateSimpleBarPage(key)
 
 	-- Elements with a real measurable frame (config.getElementFrame) use
 	-- that frame's own current size for the clamp range (kept live by
-	-- RefreshSimplePositionSliderRange below); Latency Bar and any page
-	-- without one falls back to the generic screen-relative range.
+	-- RefreshSimplePositionSliderRange below); any page without one falls
+	-- back to the generic screen-relative range.
 	local minX, maxX, minY, maxY
 
 	if config.getElementFrame then
