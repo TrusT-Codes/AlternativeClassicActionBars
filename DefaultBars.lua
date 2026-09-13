@@ -1973,6 +1973,20 @@ local function EnsureContainerOverlay(container, startDragFn, stopDragFn, settin
 
 		overlay:SetPoint("TOPLEFT", chainFirst, "TOPLEFT", firstLeft * firstRatio, -(firstTop + topFudge) * firstRatio)
 		overlay:SetPoint("BOTTOMRIGHT", chainLast, "BOTTOMRIGHT", -lastRight * lastRatio, lastBottom * lastRatio)
+	elseif container.overlayInset then
+		-- Trims the overlay in from the raw frame bounds by a fixed
+		-- per-side amount (Latency Bar only, container.overlayInset -
+		-- see BTV.LATENCY_BAR_OVERLAY_INSET's comment, Core.lua) for a
+		-- wrapped native frame whose own bounds are bigger than its
+		-- visible art, transparent padding baked into the texture asset.
+		-- Converted through ScaleRatio, same as the chain-anchored branch
+		-- above, so this stays correct if the frame's own Scale slider
+		-- isn't 1.
+		local inset = container.overlayInset
+		local ratio = ScaleRatio(container, overlay)
+
+		overlay:SetPoint("TOPLEFT", container, "TOPLEFT", (inset.left or 0) * ratio, -(inset.top or 0) * ratio)
+		overlay:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -(inset.right or 0) * ratio, (inset.bottom or 0) * ratio)
 	else
 		overlay:SetAllPoints(container)
 	end
@@ -4258,6 +4272,8 @@ function BTV:ApplyLatencyBarPosition()
 
 		frame.btvApplyingLatencyBarPosition = nil
 	end
+
+	frame.overlayInset = self.LATENCY_BAR_OVERLAY_INSET
 
 	EnsureContainerOverlay(frame, self.StartLatencyBarDrag, self.StopLatencyBarDrag, "latencybar", self.SetLatencyBarScale, nil, "Latency Bar")
 

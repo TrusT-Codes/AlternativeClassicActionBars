@@ -68,6 +68,13 @@ BTV.BORDER_TEXTURE_FUDGE = 12
 -- value.
 BTV.MICRO_MENU_OVERLAY_TOP_FUDGE = 2
 
+-- Latency Bar edit-mode overlay inset, live-measured (cursor-hover vs.
+-- frame-edge diagnostic) against MainMenuBarPerformanceBarFrame's real
+-- visible green bar art, which sits well inside the frame's own 16x64
+-- bounds (transparent padding baked into the texture asset, same class
+-- of issue as Micro Menu's oversized hit-rect above).
+BTV.LATENCY_BAR_OVERLAY_INSET = { left = 1, right = 6.5, top = 14, bottom = 11 }
+
 -- "Snap to Adjacent Elements": how close (real screen pixels) a dragged
 -- edge must get to another edge before it snaps.
 BTV.SNAP_THRESHOLD = 8
@@ -2922,113 +2929,13 @@ loadFrame:SetScript("OnEvent", function()
 	WaitForNativeBarSettle(RunLoginSequence)
 end)
 
--- TEMPORARY diagnostic (/btv diag1) - dumps MainMenuBarPerformanceBarFrame's
--- own size plus every texture region/child's size and anchor offset, to
--- find the real visible green-bar footprint vs. the frame's own bounds.
--- Remove once the Latency Bar edit-mode hitbox inset is resolved.
-function BTV:DiagLatencyBar()
-	local frame = getglobal(self.LATENCY_BAR_FRAME_NAME)
-
-	if not frame then
-		print("[BTVDiag] " .. tostring(self.LATENCY_BAR_FRAME_NAME) .. " not found")
-		return
-	end
-
-	local objType = "?"
-
-	if frame.GetObjectType then
-		objType = frame:GetObjectType()
-	end
-
-	print(string.format("[BTVDiag] frame type=%s w=%.1f h=%.1f", tostring(objType), frame:GetWidth() or -1, frame:GetHeight() or -1))
-
-	if frame.GetStatusBarTexture then
-		local bar = frame:GetStatusBarTexture()
-
-		if bar then
-			print(string.format("[BTVDiag] statusbar texture w=%.1f h=%.1f", bar:GetWidth() or -1, bar:GetHeight() or -1))
-		end
-	end
-
-	local regions = { frame:GetRegions() }
-	local n = table.getn(regions)
-	local i
-
-	for i = 1, n do
-		local region = regions[i]
-
-		if region and region.GetWidth then
-			local point, relTo, relPoint, x, y = region:GetPoint(1)
-			local relName = "?"
-
-			if relTo and relTo.GetName then
-				relName = relTo:GetName() or "?"
-			end
-
-			local regionName = "?"
-
-			if region.GetName then
-				regionName = region:GetName() or "?"
-			end
-
-			print(string.format(
-				"[BTVDiag] region[%d] name=%s w=%.1f h=%.1f point=%s rel=%s relPoint=%s x=%.1f y=%.1f",
-				i, regionName, region:GetWidth() or -1, region:GetHeight() or -1,
-				tostring(point), relName, tostring(relPoint), x or 0, y or 0
-			))
-		end
-	end
-
-	local kids = { frame:GetChildren() }
-	local nk = table.getn(kids)
-
-	for i = 1, nk do
-		local kid = kids[i]
-
-		if kid then
-			local kidName = "?"
-
-			if kid.GetName then
-				kidName = kid:GetName() or "?"
-			end
-
-			print(string.format("[BTVDiag] child[%d] name=%s w=%.1f h=%.1f", i, kidName, kid:GetWidth() or -1, kid:GetHeight() or -1))
-		end
-	end
-end
-
--- TEMPORARY diagnostic (/btv diag2) - prints MainMenuBarPerformanceBarFrame's
--- edges in the same coordinate system as GetCursorPosition()/UIParent's
--- effective scale, so they're directly comparable to a manual cursor-hover
--- reading (see the /run snippet handed to the user alongside this).
--- Remove once the Latency Bar edit-mode hitbox inset is resolved.
-function BTV:DiagLatencyBarEdges()
-	local frame = getglobal(self.LATENCY_BAR_FRAME_NAME)
-
-	if not frame then
-		print("[BTVDiag] " .. tostring(self.LATENCY_BAR_FRAME_NAME) .. " not found")
-		return
-	end
-
-	print(string.format(
-		"[BTVDiag] frame edges left=%.1f right=%.1f top=%.1f bottom=%.1f",
-		frame:GetLeft() or -1, frame:GetRight() or -1, frame:GetTop() or -1, frame:GetBottom() or -1
-	))
-end
-
 -- /btv recapture - forces a fresh, synchronous capture of every default
 -- bar's native anchor (see RecaptureDefaultBarNativeAnchors above).
--- /btv diag1 - see BTV:DiagLatencyBar above (temporary).
--- /btv diag2 - see BTV:DiagLatencyBarEdges above (temporary).
 -- /btv with no argument toggles the main menu.
 SLASH_BTVANILLA1 = "/btv"
 SlashCmdList["BTVANILLA"] = function(msg)
 	if msg == "recapture" then
 		BTV:RecaptureDefaultBarNativeAnchors()
-	elseif msg == "diag1" then
-		BTV:DiagLatencyBar()
-	elseif msg == "diag2" then
-		BTV:DiagLatencyBarEdges()
 	else
 		BTV:ToggleMainMenu()
 	end
