@@ -2997,9 +2997,29 @@ function BTV:DiagLatencyBar()
 	end
 end
 
+-- TEMPORARY diagnostic (/btv diag2) - prints MainMenuBarPerformanceBarFrame's
+-- edges in the same coordinate system as GetCursorPosition()/UIParent's
+-- effective scale, so they're directly comparable to a manual cursor-hover
+-- reading (see the /run snippet handed to the user alongside this).
+-- Remove once the Latency Bar edit-mode hitbox inset is resolved.
+function BTV:DiagLatencyBarEdges()
+	local frame = getglobal(self.LATENCY_BAR_FRAME_NAME)
+
+	if not frame then
+		print("[BTVDiag] " .. tostring(self.LATENCY_BAR_FRAME_NAME) .. " not found")
+		return
+	end
+
+	print(string.format(
+		"[BTVDiag] frame edges left=%.1f right=%.1f top=%.1f bottom=%.1f",
+		frame:GetLeft() or -1, frame:GetRight() or -1, frame:GetTop() or -1, frame:GetBottom() or -1
+	))
+end
+
 -- /btv recapture - forces a fresh, synchronous capture of every default
 -- bar's native anchor (see RecaptureDefaultBarNativeAnchors above).
 -- /btv diag1 - see BTV:DiagLatencyBar above (temporary).
+-- /btv diag2 - see BTV:DiagLatencyBarEdges above (temporary).
 -- /btv with no argument toggles the main menu.
 SLASH_BTVANILLA1 = "/btv"
 SlashCmdList["BTVANILLA"] = function(msg)
@@ -3007,6 +3027,8 @@ SlashCmdList["BTVANILLA"] = function(msg)
 		BTV:RecaptureDefaultBarNativeAnchors()
 	elseif msg == "diag1" then
 		BTV:DiagLatencyBar()
+	elseif msg == "diag2" then
+		BTV:DiagLatencyBarEdges()
 	else
 		BTV:ToggleMainMenu()
 	end
