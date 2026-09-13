@@ -655,6 +655,35 @@ function BTV:RecaptureDefaultBarNativeAnchors()
 	end
 end
 
+-- Clears the stored native anchor + position for every single-real-frame
+-- wrapped element (Key Ring/Latency Bar/Exp Bar/Cast Bar). Unlike
+-- RecaptureDefaultBarNativeAnchors above (bars 1-5, which reads a
+-- SEPARATE, never-repositioned real Blizzard button), these elements
+-- ARE the one real Blizzard frame this addon repositions directly - it's
+-- still sitting wherever THIS session's own earlier Apply*Position call
+-- already put it, so nothing here can re-measure Blizzard's true native
+-- position live; only clearing the stored capture and letting the fresh
+-- read happen on the NEXT reload (before this session's own
+-- Apply*Position has touched the frame yet) gets Blizzard's real
+-- position. CaptureXPositionIfNeeded's own "already captured" guard is
+-- what this clears; the actual fresh capture then runs from
+-- RunLoginSequence, after the same WaitForNativeBarSettle poll bars 1-5
+-- already rely on.
+function BTV:RecaptureWrappedNativeFrameAnchors()
+	self:EnsureDB()
+
+	BTVanillaDB.keyRingPosition = nil
+	BTVanillaDB.keyRingNativeAnchor = nil
+	BTVanillaDB.latencyBarPosition = nil
+	BTVanillaDB.latencyBarNativeAnchor = nil
+	BTVanillaDB.expBarPosition = nil
+	BTVanillaDB.expBarNativeAnchor = nil
+	BTVanillaDB.castBarPosition = nil
+	BTVanillaDB.castBarNativeAnchor = nil
+
+	self:Print("Key Ring/Latency Bar/Exp Bar/Cast Bar native anchors cleared - /reload now to capture them fresh.")
+end
+
 -------------------------------------------------------------------------
 -- Extra Bars 1-4 (ids 6-9)
 --
@@ -2930,12 +2959,17 @@ loadFrame:SetScript("OnEvent", function()
 end)
 
 -- /btv recapture - forces a fresh, synchronous capture of every default
--- bar's native anchor (see RecaptureDefaultBarNativeAnchors above).
+-- bar's native anchor (see RecaptureDefaultBarNativeAnchors above), plus
+-- clears Key Ring/Latency Bar/Exp Bar/Cast Bar's own stored anchors so
+-- they capture fresh on the next /reload (see
+-- RecaptureWrappedNativeFrameAnchors above - unlike the default bars,
+-- this half only takes effect after a reload, not immediately).
 -- /btv with no argument toggles the main menu.
 SLASH_BTVANILLA1 = "/btv"
 SlashCmdList["BTVANILLA"] = function(msg)
 	if msg == "recapture" then
 		BTV:RecaptureDefaultBarNativeAnchors()
+		BTV:RecaptureWrappedNativeFrameAnchors()
 	else
 		BTV:ToggleMainMenu()
 	end
