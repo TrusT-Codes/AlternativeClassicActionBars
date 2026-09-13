@@ -625,6 +625,235 @@ local function CreateSettingSlider(parent, name, width)
 	return slider
 end
 
+-- Sets an OptionsSliderTemplate slider's auto-created end labels
+-- (its "$parentLow"/"$parentHigh" FontStrings).
+local function SetSliderEndLabels(slider, lowText, highText)
+	local low = getglobal(slider:GetName() .. "Low")
+
+	if low then
+		low:SetText(lowText)
+	end
+
+	local high = getglobal(slider:GetName() .. "High")
+
+	if high then
+		high:SetText(highText)
+	end
+end
+
+-------------------------------------------------------------------------
+-- Position slider stepper buttons + click-to-edit value readout
+--
+-- Shared by every X/Y position slider (custom/default bar pages and the
+-- native-frame simple pages). All three input paths - drag, stepper
+-- click, typed edit - funnel through slider:SetValue(), so the slider's
+-- own OnValueChanged handler is what actually applies the change and
+-- refreshes the value readout; these helpers never apply a position
+-- themselves.
+-------------------------------------------------------------------------
+
+-- CONFIRMED (live diagnostic + reading Bar.lua's PixelSetPoint):
+-- ApplyBarPosition sends every X/Y through ClassicAPI's
+-- PixelUtil.SetPoint, which rounds the given offset to the nearest whole
+-- PHYSICAL SCREEN PIXEL using UIParent:GetEffectiveScale() - standard
+-- Blizzard "pixel-perfect" positioning, not a bug. One screen pixel is
+-- therefore 1/scale position units, NOT 1 unit - at a 0.9 scale that's
+-- ~1.11 units, so a flat 0.5-unit step can land inside the same physical
+-- pixel as before and produce no visible change. GetPixelStep() returns
+-- that real, always-visible amount, read live so it stays correct if the
+-- user changes their UI Scale without reloading Settings.
+local function GetPixelStep()
+	local scale = UIParent:GetEffectiveScale()
+
+	if not scale or scale <= 0 then
+		scale = 1
+	end
+
+	return 1 / scale
+end
+
+-- Nearest multiple of `step` to `value` (round-half-up). Used only to
+-- snap DRAG-driven changes onto the pixel grid - never applied to a
+-- stepper-button or typed-edit value, which must move/land exactly
+-- where the user asked.
+local function RoundToStep(value, step)
+	return math.floor(value / step + 0.5) * step
+end
+
+-- CONFIRMED (live diagnostic): Slider:SetValueStep(step) doesn't just
+-- change how future drags snap - it immediately re-snaps whatever value
+-- the slider currently holds to the nearest point on the grid
+-- `min + n*step`. GetScreenCoordinateRange's min is rarely a whole
+-- number (e.g. -1365.3334 at some resolutions), so that grid isn't
+-- aligned to integers either - toggling the step back on after setting
+-- an exact value silently re-snapped it to a nearby, wrong number. Fix:
+-- these X/Y sliders stay continuous (step 0) permanently (set once at
+-- creation, see xSlider/ySlider:SetValueStep(0) below); dragging is
+-- snapped to the 1-pixel grid (GetPixelStep) manually instead, in each
+-- slider's own OnValueChanged (guarded by `this.suppressSnap`, set by
+-- the code below around every stepper/edit-box SetValue call so THEIR
+-- exact values never get re-snapped).
+
+-- Bumped on every call so each set of stepper buttons gets unique frame names.
+local positionStepperCounter = 0
+
+-- Sets `slider`'s value without the drag-snap-to-0.5 logic in its
+-- OnValueChanged handler touching it - used by every stepper/edit-box
+-- commit so their exact target value sticks.
+local function SetSliderValueUnsnapped(slider, value)
+	slider.suppressSnap = true
+	slider:SetValue(value)
+	slider.suppressSnap = nil
+end
+
+-- Adds "--"/"-"/"+"/"++" buttons flanking `slider` (stepping by 10 and 1
+-- real screen pixels respectively - see GetPixelStep), anchored to it
+-- directly so they track any later reflow of the slider itself without
+-- separate registration. namePrefix should already be unique to the
+-- owning page. Returns bigMinus, minus, plus, bigPlus.
+function BTV:CreatePositionStepperButtons(page, slider, namePrefix)
+	positionStepperCounter = positionStepperCounter + 1
+
+	local suffix = tostring(positionStepperCounter)
+
+	-- pixels: how many real screen pixels this button shifts the
+	-- slider's current value by, per click (converted to position units
+	-- live via GetPixelStep, so it stays correct if UI Scale changes),
+	-- clamped to the slider's own min/max. width: forced button width -
+	-- "++"/"--" need more room than "+"/"-" to render centered rather
+	-- than clipped/overflowing a width sized for a single character.
+	local function MakeStepButton(name, label, pixels, width)
+		local button = CreateFrame("Button", namePrefix .. name .. suffix, page)
+
+		button:SetHeight(20)
+		BTV:StyleModernButton(button, width, width)
+		button:SetText(label)
+
+		button:SetScript("OnClick", function()
+			local min, max = slider:GetMinMaxValues()
+			local target = slider:GetValue() + (pixels * GetPixelStep())
+
+			if target < min then
+				target = min
+			elseif target > max then
+				target = max
+			end
+
+			SetSliderValueUnsnapped(slider, target)
+		end)
+
+		return button
+	end
+
+	local minus = MakeStepButton("StepperMinus", "-", -1, 20)
+
+	minus:SetPoint("RIGHT", slider, "LEFT", -4, 0)
+
+	local plus = MakeStepButton("StepperPlus", "+", 1, 20)
+
+	plus:SetPoint("LEFT", slider, "RIGHT", 4, 0)
+
+	local bigMinus = MakeStepButton("StepperBigMinus", "--", -10, 20)
+
+	bigMinus:SetPoint("RIGHT", minus, "LEFT", -2, 0)
+
+	local bigPlus = MakeStepButton("StepperBigPlus", "++", 10, 20)
+
+	bigPlus:SetPoint("LEFT", plus, "RIGHT", 2, 0)
+
+	return bigMinus, minus, plus, bigPlus
+end
+
+-- Bumped on every call so each EditBox gets a unique frame name.
+local positionEditBoxCounter = 0
+
+-- Turns `valueText` (the slider's plain FontString live-value readout)
+-- into a click-to-edit control. A FontString can't receive clicks on its
+-- own, so this overlays an invisible click-catcher Button on top of it,
+-- centered on the text itself and padded generously so it stays easy to
+-- hit; clicking swaps both out for an EditBox pre-filled with the
+-- slider's current value. Enter parses and applies the exact typed
+-- number (clamped to the slider's own min/max, but not otherwise
+-- rounded), Escape or losing focus cancels without applying. Returns the
+-- click-catcher (for lock-gating) and the EditBox.
+function BTV:MakePositionValueEditable(page, valueText, slider, namePrefix)
+	positionEditBoxCounter = positionEditBoxCounter + 1
+
+	local suffix = tostring(positionEditBoxCounter)
+
+	local clickCatcher = CreateFrame(
+		"Button",
+		namePrefix .. "ValueClick" .. suffix,
+		page
+	)
+
+	clickCatcher:SetWidth(76)
+	clickCatcher:SetHeight(22)
+	clickCatcher:SetPoint("CENTER", valueText, "CENTER", 0, 0)
+	clickCatcher:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+
+	-- The next axis's slider sits close below this readout and defaults to
+	-- the same frame level (both are plain children of `page`) - without
+	-- outranking it explicitly, that neighboring slider's hit region can
+	-- win the mouse hit-test over this one whenever they're close enough
+	-- to overlap, silently swallowing clicks meant for this button.
+	clickCatcher:SetFrameLevel(slider:GetFrameLevel() + 5)
+
+	local editBox = CreateFrame(
+		"EditBox",
+		namePrefix .. "ValueEditBox" .. suffix,
+		page,
+		"InputBoxTemplate"
+	)
+
+	editBox:SetWidth(50)
+	editBox:SetHeight(14)
+	editBox:SetAutoFocus(true)
+	editBox:SetJustifyH("CENTER")
+	editBox:SetPoint("TOP", slider, "BOTTOM", 0, -2)
+	editBox:SetFrameLevel(slider:GetFrameLevel() + 5)
+	editBox:Hide()
+
+	local function HideEditBox()
+		editBox:Hide()
+		valueText:Show()
+		clickCatcher:Show()
+	end
+
+	local function CommitEdit()
+		local parsed = tonumber(editBox:GetText())
+
+		if parsed then
+			local min, max = slider:GetMinMaxValues()
+
+			if parsed < min then
+				parsed = min
+			elseif parsed > max then
+				parsed = max
+			end
+
+			SetSliderValueUnsnapped(slider, parsed)
+		end
+
+		editBox:ClearFocus()
+	end
+
+	editBox:SetScript("OnEnterPressed", CommitEdit)
+	editBox:SetScript("OnEscapePressed", function() editBox:ClearFocus() end)
+	editBox:SetScript("OnEditFocusLost", HideEditBox)
+
+	clickCatcher:SetScript("OnClick", function()
+		editBox:SetText(string.format("%.2f", slider:GetValue()))
+		valueText:Hide()
+		clickCatcher:Hide()
+		editBox:Show()
+		editBox:SetFocus()
+		editBox:HighlightText()
+	end)
+
+	return clickCatcher, editBox
+end
+
 -------------------------------------------------------------------------
 -- Only show on hover - shared checkbox + slider
 --
@@ -798,6 +1027,13 @@ end
 -- 1024)" caption is a static FontString set at build time.
 -------------------------------------------------------------------------
 
+-- Elements anchor at various corners (TOPLEFT-TOPLEFT, CENTER-CENTER,
+-- etc. - see ApplyBarPosition/DefaultBars.lua's per-frame anchors), so
+-- depending on which corner pair a given element uses, its offset from
+-- UIParent can need to span up to a full screen dimension just to reach
+-- the opposite edge, plus some room to drag it fully off-screen in
+-- either direction. Doubling UIParent's own size comfortably covers
+-- every anchor-corner combination in use, with room to spare.
 local function GetScreenCoordinateRange()
 	local width = UIParent:GetWidth()
 	local height = UIParent:GetHeight()
@@ -810,7 +1046,323 @@ local function GetScreenCoordinateRange()
 		height = 768
 	end
 
-	return -width, width, -height, height
+	return -width * 2, width * 2, -height * 2, height * 2
+end
+
+-------------------------------------------------------------------------
+-- Action-bar-specific X/Y position clamp range
+--
+-- Unlike the generic screen-relative range above (used for the
+-- native/simple pages), an action bar's on-screen footprint depends on
+-- its own buttonSize/buttonCount/border style, so its clamp range is
+-- computed per-bar and kept live via RefreshPositionSliderRange below.
+--
+-- Bars anchor TOPLEFT-to-UIParent's-BOTTOMLEFT (Core.lua) with y=0 at
+-- the screen's bottom, increasing upward.
+--
+-- CONFIRMED (three rounds of live diagnostics): UIParent:GetWidth()/
+-- GetHeight() do NOT reflect the true screen edges in cfg.x/y's own
+-- coordinate convention, even though UIParent:GetLeft()/GetBottom() are
+-- 0 (matching the working X min=0/Y-relative-to-bottom convention).
+-- UIParent itself has a non-1 self-scale, so its OWN GetWidth()/
+-- GetHeight() (a "local/pre-scale" size) differs from GetRight()/
+-- GetTop() (measured in the same space cfg.x/y/buttonSize/spacing/
+-- bar:GetWidth() already share) - and GetRight()/GetTop() are exactly
+-- equal to GetScreenWidth()/GetScreenHeight(). Using UIParent:GetWidth/
+-- Height() (an earlier version of this function's mistake, itself a
+-- correction of an even earlier GetPhysicalScreenSize()/effectiveScale
+-- mistake) undershoots the real max on both axes. GetScreenWidth()/
+-- GetScreenHeight() are the correct screen-bounds reference.
+--
+-- xMin = 0
+-- xMax = GetScreenWidth() - barWidth - borderSize
+-- yMin = barHeight + borderSize
+-- yMax = GetScreenHeight()
+-- (barWidth/barHeight include inter-button spacing)
+--
+-- cols/rows (the bar's actual grid shape), not buttonCount - a
+-- multi-row bar (e.g. 3 rows x 4 cols) is only 4 buttons WIDE and 3
+-- buttons TALL, not 12 wide, so the per-axis grid dimension is what
+-- actually determines how much width/height to keep on-screen.
+
+-- 4-unit vanilla action-button border vs. 1-unit modern/minimal border.
+local function GetActionBarBorderSize()
+	return BTV:IsVanillaBorderStyle() and 4 or 1
+end
+
+local function GetActionBarCoordinateRange(cfg)
+	-- CONFIRMED (live diagnostic): UIParent:GetWidth()/GetHeight() do NOT
+	-- reflect the true screen bounds in cfg.x/y's own coordinate
+	-- convention - UIParent:GetLeft()==0 matches that convention (and
+	-- matches the working X min=0), but UIParent:GetRight() is a LARGER,
+	-- DIFFERENT number than UIParent:GetWidth() (own quirk of UIParent
+	-- having a non-1 self-scale), and it's THAT number - which exactly
+	-- equals GetScreenWidth() - that matches the real right edge. Use
+	-- GetScreenWidth()/GetScreenHeight() for the screen-bounds terms.
+	local screenWidthUnits = GetScreenWidth()
+	local screenHeightUnits = GetScreenHeight()
+
+	if not screenWidthUnits or screenWidthUnits <= 0 then
+		screenWidthUnits = 1024
+	end
+
+	if not screenHeightUnits or screenHeightUnits <= 0 then
+		screenHeightUnits = 768
+	end
+
+	local buttonSize = (cfg and cfg.buttonSize) or BTV.BUTTON_SIZE
+	local cols = (cfg and cfg.cols) or 1
+	local rows = (cfg and cfg.rows) or 1
+	local spacing = (cfg and cfg.spacing) or 0
+	local borderSize = GetActionBarBorderSize()
+
+	local barWidth = (cols * buttonSize) + ((cols - 1) * spacing)
+	local barHeight = (rows * buttonSize) + ((rows - 1) * spacing)
+
+	local minX = 0
+	local maxX = screenWidthUnits - barWidth - borderSize
+
+	local minY = barHeight + borderSize
+	local maxY = screenHeightUnits
+
+	-- Never feed SetMinMaxValues a backwards span (max < min) if an
+	-- oversized bar/border combination would otherwise invert it.
+	if maxX < minX then
+		maxX = minX
+	end
+
+	if maxY < minY then
+		maxY = minY
+	end
+
+	return minX, maxX, minY, maxY
+end
+
+-- Recomputes and re-applies an action-bar page's X/Y slider clamp range
+-- from its CURRENT buttonSize/buttonCount/cols/rows and border style -
+-- call whenever any of those change live (button size drag, button
+-- count stepper, grid preset pick), since GetActionBarCoordinateRange
+-- depends on them. Also re-clamps the current value, in case a
+-- shrinking range no longer contains it.
+function BTV:RefreshPositionSliderRange(page)
+	if not page or not page.xSlider or not page.ySlider or not page.barId then
+		return
+	end
+
+	local cfg = GetBarConfig(page.barId)
+
+	if not cfg then
+		return
+	end
+
+	local minX, maxX, minY, maxY = GetActionBarCoordinateRange(cfg)
+
+	page.xSlider:SetMinMaxValues(minX, maxX)
+	page.ySlider:SetMinMaxValues(minY, maxY)
+
+	local x = page.xSlider:GetValue()
+	local y = page.ySlider:GetValue()
+
+	if x < minX then
+		SetSliderValueUnsnapped(page.xSlider, minX)
+	elseif x > maxX then
+		SetSliderValueUnsnapped(page.xSlider, maxX)
+	end
+
+	if y < minY then
+		SetSliderValueUnsnapped(page.ySlider, minY)
+	elseif y > maxY then
+		SetSliderValueUnsnapped(page.ySlider, maxY)
+	end
+end
+
+-------------------------------------------------------------------------
+-- Native/simple-element X/Y position clamp range (Bag Bar, Micro Menu,
+-- Stance Bar native mode, Pet Bar native mode, Experience Bar, Cast Bar
+-- - NOT Latency Bar, whose overlay hitbox is currently oversized
+-- relative to its real visual footprint, a separate known issue).
+--
+-- Unlike action bars, these elements' on-screen footprint isn't
+-- reconstructible from a buttonSize/cols/rows formula (native frames,
+-- or TrustyBars' own chain-anchored containers whose shape depends on
+-- scale/spacing/orientation) - read the real rendered size instead.
+--
+-- Two things this has to account for that action bars don't:
+--
+-- 1. Hit-rect padding: the container/frame's own GetWidth()/GetHeight()
+--    can be noticeably bigger than what's actually drawn (confirmed on
+--    Micro Menu - see ApplyChainAnchoredShape's own "58 vs the real 40"
+--    comment). Each of these elements already has a `.btvOverlay`
+--    (EnsureContainerOverlay, DefaultBars.lua) built specifically to
+--    track the trimmed, real visual footprint for drag/click purposes -
+--    prefer that over the raw frame for measurement.
+--
+-- 2. Scale: these elements set their OWN :SetScale() directly (Bag Bar/
+--    Micro Menu/Stance Bar/Pet Bar native containers, and the Cast/Exp
+--    Bar native frames). pos.x/pos.y (the raw SetPoint offset actually
+--    stored in SavedVariables) is in the SCALED element's own
+--    pre-multiplication units, so it needs dividing by that scale to
+--    land in the same "real on-screen" units screenWidth/screenHeight
+--    and frameWidth/frameHeight (both already post-scale - see
+--    measureFrame's own comment above) are already in: real right edge
+--    = (x*scale) + frameWidth <= screenWidth, i.e.
+--    x <= (screenWidth - frameWidth)/scale. Action bars need none of
+--    this since they never call :SetScale() at all.
+--    (DefaultBars.lua's Set*Scale functions separately compensate x/y
+--    on every scale CHANGE so the element's bottom-left corner stays
+--    put - that's about not drifting when scale changes, and doesn't
+--    remove the need for this clamp to know the CURRENT scale.)
+--
+-- extraMaxYPixels (optional): a few elements' visual footprint has a
+-- sliver of dead space at an edge the user may want to be able to hide
+-- off-screen (Experience Bar's Y max, per its config) - adds that many
+-- real screen pixels (GetPixelStep()) of extra headroom before the
+-- scale division, same as everything else here.
+-------------------------------------------------------------------------
+
+local function GetSimpleElementCoordinateRange(frame, extraMaxYPixels)
+	local screenWidthUnits = GetScreenWidth()
+	local screenHeightUnits = GetScreenHeight()
+
+	if not screenWidthUnits or screenWidthUnits <= 0 then
+		screenWidthUnits = 1024
+	end
+
+	if not screenHeightUnits or screenHeightUnits <= 0 then
+		screenHeightUnits = 768
+	end
+
+	-- frame:GetWidth()/GetHeight() are the container's raw, scale-
+	-- independent declared size (confirmed live: unaffected by the
+	-- container's own SetScale) - multiplying by the container's own
+	-- scale converts them into the same "real, comparable to
+	-- screenWidthUnits" space frame:GetLeft()*scale uses below. The
+	-- overlay's own GetWidth()/GetHeight() looked like a natural
+	-- "already on-screen size" shortcut but measures noticeably smaller
+	-- than the true footprint once scale isn't 1 (confirmed live on
+	-- Experience Bar) - only used below for the small leftInset/topInset
+	-- correction, never as the base size.
+	local overlay = frame and frame.btvOverlay
+
+	local scale = (frame and frame:GetScale()) or 1
+
+	if not scale or scale <= 0 then
+		scale = 1
+	end
+
+	-- Some elements' overlay is trimmed inward from the CONTAINER's own
+	-- raw anchor corner (confirmed on Micro Menu - its grid overlay
+	-- applies a topFudge/hit-rect trim that puts its own top edge a
+	-- measured 20 units below the container's raw top, so a cfg.y that
+	-- puts the CONTAINER's top at the screen edge still leaves the
+	-- trimmed overlay's top visibly short of it). Measuring the
+	-- container-vs-overlay offset directly (rather than hardcoding any
+	-- element-specific constant) keeps this correct regardless of which
+	-- element/inset is involved, and is a no-op (0) for elements whose
+	-- overlay is SetAllPoints(container) with no trim at all.
+	local leftInset, topInset = 0, 0
+
+	if overlay and frame then
+		-- frame:GetLeft()/GetTop() are in the CONTAINER's own local unit
+		-- system (its own SetScale multiplies how far they resolve into
+		-- UIParent's space), while the overlay's own scale is always 1 -
+		-- so its GetLeft()/GetTop() are already directly comparable to
+		-- screenWidthUnits/screenHeightUnits. Must multiply the
+		-- container's edge by its own scale before diffing against the
+		-- overlay's edge, or this inset silently picks up a
+		-- position-dependent error whenever scale isn't 1.
+		local containerLeft = frame:GetLeft()
+		local overlayLeft = overlay:GetLeft()
+		local containerTop = frame:GetTop()
+		local overlayTop = overlay:GetTop()
+
+		if containerLeft and overlayLeft then
+			leftInset = overlayLeft - (containerLeft * scale)
+		end
+
+		if containerTop and overlayTop then
+			topInset = (containerTop * scale) - overlayTop
+		end
+	end
+
+	local extraY = 0
+
+	if extraMaxYPixels and extraMaxYPixels ~= 0 then
+		extraY = extraMaxYPixels * GetPixelStep()
+	end
+
+	-- frameWidth/frameHeight: the container's raw size converted into the
+	-- same "real, comparable to screenWidthUnits" space as leftInset/
+	-- topInset above. Real right edge: (x*scale) + leftInset +
+	-- frameWidth*scale <= screenWidth, i.e.
+	-- x <= (screenWidth - leftInset)/scale - frameWidth. Real top edge:
+	-- (x*scale) - topInset <= screenHeight+extra, i.e.
+	-- x <= (screenHeight + extra + topInset)/scale - the height term
+	-- cancels the /scale entirely since minY's frameHeight is also
+	-- multiplied by scale on the real-edge side.
+	local frameWidth = (frame and frame:GetWidth()) or 0
+	local frameHeight = (frame and frame:GetHeight()) or 0
+
+	local minX = 0
+	local maxX = (screenWidthUnits - leftInset) / scale - frameWidth
+
+	local minY = frameHeight
+	local maxY = (screenHeightUnits + extraY + topInset) / scale
+
+	if maxX < minX then
+		maxX = minX
+	end
+
+	if maxY < minY then
+		maxY = minY
+	end
+
+	return minX, maxX, minY, maxY
+end
+
+-- Recomputes and re-applies a simple-page element's X/Y slider clamp
+-- range from its CURRENT rendered size - call whenever anything that
+-- can change that size happens live (scale drag, spacing drag, grid
+-- preset pick). No-ops for pages without config.getElementFrame (i.e.
+-- Latency Bar, deliberately left on the generic screen-relative range).
+-- Also re-clamps the current value, in case a shrinking range no longer
+-- contains it.
+function BTV:RefreshSimplePositionSliderRange(page, key)
+	if not page or not page.xSlider or not page.ySlider then
+		return
+	end
+
+	local config = simpleBarPageConfigs[key]
+
+	if not config or not config.getElementFrame then
+		return
+	end
+
+	local frame = config.getElementFrame()
+
+	if not frame then
+		return
+	end
+
+	local minX, maxX, minY, maxY = GetSimpleElementCoordinateRange(frame, config.extraMaxYPixels)
+
+	page.xSlider:SetMinMaxValues(minX, maxX)
+	page.ySlider:SetMinMaxValues(minY, maxY)
+
+	local x = page.xSlider:GetValue()
+	local y = page.ySlider:GetValue()
+
+	if x < minX then
+		SetSliderValueUnsnapped(page.xSlider, minX)
+	elseif x > maxX then
+		SetSliderValueUnsnapped(page.xSlider, maxX)
+	end
+
+	if y < minY then
+		SetSliderValueUnsnapped(page.ySlider, minY)
+	elseif y > maxY then
+		SetSliderValueUnsnapped(page.ySlider, maxY)
+	end
 end
 
 -------------------------------------------------------------------------
@@ -1998,14 +2550,17 @@ function BTV:GetOrCreateBarPage(barId)
 	-------------------------------------------------------------------------
 	-- Position section
 	--
-	-- GetScreenCoordinateRange's min/max feed the sliders' SetMinMaxValues.
+	-- GetActionBarCoordinateRange's min/max (built from this bar's own
+	-- buttonSize/buttonCount/border style) feed the sliders'
+	-- SetMinMaxValues - kept live afterwards by RefreshPositionSliderRange
+	-- wherever those change (button size, button count, grid preset).
 	-- Live current X/Y values show as a centered FontString under each
 	-- slider (xValueText/yValueText), the same way Button Size shows its
 	-- own live value.
 	-------------------------------------------------------------------------
 
 	local minX, maxX, minY, maxY =
-		GetScreenCoordinateRange()
+		GetActionBarCoordinateRange(GetBarConfig(barId))
 
 	-------------------------------------------------------------------------
 	-- X slider
@@ -2048,7 +2603,28 @@ function BTV:GetOrCreateBarPage(barId)
 		maxX
 	)
 
-	xSlider:SetValueStep(1)
+	-- Continuous, not stepped - Slider:SetValueStep re-snaps whatever
+	-- value the slider currently holds to the nearest min+n*step grid
+	-- line the moment it's called, and GetScreenCoordinateRange's min
+	-- isn't a whole number at every resolution, so a nonzero step here
+	-- would silently corrupt typed/stepped positions.
+	xSlider:SetValueStep(0)
+
+	SetSliderEndLabels(xSlider, "Left", "Right")
+
+	-- Anchored to xSlider itself, not registered in the hover-only reflow
+	-- list - they track any reflow of the slider automatically since their
+	-- anchor targets it directly.
+	local xStepperBigMinus, xStepperMinus, xStepperPlus, xStepperBigPlus = self:CreatePositionStepperButtons(
+		page,
+		xSlider,
+		"BTVanillaBar" .. tostring(barId) .. "X"
+	)
+
+	page.xStepperBigMinus = xStepperBigMinus
+	page.xStepperMinus = xStepperMinus
+	page.xStepperPlus = xStepperPlus
+	page.xStepperBigPlus = xStepperBigPlus
 
 	-- Live numeric readout, centered below the slider. Placeholder only:
 	-- RefreshBarSettingsPage overwrites this with the real %.2f-formatted
@@ -2073,6 +2649,13 @@ function BTV:GetOrCreateBarPage(barId)
 
 	page.xValueText = xValueText
 
+	page.xValueClick, page.xValueEditBox = self:MakePositionValueEditable(
+		page,
+		xValueText,
+		xSlider,
+		"BTVanillaBar" .. tostring(barId) .. "X"
+	)
+
 	xSlider:SetScript(
 		"OnValueChanged",
 		function()
@@ -2082,11 +2665,23 @@ function BTV:GetOrCreateBarPage(barId)
 				return
 			end
 
-			-- Display-only rounding; the slider's raw GetValue() keeps full
-			-- precision, which ApplyLiveBarPosition below reads directly and
-			-- passes through unrounded.
+			-- Only a real mouse drag reaches this un-snapped - every
+			-- stepper/edit-box commit sets suppressSnap around its own
+			-- SetValue() so its exact value passes through untouched.
+			-- Snapping only the CACHED applied value (not calling
+			-- slider:SetValue() here) - forcing the slider's own value
+			-- mid-drag was tried and broke native dragging, since it
+			-- desyncs the widget's own drag-tracking the moment it fires.
+			local applied = value
+
+			if not this.suppressSnap then
+				applied = RoundToStep(value, GetPixelStep())
+			end
+
+			page.xAppliedValue = applied
+
 			xValueText:SetText(
-				string.format("%.2f", value)
+				string.format("%.2f", applied)
 			)
 
 			if not this.suppressApply then
@@ -2140,7 +2735,22 @@ function BTV:GetOrCreateBarPage(barId)
 		maxY
 	)
 
-	ySlider:SetValueStep(1)
+	-- Continuous - see the X slider's matching SetValueStep(0) above.
+	ySlider:SetValueStep(0)
+
+	SetSliderEndLabels(ySlider, "Down", "Up")
+
+	-- Anchored to ySlider itself - see the X slider's matching steppers above.
+	local yStepperBigMinus, yStepperMinus, yStepperPlus, yStepperBigPlus = self:CreatePositionStepperButtons(
+		page,
+		ySlider,
+		"BTVanillaBar" .. tostring(barId) .. "Y"
+	)
+
+	page.yStepperBigMinus = yStepperBigMinus
+	page.yStepperMinus = yStepperMinus
+	page.yStepperPlus = yStepperPlus
+	page.yStepperBigPlus = yStepperBigPlus
 
 	-- Live numeric readout, centered below the slider - see the X slider's
 	-- matching xValueText above.
@@ -2164,6 +2774,13 @@ function BTV:GetOrCreateBarPage(barId)
 
 	page.yValueText = yValueText
 
+	page.yValueClick, page.yValueEditBox = self:MakePositionValueEditable(
+		page,
+		yValueText,
+		ySlider,
+		"BTVanillaBar" .. tostring(barId) .. "Y"
+	)
+
 	ySlider:SetScript(
 		"OnValueChanged",
 		function()
@@ -2173,10 +2790,18 @@ function BTV:GetOrCreateBarPage(barId)
 				return
 			end
 
-			-- Display-only rounding - see the X slider's OnValueChanged
-			-- comment above.
+			-- Snaps only the cached applied value - see the X slider's
+			-- OnValueChanged comment above.
+			local applied = value
+
+			if not this.suppressSnap then
+				applied = RoundToStep(value, GetPixelStep())
+			end
+
+			page.yAppliedValue = applied
+
 			yValueText:SetText(
-				string.format("%.2f", value)
+				string.format("%.2f", applied)
 			)
 
 			if not this.suppressApply then
@@ -2320,6 +2945,9 @@ function BTV:GetOrCreateBarPage(barId)
 					end
 				end
 			end
+
+			-- Button size feeds the X/Y clamp range (GetActionBarCoordinateRange) - keep it current.
+			BTV:RefreshPositionSliderRange(page)
 		end
 	)
 
@@ -2464,6 +3092,9 @@ function BTV:GetOrCreateBarPage(barId)
 						end
 					end
 				end
+
+				-- Spacing feeds the X/Y clamp range (GetActionBarCoordinateRange) - keep it current.
+				BTV:RefreshPositionSliderRange(page)
 			end
 		)
 
@@ -2520,9 +3151,51 @@ function BTV:GetOrCreateBarPage(barId)
 			-- plus the Reset button above it.
 			gridTitleY = resetButtonY - 34
 			swatchY = gridTitleY - 26
+		elseif BTV:IsExtraBarId(barId) then
+			-------------------------------------------------------------------------
+			-- Reset to Default position/buttonSize/spacing/grid layout -
+			-- Extra Bars have no native Blizzard anchor, so this resets to
+			-- the addon's own default instead (BTV:ResetExtraBarLayout,
+			-- Bar.lua).
+			-------------------------------------------------------------------------
+
+			local resetButtonY = spacingSliderY - 36
+
+			local resetPositionButton = CreateFrame(
+				"Button",
+				nil,
+				page
+			)
+
+			resetPositionButton:SetHeight(22)
+
+			resetPositionButton:SetPoint(
+				"TOPLEFT",
+				page,
+				"TOPLEFT",
+				INDENT_INPUT,
+				resetButtonY
+			)
+
+			BTV:StyleModernButton(resetPositionButton, 200, 200)
+			resetPositionButton:SetText("Reset to Default")
+
+			resetPositionButton:SetScript(
+				"OnClick",
+				function()
+					BTV:ResetExtraBarLayout(page.barId)
+					BTV:RefreshBarSettingsPage(page.barId)
+				end
+			)
+
+			page.resetPositionButton = resetPositionButton
+
+			self:AddHoverOnlyReflowRow(page, resetPositionButton, INDENT_INPUT, resetButtonY)
+
+			gridTitleY = resetButtonY - 34
+			swatchY = gridTitleY - 26
 		else
-			-- Custom bars (6+) have no Reset-to-Blizzard-Default concept, so
-			-- Grid Layout follows directly under the Spacing slider.
+			-- Any other custom bar has no Reset concept.
 			gridTitleY = spacingSliderY - 36
 			swatchY = gridTitleY - 26
 		end
@@ -2712,6 +3385,9 @@ function BTV:GetOrCreateBarPage(barId)
 				BTV:SetBarButtonCount(bar, count)
 
 				RefreshButtonCountStepperVisual()
+
+				-- Button count feeds the X/Y clamp range - keep it current.
+				BTV:RefreshPositionSliderRange(page)
 			end
 		)
 
@@ -2730,6 +3406,9 @@ function BTV:GetOrCreateBarPage(barId)
 				BTV:SetBarButtonCount(bar, count)
 
 				RefreshButtonCountStepperVisual()
+
+				-- Button count feeds the X/Y clamp range - keep it current.
+				BTV:RefreshPositionSliderRange(page)
 			end
 		)
 
@@ -2889,8 +3568,16 @@ end
 -------------------------------------------------------------------------
 
 function BTV:ApplyLiveBarPosition(page)
-	local x = page.xSlider:GetValue()
-	local y = page.ySlider:GetValue()
+	-- Reads the cached applied value (xAppliedValue/yAppliedValue, kept
+	-- current by each slider's own OnValueChanged), not slider:GetValue()
+	-- directly - during an active drag those can differ, since the
+	-- pixel-snap is applied to the cache only. Calling slider:SetValue()
+	-- from inside OnValueChanged to force the snap onto the slider itself
+	-- was tried and reverted: it desyncs the native widget's own
+	-- drag-tracking the moment it fires mid-drag, breaking further
+	-- dragging for the rest of that gesture.
+	local x = page.xAppliedValue or page.xSlider:GetValue()
+	local y = page.yAppliedValue or page.ySlider:GetValue()
 
 	if not x or not y then
 		return
@@ -3071,7 +3758,9 @@ end
 -- enable/disable to stay the one available option even while everything
 -- else on the page is locked.
 local PROFILE_LOCK_CONTROL_NAMES = {
-	"xSlider", "ySlider", "buttonSizeSlider", "spacingSlider",
+	"xSlider", "ySlider", "xStepperBigMinus", "xStepperMinus", "xStepperPlus", "xStepperBigPlus",
+	"yStepperBigMinus", "yStepperMinus", "yStepperPlus", "yStepperBigPlus", "xValueClick", "yValueClick",
+	"buttonSizeSlider", "spacingSlider",
 	"scaleSlider", "resetPositionButton", "enableCheckbox",
 	"buttonCountMinus", "buttonCountPlus", "pageIndicatorSlider",
 	"orientationCheckbox", "keyRingCheckbox", "keyRingScaleSlider",
@@ -3189,6 +3878,32 @@ local function ApplyDefaultLayoutGating(page, interactive)
 	if page.ySlider then
 		page.ySlider:EnableMouse(interactive)
 		page.ySlider:SetAlpha(alpha)
+	end
+
+	-- Stepper buttons and the click-to-edit value readouts gate the same
+	-- way the sliders they flank do - Buttons additionally need
+	-- Disable()/Enable(), see LockControl's comment above.
+	local positionButtonNames = {
+		"xStepperBigMinus", "xStepperMinus", "xStepperPlus", "xStepperBigPlus",
+		"yStepperBigMinus", "yStepperMinus", "yStepperPlus", "yStepperBigPlus",
+		"xValueClick", "yValueClick",
+	}
+
+	local pi
+
+	for pi = 1, table.getn(positionButtonNames) do
+		local control = page[positionButtonNames[pi]]
+
+		if control then
+			control:EnableMouse(interactive)
+			control:SetAlpha(alpha)
+
+			if interactive then
+				control:Enable()
+			else
+				control:Disable()
+			end
+		end
 	end
 
 	if page.buttonSizeSlider then
@@ -3591,7 +4306,17 @@ local function CreateSimpleBarPage(key)
 		topY = topY - 24 - 14
 	end
 
-	local minX, maxX, minY, maxY = GetScreenCoordinateRange()
+	-- Elements with a real measurable frame (config.getElementFrame) use
+	-- that frame's own current size for the clamp range (kept live by
+	-- RefreshSimplePositionSliderRange below); Latency Bar and any page
+	-- without one falls back to the generic screen-relative range.
+	local minX, maxX, minY, maxY
+
+	if config.getElementFrame then
+		minX, maxX, minY, maxY = GetSimpleElementCoordinateRange(config.getElementFrame(), config.extraMaxYPixels)
+	else
+		minX, maxX, minY, maxY = GetScreenCoordinateRange()
+	end
 
 	local xLabelY = topY
 	local xSliderY = xLabelY + 4
@@ -3617,7 +4342,25 @@ local function CreateSimpleBarPage(key)
 
 	xSlider:SetPoint("TOPLEFT", page, "TOPLEFT", INDENT_INPUT, xSliderY)
 	xSlider:SetMinMaxValues(minX, maxX)
-	xSlider:SetValueStep(1)
+
+	-- Continuous, not stepped - see GetOrCreateBarPage's matching X slider comment.
+	xSlider:SetValueStep(0)
+
+	SetSliderEndLabels(xSlider, "Left", "Right")
+
+	-- Anchored to xSlider itself, not registered in the hover-only reflow
+	-- list - they track any reflow of the slider automatically since their
+	-- anchor targets it directly.
+	local xStepperBigMinus, xStepperMinus, xStepperPlus, xStepperBigPlus = BTV:CreatePositionStepperButtons(
+		page,
+		xSlider,
+		"BTVanillaSimplePage" .. key .. "X"
+	)
+
+	page.xStepperBigMinus = xStepperBigMinus
+	page.xStepperMinus = xStepperMinus
+	page.xStepperPlus = xStepperPlus
+	page.xStepperBigPlus = xStepperBigPlus
 
 	local xValueText = page:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 
@@ -3625,6 +4368,13 @@ local function CreateSimpleBarPage(key)
 	xValueText:SetText(string.format("%.2f", 0))
 
 	page.xValueText = xValueText
+
+	page.xValueClick, page.xValueEditBox = BTV:MakePositionValueEditable(
+		page,
+		xValueText,
+		xSlider,
+		"BTVanillaSimplePage" .. key .. "X"
+	)
 
 	xSlider:SetScript(
 		"OnValueChanged",
@@ -3635,12 +4385,22 @@ local function CreateSimpleBarPage(key)
 				return
 			end
 
-			xValueText:SetText(string.format("%.2f", value))
+			-- Snaps only the cached applied value - see GetOrCreateBarPage's
+			-- X slider OnValueChanged comment.
+			local applied = value
+
+			if not this.suppressSnap then
+				applied = RoundToStep(value, GetPixelStep())
+			end
+
+			page.xAppliedValue = applied
+
+			xValueText:SetText(string.format("%.2f", applied))
 
 			if not this.suppressApply then
-				local y = page.ySlider:GetValue()
+				local y = page.yAppliedValue or page.ySlider:GetValue()
 
-				config.setPosition(value, y)
+				config.setPosition(applied, y)
 			end
 		end
 	)
@@ -3668,7 +4428,23 @@ local function CreateSimpleBarPage(key)
 
 	ySlider:SetPoint("TOPLEFT", page, "TOPLEFT", INDENT_INPUT, ySliderY)
 	ySlider:SetMinMaxValues(minY, maxY)
-	ySlider:SetValueStep(1)
+
+	-- Continuous, not stepped - see GetOrCreateBarPage's matching X slider comment.
+	ySlider:SetValueStep(0)
+
+	SetSliderEndLabels(ySlider, "Down", "Up")
+
+	-- Anchored to ySlider itself - see the X slider's matching steppers above.
+	local yStepperBigMinus, yStepperMinus, yStepperPlus, yStepperBigPlus = BTV:CreatePositionStepperButtons(
+		page,
+		ySlider,
+		"BTVanillaSimplePage" .. key .. "Y"
+	)
+
+	page.yStepperBigMinus = yStepperBigMinus
+	page.yStepperMinus = yStepperMinus
+	page.yStepperPlus = yStepperPlus
+	page.yStepperBigPlus = yStepperBigPlus
 
 	local yValueText = page:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 
@@ -3676,6 +4452,13 @@ local function CreateSimpleBarPage(key)
 	yValueText:SetText(string.format("%.2f", 0))
 
 	page.yValueText = yValueText
+
+	page.yValueClick, page.yValueEditBox = BTV:MakePositionValueEditable(
+		page,
+		yValueText,
+		ySlider,
+		"BTVanillaSimplePage" .. key .. "Y"
+	)
 
 	ySlider:SetScript(
 		"OnValueChanged",
@@ -3686,12 +4469,22 @@ local function CreateSimpleBarPage(key)
 				return
 			end
 
-			yValueText:SetText(string.format("%.2f", value))
+			-- Snaps only the cached applied value - see GetOrCreateBarPage's
+			-- X slider OnValueChanged comment.
+			local applied = value
+
+			if not this.suppressSnap then
+				applied = RoundToStep(value, GetPixelStep())
+			end
+
+			page.yAppliedValue = applied
+
+			yValueText:SetText(string.format("%.2f", applied))
 
 			if not this.suppressApply then
-				local x = page.xSlider:GetValue()
+				local x = page.xAppliedValue or page.xSlider:GetValue()
 
-				config.setPosition(x, value)
+				config.setPosition(x, applied)
 			end
 		end
 	)
@@ -3787,6 +4580,9 @@ local function CreateSimpleBarPage(key)
 
 					config.setSpacing(value - uiOffset)
 				end
+
+				-- Spacing feeds this element's rendered footprint - keep the X/Y clamp range current.
+				BTV:RefreshSimplePositionSliderRange(page, key)
 			end
 		)
 
@@ -3859,6 +4655,23 @@ local function CreateSimpleBarPage(key)
 
 				if not this.suppressApply then
 					config.setScale(value)
+
+					-- Scale changing also compensates the stored x/y
+					-- (DefaultBars.lua's Set*Scale, keeping the element's
+					-- bottom-left corner fixed) - a full page refresh, not
+					-- just RefreshSimplePositionSliderRange, is required
+					-- here specifically: it re-syncs the X/Y sliders'
+					-- OWN displayed value from that new true position
+					-- before re-clamping. Without this, the sliders keep
+					-- showing their pre-compensation value, so the
+					-- min/max recompute below reclamps against a STALE
+					-- value instead of where the element actually now
+					-- sits - producing a spurious jump even when the
+					-- element was nowhere near the real edge.
+					BTV:RefreshSimpleBarPage(key)
+				else
+					-- Feeds this element's rendered footprint - keep the X/Y clamp range current.
+					BTV:RefreshSimplePositionSliderRange(page, key)
 				end
 			end
 		)
@@ -4498,19 +5311,66 @@ function BTV:RefreshSimpleBarPage(key)
 		return
 	end
 
+	-- X/Y clamp range - recomputed from this element's CURRENT rendered
+	-- size before syncing the value below, so scale/spacing changes,
+	-- grid-preset picks, and "Reset to Blizzard Default" (all of which
+	-- route here) always re-clamp against the up to date footprint.
+	if config.getElementFrame then
+		local frame = config.getElementFrame()
+
+		if frame then
+			local minX, maxX, minY, maxY = GetSimpleElementCoordinateRange(frame, config.extraMaxYPixels)
+
+			page.xSlider:SetMinMaxValues(minX, maxX)
+			page.ySlider:SetMinMaxValues(minY, maxY)
+
+			-- A scale increase keeps the bottom-left corner fixed and grows
+			-- toward the top-right, so a position that was valid before can
+			-- push the far edge off-screen after the footprint grows -
+			-- clamp and persist here (not just SetMinMaxValues, which only
+			-- clamps the slider's DISPLAYED value, not the saved position)
+			-- so the stored position never silently drifts off-screen.
+			local rawPos = config.getPosition()
+
+			if rawPos and config.setPosition then
+				local clampedX = rawPos.x or 0
+				local clampedY = rawPos.y or 0
+
+				if clampedX < minX then clampedX = minX end
+				if clampedX > maxX then clampedX = maxX end
+				if clampedY < minY then clampedY = minY end
+				if clampedY > maxY then clampedY = maxY end
+
+				if clampedX ~= rawPos.x or clampedY ~= rawPos.y then
+					config.setPosition(clampedX, clampedY)
+				end
+			end
+		end
+	end
+
 	local pos = config.getPosition() or { x = 0, y = 0 }
 
 	page.xSlider.suppressApply = true
 	page.ySlider.suppressApply = true
+	page.xSlider.suppressSnap = true
+	page.ySlider.suppressSnap = true
 
 	page.xSlider:SetValue(pos.x or 0)
 	page.ySlider:SetValue(pos.y or 0)
+
+	-- Explicit, not just relying on OnValueChanged: it doesn't fire (and
+	-- so wouldn't refresh xAppliedValue/yAppliedValue) when pos.x/y equals
+	-- whatever the slider was already sitting at.
+	page.xAppliedValue = pos.x or 0
+	page.yAppliedValue = pos.y or 0
 
 	page.xValueText:SetText(string.format("%.2f", pos.x or 0))
 	page.yValueText:SetText(string.format("%.2f", pos.y or 0))
 
 	page.xSlider.suppressApply = nil
 	page.ySlider.suppressApply = nil
+	page.xSlider.suppressSnap = nil
+	page.ySlider.suppressSnap = nil
 
 	if page.enableCheckbox and config.getEnabled then
 		page.enableCheckbox:SetChecked(config.getEnabled() ~= false)
@@ -4771,9 +5631,13 @@ simpleBarPageConfigs[BTV.STANCE_BAR_ID] = {
 	hasEnable = true,
 	getPosition = function() return BTVanillaDB.stanceBarPosition end,
 	setPosition = function(x, y) BTV:SetStanceBarPosition(x, y) end,
+	getElementFrame = function() return BTV.stanceBarContainer end,
 	reset = function()
-		BTV:ResetStanceBarPosition()
+		-- Layout first: it writes scale directly to the DB without
+		-- reapplying position, so applying position after settles it
+		-- under the final scale instead of the stale pre-reset one.
 		BTV:ResetStanceBarLayout()
+		BTV:ResetStanceBarPosition()
 	end,
 	getEnabled = function() return BTVanillaDB.stanceBarEnabled end,
 	setEnabled = function(v) BTV:SetStanceBarEnabled(v) end,
@@ -4808,9 +5672,13 @@ simpleBarPageConfigs["bagbar"] = {
 	hasEnable = true,
 	getPosition = function() return BTVanillaDB.bagBarPosition end,
 	setPosition = function(x, y) BTV:SetBagBarPosition(x, y) end,
+	getElementFrame = function() return BTV.bagBarContainer end,
 	reset = function()
-		BTV:ResetBagBarPosition()
+		-- Layout first: it writes scale directly to the DB without
+		-- reapplying position, so applying position after settles it
+		-- under the final scale instead of the stale pre-reset one.
 		BTV:ResetBagBarLayout()
+		BTV:ResetBagBarPosition()
 
 		-- Key Ring lives on this same page (see CreateSimpleBarPage's
 		-- `if key == "bagbar"` block), so its position resets here too
@@ -4848,6 +5716,7 @@ simpleBarPageConfigs[BTV.PET_BAR_ID] = {
 	hasEnable = true,
 	getPosition = function() return BTVanillaDB.defaultBars[BTV.PET_BAR_ID] end,
 	setPosition = function(x, y) BTV:SetPetBarNativePosition(x, y) end,
+	getElementFrame = function() return BTV.petBarNativeContainer end,
 	reset = function() BTV:ResetPetBarNativeLayout() end,
 	getEnabled = function()
 		local cfg = BTVanillaDB.defaultBars[BTV.PET_BAR_ID]
@@ -4889,6 +5758,7 @@ simpleBarPageConfigs["latencybar"] = {
 	hasEnable = true,
 	getPosition = function() return BTVanillaDB.latencyBarPosition end,
 	setPosition = function(x, y) BTV:SetLatencyBarPosition(x, y) end,
+	getElementFrame = function() return getglobal(BTV.LATENCY_BAR_FRAME_NAME) end,
 	reset = function()
 		BTV:ResetLatencyBarLayout()
 	end,
@@ -4918,6 +5788,15 @@ simpleBarPageConfigs["expbar"] = {
 	hasEnable = true,
 	getPosition = function() return BTVanillaDB.expBarPosition end,
 	setPosition = function(x, y) BTV:SetExpBarPosition(x, y) end,
+	getElementFrame = function() return getglobal(BTV.EXP_BAR_FRAME_NAME) end,
+	-- Extra headroom on Y max: users may want to hide the top sliver of
+	-- this frame off-screen. In real screen pixels (GetPixelStep(),
+	-- applied before the /scale division in GetSimpleElementCoordinateRange
+	-- so the on-screen effect stays exactly this many pixels regardless of
+	-- the frame's own current scale) - not a raw position-value amount,
+	-- since a given change in x/y doesn't always move the element by a
+	-- matching amount on screen.
+	extraMaxYPixels = 2,
 	reset = function()
 		BTV:ResetExpBarLayout()
 	end,
@@ -4938,6 +5817,7 @@ simpleBarPageConfigs["castbar"] = {
 	title = "Cast Bar",
 	getPosition = function() return BTVanillaDB.castBarPosition end,
 	setPosition = function(x, y) BTV:SetCastBarPosition(x, y) end,
+	getElementFrame = function() return getglobal(BTV.CAST_BAR_FRAME_NAME) end,
 	reset = function()
 		BTV:ResetCastBarLayout()
 	end,
@@ -4951,9 +5831,14 @@ simpleBarPageConfigs["micromenu"] = {
 	hasEnable = true,
 	getPosition = function() return BTVanillaDB.microMenuPosition end,
 	setPosition = function(x, y) BTV:SetMicroMenuPosition(x, y) end,
+	getElementFrame = function() return BTV.microMenuContainer end,
+	extraMaxYPixels = 4,
 	reset = function()
-		BTV:ResetMicroMenuPosition()
+		-- Layout first: it writes scale directly to the DB without
+		-- reapplying position, so applying position after settles it
+		-- under the final scale instead of the stale pre-reset one.
 		BTV:ResetMicroMenuLayout()
+		BTV:ResetMicroMenuPosition()
 	end,
 	getEnabled = function() return BTVanillaDB.microMenuEnabled end,
 	setEnabled = function(v) BTV:SetMicroMenuEnabled(v) end,
@@ -5032,6 +5917,23 @@ function BTV:RefreshBarSettingsPage(barId)
 	self:RefreshHoverOnlyControls(page, cfg.hoverOnly, cfg.hoverDuration)
 
 	-------------------------------------------------------------------------
+	-- X/Y clamp range - recomputed from this bar's CURRENT
+	-- buttonSize/buttonCount/cols/rows before syncing the value below, so
+	-- a grid-preset pick or "Reset to Blizzard Default" (both of which
+	-- route here) always re-clamps against the up to date range. Just
+	-- SetMinMaxValues, not the full RefreshPositionSliderRange (which also
+	-- re-clamps the CURRENT value) - SetValue(x) right below already
+	-- re-syncs the value from cfg, the actual source of truth here.
+	-------------------------------------------------------------------------
+
+	do
+		local minX, maxX, minY, maxY = GetActionBarCoordinateRange(cfg)
+
+		page.xSlider:SetMinMaxValues(minX, maxX)
+		page.ySlider:SetMinMaxValues(minY, maxY)
+	end
+
+	-------------------------------------------------------------------------
 	-- Suppress OnValueChanged re-application while we're just syncing the
 	-- sliders' visual state FROM the saved config - only user-driven
 	-- ticks should write back to the config.
@@ -5040,6 +5942,8 @@ function BTV:RefreshBarSettingsPage(barId)
 	page.xSlider.suppressApply = true
 	page.ySlider.suppressApply = true
 	page.buttonSizeSlider.suppressApply = true
+	page.xSlider.suppressSnap = true
+	page.ySlider.suppressSnap = true
 
 	if page.spacingSlider then
 		page.spacingSlider.suppressApply = true
@@ -5060,10 +5964,13 @@ function BTV:RefreshBarSettingsPage(barId)
 	-- actually CHANGES - if cfg.x/y equals whatever the slider was already
 	-- sitting at (e.g. the page's initial unformatted "0.00" placeholder
 	-- text from GetOrCreateBarPage, or a value unchanged since the last
-	-- refresh), that handler never runs and xValueText/yValueText would
-	-- keep showing stale/unrounded text. Setting them explicitly here
-	-- guarantees the same %.2f formatting on every refresh regardless of
-	-- whether the value changed.
+	-- refresh), that handler never runs and xValueText/yValueText (and
+	-- xAppliedValue/yAppliedValue) would keep showing/holding stale
+	-- values. Setting them explicitly here guarantees they're current on
+	-- every refresh regardless of whether the value changed.
+	page.xAppliedValue = x
+	page.yAppliedValue = y
+
 	page.xValueText:SetText(
 		string.format("%.2f", x)
 	)
@@ -5136,6 +6043,8 @@ function BTV:RefreshBarSettingsPage(barId)
 	page.xSlider.suppressApply = nil
 	page.ySlider.suppressApply = nil
 	page.buttonSizeSlider.suppressApply = nil
+	page.xSlider.suppressSnap = nil
+	page.ySlider.suppressSnap = nil
 
 	if page.spacingSlider then
 		page.spacingSlider.suppressApply = nil

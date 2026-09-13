@@ -1318,6 +1318,27 @@ function BTV:IsExtraBarId(barId)
 		and barId < self.EXTRA_BAR_ID_START + self.EXTRA_BAR_COUNT
 end
 
+-- Settings.lua's Extra Bar page "Reset to Default" button - Extra Bars
+-- have no native Blizzard anchor to reset to (unlike default bars 1-5),
+-- so this restores the same position/buttonSize/spacing/grid layout a
+-- freshly-created Extra Bar would get (seedExtraBarConfig, Core.lua).
+function BTV:ResetExtraBarLayout(barId)
+	local bar = self.bars and self.bars[barId]
+
+	if not bar or not bar.config then
+		return
+	end
+
+	local index = barId - self.EXTRA_BAR_ID_START
+	local x, y, cols, rows, buttonSize, spacing = self:GetDefaultExtraBarLayout(index)
+
+	self:SetBarLayout(bar, cols, rows)
+	self:SetBarButtonCount(bar, cols * rows)
+	self:SetBarSpacing(bar, spacing)
+	self:SetBarButtonSize(bar, buttonSize)
+	self:SetBarPosition(bar, x, y)
+end
+
 function BTV:SetExtraBarEnabled(barId, enabled)
 	local bar = self.bars and self.bars[barId]
 
