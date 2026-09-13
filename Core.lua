@@ -2887,6 +2887,16 @@ local function RunLoginSequence(earlyLeft, earlyTop, settledLeft, settledTop, wa
 	BTV:CaptureExpBarPositionIfNeeded()
 	BTV:CaptureCastBarPositionIfNeeded()
 
+	-- TEMPORARY diagnostic: prints the just-captured Latency Bar native
+	-- anchor offset at this early point, for comparison against a second
+	-- print further down (after CreateBagBarAndMicroMenu) - pins down
+	-- whether the anchor's real offset only settles to its final value
+	-- after that reflow runs. Remove once the finding is confirmed.
+	if BTVanillaDB.latencyBarNativeAnchor then
+		BTV:Print(string.format("[BTVDiag] early nativeAnchor x=%.2f y=%.2f",
+			BTVanillaDB.latencyBarNativeAnchor.x or -1, BTVanillaDB.latencyBarNativeAnchor.y or -1))
+	end
+
 	-- Must run before CreateFixedSlotDefaultBars builds the Stance Bar's
 	-- styled-mode button pool, so cfg.buttonCount already reflects the
 	-- live form count this session (covers a class that learned/lost a
@@ -2919,6 +2929,28 @@ local function RunLoginSequence(earlyLeft, earlyTop, settledLeft, settledTop, wa
 	end
 
 	BTV:CreateBagBarAndMicroMenu()
+
+	-- TEMPORARY diagnostic: raw re-read of the Latency Bar frame's own
+	-- current GetPoint(1) offset (not via the capture function, which
+	-- already no-ops once latencyBarNativeAnchor is set) - compares
+	-- against the early print above. Remove once the finding is
+	-- confirmed.
+	do
+		local diagFrame = getglobal(BTV.LATENCY_BAR_FRAME_NAME)
+
+		if diagFrame then
+			local dPoint, dRelTo, dRelPoint, dx, dy = diagFrame:GetPoint(1)
+			local dRelName = "?"
+
+			if dRelTo and dRelTo.GetName then
+				dRelName = dRelTo:GetName() or "?"
+			end
+
+			BTV:Print(string.format("[BTVDiag] post-BagBar raw GetPoint: %s relTo=%s %s x=%.2f y=%.2f",
+				tostring(dPoint), dRelName, tostring(dRelPoint), dx or -1, dy or -1))
+		end
+	end
+
 	SetupPetBarNativeContainer()
 
 	BTV:CreatePageIndicatorContainer()
