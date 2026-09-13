@@ -1973,6 +1973,20 @@ local function EnsureContainerOverlay(container, startDragFn, stopDragFn, settin
 
 		overlay:SetPoint("TOPLEFT", chainFirst, "TOPLEFT", firstLeft * firstRatio, -(firstTop + topFudge) * firstRatio)
 		overlay:SetPoint("BOTTOMRIGHT", chainLast, "BOTTOMRIGHT", -lastRight * lastRatio, lastBottom * lastRatio)
+	elseif container.overlayInset then
+		-- Trims the overlay in from the raw frame bounds by a fixed
+		-- per-side amount (Latency Bar only, container.overlayInset -
+		-- see BTV.LATENCY_BAR_OVERLAY_INSET's comment, Core.lua) for a
+		-- wrapped native frame whose own bounds are bigger than its
+		-- visible art, transparent padding baked into the texture asset.
+		-- Converted through ScaleRatio, same as the chain-anchored branch
+		-- above, so this stays correct if the frame's own Scale slider
+		-- isn't 1.
+		local inset = container.overlayInset
+		local ratio = ScaleRatio(container, overlay)
+
+		overlay:SetPoint("TOPLEFT", container, "TOPLEFT", (inset.left or 0) * ratio, -(inset.top or 0) * ratio)
+		overlay:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -(inset.right or 0) * ratio, (inset.bottom or 0) * ratio)
 	else
 		overlay:SetAllPoints(container)
 	end
@@ -2087,6 +2101,20 @@ end
 -- frame[flagName] (set by the element's own Apply*Position call).
 -- Must stay in place - native code re-anchors these frames without
 -- clearing the existing point first, corrupting their position.
+--
+-- Every swallowed SetPoint attempt is recorded into frame.btvSwallowedAnchor
+-- (point/relativeTo name/relativePoint/x/y) instead of being discarded -
+-- live-confirmed that native code repeatedly tries to re-anchor Latency
+-- Bar to a fixed offset from MainMenuBar, and that this true anchor can
+-- differ from whatever a synchronous GetPoint(1) read observes at login
+-- (native code hadn't settled on its final offset yet). Core.lua's
+-- WaitForWrappedFrameAnchorSettle polls this field for stability rather
+-- than guessing when to sample it, mirroring WaitForNativeBarSettle's
+-- own pattern for the action-bar cluster; Reset*Layout below also
+-- re-checks it directly at click-time as a backstop, in case the true
+-- re-anchor only happens later in the session (docs/01-...md §5w:
+-- suspected combat/loot-end trigger) than any bounded login-time poll
+-- could wait for.
 local function InstallReanchorGuard(frame, flagName)
 	if not frame or frame.btvReanchorGuarded then
 		return
@@ -2099,6 +2127,28 @@ local function InstallReanchorGuard(frame, flagName)
 		if self[flagName] then
 			return nativeSetPoint(self, unpack(arg))
 		end
+
+		-- arg[2] (relativeTo) is whatever native code itself passed to
+		-- SetPoint - a real frame reference OR a plain string name, both
+		-- valid per the SetPoint API. Indexing a string with .GetName
+		-- errors outright on this client (no string-method metatable),
+		-- so the string case must be checked first, never indexed.
+		local relTo = arg[2]
+		local relName = "UIParent"
+
+		if type(relTo) == "string" then
+			relName = relTo
+		elseif relTo and relTo.GetName and relTo:GetName() then
+			relName = relTo:GetName()
+		end
+
+		self.btvSwallowedAnchor = {
+			point = arg[1],
+			relativeTo = relName,
+			relativePoint = arg[3],
+			x = arg[4],
+			y = arg[5],
+		}
 	end
 
 	frame.ClearAllPoints = function(self)
@@ -2108,6 +2158,71 @@ local function InstallReanchorGuard(frame, flagName)
 	end
 
 	frame.btvReanchorGuarded = true
+end
+
+-- Applies `native` (a TRUE relative anchor - point/relativeTo/
+-- relativePoint/x/y, captured via GetPoint(1) - see
+-- CaptureKeyRingPositionIfNeeded's own comment) directly to `frame`,
+-- then re-reads the frame's own now-correct GetLeft()/GetTop() to build
+-- a normal UIParent-relative absolute anchor table. Used by every
+-- Reset*Position/Reset*Layout below instead of copying `native`'s
+-- fields directly into the live position table, since the live position
+-- is always UIParent-relative (Settings.lua's X/Y slider displays it
+-- verbatim - showing a MainMenuBar-relative offset there instead of the
+-- real screen position would be deeply confusing even though the actual
+-- positioning would be correct either way). guardFlagName (optional)
+-- is set around the SetPoint call for elements with an
+-- InstallReanchorGuard (Latency Bar/Cast Bar), or this call would be
+-- silently swallowed by the frame's own guard instead of taking effect.
+-- Returns nil if `frame`/`native` are missing or the frame can't yet
+-- report a position.
+local function ResolveNativeAnchorToAbsolute(frame, native, guardFlagName)
+	if not frame then
+		return nil
+	end
+
+	-- Prefer whatever native code most recently, actually tried to
+	-- re-anchor this frame to (InstallReanchorGuard's swallow tracking)
+	-- over the possibly-stale/never-settled `native` snapshot passed in -
+	-- see InstallReanchorGuard's own comment for why. No-op (falls
+	-- through to `native`) for frames with no guard installed at all
+	-- (Key Ring/Exp Bar currently), or if nothing's been observed yet.
+	native = frame.btvSwallowedAnchor or native
+
+	if not native then
+		return nil
+	end
+
+	if guardFlagName then
+		frame[guardFlagName] = true
+	end
+
+	frame:ClearAllPoints()
+	PixelSetPoint(
+		frame,
+		native.point or "TOPLEFT",
+		getglobal(native.relativeTo or "UIParent") or UIParent,
+		native.relativePoint or "BOTTOMLEFT",
+		native.x or 0,
+		native.y or 0
+	)
+
+	if guardFlagName then
+		frame[guardFlagName] = nil
+	end
+
+	local left, top = frame:GetLeft(), frame:GetTop()
+
+	if not left or not top then
+		return nil
+	end
+
+	return {
+		point = "TOPLEFT",
+		relativePoint = "BOTTOMLEFT",
+		x = left,
+		y = top,
+	}
 end
 
 -- Swallows Show() on `frame` unless isEnabledFn() returns true.
@@ -3936,11 +4051,9 @@ InstallShowGuard(getglobal(BTV.KEYRING_BUTTON_NAME), function()
 	return BTVanillaDB and BTVanillaDB.keyRingEnabled ~= false
 end)
 
--- Mirrors CaptureLatencyBarPositionIfNeeded below exactly (GetLeft()/
--- GetTop() rather than GetPoint(), for the same "sidesteps whatever this
--- frame is really anchored to internally" reasoning) - captured lazily the
--- first time it's actually needed, never at normal EnsureDB seed time, since it
--- can only be read from the real live frame.
+-- Mirrors CaptureLatencyBarPositionIfNeeded below exactly - captured
+-- lazily the first time it's actually needed, never at normal EnsureDB
+-- seed time, since it can only be read from the real live frame.
 function BTV:CaptureKeyRingPositionIfNeeded()
 	self:EnsureDB()
 
@@ -3970,16 +4083,40 @@ function BTV:CaptureKeyRingPositionIfNeeded()
 
 	BTVanillaDB.keyRingPosition = anchor
 
-	-- Permanent pristine snapshot (Reset to Blizzard Default), mirroring
-	-- bagBarNativeAnchor/stanceBarNativeAnchor exactly - captured ONCE,
-	-- never written to again by anything else in this file.
+	-- Permanent pristine snapshot (Reset to Blizzard Default) - stores
+	-- the frame's TRUE native anchor (point/relativeTo/relativePoint/x/y
+	-- via GetPoint(1)) rather than the absolute snapshot above, since
+	-- native code anchors this frame relative to another real frame, not
+	-- UIParent (live-confirmed on Latency Bar - see
+	-- CaptureLatencyBarPositionIfNeeded's own comment - via
+	-- InstallReanchorGuard's swallow diagnostic); an absolute snapshot
+	-- would freeze wherever that other frame's own position happened to
+	-- resolve to at capture time instead of the real, resolution/scale-
+	-- independent relative anchor. ResetKeyRingPosition applies this once
+	-- and re-derives a normal absolute keyRingPosition from the result,
+	-- rather than using it directly (Settings.lua's X/Y slider always
+	-- displays keyRingPosition.x/y verbatim - showing a MainMenuBar-
+	-- relative offset there instead of the true screen position would be
+	-- deeply confusing even though positioning itself would be correct).
+	-- Captured ONCE, never written to again by anything else in this file.
 	if not BTVanillaDB.keyRingNativeAnchor then
-		BTVanillaDB.keyRingNativeAnchor = {
-			point = anchor.point,
-			relativePoint = anchor.relativePoint,
-			x = anchor.x,
-			y = anchor.y,
-		}
+		local point, relativeTo, relativePoint, x, y = frame:GetPoint(1)
+
+		if point and relativePoint and x and y then
+			local relativeToName = "UIParent"
+
+			if relativeTo and relativeTo.GetName and relativeTo:GetName() then
+				relativeToName = relativeTo:GetName()
+			end
+
+			BTVanillaDB.keyRingNativeAnchor = {
+				point = point,
+				relativeTo = relativeToName,
+				relativePoint = relativePoint,
+				x = x,
+				y = y,
+			}
+		end
 	end
 end
 
@@ -4086,14 +4223,11 @@ end
 
 function BTV:ResetKeyRingPosition()
 	local native = BTVanillaDB.keyRingNativeAnchor
+	local frame = getglobal(self.KEYRING_BUTTON_NAME)
+	local resolved = ResolveNativeAnchorToAbsolute(frame, native)
 
-	if native then
-		BTVanillaDB.keyRingPosition = {
-			point = native.point,
-			relativePoint = native.relativePoint,
-			x = native.x,
-			y = native.y,
-		}
+	if resolved then
+		BTVanillaDB.keyRingPosition = resolved
 
 		self:ApplyKeyRingPosition()
 	end
@@ -4216,13 +4350,42 @@ function BTV:CaptureLatencyBarPositionIfNeeded()
 
 	BTVanillaDB.latencyBarPosition = anchor
 
+	-- Permanent pristine snapshot (Reset to Blizzard Default) - stores
+	-- the frame's TRUE native anchor via GetPoint(1) rather than the
+	-- absolute snapshot above, since native code re-anchors this frame
+	-- relative to another real frame, not UIParent (live-confirmed:
+	-- BOTTOMRIGHT of MainMenuBar, -235,-10 - caught repeatedly via
+	-- InstallReanchorGuard's swallow diagnostic, since our own guard was
+	-- silently blocking that re-anchor before this fix). An absolute
+	-- snapshot froze wherever MainMenuBar's own position happened to
+	-- resolve to at capture time instead of the real, resolution/scale-
+	-- independent relative anchor - which was the actual root cause of
+	-- the stale default-position bug. ResetLatencyBarLayout applies this
+	-- once (via ResolveNativeAnchorToAbsolute) and re-derives a normal
+	-- absolute latencyBarPosition from the result, rather than using it
+	-- directly - Settings.lua's X/Y slider always displays
+	-- latencyBarPosition.x/y verbatim, so a MainMenuBar-relative offset
+	-- there (e.g. x=-235) would be deeply confusing to look at even
+	-- though positioning itself would be correct. Captured ONCE, never
+	-- written to again by anything else in this file.
 	if not BTVanillaDB.latencyBarNativeAnchor then
-		BTVanillaDB.latencyBarNativeAnchor = {
-			point = anchor.point,
-			relativePoint = anchor.relativePoint,
-			x = anchor.x,
-			y = anchor.y,
-		}
+		local point, relativeTo, relativePoint, x, y = frame:GetPoint(1)
+
+		if point and relativePoint and x and y then
+			local relativeToName = "UIParent"
+
+			if relativeTo and relativeTo.GetName and relativeTo:GetName() then
+				relativeToName = relativeTo:GetName()
+			end
+
+			BTVanillaDB.latencyBarNativeAnchor = {
+				point = point,
+				relativeTo = relativeToName,
+				relativePoint = relativePoint,
+				x = x,
+				y = y,
+			}
+		end
 	end
 end
 
@@ -4258,6 +4421,8 @@ function BTV:ApplyLatencyBarPosition()
 
 		frame.btvApplyingLatencyBarPosition = nil
 	end
+
+	frame.overlayInset = self.LATENCY_BAR_OVERLAY_INSET
 
 	EnsureContainerOverlay(frame, self.StartLatencyBarDrag, self.StopLatencyBarDrag, "latencybar", self.SetLatencyBarScale, nil, "Latency Bar")
 
@@ -4370,26 +4535,24 @@ end
 -- config only ever wires one `reset` function per element.
 function BTV:ResetLatencyBarLayout()
 	local native = BTVanillaDB.latencyBarNativeAnchor
-
-	if native then
-		BTVanillaDB.latencyBarPosition = {
-			point = native.point,
-			relativePoint = native.relativePoint,
-			x = native.x,
-			y = native.y,
-		}
-	end
+	local frame = getglobal(self.LATENCY_BAR_FRAME_NAME)
 
 	-- Direct write, not SetLatencyBarScale(1) - that setter compensates
 	-- the stored position using the OLD scale to keep the bottom-left
-	-- corner fixed, which would inflate the native position we just
-	-- restored above instead of leaving it alone.
+	-- corner fixed, which would inflate the native position we're about
+	-- to restore below instead of leaving it alone. Set BEFORE resolving
+	-- the native anchor to an absolute position, so that resolution is
+	-- measured under the same scale=1 this reset is restoring to.
 	BTVanillaDB.latencyBarScale = 1
-
-	local frame = getglobal(self.LATENCY_BAR_FRAME_NAME)
 
 	if frame then
 		frame:SetScale(1)
+	end
+
+	local resolved = ResolveNativeAnchorToAbsolute(frame, native, "btvApplyingLatencyBarPosition")
+
+	if resolved then
+		BTVanillaDB.latencyBarPosition = resolved
 	end
 
 	self:ApplyLatencyBarPosition()
@@ -4471,13 +4634,31 @@ function BTV:CaptureCastBarPositionIfNeeded()
 
 	BTVanillaDB.castBarPosition = anchor
 
+	-- Permanent pristine snapshot (Reset to Blizzard Default) - stores
+	-- the frame's TRUE native anchor via GetPoint(1) rather than the
+	-- absolute snapshot above - see CaptureLatencyBarPositionIfNeeded's
+	-- own comment for why. ResetCastBarLayout applies this once (via
+	-- ResolveNativeAnchorToAbsolute) and re-derives a normal absolute
+	-- castBarPosition from the result. Captured ONCE, never written to
+	-- again by anything else in this file.
 	if not BTVanillaDB.castBarNativeAnchor then
-		BTVanillaDB.castBarNativeAnchor = {
-			point = anchor.point,
-			relativePoint = anchor.relativePoint,
-			x = anchor.x,
-			y = anchor.y,
-		}
+		local point, relativeTo, relativePoint, x, y = frame:GetPoint(1)
+
+		if point and relativePoint and x and y then
+			local relativeToName = "UIParent"
+
+			if relativeTo and relativeTo.GetName and relativeTo:GetName() then
+				relativeToName = relativeTo:GetName()
+			end
+
+			BTVanillaDB.castBarNativeAnchor = {
+				point = point,
+				relativeTo = relativeToName,
+				relativePoint = relativePoint,
+				x = x,
+				y = y,
+			}
+		end
 	end
 end
 
@@ -4568,19 +4749,27 @@ end
 -- Mirrors ResetLatencyBarLayout's position+scale bundling.
 function BTV:ResetCastBarLayout()
 	local native = BTVanillaDB.castBarNativeAnchor
+	local frame = getglobal(self.CAST_BAR_FRAME_NAME)
 
-	if native then
-		BTVanillaDB.castBarPosition = {
-			point = native.point,
-			relativePoint = native.relativePoint,
-			x = native.x,
-			y = native.y,
-		}
+	-- Direct write, not SetCastBarScale(1) - that setter compensates
+	-- the stored position using the OLD scale to keep the bottom-left
+	-- corner fixed, which would inflate the native position we're about
+	-- to restore below instead of leaving it alone. Set BEFORE resolving
+	-- the native anchor to an absolute position, so that resolution is
+	-- measured under the same scale=1 this reset is restoring to.
+	BTVanillaDB.castBarScale = 1
 
-		self:ApplyCastBarPosition()
+	if frame then
+		frame:SetScale(1)
 	end
 
-	self:SetCastBarScale(1)
+	local resolved = ResolveNativeAnchorToAbsolute(frame, native, "btvApplyingCastBarPosition")
+
+	if resolved then
+		BTVanillaDB.castBarPosition = resolved
+	end
+
+	self:ApplyCastBarPosition()
 end
 
 function BTV:StartCastBarDrag()
@@ -4737,6 +4926,9 @@ function BTV:CaptureExpBarPositionIfNeeded()
 		return
 	end
 
+	-- MainMenuExpBar is part of the MainMenuBar cluster, which can have a
+	-- different effective scale than UIParent, so an unconverted capture
+	-- would be wrong by that scale factor.
 	local buttonScale = frame:GetEffectiveScale()
 	local uiParentScale = UIParent:GetEffectiveScale()
 
@@ -4756,16 +4948,31 @@ function BTV:CaptureExpBarPositionIfNeeded()
 
 	BTVanillaDB.expBarPosition = anchor
 
-	-- Permanent pristine snapshot (Reset to Blizzard Default), mirroring
-	-- latencyBarNativeAnchor/keyRingNativeAnchor exactly - captured ONCE,
-	-- never written to again by anything else in this file.
+	-- Permanent pristine snapshot (Reset to Blizzard Default) - stores
+	-- the frame's TRUE native anchor via GetPoint(1) rather than the
+	-- absolute snapshot above - see CaptureLatencyBarPositionIfNeeded's
+	-- own comment for why. ResetExpBarLayout applies this once (via
+	-- ResolveNativeAnchorToAbsolute) and re-derives a normal absolute
+	-- expBarPosition from the result. Captured ONCE, never written to
+	-- again by anything else in this file.
 	if not BTVanillaDB.expBarNativeAnchor then
-		BTVanillaDB.expBarNativeAnchor = {
-			point = anchor.point,
-			relativePoint = anchor.relativePoint,
-			x = anchor.x,
-			y = anchor.y,
-		}
+		local point, relativeTo, relativePoint, nx, ny = frame:GetPoint(1)
+
+		if point and relativePoint and nx and ny then
+			local relativeToName = "UIParent"
+
+			if relativeTo and relativeTo.GetName and relativeTo:GetName() then
+				relativeToName = relativeTo:GetName()
+			end
+
+			BTVanillaDB.expBarNativeAnchor = {
+				point = point,
+				relativeTo = relativeToName,
+				relativePoint = relativePoint,
+				x = nx,
+				y = ny,
+			}
+		end
 	end
 end
 
@@ -4991,19 +5198,27 @@ end
 -- BTV:ResetLatencyBarLayout exactly.
 function BTV:ResetExpBarLayout()
 	local native = BTVanillaDB.expBarNativeAnchor
+	local frame = getglobal(self.EXP_BAR_FRAME_NAME)
 
-	if native then
-		BTVanillaDB.expBarPosition = {
-			point = native.point,
-			relativePoint = native.relativePoint,
-			x = native.x,
-			y = native.y,
-		}
+	-- Direct write, not SetExpBarScale(1) - that setter compensates
+	-- the stored position using the OLD scale to keep the bottom-left
+	-- corner fixed, which would inflate the native position we're about
+	-- to restore below instead of leaving it alone. Set BEFORE resolving
+	-- the native anchor to an absolute position, so that resolution is
+	-- measured under the same scale=1 this reset is restoring to.
+	BTVanillaDB.expBarScale = 1
 
-		self:ApplyExpBarPosition()
+	if frame then
+		frame:SetScale(1)
 	end
 
-	self:SetExpBarScale(1)
+	local resolved = ResolveNativeAnchorToAbsolute(frame, native)
+
+	if resolved then
+		BTVanillaDB.expBarPosition = resolved
+	end
+
+	self:ApplyExpBarPosition()
 end
 
 function BTV:StartExpBarDrag()

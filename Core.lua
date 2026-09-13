@@ -68,6 +68,13 @@ BTV.BORDER_TEXTURE_FUDGE = 12
 -- value.
 BTV.MICRO_MENU_OVERLAY_TOP_FUDGE = 2
 
+-- Latency Bar edit-mode overlay inset, live-measured (cursor-hover vs.
+-- frame-edge diagnostic) against MainMenuBarPerformanceBarFrame's real
+-- visible green bar art, which sits well inside the frame's own 16x64
+-- bounds (transparent padding baked into the texture asset, same class
+-- of issue as Micro Menu's oversized hit-rect above).
+BTV.LATENCY_BAR_OVERLAY_INSET = { left = 1, right = 6.5, top = 14, bottom = 11 }
+
 -- "Snap to Adjacent Elements": how close (real screen pixels) a dragged
 -- edge must get to another edge before it snaps.
 BTV.SNAP_THRESHOLD = 8
@@ -646,6 +653,35 @@ function BTV:RecaptureDefaultBarNativeAnchors()
 		local bar3Cfg = BTVanillaDB.defaultBars[3]
 		self:ReflowPetBarForBar3Toggle(bar3Cfg and bar3Cfg.enabled)
 	end
+end
+
+-- Clears the stored native anchor + position for every single-real-frame
+-- wrapped element (Key Ring/Latency Bar/Exp Bar/Cast Bar). Unlike
+-- RecaptureDefaultBarNativeAnchors above (bars 1-5, which reads a
+-- SEPARATE, never-repositioned real Blizzard button), these elements
+-- ARE the one real Blizzard frame this addon repositions directly - it's
+-- still sitting wherever THIS session's own earlier Apply*Position call
+-- already put it, so nothing here can re-measure Blizzard's true native
+-- position live; only clearing the stored capture and letting the fresh
+-- read happen on the NEXT reload (before this session's own
+-- Apply*Position has touched the frame yet) gets Blizzard's real
+-- position. CaptureXPositionIfNeeded's own "already captured" guard is
+-- what this clears; the actual fresh capture then runs from
+-- RunLoginSequence, after the same WaitForNativeBarSettle poll bars 1-5
+-- already rely on.
+function BTV:RecaptureWrappedNativeFrameAnchors()
+	self:EnsureDB()
+
+	BTVanillaDB.keyRingPosition = nil
+	BTVanillaDB.keyRingNativeAnchor = nil
+	BTVanillaDB.latencyBarPosition = nil
+	BTVanillaDB.latencyBarNativeAnchor = nil
+	BTVanillaDB.expBarPosition = nil
+	BTVanillaDB.expBarNativeAnchor = nil
+	BTVanillaDB.castBarPosition = nil
+	BTVanillaDB.castBarNativeAnchor = nil
+
+	self:Print("Key Ring/Latency Bar/Exp Bar/Cast Bar native anchors cleared - /reload now to capture them fresh.")
 end
 
 -------------------------------------------------------------------------
@@ -2707,6 +2743,65 @@ local function WaitForNativeBarSettle(callback)
 	end)
 end
 
+-- Same stability-polling pattern as WaitForNativeBarSettle above, but
+-- watching `frame.btvSwallowedAnchor` (DefaultBars.lua's
+-- InstallReanchorGuard - only set on frames with a reanchor guard
+-- installed, currently Latency Bar/Cast Bar) instead of GetLeft()/
+-- GetTop(): a synchronous GetPoint(1) read at login can observe native
+-- code's own not-yet-final anchor attempt (confirmed live on Latency
+-- Bar - an early read saw a different offset than what native code
+-- consistently, repeatedly tried to re-assert moments later), so this
+-- waits for that repeated re-assertion to actually happen and stop
+-- changing, instead of guessing when to sample it. callback receives the
+-- settled anchor table, or nil if nothing was ever observed (no guard on
+-- this frame, or the native re-anchor genuinely hasn't happened yet -
+-- ResolveNativeAnchorToAbsolute/Reset*Layout re-check
+-- frame.btvSwallowedAnchor again at click-time regardless, so a native
+-- re-anchor that only happens later in the session (docs/01-...md §5w:
+-- suspected combat/loot-end trigger) still gets picked up then).
+local function WaitForWrappedFrameAnchorSettle(frame, callback)
+	if not frame or not C_Timer or not C_Timer.NewTicker then
+		callback(nil)
+		return
+	end
+
+	local function SameAnchor(a, b)
+		if not a or not b then
+			return false
+		end
+
+		return a.point == b.point and a.relativeTo == b.relativeTo
+			and a.relativePoint == b.relativePoint and a.x == b.x and a.y == b.y
+	end
+
+	local lastAnchor = frame.btvSwallowedAnchor
+	local stableCount = 0
+	local elapsed = 0
+
+	local ticker
+	ticker = C_Timer.NewTicker(SETTLE_POLL_INTERVAL, function()
+		elapsed = elapsed + SETTLE_POLL_INTERVAL
+
+		local anchor = frame.btvSwallowedAnchor
+
+		if anchor and SameAnchor(anchor, lastAnchor) then
+			stableCount = stableCount + 1
+		else
+			stableCount = 0
+		end
+
+		lastAnchor = anchor
+
+		local settled = anchor and stableCount >= SETTLE_STABLE_READS_REQUIRED
+		local timedOut = elapsed >= SETTLE_TIMEOUT
+
+		if settled or timedOut then
+			ticker:Cancel()
+			callback(settled and lastAnchor or nil)
+		end
+	end)
+end
+
 -- Re-checks ActionButton1 once fully settled and, only if it drifted from
 -- what was captured, silently recaptures/reapplies via
 -- RecaptureDefaultBarNativeAnchors - a no-op if the original capture was
@@ -2835,6 +2930,42 @@ local function RunLoginSequence(earlyLeft, earlyTop, settledLeft, settledTop, wa
 
 	BTV:EnsureDB()
 
+	-- Must run before CreateFixedSlotDefaultBars/CreateBagBarAndMicroMenu,
+	-- same reasoning as CaptureStanceBarNativeGap just below: Key Ring/
+	-- Latency Bar/Exp Bar/Cast Bar are each a single real Blizzard frame
+	-- this addon repositions directly (not a separate untouched
+	-- reference frame like bars 1-5 have), and each is a native sibling
+	-- of the action-bar/bag-bar cluster those calls hide and reflow -
+	-- capturing after that reflow measures the frame's native anchor
+	-- already resolved against an already-disturbed layout, not
+	-- Blizzard's true untouched position (confirmed live: reproducibly
+	-- off by ~8px on Latency Bar, matching only with the addon fully
+	-- disabled). No-ops on every later login once each is captured.
+	BTV:CaptureKeyRingPositionIfNeeded()
+	BTV:CaptureLatencyBarPositionIfNeeded()
+	BTV:CaptureExpBarPositionIfNeeded()
+	BTV:CaptureCastBarPositionIfNeeded()
+
+	-- Gives Latency Bar/Cast Bar's true native anchor (native code's own
+	-- repeated SetPoint attempts, tracked by InstallReanchorGuard - the
+	-- only two of these four elements with a reanchor guard installed)
+	-- its best chance of being correct as early as possible this login,
+	-- rather than only ever correcting itself the next time the user
+	-- happens to open Settings and click Reset. Asynchronous - doesn't
+	-- block the rest of this login sequence.
+	do
+		local function SyncNativeAnchorFromSwallow(frame, dbKey)
+			WaitForWrappedFrameAnchorSettle(frame, function(anchor)
+				if anchor then
+					BTVanillaDB[dbKey] = anchor
+				end
+			end)
+		end
+
+		SyncNativeAnchorFromSwallow(getglobal(BTV.LATENCY_BAR_FRAME_NAME), "latencyBarNativeAnchor")
+		SyncNativeAnchorFromSwallow(getglobal(BTV.CAST_BAR_FRAME_NAME), "castBarNativeAnchor")
+	end
+
 	-- Must run before CreateFixedSlotDefaultBars builds the Stance Bar's
 	-- styled-mode button pool, so cfg.buttonCount already reflects the
 	-- live form count this session (covers a class that learned/lost a
@@ -2923,12 +3054,17 @@ loadFrame:SetScript("OnEvent", function()
 end)
 
 -- /btv recapture - forces a fresh, synchronous capture of every default
--- bar's native anchor (see RecaptureDefaultBarNativeAnchors above).
+-- bar's native anchor (see RecaptureDefaultBarNativeAnchors above), plus
+-- clears Key Ring/Latency Bar/Exp Bar/Cast Bar's own stored anchors so
+-- they capture fresh on the next /reload (see
+-- RecaptureWrappedNativeFrameAnchors above - unlike the default bars,
+-- this half only takes effect after a reload, not immediately).
 -- /btv with no argument toggles the main menu.
 SLASH_BTVANILLA1 = "/btv"
 SlashCmdList["BTVANILLA"] = function(msg)
 	if msg == "recapture" then
 		BTV:RecaptureDefaultBarNativeAnchors()
+		BTV:RecaptureWrappedNativeFrameAnchors()
 	else
 		BTV:ToggleMainMenu()
 	end
