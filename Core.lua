@@ -2922,13 +2922,91 @@ loadFrame:SetScript("OnEvent", function()
 	WaitForNativeBarSettle(RunLoginSequence)
 end)
 
+-- TEMPORARY diagnostic (/btv diag1) - dumps MainMenuBarPerformanceBarFrame's
+-- own size plus every texture region/child's size and anchor offset, to
+-- find the real visible green-bar footprint vs. the frame's own bounds.
+-- Remove once the Latency Bar edit-mode hitbox inset is resolved.
+function BTV:DiagLatencyBar()
+	local frame = getglobal(self.LATENCY_BAR_FRAME_NAME)
+
+	if not frame then
+		print("[BTVDiag] " .. tostring(self.LATENCY_BAR_FRAME_NAME) .. " not found")
+		return
+	end
+
+	local objType = "?"
+
+	if frame.GetObjectType then
+		objType = frame:GetObjectType()
+	end
+
+	print(string.format("[BTVDiag] frame type=%s w=%.1f h=%.1f", tostring(objType), frame:GetWidth() or -1, frame:GetHeight() or -1))
+
+	if frame.GetStatusBarTexture then
+		local bar = frame:GetStatusBarTexture()
+
+		if bar then
+			print(string.format("[BTVDiag] statusbar texture w=%.1f h=%.1f", bar:GetWidth() or -1, bar:GetHeight() or -1))
+		end
+	end
+
+	local regions = { frame:GetRegions() }
+	local n = table.getn(regions)
+	local i
+
+	for i = 1, n do
+		local region = regions[i]
+
+		if region and region.GetWidth then
+			local point, relTo, relPoint, x, y = region:GetPoint(1)
+			local relName = "?"
+
+			if relTo and relTo.GetName then
+				relName = relTo:GetName() or "?"
+			end
+
+			local regionName = "?"
+
+			if region.GetName then
+				regionName = region:GetName() or "?"
+			end
+
+			print(string.format(
+				"[BTVDiag] region[%d] name=%s w=%.1f h=%.1f point=%s rel=%s relPoint=%s x=%.1f y=%.1f",
+				i, regionName, region:GetWidth() or -1, region:GetHeight() or -1,
+				tostring(point), relName, tostring(relPoint), x or 0, y or 0
+			))
+		end
+	end
+
+	local kids = { frame:GetChildren() }
+	local nk = table.getn(kids)
+
+	for i = 1, nk do
+		local kid = kids[i]
+
+		if kid then
+			local kidName = "?"
+
+			if kid.GetName then
+				kidName = kid:GetName() or "?"
+			end
+
+			print(string.format("[BTVDiag] child[%d] name=%s w=%.1f h=%.1f", i, kidName, kid:GetWidth() or -1, kid:GetHeight() or -1))
+		end
+	end
+end
+
 -- /btv recapture - forces a fresh, synchronous capture of every default
 -- bar's native anchor (see RecaptureDefaultBarNativeAnchors above).
+-- /btv diag1 - see BTV:DiagLatencyBar above (temporary).
 -- /btv with no argument toggles the main menu.
 SLASH_BTVANILLA1 = "/btv"
 SlashCmdList["BTVANILLA"] = function(msg)
 	if msg == "recapture" then
 		BTV:RecaptureDefaultBarNativeAnchors()
+	elseif msg == "diag1" then
+		BTV:DiagLatencyBar()
 	else
 		BTV:ToggleMainMenu()
 	end
