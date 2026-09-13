@@ -98,24 +98,51 @@ function BTV:LayoutButtons(bar)
 	local spacing = cfg.spacing or 0
 	local i
 
+	-- Pet Bar condense: compact only the currently-filled slots into
+	-- sequential grid cells instead of reserving every slot's own fixed
+	-- cell, same "collapse empty slots" idea as DefaultBars.lua's
+	-- ApplyGridAnchoredShape (Micro Menu). Suspended while edit mode or
+	-- the action-grid preview forces every slot visible, so the user can
+	-- still see/reach every real slot while customizing/placing.
+	local condensePet = cfg.isPetBar and self:ShouldCondensePetBarSlots()
+		and not self:IsEditMode() and not self.isShowingActionGrid
+
+	local compactIndex = 0
+
 	for i = 1, table.getn(bar.buttons) do
 		local btn = bar.buttons[i]
 
 		if btn then
-			local col, row = ButtonIndexToGridPos(i, cfg.cols)
+			local layoutIndex = i
 
-			local xOff = col * (cfg.buttonSize + spacing)
-			local yOff = -row * (cfg.buttonSize + spacing)
+			if condensePet then
+				if btn.slotVisible and btn:IsSlotFilled() then
+					compactIndex = compactIndex + 1
+					layoutIndex = compactIndex
+				else
+					-- Skips its own cell entirely - left at its previous
+					-- anchor, harmless since UpdateGridVisibility already
+					-- hides any slot condensed out this way.
+					layoutIndex = nil
+				end
+			end
 
-			btn:ClearAllPoints()
-			PixelSetPoint(
-				btn,
-				"TOPLEFT",
-				bar,
-				"TOPLEFT",
-				xOff,
-				yOff
-			)
+			if layoutIndex then
+				local col, row = ButtonIndexToGridPos(layoutIndex, cfg.cols)
+
+				local xOff = col * (cfg.buttonSize + spacing)
+				local yOff = -row * (cfg.buttonSize + spacing)
+
+				btn:ClearAllPoints()
+				PixelSetPoint(
+					btn,
+					"TOPLEFT",
+					bar,
+					"TOPLEFT",
+					xOff,
+					yOff
+				)
+			end
 		end
 	end
 end
@@ -282,6 +309,12 @@ function BTV:ApplyEditModeVisual()
 					btn:UpdateGridVisibility()
 				end
 			end
+
+			-- Re-flow positions too - the Pet Bar's condensed layout
+			-- (LayoutButtons) suspends itself while edit mode is on, so
+			-- entering/leaving edit mode must re-run it to switch between
+			-- the full grid and the condensed one.
+			self:LayoutButtons(bar)
 		end
 
 		-- Bar-level overlay: fully owns edit-mode interaction while
