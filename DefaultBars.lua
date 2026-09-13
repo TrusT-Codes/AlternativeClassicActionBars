@@ -4302,7 +4302,7 @@ function BTV:SetLatencyBarEnabled(enabled)
 	end
 end
 
--- Mirrors SetStanceBarScale's exact clamp/write/apply template.
+-- Mirrors SetCastBarScale's exact clamp/compensate/write/apply template.
 function BTV:SetLatencyBarScale(scale)
 	self:EnsureDB()
 
@@ -4322,12 +4322,22 @@ function BTV:SetLatencyBarScale(scale)
 		scale = 2.0
 	end
 
-	BTVanillaDB.latencyBarScale = scale
-
+	local oldScale = BTVanillaDB.latencyBarScale or 1
+	local pos = BTVanillaDB.latencyBarPosition
 	local frame = getglobal(self.LATENCY_BAR_FRAME_NAME)
+
+	if pos and frame then
+		CompensateScaleKeepingBottomLeftFixed(pos, oldScale, scale, frame:GetHeight())
+	end
+
+	BTVanillaDB.latencyBarScale = scale
 
 	if frame then
 		frame:SetScale(scale)
+	end
+
+	if pos then
+		self:ApplyLatencyBarPosition()
 	end
 end
 
@@ -4368,11 +4378,21 @@ function BTV:ResetLatencyBarLayout()
 			x = native.x,
 			y = native.y,
 		}
-
-		self:ApplyLatencyBarPosition()
 	end
 
-	self:SetLatencyBarScale(1)
+	-- Direct write, not SetLatencyBarScale(1) - that setter compensates
+	-- the stored position using the OLD scale to keep the bottom-left
+	-- corner fixed, which would inflate the native position we just
+	-- restored above instead of leaving it alone.
+	BTVanillaDB.latencyBarScale = 1
+
+	local frame = getglobal(self.LATENCY_BAR_FRAME_NAME)
+
+	if frame then
+		frame:SetScale(1)
+	end
+
+	self:ApplyLatencyBarPosition()
 end
 
 function BTV:StartLatencyBarDrag()

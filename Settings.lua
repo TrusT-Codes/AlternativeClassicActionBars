@@ -3151,9 +3151,51 @@ function BTV:GetOrCreateBarPage(barId)
 			-- plus the Reset button above it.
 			gridTitleY = resetButtonY - 34
 			swatchY = gridTitleY - 26
+		elseif BTV:IsExtraBarId(barId) then
+			-------------------------------------------------------------------------
+			-- Reset to Default position/buttonSize/spacing/grid layout -
+			-- Extra Bars have no native Blizzard anchor, so this resets to
+			-- the addon's own default instead (BTV:ResetExtraBarLayout,
+			-- Bar.lua).
+			-------------------------------------------------------------------------
+
+			local resetButtonY = spacingSliderY - 36
+
+			local resetPositionButton = CreateFrame(
+				"Button",
+				nil,
+				page
+			)
+
+			resetPositionButton:SetHeight(22)
+
+			resetPositionButton:SetPoint(
+				"TOPLEFT",
+				page,
+				"TOPLEFT",
+				INDENT_INPUT,
+				resetButtonY
+			)
+
+			BTV:StyleModernButton(resetPositionButton, 200, 200)
+			resetPositionButton:SetText("Reset to Default")
+
+			resetPositionButton:SetScript(
+				"OnClick",
+				function()
+					BTV:ResetExtraBarLayout(page.barId)
+					BTV:RefreshBarSettingsPage(page.barId)
+				end
+			)
+
+			page.resetPositionButton = resetPositionButton
+
+			self:AddHoverOnlyReflowRow(page, resetPositionButton, INDENT_INPUT, resetButtonY)
+
+			gridTitleY = resetButtonY - 34
+			swatchY = gridTitleY - 26
 		else
-			-- Custom bars (6+) have no Reset-to-Blizzard-Default concept, so
-			-- Grid Layout follows directly under the Spacing slider.
+			-- Any other custom bar has no Reset concept.
 			gridTitleY = spacingSliderY - 36
 			swatchY = gridTitleY - 26
 		end
@@ -5716,6 +5758,7 @@ simpleBarPageConfigs["latencybar"] = {
 	hasEnable = true,
 	getPosition = function() return BTVanillaDB.latencyBarPosition end,
 	setPosition = function(x, y) BTV:SetLatencyBarPosition(x, y) end,
+	getElementFrame = function() return getglobal(BTV.LATENCY_BAR_FRAME_NAME) end,
 	reset = function()
 		BTV:ResetLatencyBarLayout()
 	end,
