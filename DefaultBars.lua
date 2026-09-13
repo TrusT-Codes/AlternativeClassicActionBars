@@ -2101,6 +2101,20 @@ end
 -- frame[flagName] (set by the element's own Apply*Position call).
 -- Must stay in place - native code re-anchors these frames without
 -- clearing the existing point first, corrupting their position.
+--
+-- Every swallowed SetPoint attempt is recorded into frame.btvSwallowedAnchor
+-- (point/relativeTo name/relativePoint/x/y) instead of being discarded -
+-- live-confirmed that native code repeatedly tries to re-anchor Latency
+-- Bar to a fixed offset from MainMenuBar, and that this true anchor can
+-- differ from whatever a synchronous GetPoint(1) read observes at login
+-- (native code hadn't settled on its final offset yet). Core.lua's
+-- WaitForWrappedFrameAnchorSettle polls this field for stability rather
+-- than guessing when to sample it, mirroring WaitForNativeBarSettle's
+-- own pattern for the action-bar cluster; Reset*Layout below also
+-- re-checks it directly at click-time as a backstop, in case the true
+-- re-anchor only happens later in the session (docs/01-...md §5w:
+-- suspected combat/loot-end trigger) than any bounded login-time poll
+-- could wait for.
 local function InstallReanchorGuard(frame, flagName)
 	if not frame or frame.btvReanchorGuarded then
 		return
@@ -2113,6 +2127,20 @@ local function InstallReanchorGuard(frame, flagName)
 		if self[flagName] then
 			return nativeSetPoint(self, unpack(arg))
 		end
+
+		local relName = "UIParent"
+
+		if arg[2] and arg[2].GetName and arg[2]:GetName() then
+			relName = arg[2]:GetName()
+		end
+
+		self.btvSwallowedAnchor = {
+			point = arg[1],
+			relativeTo = relName,
+			relativePoint = arg[3],
+			x = arg[4],
+			y = arg[5],
+		}
 	end
 
 	frame.ClearAllPoints = function(self)
@@ -2141,7 +2169,19 @@ end
 -- Returns nil if `frame`/`native` are missing or the frame can't yet
 -- report a position.
 local function ResolveNativeAnchorToAbsolute(frame, native, guardFlagName)
-	if not frame or not native then
+	if not frame then
+		return nil
+	end
+
+	-- Prefer whatever native code most recently, actually tried to
+	-- re-anchor this frame to (InstallReanchorGuard's swallow tracking)
+	-- over the possibly-stale/never-settled `native` snapshot passed in -
+	-- see InstallReanchorGuard's own comment for why. No-op (falls
+	-- through to `native`) for frames with no guard installed at all
+	-- (Key Ring/Exp Bar currently), or if nothing's been observed yet.
+	native = frame.btvSwallowedAnchor or native
+
+	if not native then
 		return nil
 	end
 
