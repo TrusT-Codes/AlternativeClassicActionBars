@@ -2118,8 +2118,14 @@ local function InstallReanchorGuard(frame, flagName)
 		-- trying to re-anchor this frame and getting swallowed. Remove
 		-- once the Latency Bar native-position capture bug is resolved.
 		if flagName == "btvApplyingLatencyBarPosition" then
-			print(string.format("[BTVDiag] swallowed native SetPoint on %s: %s %s %s %s %s",
-				tostring(self:GetName()), tostring(arg[1]), tostring(arg[2]), tostring(arg[3]), tostring(arg[4]), tostring(arg[5])))
+			local relName = "?"
+
+			if arg[2] and arg[2].GetName then
+				relName = arg[2]:GetName() or "?"
+			end
+
+			print(string.format("[BTVDiag] swallowed native SetPoint on %s: %s relTo=%s %s %s %s",
+				tostring(self:GetName()), tostring(arg[1]), tostring(relName), tostring(arg[3]), tostring(arg[4]), tostring(arg[5])))
 		end
 	end
 
