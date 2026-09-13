@@ -105,6 +105,13 @@ function BTV:SweepCustomBarGridVisibility()
 					btn:UpdateGridVisibility()
 				end
 			end
+
+			-- Re-flow too - the Pet Bar's condensed layout suspends
+			-- itself while BTV.isShowingActionGrid is true (Bar.lua's
+			-- LayoutButtons), so the ACTIONBAR_SHOWGRID/HIDEGRID toggle
+			-- below must re-run it to switch between the full grid and
+			-- the condensed one.
+			BTV:LayoutButtons(bar)
 		end
 	end
 end
@@ -649,12 +656,18 @@ function BTVButtonMixin:UpdateGridVisibility()
 	-- cfg.condenseEmptyPetSlots (BTV:ShouldCondensePetBarSlots).
 	local petBarShowEmpty = self.isPetSlot and not BTV:ShouldCondensePetBarSlots()
 
+	-- ALWAYS_SHOW_MULTIBARS only ever governed the real Blizzard multi
+	-- bars (2-5) in native vanilla, never the Pet Bar - excluded here so
+	-- that global checkbox (commonly on by default) can't override the
+	-- Pet Bar's own dedicated Condense checkbox.
+	local alwaysShowMultibars = (not self.isPetSlot) and IsAlwaysShowMultibars()
+
 	-- BTV.isShowingActionGrid makes an empty slot temporarily reappear
 	-- while something is picked up to place, matching native behavior.
 	-- BTV:IsEditMode() is ORed in too so every slot is interactable
 	-- (right-click-for-settings) while in edit mode, matching how default
 	-- bars' overlay owns mouse interaction across the whole bar area.
-	if self.slotVisible and (isMainBar or petBarShowEmpty or hasContent or IsAlwaysShowMultibars() or BTV.isShowingActionGrid or BTV:IsEditMode()) then
+	if self.slotVisible and (isMainBar or petBarShowEmpty or hasContent or alwaysShowMultibars or BTV.isShowingActionGrid or BTV:IsEditMode()) then
 		self:Show()
 	else
 		self:Hide()
@@ -1050,6 +1063,16 @@ function BTVButtonMixin:Refresh()
 
 	-- Re-evaluates final Show/Hide state now that content may have changed.
 	self:UpdateGridVisibility()
+
+	-- Pet Bar condense mode: content changing (e.g. PET_BAR_UPDATE from a
+	-- pet swap/new ability learned) can change which slots are filled, so
+	-- the compacted layout needs recomputing too. Every pet-slot button on
+	-- this bar receives the same event and calls this, so the bar ends up
+	-- laid out from the final post-event state regardless of dispatch
+	-- order.
+	if self.isPetSlot and self.parentBar then
+		BTV:LayoutButtons(self.parentBar)
+	end
 end
 
 function BTVButtonMixin:UpdateCooldown()
