@@ -2128,10 +2128,18 @@ local function InstallReanchorGuard(frame, flagName)
 			return nativeSetPoint(self, unpack(arg))
 		end
 
+		-- arg[2] (relativeTo) is whatever native code itself passed to
+		-- SetPoint - a real frame reference OR a plain string name, both
+		-- valid per the SetPoint API. Indexing a string with .GetName
+		-- errors outright on this client (no string-method metatable),
+		-- so the string case must be checked first, never indexed.
+		local relTo = arg[2]
 		local relName = "UIParent"
 
-		if arg[2] and arg[2].GetName and arg[2]:GetName() then
-			relName = arg[2]:GetName()
+		if type(relTo) == "string" then
+			relName = relTo
+		elseif relTo and relTo.GetName and relTo:GetName() then
+			relName = relTo:GetName()
 		end
 
 		self.btvSwallowedAnchor = {
