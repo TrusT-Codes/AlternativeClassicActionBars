@@ -2305,6 +2305,27 @@ function BTV:ShouldCondensePetBarSlots()
 	return cfg and cfg.condenseEmptyPetSlots == true
 end
 
+-- Live count of Pet Bar slots (1-10, identity-mapped pet slots - see
+-- SeedOneDefaultBar) that currently have a pet ability/command assigned.
+-- Used to size the condensed bar's actual on-screen footprint for the
+-- Position sliders' clamp range (Settings.lua's GetActionBarCoordinateRange).
+function BTV:GetPetBarFilledSlotCount()
+	if not GetPetActionInfo then
+		return 0
+	end
+
+	local count = 0
+	local i
+
+	for i = 1, 10 do
+		if GetPetActionInfo(i) ~= nil then
+			count = count + 1
+		end
+	end
+
+	return count
+end
+
 -- buttonSize a brand-new bar should seed at, already correct for the
 -- currently active style.
 function BTV:GetCurrentButtonSizeBaseline()

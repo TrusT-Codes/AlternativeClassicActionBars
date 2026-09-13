@@ -448,6 +448,22 @@ local function CreateCondenseEmptyPetSlotsCheckbox(page, y)
 		if BTV.ApplyPetBarNativeShape then
 			BTV:ApplyPetBarNativeShape()
 		end
+
+		-- Condensing changes the bar's actual on-screen footprint, so the
+		-- Position sliders' clamp range must be recomputed immediately -
+		-- dispatched to whichever page kind is actually showing right now
+		-- (GetOrCreateBarPage/RefreshPositionSliderRange for the
+		-- custom-styled grid page, RefreshSimpleBarPage for the native
+		-- page, which measures petBarNativeContainer's own real size).
+		if IsPetBarNativeMode() then
+			if BTV.RefreshSimpleBarPage then
+				BTV:RefreshSimpleBarPage(BTV.PET_BAR_ID)
+			end
+		else
+			if BTV.RefreshPositionSliderRange then
+				BTV:RefreshPositionSliderRange(page)
+			end
+		end
 	end)
 
 	local label = getglobal(checkbox:GetName() .. "Text")
@@ -1115,6 +1131,25 @@ local function GetActionBarCoordinateRange(cfg)
 	local rows = (cfg and cfg.rows) or 1
 	local spacing = (cfg and cfg.spacing) or 0
 	local borderSize = GetActionBarBorderSize()
+
+	-- Pet Bar condense: Bar.lua's LayoutButtons compacts filled slots into
+	-- cfg.cols-wide rows instead of reserving every one of the 10 pool
+	-- slots' own cell - the on-screen footprint shrinks to match, so the
+	-- clamp range must be computed from that same effective shape or the
+	-- bar can never reach screen edges the full uncondensed grid blocked.
+	if cfg and cfg.isPetBar and BTV:ShouldCondensePetBarSlots() then
+		local filled = BTV:GetPetBarFilledSlotCount()
+
+		if filled <= 0 then
+			cols = 1
+			rows = 1
+		elseif filled < cols then
+			cols = filled
+			rows = 1
+		else
+			rows = math.ceil(filled / cols)
+		end
+	end
 
 	local barWidth = (cols * buttonSize) + ((cols - 1) * spacing)
 	local barHeight = (rows * buttonSize) + ((rows - 1) * spacing)
