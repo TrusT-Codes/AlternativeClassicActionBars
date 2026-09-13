@@ -2871,6 +2871,22 @@ local function RunLoginSequence(earlyLeft, earlyTop, settledLeft, settledTop, wa
 
 	BTV:EnsureDB()
 
+	-- Must run before CreateFixedSlotDefaultBars/CreateBagBarAndMicroMenu,
+	-- same reasoning as CaptureStanceBarNativeGap just below: Key Ring/
+	-- Latency Bar/Exp Bar/Cast Bar are each a single real Blizzard frame
+	-- this addon repositions directly (not a separate untouched
+	-- reference frame like bars 1-5 have), and each is a native sibling
+	-- of the action-bar/bag-bar cluster those calls hide and reflow -
+	-- capturing after that reflow measures the frame's native anchor
+	-- already resolved against an already-disturbed layout, not
+	-- Blizzard's true untouched position (confirmed live: reproducibly
+	-- off by ~8px on Latency Bar, matching only with the addon fully
+	-- disabled). No-ops on every later login once each is captured.
+	BTV:CaptureKeyRingPositionIfNeeded()
+	BTV:CaptureLatencyBarPositionIfNeeded()
+	BTV:CaptureExpBarPositionIfNeeded()
+	BTV:CaptureCastBarPositionIfNeeded()
+
 	-- Must run before CreateFixedSlotDefaultBars builds the Stance Bar's
 	-- styled-mode button pool, so cfg.buttonCount already reflects the
 	-- live form count this session (covers a class that learned/lost a
