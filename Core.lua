@@ -2743,6 +2743,65 @@ local function WaitForNativeBarSettle(callback)
 	end)
 end
 
+-- Same stability-polling pattern as WaitForNativeBarSettle above, but
+-- watching `frame.btvSwallowedAnchor` (DefaultBars.lua's
+-- InstallReanchorGuard - only set on frames with a reanchor guard
+-- installed, currently Latency Bar/Cast Bar) instead of GetLeft()/
+-- GetTop(): a synchronous GetPoint(1) read at login can observe native
+-- code's own not-yet-final anchor attempt (confirmed live on Latency
+-- Bar - an early read saw a different offset than what native code
+-- consistently, repeatedly tried to re-assert moments later), so this
+-- waits for that repeated re-assertion to actually happen and stop
+-- changing, instead of guessing when to sample it. callback receives the
+-- settled anchor table, or nil if nothing was ever observed (no guard on
+-- this frame, or the native re-anchor genuinely hasn't happened yet -
+-- ResolveNativeAnchorToAbsolute/Reset*Layout re-check
+-- frame.btvSwallowedAnchor again at click-time regardless, so a native
+-- re-anchor that only happens later in the session (docs/01-...md §5w:
+-- suspected combat/loot-end trigger) still gets picked up then).
+local function WaitForWrappedFrameAnchorSettle(frame, callback)
+	if not frame or not C_Timer or not C_Timer.NewTicker then
+		callback(nil)
+		return
+	end
+
+	local function SameAnchor(a, b)
+		if not a or not b then
+			return false
+		end
+
+		return a.point == b.point and a.relativeTo == b.relativeTo
+			and a.relativePoint == b.relativePoint and a.x == b.x and a.y == b.y
+	end
+
+	local lastAnchor = frame.btvSwallowedAnchor
+	local stableCount = 0
+	local elapsed = 0
+
+	local ticker
+	ticker = C_Timer.NewTicker(SETTLE_POLL_INTERVAL, function()
+		elapsed = elapsed + SETTLE_POLL_INTERVAL
+
+		local anchor = frame.btvSwallowedAnchor
+
+		if anchor and SameAnchor(anchor, lastAnchor) then
+			stableCount = stableCount + 1
+		else
+			stableCount = 0
+		end
+
+		lastAnchor = anchor
+
+		local settled = anchor and stableCount >= SETTLE_STABLE_READS_REQUIRED
+		local timedOut = elapsed >= SETTLE_TIMEOUT
+
+		if settled or timedOut then
+			ticker:Cancel()
+			callback(settled and lastAnchor or nil)
+		end
+	end)
+end
+
 -- Re-checks ActionButton1 once fully settled and, only if it drifted from
 -- what was captured, silently recaptures/reapplies via
 -- RecaptureDefaultBarNativeAnchors - a no-op if the original capture was
@@ -2887,14 +2946,24 @@ local function RunLoginSequence(earlyLeft, earlyTop, settledLeft, settledTop, wa
 	BTV:CaptureExpBarPositionIfNeeded()
 	BTV:CaptureCastBarPositionIfNeeded()
 
-	-- TEMPORARY diagnostic: prints the just-captured Latency Bar native
-	-- anchor offset at this early point, for comparison against a second
-	-- print further down (after CreateBagBarAndMicroMenu) - pins down
-	-- whether the anchor's real offset only settles to its final value
-	-- after that reflow runs. Remove once the finding is confirmed.
-	if BTVanillaDB.latencyBarNativeAnchor then
-		BTV:Print(string.format("[BTVDiag] early nativeAnchor x=%.2f y=%.2f",
-			BTVanillaDB.latencyBarNativeAnchor.x or -1, BTVanillaDB.latencyBarNativeAnchor.y or -1))
+	-- Gives Latency Bar/Cast Bar's true native anchor (native code's own
+	-- repeated SetPoint attempts, tracked by InstallReanchorGuard - the
+	-- only two of these four elements with a reanchor guard installed)
+	-- its best chance of being correct as early as possible this login,
+	-- rather than only ever correcting itself the next time the user
+	-- happens to open Settings and click Reset. Asynchronous - doesn't
+	-- block the rest of this login sequence.
+	do
+		local function SyncNativeAnchorFromSwallow(frame, dbKey)
+			WaitForWrappedFrameAnchorSettle(frame, function(anchor)
+				if anchor then
+					BTVanillaDB[dbKey] = anchor
+				end
+			end)
+		end
+
+		SyncNativeAnchorFromSwallow(getglobal(BTV.LATENCY_BAR_FRAME_NAME), "latencyBarNativeAnchor")
+		SyncNativeAnchorFromSwallow(getglobal(BTV.CAST_BAR_FRAME_NAME), "castBarNativeAnchor")
 	end
 
 	-- Must run before CreateFixedSlotDefaultBars builds the Stance Bar's
@@ -2929,28 +2998,6 @@ local function RunLoginSequence(earlyLeft, earlyTop, settledLeft, settledTop, wa
 	end
 
 	BTV:CreateBagBarAndMicroMenu()
-
-	-- TEMPORARY diagnostic: raw re-read of the Latency Bar frame's own
-	-- current GetPoint(1) offset (not via the capture function, which
-	-- already no-ops once latencyBarNativeAnchor is set) - compares
-	-- against the early print above. Remove once the finding is
-	-- confirmed.
-	do
-		local diagFrame = getglobal(BTV.LATENCY_BAR_FRAME_NAME)
-
-		if diagFrame then
-			local dPoint, dRelTo, dRelPoint, dx, dy = diagFrame:GetPoint(1)
-			local dRelName = "?"
-
-			if dRelTo and dRelTo.GetName then
-				dRelName = dRelTo:GetName() or "?"
-			end
-
-			BTV:Print(string.format("[BTVDiag] post-BagBar raw GetPoint: %s relTo=%s %s x=%.2f y=%.2f",
-				tostring(dPoint), dRelName, tostring(dRelPoint), dx or -1, dy or -1))
-		end
-	end
-
 	SetupPetBarNativeContainer()
 
 	BTV:CreatePageIndicatorContainer()
