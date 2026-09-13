@@ -658,10 +658,61 @@ end
 BTV.EXTRA_BAR_ID_START = 6
 BTV.EXTRA_BAR_COUNT = 4
 
--- Allocates one Extra Bar's config. Position defaults to a vertical stack
--- under UIParent's center.
+-- Fallback only - used if the referenced default bar's native anchor
+-- (below) isn't captured yet. TOPLEFT/BOTTOMLEFT-to-UIParent, same
+-- convention as every other Action Bar - stacked vertically by index so
+-- the 4 don't overlap.
+local function GetFallbackExtraBarPosition(self, index)
+	return 20, 150 + (index * ((self.BUTTON_ROWS * self.BUTTON_SIZE) + 40))
+end
+
+-- Extra Bar N's default position/shape sits one (or two, for Extra Bar 4)
+-- button-size-plus-spacing pitch to the given side of a specific default
+-- bar's OWN default (native) position - matching that bar's default grid
+-- shape/spacing/button size so it reads as a direct visual extension of
+-- it. Index is 0-3 for Extra Bar 1-4.
+local EXTRA_BAR_DEFAULT_REFERENCE = {
+	[0] = { refId = 2, side = "above", pitchCount = 1 }, -- Extra Bar 1: above Action Bar 1.
+	[1] = { refId = 3, side = "above", pitchCount = 1 }, -- Extra Bar 2: above Action Bar 2.
+	[2] = { refId = 5, side = "left",  pitchCount = 1 }, -- Extra Bar 3: left of Right Action Bar 2.
+	[3] = { refId = 5, side = "left",  pitchCount = 2 }, -- Extra Bar 4: left of Right Action Bar 2 (double pitch, i.e. left of Extra Bar 3).
+}
+
+-- Shared between seedExtraBarConfig below and BTV:ResetExtraBarLayout
+-- (Bar.lua), so a freshly-created bar and a "Reset to Default" click land
+-- in the same place. Returns x, y, cols, rows, buttonSize, spacing.
+function BTV:GetDefaultExtraBarLayout(index)
+	local ref = EXTRA_BAR_DEFAULT_REFERENCE[index]
+	local refCfg = ref and BTVanillaDB.defaultBars and BTVanillaDB.defaultBars[ref.refId]
+	local grid = ref and self.DEFAULT_BAR_GRID[ref.refId]
+
+	if not ref or not refCfg or not refCfg.nativeAnchor or not grid then
+		local x, y = GetFallbackExtraBarPosition(self, index)
+		return x, y, self.BUTTON_COLS, self.BUTTON_ROWS, self:GetCurrentButtonSizeBaseline(), 0
+	end
+
+	local buttonSize = self.BUTTON_SIZE
+	local spacing = refCfg.nativeSpacing or refCfg.spacing or 0
+	local pitch = (buttonSize + spacing) * ref.pitchCount
+
+	local x = refCfg.nativeAnchor.x
+	local y = refCfg.nativeAnchor.y
+
+	if ref.side == "above" then
+		y = y + pitch
+	elseif ref.side == "left" then
+		x = x - pitch
+	end
+
+	return x, y, grid.cols, grid.rows, buttonSize, spacing
+end
+
+-- Allocates one Extra Bar's config.
 local function seedExtraBarConfig(self, id)
-	local needed = self.BUTTON_COLS * self.BUTTON_ROWS
+	local index = id - self.EXTRA_BAR_ID_START
+	local x, y, cols, rows, buttonSize, spacing = self:GetDefaultExtraBarLayout(index)
+
+	local needed = cols * rows
 	local slotStart = self:GetNextFreeSlotStart(needed)
 
 	if not slotStart then
@@ -674,28 +725,57 @@ local function seedExtraBarConfig(self, id)
 		return nil
 	end
 
-	local index = id - self.EXTRA_BAR_ID_START
-
 	return {
 		id = id,
 
-		point = "CENTER",
-		relativePoint = "CENTER",
-		x = 0,
-		y = -200 - (index * self.BUTTON_SIZE),
+		point = "TOPLEFT",
+		relativePoint = "BOTTOMLEFT",
+		x = x,
+		y = y,
 
-		cols = self.BUTTON_COLS,
-		rows = self.BUTTON_ROWS,
+		cols = cols,
+		rows = rows,
 
-		buttonSize = self:GetCurrentButtonSizeBaseline(),
+		buttonSize = buttonSize,
 
 		slotStart = slotStart,
-		buttonCount = self.BUTTON_COLS * self.BUTTON_ROWS,
+		buttonCount = cols * rows,
 
-		spacing = 0,
+		spacing = spacing,
 
 		enabled = false,
 	}
+end
+
+-- One-time migration: Extra Bars used to seed with a CENTER/CENTER anchor,
+-- which put x=0/y=0 at screen-center instead of the TOPLEFT/BOTTOMLEFT
+-- bottom-left-origin convention every other Action Bar uses - broke the
+-- X/Y position sliders' min/max (0 could never reach the true left/bottom
+-- edge). Converts the CENTER-anchored offset into an equivalent
+-- TOPLEFT/BOTTOMLEFT one, preserving the bar's real on-screen position
+-- instead of silently relocating it. No-op once already migrated.
+function BTV:MigrateExtraBarAnchor(cfg)
+	if not cfg or cfg.point ~= "CENTER" then
+		return
+	end
+
+	local screenWidth = GetScreenWidth() or 1024
+	local screenHeight = GetScreenHeight() or 768
+	local cols = cfg.cols or self.BUTTON_COLS
+	local rows = cfg.rows or self.BUTTON_ROWS
+	local buttonSize = cfg.buttonSize or self:GetCurrentButtonSizeBaseline()
+	local spacing = cfg.spacing or 0
+
+	local barWidth = (cols * buttonSize) + ((cols - 1) * spacing)
+	local barHeight = (rows * buttonSize) + ((rows - 1) * spacing)
+
+	local centerX = (screenWidth / 2) + (cfg.x or 0)
+	local centerY = (screenHeight / 2) + (cfg.y or 0)
+
+	cfg.point = "TOPLEFT"
+	cfg.relativePoint = "BOTTOMLEFT"
+	cfg.x = centerX - (barWidth / 2)
+	cfg.y = centerY + (barHeight / 2)
 end
 
 -- Ensures exactly BTV.EXTRA_BAR_COUNT Extra Bar configs exist.
@@ -709,6 +789,7 @@ function BTV:EnsureExtraBars()
 		for i = 1, table.getn(BTVanillaDB.bars) do
 			if BTVanillaDB.bars[i] and BTVanillaDB.bars[i].id == id then
 				found = true
+				self:MigrateExtraBarAnchor(BTVanillaDB.bars[i])
 				break
 			end
 		end
