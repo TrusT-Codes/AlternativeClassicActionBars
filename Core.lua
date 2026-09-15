@@ -1568,17 +1568,345 @@ local function RunDiag1(stage)
 	DiagPrint("--- end diag1 ---")
 end
 
--- /acab recapture - forces a fresh capture of every default bar's native
--- anchor, plus clears Key Ring/Latency Bar/Exp Bar/Cast Bar's stored
--- anchors (takes effect after a /reload). /acab alone toggles the main menu.
+-- /acab settings <pagename> - name -> settings page resolution table.
+-- Mirrors the pages reachable by right-clicking a bar/element in edit mode
+-- (SettingsBars.lua's OpenBarSettingsByKey/OpenDefaultBarSettings).
+local SETTINGS_PAGE_ALIASES = {
+	general = { view = "general" },
+	profiles = { view = "profiles" },
+	editmode = { view = "editmode" },
+	bars = { view = "bars" },
+
+	main = { page = 1 },
+	mainbar = { page = 1 },
+	["1"] = { page = 1 },
+	["2"] = { page = 2 },
+	["3"] = { page = 3 },
+	["4"] = { page = 4 },
+	["5"] = { page = 5 },
+	["6"] = { page = ACAB.EXTRA_BAR_ID_START },
+	["7"] = { page = ACAB.EXTRA_BAR_ID_START + 1 },
+	["8"] = { page = ACAB.EXTRA_BAR_ID_START + 2 },
+	["9"] = { page = ACAB.EXTRA_BAR_ID_START + 3 },
+	extra1 = { page = ACAB.EXTRA_BAR_ID_START },
+	extra2 = { page = ACAB.EXTRA_BAR_ID_START + 1 },
+	extra3 = { page = ACAB.EXTRA_BAR_ID_START + 2 },
+	extra4 = { page = ACAB.EXTRA_BAR_ID_START + 3 },
+	pet = { page = ACAB.PET_BAR_ID },
+	petbar = { page = ACAB.PET_BAR_ID },
+	stance = { page = ACAB.STANCE_BAR_ID },
+	stancebar = { page = ACAB.STANCE_BAR_ID },
+
+	bags = { page = "bagbar" },
+	bagbar = { page = "bagbar" },
+	keyring = { page = "bagbar" },
+	micro = { page = "micromenu" },
+	micromenu = { page = "micromenu" },
+	latency = { page = "latencybar" },
+	latencybar = { page = "latencybar" },
+	xp = { page = "expbar" },
+	exp = { page = "expbar" },
+	expbar = { page = "expbar" },
+	experience = { page = "expbar" },
+	cast = { page = "castbar" },
+	castbar = { page = "castbar" },
+}
+
+-- Opens the settings window to a specific page by name (/acab settings
+-- <pagename>) - same destination right-clicking that bar/element opens.
+function ACAB:OpenSettingsPageByName(name)
+	local target = SETTINGS_PAGE_ALIASES[string.lower(name or "")]
+
+	if not target then
+		self:Print("Unknown settings page \"" .. tostring(name) .. "\". Type " .. ColorKeyName("/acab help") .. " for a list.")
+		return
+	end
+
+	self:ShowSettingsFrame()
+
+	if target.view == "general" then
+		self:ShowGeneralView()
+	elseif target.view == "profiles" then
+		self:ShowProfilesView()
+	elseif target.view == "editmode" then
+		self:ShowEditModeView()
+	elseif target.view == "bars" then
+		self:ShowBarsView()
+	elseif target.page then
+		self:ShowBarPage(target.page)
+	end
+end
+
+-- /acab profile <...> - profile management from chat, mirroring the
+-- Profiles settings tab's add/delete/copy dialogs (SettingsGeneral.lua).
+local function PrintProfileStatus()
+	ACAB:Print("Current profile: \"" .. tostring(ACABCharDB and ACABCharDB.activeProfile or ACAB.DEFAULT_PROFILE_NAME) .. "\"")
+	ACAB:Print("Available " .. ColorKeyName("/acab profile") .. " parameters:")
+	ACAB:Print(ColorKeyName("/acab profile list") .. " - list all profiles in chat")
+	ACAB:Print(ColorKeyName("/acab profile select <name>") .. " - switch to another profile")
+	ACAB:Print(ColorKeyName("/acab profile add <name>") .. " - create a new profile")
+	ACAB:Print(ColorKeyName("/acab profile delete <name>") .. " - delete a profile")
+	ACAB:Print(ColorKeyName("/acab profile copy [name]") .. " - copy settings into the current profile from [name], or pick from a dropdown if omitted")
+	ACAB:Print(ColorKeyName("/acab profile export") .. " - show the current profile's export string")
+	ACAB:Print(ColorKeyName("/acab profile import") .. " - paste an export string into the current profile")
+end
+
+local function PrintProfileList()
+	local names = ACAB:GetProfileNames()
+	local active = ACABCharDB and ACABCharDB.activeProfile or ACAB.DEFAULT_PROFILE_NAME
+	local i
+
+	ACAB:Print("Profiles:")
+
+	for i = 1, table.getn(names) do
+		local marker = (names[i] == active) and " |cff20ff20(active)|r" or ""
+		ACAB:Print("  " .. names[i] .. marker)
+	end
+end
+
+function ACAB:HandleProfileCommand(rest)
+	local subcommand, arg = string.match(rest or "", "^(%S*)%s*(.-)$")
+
+	subcommand = string.lower(subcommand or "")
+
+	if subcommand == "" then
+		PrintProfileStatus()
+	elseif subcommand == "list" then
+		PrintProfileList()
+	elseif subcommand == "select" then
+		if arg == "" then
+			self:Print("Usage: /acab profile select <name>")
+			return
+		end
+
+		local ok, reason = self:SwitchProfile(arg)
+
+		if not ok and reason then
+			self:Print(reason)
+		end
+	elseif subcommand == "add" then
+		if arg == "" then
+			self:Print("Usage: /acab profile add <name>")
+			return
+		end
+
+		local ok, reason = self:CreateProfile(arg)
+
+		if ok then
+			self:SwitchProfile(arg)
+		elseif reason then
+			self:Print(reason)
+		end
+	elseif subcommand == "delete" then
+		if arg == "" then
+			self:Print("Usage: /acab profile delete <name>")
+			return
+		end
+
+		if arg == self.DEFAULT_PROFILE_NAME then
+			self:Print("The Default profile cannot be deleted.")
+			return
+		end
+
+		if not ACABProfilesDB or not ACABProfilesDB[arg] then
+			self:Print("Profile \"" .. arg .. "\" does not exist.")
+			return
+		end
+
+		local targetName = arg
+		local wasActive = (ACABCharDB and ACABCharDB.activeProfile == targetName)
+
+		self:ShowDialog({
+			title = "Delete Profile",
+			message = "ATTENTION: This action will delete all settings present " ..
+				"on profile \"" .. targetName .. "\" and is not reversible.",
+			mode = "confirm",
+			buttons = {
+				{
+					text = "Accept",
+					onClick = function()
+						ACAB:DeleteProfile(targetName)
+
+						if wasActive then
+							ReloadUI()
+						elseif ACAB.settingsFrame and ACAB.settingsFrame.profilesPanel then
+							ACAB:RefreshProfilesPanel()
+						end
+					end,
+				},
+				{ text = "Cancel", onClick = function() end },
+			},
+		})
+	elseif subcommand == "copy" then
+		local targetName = (ACABCharDB and ACABCharDB.activeProfile) or self.DEFAULT_PROFILE_NAME
+
+		if arg == "" then
+			-- No name given - same dropdown-picker dialog as the Profiles
+			-- tab's "Copy from other profile" button.
+			local otherProfiles = {}
+			local names = self:GetProfileNames()
+			local i
+
+			for i = 1, table.getn(names) do
+				if names[i] ~= targetName then
+					table.insert(otherProfiles, names[i])
+				end
+			end
+
+			self:ShowDialog({
+				title = "Copy From Other Profile",
+				message = "Choose another profile to copy all settings from. ATTENTION: " ..
+					"This action will override all settings present on the current " ..
+					"profile and is not reversible.",
+				mode = "dropdown",
+				options = otherProfiles,
+				buttons = {
+					{
+						text = "Accept",
+						isDefault = false,
+						onClick = function(value)
+							if value then
+								ACAB:CopyProfileInto(value, targetName)
+								ReloadUI()
+							end
+						end,
+					},
+					{ text = "Cancel", onClick = function() end },
+				},
+			})
+			return
+		end
+
+		if not ACABProfilesDB or not ACABProfilesDB[arg] then
+			self:Print("Profile \"" .. arg .. "\" does not exist.")
+			return
+		end
+
+		local sourceName = arg
+
+		if sourceName == targetName then
+			self:Print("Cannot copy a profile into itself.")
+			return
+		end
+
+		self:ShowDialog({
+			title = "Copy From Other Profile",
+			message = "Choose another profile to copy all settings from. ATTENTION: " ..
+				"This action will override all settings present on the current " ..
+				"profile and is not reversible.",
+			mode = "confirm",
+			buttons = {
+				{
+					text = "Accept",
+					onClick = function()
+						ACAB:CopyProfileInto(sourceName, targetName)
+						ReloadUI()
+					end,
+				},
+				{ text = "Cancel", onClick = function() end },
+			},
+		})
+	elseif subcommand == "export" then
+		self:ShowDialog({
+			title = "Export Profile",
+			message = "Copy the text below (Ctrl+C) to share this profile.",
+			mode = "textarea",
+			defaultText = self:ExportActiveProfileString(),
+			buttons = {
+				{
+					text = "Select all",
+					isDefault = true,
+					keepOpen = true,
+					onClick = function()
+						ACAB.activeDialog.textArea.editBox:SetFocus()
+						ACAB.activeDialog.textArea.editBox:HighlightText()
+					end,
+				},
+				{ text = "Close", onClick = function() end },
+			},
+		})
+	elseif subcommand == "import" then
+		local function ValidateImportText(value)
+			return ACAB:ParseProfileImportString(value)
+		end
+
+		self:ShowDialog({
+			title = "Import Profile",
+			message = "You are about to Import a Profile on to your currently " ..
+				"active Profile " .. tostring(ACABCharDB and ACABCharDB.activeProfile),
+			warningText = "WARNING! This will override all data on your " ..
+				"current Profile with the imported Data",
+			mode = "textarea",
+			reserveErrorBanner = true,
+			liveValidate = ValidateImportText,
+			buttons = {
+				{
+					text = "Import",
+					isDefault = true,
+					validate = ValidateImportText,
+					onClick = function(value)
+						local ok, data = ACAB:ParseProfileImportString(value)
+
+						if ok then
+							ACAB:ApplyImportedProfileData(data)
+							ReloadUI()
+						end
+					end,
+				},
+				{ text = "Close", onClick = function() end },
+			},
+		})
+	else
+		self:Print("Unknown profile command \"" .. subcommand .. "\". Type " .. ColorKeyName("/acab profile") .. " for a list.")
+	end
+end
+
+local function PrintCommandHelp()
+	ACAB:Print("Available " .. ColorKeyName("/acab") .. " commands:")
+	ACAB:Print(ColorKeyName("/acab") .. " - toggle the Settings window")
+	ACAB:Print(ColorKeyName("/acab menu") .. " - open the minimap right-click menu")
+	ACAB:Print(ColorKeyName("/acab edit") .. " - toggle Configure Layout mode")
+	ACAB:Print(ColorKeyName("/acab bind") .. " - toggle Hoverbind keybind mode")
+	ACAB:Print(ColorKeyName("/acab settings <page>") .. " - jump straight to a settings page")
+	ACAB:Print("  pages: general, bars, profiles, editmode, main, 1-9/extra1-4, pet, stance, bags, keyring, micro, latency, exp, cast")
+	ACAB:Print(ColorKeyName("/acab profile") .. " - show current profile and profile commands")
+	ACAB:Print(ColorKeyName("/acab recapture") .. " - force a fresh capture of default bar native anchors")
+	ACAB:Print(ColorKeyName("/acab help") .. " - show this list")
+end
+
+-- /acab alone toggles the Settings window; see PrintCommandHelp above for
+-- the full command list.
 SLASH_ACAB1 = "/acab"
 SlashCmdList["ACAB"] = function(msg)
-	if msg == "recapture" then
+	msg = msg or ""
+
+	local command, rest = string.match(msg, "^(%S*)%s*(.-)$")
+	command = string.lower(command or "")
+
+	if command == "" then
+		ACAB:ToggleSettingsFrame()
+	elseif command == "menu" then
+		ACAB:ToggleMainMenu()
+	elseif command == "edit" then
+		ACAB:ToggleEditMode()
+	elseif command == "bind" then
+		ACAB:ToggleHoverBindMode()
+	elseif command == "settings" then
+		if rest == "" then
+			ACAB:ShowSettingsFrame()
+		else
+			ACAB:OpenSettingsPageByName(rest)
+		end
+	elseif command == "profile" then
+		ACAB:HandleProfileCommand(rest)
+	elseif command == "recapture" then
 		ACAB:RecaptureDefaultBarNativeAnchors()
 		ACAB:RecaptureWrappedNativeFrameAnchors()
-	elseif msg and string.find(msg, "^diag1") then
+	elseif command == "help" then
+		PrintCommandHelp()
+	elseif string.find(msg, "^diag1") then
 		RunDiag1(string.gsub(msg, "^diag1%s*", ""))
 	else
-		ACAB:ToggleMainMenu()
+		ACAB:Print("Unknown command \"" .. msg .. "\". Type " .. ColorKeyName("/acab help") .. " for a list.")
 	end
 end
