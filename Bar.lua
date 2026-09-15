@@ -345,6 +345,20 @@ function ACAB:ApplyEditModeVisual()
 	end
 
 	self:ApplyLayoutGridVisual()
+
+	-- Keeps Core.lua's ESC-to-exit capture frame in sync with edit mode's
+	-- actual on/off state, regardless of which code path got here.
+	local captureFrame = self.editModeCaptureFrame
+
+	if captureFrame then
+		if editMode then
+			captureFrame:Show()
+			captureFrame:EnableKeyboard(true)
+		else
+			captureFrame:EnableKeyboard(false)
+			captureFrame:Hide()
+		end
+	end
 end
 
 -------------------------------------------------------------------------
