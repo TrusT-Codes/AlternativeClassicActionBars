@@ -39,6 +39,10 @@ function ACAB:GetPetBarBaselineY(bar3Enabled)
 
 	if bar3Enabled and cfg3 and cfg3.nativeAnchor then
 		referenceY = cfg3.nativeAnchor.y
+
+		-- Extra Bar 2 sits above Bar 3 - stack Pet Bar above it too when
+		-- both are enabled (GetExtraBarStackPitch, Database.lua).
+		referenceY = referenceY + self:GetExtraBarStackPitch(self.EXTRA_BAR_ID_START + 1)
 	end
 
 	if not referenceY then
@@ -57,12 +61,14 @@ end
 -- Re-stacks Pet Bar vertically off Bar 3's toggle state - mirrors
 -- ReflowStanceBarForBar2Toggle for Bar 3 instead of Bar 2. Only y is
 -- touched; only call while useDefaultLayout ~= false, or this fights the
--- user's own manually dragged position.
+-- user's own manually dragged position. Also a no-op once
+-- cfg.usesDefaultPosition is false - the user has since moved this
+-- element themselves (settings slider or edit-mode drag).
 function ACAB:ReflowPetBarForBar3Toggle(bar3Enabled)
 	local cfg = ACABDB.defaultBars[self.PET_BAR_ID]
 	local container = self.petBarNativeContainer
 
-	if not cfg or not container then
+	if not cfg or not container or cfg.usesDefaultPosition == false then
 		return
 	end
 
@@ -155,6 +161,10 @@ function ACAB:SetPetBarNativePosition(x, y)
 
 	cfg.x = x
 	cfg.y = y
+
+	-- User is now positioning this element by hand - stop auto-stacking
+	-- its Y off Bar 3/Extra Bar 2 (ReflowPetBarForBar3Toggle's own guard).
+	cfg.usesDefaultPosition = false
 
 	self:ApplyPetBarNativePosition()
 end
@@ -286,6 +296,8 @@ function ACAB:ResetPetBarNativeLayout()
 
 	cfg.scale = 1
 
+	cfg.usesDefaultPosition = true
+
 	self:ApplyPetBarNativePosition()
 	self:ApplyPetBarNativeShape()
 end
@@ -302,6 +314,14 @@ end
 
 function ACAB:StopPetBarNativeDrag()
 	self:StopSharedDrag()
+
+	-- User just moved this element by hand - stop auto-stacking its Y
+	-- (same flag SetPetBarNativePosition flips for the settings-page sliders).
+	local cfg = ACABDB.defaultBars[self.PET_BAR_ID]
+
+	if cfg then
+		cfg.usesDefaultPosition = false
+	end
 
 	if self.RefreshBarSettingsPage then
 		self:RefreshBarSettingsPage(self.PET_BAR_ID)
@@ -602,6 +622,10 @@ function ACAB:SetStanceBarPosition(x, y)
 	ACABDB.stanceBarPosition.x = x
 	ACABDB.stanceBarPosition.y = y
 
+	-- User is now positioning this element by hand - stop auto-stacking
+	-- its Y off Bar 2/Extra Bar 1 (ReflowStanceBarForBar2Toggle's own guard).
+	ACABDB.stanceBarUsesDefaultPosition = false
+
 	self:ApplyStanceBarPosition()
 end
 
@@ -619,6 +643,18 @@ function ACAB:ResetStanceBarPosition()
 		x = native.x,
 		y = native.y,
 	}
+
+	-- Prefer the computed baseline (stacked off Bar 2/Extra Bar 1 when
+	-- enabled, same as GetStanceBarBaselineY) over the raw captured
+	-- nativeAnchor - mirrors ResetPetBarNativeLayout's own reasoning.
+	local bar2Cfg = ACABDB.defaultBars[2]
+	local computedY = self:GetStanceBarBaselineY(bar2Cfg and bar2Cfg.enabled)
+
+	if computedY then
+		ACABDB.stanceBarPosition.y = computedY
+	end
+
+	ACABDB.stanceBarUsesDefaultPosition = true
 
 	self:ApplyStanceBarPosition()
 end
@@ -671,6 +707,10 @@ function ACAB:GetStanceBarBaselineY(bar2Enabled)
 
 	if bar2Enabled and cfg2 and cfg2.nativeAnchor then
 		referenceY = cfg2.nativeAnchor.y
+
+		-- Extra Bar 1 sits above Bar 2 - stack Stance Bar above it too when
+		-- both are enabled (GetExtraBarStackPitch, Database.lua).
+		referenceY = referenceY + self:GetExtraBarStackPitch(self.EXTRA_BAR_ID_START)
 	end
 
 	if not referenceY then
@@ -683,12 +723,10 @@ function ACAB:GetStanceBarBaselineY(bar2Enabled)
 		return nil
 	end
 
-	-- Falls back to a literal 5 only if the lazy capture above never ran
-	-- (e.g. ShapeshiftBarFrame missing on some other client build) - every
-	-- normal login captures the real value instead.
-	local gap = ACABDB.stanceBarNativeGap or 5
-
-	return referenceY + gap + container:GetHeight()
+	-- Same fixed clearance Pet Bar uses (PET_BAR_NATIVE_GAP) rather than
+	-- the smaller captured stanceBarNativeGap - the real captured gap sat
+	-- the Stance Bar too low against Bar 1/2's actual footprint.
+	return referenceY + self.PET_BAR_NATIVE_GAP + container:GetHeight()
 end
 
 -- Replicates real vanilla's ShapeshiftBar_UpdatePosition side effect
@@ -700,8 +738,14 @@ end
 --
 -- Only called while useDefaultLayout ~= false - once the user switches
 -- the Stance Bar to manual positioning, this must never fight their own
--- dragged position.
+-- dragged position. Also a no-op once ACABDB.stanceBarUsesDefaultPosition
+-- is false - the user has since moved this element themselves (settings
+-- slider or edit-mode drag), so auto-stacking must leave it alone too.
 function ACAB:ReflowStanceBarForBar2Toggle(bar2Enabled)
+	if ACABDB.stanceBarUsesDefaultPosition == false then
+		return
+	end
+
 	local pos = ACABDB.stanceBarPosition
 	local container = self.stanceBarContainer
 
@@ -954,6 +998,10 @@ end
 
 function ACAB:StopStanceBarDrag()
 	self:StopSharedDrag()
+
+	-- User just moved this element by hand - stop auto-stacking its Y
+	-- (same flag SetStanceBarPosition flips for the settings-page sliders).
+	ACABDB.stanceBarUsesDefaultPosition = false
 
 	if self.RefreshBarSettingsPage then
 		self:RefreshBarSettingsPage(self.STANCE_BAR_ID)

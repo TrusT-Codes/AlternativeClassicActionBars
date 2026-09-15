@@ -593,7 +593,10 @@ end
 --
 -- config = { width (24), height (24), anchor = {point, relativeTo,
 --   relativePoint, x, y} (required), label, onClick = function() end,
---   tooltip = { title, lines = {...} } }
+--   tooltip = { title, lines = {...} },
+--   lockedText (single red line shown instead of `tooltip` whenever the
+--   checkbox's own .ACABLocked field is true - see
+--   ACAB:LockControlKeepingTooltip, Settings.lua) }
 -- Returns the checkbox.
 -------------------------------------------------------------------------
 
@@ -608,7 +611,21 @@ function ACAB:CreateLabeledCheckbox(parent, name, config)
 	checkbox:SetPoint(unpack(config.anchor))
 
 	if config.onClick then
-		checkbox:SetScript("OnClick", config.onClick)
+		local onClick = config.onClick
+
+		-- The engine already flips this CheckButton's own checked state
+		-- before OnClick fires - while ACABLocked (ACAB:LockControlKeepingTooltip),
+		-- revert that flip and never call through to `onClick`, instead of
+		-- the usual :Disable() (confirmed live on this client to also
+		-- swallow OnEnter/OnLeave, killing the locked-reason tooltip).
+		checkbox:SetScript("OnClick", function()
+			if this.ACABLocked then
+				this:SetChecked(not this:GetChecked())
+				return
+			end
+
+			onClick()
+		end)
 	end
 
 	if config.label then
@@ -619,17 +636,27 @@ function ACAB:CreateLabeledCheckbox(parent, name, config)
 		end
 	end
 
-	if config.tooltip then
+	if config.tooltip or config.lockedText then
 		local tooltip = config.tooltip
+		local lockedText = config.lockedText
 
+		-- checkbox.ACABLocked is read live (not captured here) - a caller
+		-- like ACAB:LockControlKeepingTooltip stamps it whenever the lock
+		-- state changes, so this always shows the CURRENT reason without
+		-- needing to re-wire the tooltip script on every refresh.
 		checkbox:SetScript("OnEnter", function()
 			GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
-			GameTooltip:SetText(tooltip.title or "", 1, 1, 1)
 
-			local i
+			if this.ACABLocked and lockedText then
+				GameTooltip:SetText(lockedText, 1, 0.15, 0.15, 1, true)
+			elseif tooltip then
+				GameTooltip:SetText(tooltip.title or "", 1, 1, 1)
 
-			for i = 1, table.getn(tooltip.lines or {}) do
-				GameTooltip:AddLine(tooltip.lines[i], 1, 0.82, 0, true)
+				local i
+
+				for i = 1, table.getn(tooltip.lines or {}) do
+					GameTooltip:AddLine(tooltip.lines[i], 1, 0.82, 0, true)
+				end
 			end
 
 			GameTooltip:Show()

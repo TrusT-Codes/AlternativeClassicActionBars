@@ -1343,6 +1343,20 @@ function ACAB:LockControl(control, locked)
 	end
 end
 
+-- Greys `control` like ACAB:LockControl, but never touches EnableMouse OR
+-- Disable()/Enable() - both confirmed live on this client to also swallow
+-- OnEnter/OnLeave entirely (not just OnClick), which would silently kill
+-- the "why is this locked" tooltip a caller wired via
+-- CreateLabeledCheckbox's config.lockedText. Only stamps control.ACABLocked;
+-- the actual click-block lives in CreateLabeledCheckbox's own OnClick
+-- wrapper (UIWidgets.lua), which checks this same field and reverts the
+-- toggle instead of calling through to config.onClick while locked.
+function ACAB:LockControlKeepingTooltip(control, locked)
+	control.ACABLocked = locked and true or false
+
+	control:SetAlpha(locked and 0.5 or 1)
+end
+
 -- Every optional widget name either a full bar page (GetOrCreateBarPage)
 -- or a simple bar page (CreateSimpleBarPage, including its Experience
 -- Bar-only extras) can have on itself. Checked by presence so the same

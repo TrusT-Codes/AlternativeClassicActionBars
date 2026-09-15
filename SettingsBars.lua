@@ -181,6 +181,15 @@ function ACAB:ReflowRowsBelowHoverOnly(page, sliderShown, sliderRowHeight)
 	end
 end
 
+-- Shown instead of the normal explanatory tooltip whenever this checkbox
+-- is locked (RefreshSimpleBarPage's petLocked/stanceLocked, both cases:
+-- Default Layout or Default Profile) - forcing native mode is what makes
+-- Stance/Pet Bar's own position/shape controls stay usable in that state,
+-- so switching AWAY from native there isn't allowed.
+local VANILLA_MODE_LOCKED_TEXT =
+	"Can't change while using Default Blizzard Layout / Profile. Disable " ..
+	"in General Settings to enable this Setting"
+
 -- Shared "Use Vanilla Pet Bar" checkbox, added to both the Pet Bar's full grid page and its simple/native-mode page.
 -- Switching mode only takes effect on the next login (both build paths run once at PLAYER_LOGIN).
 local function CreateUseVanillaPetBarCheckbox(page, y)
@@ -196,6 +205,7 @@ local function CreateUseVanillaPetBarCheckbox(page, y)
 				"disable this option.",
 			},
 		},
+		lockedText = VANILLA_MODE_LOCKED_TEXT,
 		onClick = function()
 			local checked = this:GetChecked() and true or false
 			local clickedCheckbox = this
@@ -252,6 +262,7 @@ local function CreateUseVanillaStanceBarCheckbox(page, y)
 				"disable this option.",
 			},
 		},
+		lockedText = VANILLA_MODE_LOCKED_TEXT,
 		onClick = function()
 			local checked = this:GetChecked() and true or false
 			local clickedCheckbox = this
@@ -302,6 +313,7 @@ local function CreateCondenseEmptyPetSlotsCheckbox(page, y)
 	local checkbox = ACAB:CreateLabeledCheckbox(page, "ACABPetBarCondenseCheckbox", {
 		anchor = { "TOPLEFT", page, "TOPLEFT", ACAB.INDENT_SECTION, y },
 		label = "Condense empty Button Space",
+		lockedText = VANILLA_MODE_LOCKED_TEXT,
 		onClick = function()
 			local checked = this:GetChecked() and true or false
 			local cfg = ACABDB.defaultBars[ACAB.PET_BAR_ID]
@@ -2651,11 +2663,11 @@ function ACAB:RefreshSimpleBarPage(key)
 		page.enableCheckbox:SetChecked(config.getEnabled() ~= false)
 	end
 
-	-- Both checkboxes lock (greyed out via ApplyProfileLockGating below)
-	-- and their DISPLAYED checked-state collapses to the vanilla-forced
-	-- value while locked, rather than showing the raw stored preference -
-	-- same collapse idiom as modernBorderStyleCheckbox (Core.lua's
-	-- IsVanillaBorderStyle).
+	-- Both checkboxes lock (greyed out via ACAB:LockControlKeepingTooltip
+	-- further below, after ApplyProfileLockGating) and their DISPLAYED
+	-- checked-state collapses to the vanilla-forced value while locked,
+	-- rather than showing the raw stored preference - same collapse idiom
+	-- as modernBorderStyleCheckbox (Core.lua's IsVanillaBorderStyle).
 	if page.useVanillaPetBarCheckbox or page.condenseEmptyPetSlotsCheckbox then
 		local petLocked = ACAB:IsDefaultProfileActive() or ACABDB.useDefaultLayout == true
 		local petCfg = ACABDB.defaultBars and ACABDB.defaultBars[ACAB.PET_BAR_ID]
@@ -2862,18 +2874,53 @@ function ACAB:RefreshSimpleBarPage(key)
 		ApplyBetterExpBarGating(page)
 	end
 
+	-- Stance Bar/Pet Bar/Cast Bar stay fully unlocked on this gate even
+	-- while useDefaultLayout is on - they stack dynamically off Action
+	-- Bar 1/2/Extra Bar 1/2 (GetStanceBarBaselineY/GetPetBarBaselineY/
+	-- GetCastBarBaselineY, only while each element's own
+	-- usesDefaultPosition flag is true) and are draggable in edit mode
+	-- regardless (DefaultBars.lua's ApplyDefaultLayoutEditVisual), so
+	-- their own Settings page must stay editable the same way. Every
+	-- other simple page keeps the normal layout lock.
+	local skipLayoutLock = key == ACAB.PET_BAR_ID or key == ACAB.STANCE_BAR_ID or key == "castbar"
+
 	-- Same gating window as bar 1 (CanDragDefaultLayout's underlying
 	-- rule) - the enable checkbox and Reset button are deliberately
 	-- excluded, mirroring ApplyDefaultLayoutGating's own established
 	-- rule for bar 1 (they stay fully functional regardless of
 	-- useDefaultLayout).
-	ACAB:ApplyDefaultLayoutGating(page, ACABDB.useDefaultLayout ~= true)
+	ACAB:ApplyDefaultLayoutGating(page, skipLayoutLock or ACABDB.useDefaultLayout ~= true)
 
 	-- Default-profile lock (independent of the useDefaultLayout gate
 	-- above) - every simple page is also subject to that layout lock
 	-- (the ApplyDefaultLayoutGating call just above), so the banner
-	-- should reflect it here too.
-	self:ApplyProfileLockGating(page, true)
+	-- should reflect it here too - except the three elements exempted above.
+	self:ApplyProfileLockGating(page, not skipLayoutLock)
+
+	-- Use Vanilla Pet Bar/Stance Bar (and Pet Bar's coupled Condense Empty
+	-- Slots) stay locked by Default Layout/Default Profile even on the
+	-- Pet Bar/Stance Bar page's otherwise-unlocked gate above - forcing
+	-- native mode is exactly what lets that page's position/shape controls
+	-- stay usable, so switching away from native isn't allowed while
+	-- either lock is active. Runs AFTER ApplyProfileLockGating (not
+	-- folded into the exempt list there) so it has the final say, and
+	-- uses ACAB:LockControlKeepingTooltip instead of ACAB:LockControl so
+	-- the red locked-reason tooltip (VANILLA_MODE_LOCKED_TEXT,
+	-- CreateUseVanillaPetBarCheckbox/CreateUseVanillaStanceBarCheckbox)
+	-- still shows on hover while locked.
+	local vanillaModeLocked = ACAB:IsDefaultProfileActive() or ACABDB.useDefaultLayout == true
+
+	if page.useVanillaPetBarCheckbox then
+		ACAB:LockControlKeepingTooltip(page.useVanillaPetBarCheckbox, vanillaModeLocked)
+	end
+
+	if page.condenseEmptyPetSlotsCheckbox then
+		ACAB:LockControlKeepingTooltip(page.condenseEmptyPetSlotsCheckbox, vanillaModeLocked)
+	end
+
+	if page.useVanillaStanceBarCheckbox then
+		ACAB:LockControlKeepingTooltip(page.useVanillaStanceBarCheckbox, vanillaModeLocked)
+	end
 end
 
 -- Config table for each simple page - the single place mapping
@@ -3958,6 +4005,13 @@ function ACAB:ApplyUseDefaultLayoutChange(checked)
 
 		if ACAB.ResetLatencyBarLayout then
 			ACAB:ResetLatencyBarLayout()
+		end
+
+		-- Cast Bar: same single-native-frame reset treatment as Latency
+		-- Bar above - also resets castBarUsesDefaultPosition to true
+		-- (ResetCastBarLayout itself), re-enabling its own dynamic stacking.
+		if ACAB.ResetCastBarLayout then
+			ACAB:ResetCastBarLayout()
 		end
 
 		if ACAB.ResetKeyRingPosition then

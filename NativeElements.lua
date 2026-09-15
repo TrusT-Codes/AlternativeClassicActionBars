@@ -1248,6 +1248,11 @@ function ACAB:SetCastBarPosition(x, y)
 	ACABDB.castBarPosition.x = x
 	ACABDB.castBarPosition.y = y
 
+	-- User is now positioning this element by hand - stop auto-stacking
+	-- its Y off Action Bar 1/2/Extra Bar 1/2/Pet Bar
+	-- (ReflowCastBarForStackToggle's own guard).
+	ACABDB.castBarUsesDefaultPosition = false
+
 	self:ApplyCastBarPosition()
 end
 
@@ -1301,9 +1306,138 @@ function ACAB:ResetCastBarLayout()
 
 	if resolved then
 		ACABDB.castBarPosition = resolved
+
+		-- Stale floor would otherwise keep stacking off the pre-reset
+		-- position - re-capture it fresh from the just-restored native spot.
+		ACABDB.castBarStackBaseY = resolved.y
 	end
 
+	ACABDB.castBarUsesDefaultPosition = true
+
 	self:ApplyCastBarPosition()
+
+	-- Prefer the computed baseline (stacked off Action Bar 1/2/Extra Bar
+	-- 1/2/Pet Bar when active, same as GetCastBarBaselineY) over the raw
+	-- restored native position - mirrors ResetPetBarNativeLayout's own
+	-- unconditional-recompute reasoning exactly (called regardless of
+	-- useDefaultLayout there too).
+	self:ReflowCastBarForStackToggle()
+end
+
+-------------------------------------------------------------------------
+-- Cast Bar dynamic stacking (Default Layout mode only)
+--
+-- Cast Bar starts at its own default Blizzard layout position (the floor
+-- below) and moves up by, independently: the buttonSize of Action Bar 1
+-- or 2 if either is active, the buttonSize of Extra Bar 1 or 2 if either
+-- is active, and Pet Bar's own size if it's active.
+-------------------------------------------------------------------------
+
+-- Permanent floor Y for the dynamic stack offset below, captured once from
+-- the resolved native/current position - mirrors castBarNativeAnchor's own
+-- one-time capture (CaptureCastBarPositionIfNeeded above). Never itself
+-- touched by ReflowCastBarForStackToggle; only that function's own output
+-- (ACABDB.castBarPosition.y) moves, always recomputed fresh off this floor
+-- so repeated toggles never compound.
+function ACAB:CaptureCastBarStackBaseYIfNeeded()
+	self:EnsureDB()
+
+	if ACABDB.castBarStackBaseY then
+		return
+	end
+
+	self:CaptureCastBarPositionIfNeeded()
+
+	local pos = ACABDB.castBarPosition
+
+	if pos and pos.y then
+		ACABDB.castBarStackBaseY = pos.y
+	end
+end
+
+-- baselineY = floor (default Blizzard layout position) + Action Bar
+-- 1/2's buttonSize (whichever is active; max of the two if both are) +
+-- Extra Bar 1/2's buttonSize (same rule) + Pet Bar's own live height (if
+-- actually shown right now). Action Bar 1/2 and Extra Bar 1/2 each use
+-- max, not sum, since they're side-by-side pairs at the same tier - only
+-- one shared Cast Bar position needs to clear whichever side is taller.
+function ACAB:GetCastBarBaselineY()
+	self:CaptureCastBarStackBaseYIfNeeded()
+
+	local baseY = ACABDB.castBarStackBaseY
+
+	if not baseY then
+		return nil
+	end
+
+	local bar2Cfg = ACABDB.defaultBars and ACABDB.defaultBars[2]
+	local bar3Cfg = ACABDB.defaultBars and ACABDB.defaultBars[3]
+	local actionBarPitch = 0
+
+	if bar2Cfg and bar2Cfg.enabled and (bar2Cfg.buttonSize or 0) > actionBarPitch then
+		actionBarPitch = bar2Cfg.buttonSize
+	end
+
+	if bar3Cfg and bar3Cfg.enabled and (bar3Cfg.buttonSize or 0) > actionBarPitch then
+		actionBarPitch = bar3Cfg.buttonSize
+	end
+
+	local extra1 = self.bars and self.bars[self.EXTRA_BAR_ID_START]
+	local extra2 = self.bars and self.bars[self.EXTRA_BAR_ID_START + 1]
+	local extraBarPitch = 0
+
+	-- usesDefaultPosition == false - the user dragged/slider-moved that
+	-- Extra Bar away from its seeded slot, so it no longer counts here
+	-- either (mirrors GetExtraBarStackPitch's own same-named guard).
+	if extra1 and extra1.config and extra1.config.enabled
+		and extra1.config.usesDefaultPosition ~= false
+		and (extra1.config.buttonSize or 0) > extraBarPitch then
+		extraBarPitch = extra1.config.buttonSize
+	end
+
+	if extra2 and extra2.config and extra2.config.enabled
+		and extra2.config.usesDefaultPosition ~= false
+		and (extra2.config.buttonSize or 0) > extraBarPitch then
+		extraBarPitch = extra2.config.buttonSize
+	end
+
+	local petPitch = 0
+	local petContainer = self.petBarNativeContainer
+
+	if petContainer and petContainer:IsShown() then
+		petPitch = petContainer:GetHeight() or 0
+	end
+
+	return baseY + actionBarPitch + extraBarPitch + petPitch
+end
+
+-- Only called while useDefaultLayout ~= false - mirrors
+-- ReflowStanceBarForBar2Toggle/ReflowPetBarForBar3Toggle's own guard, so
+-- this never fights the user's own manually dragged position once they
+-- switch to a custom layout. Also a no-op once
+-- ACABDB.castBarUsesDefaultPosition is false - the user has since moved
+-- this element themselves (settings slider or edit-mode drag).
+function ACAB:ReflowCastBarForStackToggle()
+	self:EnsureDB()
+
+	if ACABDB.castBarUsesDefaultPosition == false then
+		return
+	end
+
+	local pos = ACABDB.castBarPosition
+	local y = self:GetCastBarBaselineY()
+
+	if not pos or not y then
+		return
+	end
+
+	pos.y = y
+
+	self:ApplyCastBarPosition()
+
+	if self.RefreshBarSettingsPage then
+		self:RefreshBarSettingsPage("castbar")
+	end
 end
 
 function ACAB:StartCastBarDrag()
@@ -1331,6 +1465,10 @@ end
 
 function ACAB:StopCastBarDrag()
 	self:StopSharedDrag()
+
+	-- User just moved this element by hand - stop auto-stacking its Y
+	-- (same flag SetCastBarPosition flips for the settings-page sliders).
+	ACABDB.castBarUsesDefaultPosition = false
 
 	if self.RefreshBarSettingsPage then
 		self:RefreshBarSettingsPage("castbar")
