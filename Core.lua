@@ -166,8 +166,11 @@ ACAB.EXTRA_BAR_ID_START = 6
 ACAB.EXTRA_BAR_COUNT = 4
 
 
+-- Shared with the edit-mode message's colored key names below.
+ACAB.CHAT_PREFIX_COLOR = "|cff33ccff"
+
 function ACAB:Print(msg)
-	DEFAULT_CHAT_FRAME:AddMessage("|cff33ccff[AlternativeClassicActionBars]|r " .. tostring(msg))
+	DEFAULT_CHAT_FRAME:AddMessage(self.CHAT_PREFIX_COLOR .. "[ACAB]|r " .. tostring(msg))
 end
 
 -- Hides `frame` and permanently neuters its Show() to a no-op, so no
@@ -348,11 +351,11 @@ end
 -- only) and every other visible element's edges (either side, to allow
 -- edge-to-edge stacking). Each axis returns nil if it shouldn't snap.
 function ACAB:ComputeSnapAdjustment(proposedLeft, proposedTop, width, height, excludeElement)
-	if IsShiftKeyDown and IsShiftKeyDown() then
-		return nil, nil
-	end
+	local baseline = (ACABDB and ACABDB.snapToAdjacentElements) and true or false
+	local shiftHeld = (IsShiftKeyDown and IsShiftKeyDown()) and true or false
 
-	if not ACABDB or not ACABDB.snapToAdjacentElements then
+	-- Shift inverts the baseline setting for this drag tick.
+	if baseline == shiftHeld then
 		return nil, nil
 	end
 
@@ -469,11 +472,11 @@ end
 -- closest to the cursor wins. Screen edges are included as candidates too.
 -- `scale` converts GetLayoutGridSpacing()'s local units to real screen pixels.
 function ACAB:ComputeGridSnapAdjustment(proposedLeft, proposedTop, width, height, scale)
-	if IsShiftKeyDown and IsShiftKeyDown() then
-		return nil, nil
-	end
+	local baseline = (ACABDB and ACABDB.snapToGrid) and true or false
+	local altHeld = (IsAltKeyDown and IsAltKeyDown()) and true or false
 
-	if not ACABDB or not ACABDB.snapToGrid then
+	-- Alt inverts the baseline setting for this drag tick.
+	if baseline == altHeld then
 		return nil, nil
 	end
 
@@ -555,11 +558,11 @@ end
 -- Snaps proposedLeft/proposedTop's near edge, far edge, or center - each
 -- only within its own capture radius - to the nearest grid line per axis.
 function ACAB:ComputeCenterGridSnapAdjustment(proposedLeft, proposedTop, width, height, scale)
-	if IsShiftKeyDown and IsShiftKeyDown() then
-		return nil, nil
-	end
+	local baseline = (ACABDB and ACABDB.snapToGrid) and true or false
+	local altHeld = (IsAltKeyDown and IsAltKeyDown()) and true or false
 
-	if not ACABDB or not ACABDB.snapToGrid then
+	-- Alt inverts the baseline setting for this drag tick.
+	if baseline == altHeld then
 		return nil, nil
 	end
 
@@ -766,6 +769,21 @@ end
 -- Edit mode ("Configure Layout")
 -------------------------------------------------------------------------
 
+-- Escape-only keyboard capture so edit mode can never trap a player with
+-- no way out. EnableKeyboard(true) blocks all other keyboard input while
+-- active (same tradeoff HoverBind.lua's capture frame makes) - kept in
+-- sync with edit mode's own on/off state from Bar.lua's ApplyEditModeVisual,
+-- not just SetEditMode, since that function is also called on its own from
+-- bar-creation/login code paths.
+ACAB.editModeCaptureFrame = CreateFrame("Frame", "ACABEditModeCaptureFrame", UIParent)
+ACAB.editModeCaptureFrame:EnableKeyboard(false)
+ACAB.editModeCaptureFrame:Hide()
+ACAB.editModeCaptureFrame:SetScript("OnKeyDown", function()
+	if arg1 == "ESCAPE" then
+		ACAB:SetEditMode(false)
+	end
+end)
+
 function ACAB:IsEditMode()
 	return ACABDB and ACABDB.editMode == true
 end
@@ -773,6 +791,27 @@ end
 -- The Default profile can never be edited.
 function ACAB:IsDefaultProfileActive()
 	return not ACABCharDB or ACABCharDB.activeProfile == self.DEFAULT_PROFILE_NAME
+end
+
+-- Wraps a modifier-key name in the same color as the chat prefix.
+local function ColorKeyName(key)
+	return ACAB.CHAT_PREFIX_COLOR .. key .. "|r"
+end
+
+-- Printed from SetEditMode itself (not ToggleEditMode) so it fires
+-- identically whether edit mode was left via /acab or via the Escape
+-- capture frame above.
+local function PrintEditModeState(enabled)
+	if enabled then
+		ACAB:Print("Configure Layout |cff20ff20ON|r \r")
+		ACAB:Print(ColorKeyName("drag").." to move, " .. ColorKeyName("scroll") .. " to scale, " .. ColorKeyName("right-click") .. " to open settings for any Element")
+		ACAB:Print("Hold " .. ColorKeyName("Shift") .. " while dragging to temporarily invert 'Snap to Adjacent Elements' Setting")
+		ACAB:Print("Hold " .. ColorKeyName("Alt") .. " while dragging to temporarily invert 'Snap to Grid' Setting")
+		ACAB:Print("Hold " .. ColorKeyName("Ctrl") .. " to temporarily show/hide the layout grid")
+		ACAB:Print("Press " .. ColorKeyName("Escape") .. " to |cffff2020exit|r the Configure Layout mode")
+	else
+		ACAB:Print("Configure Layout |cffff2020OFF|r.")
+	end
 end
 
 function ACAB:SetEditMode(enabled)
@@ -797,13 +836,12 @@ function ACAB:SetEditMode(enabled)
 	else
 		self:RestoreHoverFadeFrames()
 	end
+
+	PrintEditModeState(enabled)
 end
 
 function ACAB:ToggleEditMode()
 	self:SetEditMode(not self:IsEditMode())
-	self:Print(self:IsEditMode()
-		and "Configure Layout ON - drag buttons to move bars, scroll to scale, right-click for bar settings. Hold Shift while dragging to temporarily disable snapping. Hold Ctrl to temporarily show/hide the layout grid."
-		or "Configure Layout OFF.")
 end
 
 -------------------------------------------------------------------------
@@ -846,8 +884,8 @@ function ACAB:ToggleHoverBindMode()
 
 	self:SetHoverBindMode(not self:IsHoverBindMode())
 	self:Print(self:IsHoverBindMode()
-		and "Hoverbind ON - hover a button and press a key to bind it. Red = unbound, green = bound."
-		or "Hoverbind OFF.")
+		and "Hoverbind |cff20ff20ON|r - hover a button and press a key to bind it. Red = unbound, green = bound."
+		or "Hoverbind |cffff2020OFF|r.")
 end
 
 -------------------------------------------------------------------------
