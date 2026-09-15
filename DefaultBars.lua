@@ -562,6 +562,14 @@ function ACAB:SetDefaultBarEnabled(id, enabled)
 		self:ReflowPetBarForBar3Toggle(enabled)
 	end
 
+	-- Cast Bar independently stacks above an actually-shown Pet Bar
+	-- (GetCastBarBaselineY, NativeElements.lua) - re-evaluated on every
+	-- Pet Bar call since its real shown state can change reactively
+	-- (PetHasActionBar above) without cfg.enabled itself changing.
+	if id == self.PET_BAR_ID and ACABDB.useDefaultLayout ~= false and self.ReflowCastBarForStackToggle then
+		self:ReflowCastBarForStackToggle()
+	end
+
 	-- Matches native's own dependency (bar 5 requires bar 4 - see
 	-- FixRightActionBar2Checkbox) - user can opt out via the General tab.
 	if id == 4 then
@@ -2052,6 +2060,13 @@ end
 function ACAB:ApplyDefaultLayoutEditVisual()
 	local show = self:CanDragDefaultLayout()
 
+	-- Stance Bar/Pet Bar/Cast Bar are draggable in edit mode even on
+	-- useDefaultLayout == true (Default Layout/Default Profile) - their own
+	-- baseline reflow (ReflowStanceBarForBar2Toggle/ReflowPetBarForBar3Toggle/
+	-- ReflowCastBarForStackToggle) still re-asserts Y on the next relevant
+	-- toggle, same as every other useDefaultLayout == true position.
+	local showAlwaysEditable = self:IsEditMode()
+
 	-- Default bars 1-5 have no bar-level overlay loop here - they share
 	-- Bar.lua's EnsureBarOverlay/ApplyEditModeVisual with every other
 	-- bar, which already handles their show/hide and mouse-enable gating
@@ -2065,7 +2080,7 @@ function ACAB:ApplyDefaultLayoutEditVisual()
 	-- ApplyContainerOverlayVisual treatment: overlay visibility gated on
 	-- both edit-mode/useDefaultLayout (`show`) AND this element's own
 	-- enable flag.
-	self:ApplyContainerOverlayVisual(self.stanceBarContainer, ACABDB.stanceBarEnabled, show)
+	self:ApplyContainerOverlayVisual(self.stanceBarContainer, ACABDB.stanceBarEnabled, showAlwaysEditable)
 	self:ApplyContainerOverlayVisual(self.bagBarContainer, ACABDB.bagBarEnabled, show)
 	self:ApplyContainerOverlayVisual(self.microMenuContainer, ACABDB.microMenuEnabled, show)
 
@@ -2074,7 +2089,7 @@ function ACAB:ApplyDefaultLayoutEditVisual()
 	do
 		local petCfg = ACABDB.defaultBars and ACABDB.defaultBars[self.PET_BAR_ID]
 
-		self:ApplyContainerOverlayVisual(self.petBarNativeContainer, petCfg and petCfg.enabled, show)
+		self:ApplyContainerOverlayVisual(self.petBarNativeContainer, petCfg and petCfg.enabled, showAlwaysEditable)
 	end
 
 	-- Key Ring / Latency Bar - same generic ApplyContainerOverlayVisual
@@ -2090,7 +2105,7 @@ function ACAB:ApplyDefaultLayoutEditVisual()
 	-- as Key Ring/Latency Bar above.
 	self:ApplyContainerOverlayVisual(getglobal(self.EXP_BAR_FRAME_NAME), ACABDB.expBarEnabled, show)
 
-	self:ApplyContainerOverlayVisual(getglobal(self.CAST_BAR_FRAME_NAME), true, show)
+	self:ApplyContainerOverlayVisual(getglobal(self.CAST_BAR_FRAME_NAME), true, showAlwaysEditable)
 
 	-- Page Indicator (Part 4) - same generic ApplyContainerOverlayVisual
 	-- treatment, gated on mainBarPaginationEnabled instead of an
