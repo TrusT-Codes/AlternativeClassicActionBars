@@ -703,6 +703,70 @@ function ACAB:CreateResetButton(parent, config)
 end
 
 -------------------------------------------------------------------------
+-- ACAB:CreateLockToggleButton
+--
+-- Small 16x16 padlock icon button (General tab's per-bar Spacing/
+-- ButtonSize global-override opt-out). Locked shows a closed padlock,
+-- unlocked an open one; caller drives the displayed state via
+-- button:SetLocked(bool) and supplies onClick.
+--
+-- config = { anchor = {point, relativeTo, relativePoint, x, y} (required),
+--   tooltipTitle, lockedLine, unlockedLine, onClick = function() end }
+-- Returns the button.
+-------------------------------------------------------------------------
+
+function ACAB:CreateLockToggleButton(parent, name, config)
+	config = config or {}
+
+	local button = CreateFrame("Button", name, parent)
+
+	button:SetWidth(16)
+	button:SetHeight(16)
+
+	if config.anchor then
+		button:SetPoint(unpack(config.anchor))
+	end
+
+	local texture = button:CreateTexture(nil, "ARTWORK")
+	texture:SetAllPoints(button)
+	button.texture = texture
+
+	button:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+
+	function button:SetLocked(locked)
+		self.locked = locked and true or false
+
+		self.texture:SetTexture(
+			self.locked
+				and "Interface\\AddOns\\AlternativeClassicActionBars\\Textures\\LockIcon-Locked"
+				or "Interface\\AddOns\\AlternativeClassicActionBars\\Textures\\LockIcon-Unlocked"
+		)
+	end
+
+	button:SetScript("OnClick", function()
+		if config.onClick then
+			config.onClick()
+		end
+	end)
+
+	button:SetScript("OnEnter", function()
+		GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+		GameTooltip:SetText(config.tooltipTitle or "", 1, 1, 1)
+		GameTooltip:AddLine(
+			this.locked and (config.lockedLine or "") or (config.unlockedLine or ""),
+			1, 0.82, 0, true
+		)
+		GameTooltip:Show()
+	end)
+
+	button:SetScript("OnLeave", function()
+		GameTooltip:Hide()
+	end)
+
+	return button
+end
+
+-------------------------------------------------------------------------
 -- ACABDialogMixin
 --
 -- Reusable dialog frame: mode = "confirm" (title/message + buttons),

@@ -779,13 +779,47 @@ end
 -- ACABDB.globalSpacingEnabled/globalButtonSizeEnabled)
 --
 -- While enabled, the General-tab slider is the single source of truth for
--- every bar in self.bars; each bar's own per-bar slider locks. No-ops
--- while disabled, or while useDefaultLayout is on (its own reset cascade
--- owns bars 1-5's spacing/size then).
+-- every bar in self.bars (Action/Extra Bars 1-9, and Pet Bar/Stance Bar
+-- once wrapped in styled mode) EXCEPT ones the user has unlocked via that
+-- bar's own lock icon (cfg.spacingUnlocked/buttonSizeUnlocked,
+-- SettingsBars.lua's per-bar lock toggle) - each locked bar's own per-bar
+-- slider disables while this owns it. No-ops while disabled, or while
+-- useDefaultLayout is on (its own reset cascade owns bars 1-5's
+-- spacing/size then).
 -------------------------------------------------------------------------
 
 function ACAB:ApplyGlobalSpacing()
 	if not (self.bars and ACABDB.globalSpacingEnabled) or
+		ACABDB.useDefaultLayout ~= false then
+		return
+	end
+
+	self:ForEachBar(function(barId, bar)
+		if bar.config and not bar.config.spacingUnlocked then
+			self:ApplyGlobalSpacingToBar(bar)
+		end
+	end)
+end
+
+function ACAB:ApplyGlobalButtonSize()
+	if not (self.bars and ACABDB.globalButtonSizeEnabled) or
+		ACABDB.useDefaultLayout ~= false then
+		return
+	end
+
+	self:ForEachBar(function(barId, bar)
+		if bar.config and not bar.config.buttonSizeUnlocked then
+			self:ApplyGlobalButtonSizeToBar(bar)
+		end
+	end)
+end
+
+-- Applies the current global Spacing value to a single bar, regardless of
+-- that bar's own lock state - used by ApplyGlobalSpacing's loop above and
+-- by SettingsBars.lua's lock-icon click handler to immediately resync a
+-- bar the instant it's re-locked.
+function ACAB:ApplyGlobalSpacingToBar(bar)
+	if not (bar and bar.config and ACABDB.globalSpacingEnabled) or
 		ACABDB.useDefaultLayout ~= false then
 		return
 	end
@@ -797,26 +831,19 @@ function ACAB:ApplyGlobalSpacing()
 	local floor = self:IsVanillaBorderStyle() and self.VANILLA_SPACING_FLOOR or 0
 	local real = (ACABDB.globalSpacingValue or 0) + floor
 
-	self:ForEachBar(function(barId, bar)
-		if bar.config then
-			self:SetBarSpacing(bar, real)
-		end
-	end)
+	self:SetBarSpacing(bar, real)
 end
 
-function ACAB:ApplyGlobalButtonSize()
-	if not (self.bars and ACABDB.globalButtonSizeEnabled) or
+-- Mirrors ApplyGlobalSpacingToBar exactly, for Button Size.
+function ACAB:ApplyGlobalButtonSizeToBar(bar)
+	if not (bar and bar.config and ACABDB.globalButtonSizeEnabled) or
 		ACABDB.useDefaultLayout ~= false then
 		return
 	end
 
 	local size = ACABDB.globalButtonSizeValue or self.BUTTON_SIZE
 
-	self:ForEachBar(function(barId, bar)
-		if bar.config then
-			self:SetBarButtonSize(bar, size)
-		end
-	end)
+	self:SetBarButtonSize(bar, size)
 end
 
 -------------------------------------------------------------------------
