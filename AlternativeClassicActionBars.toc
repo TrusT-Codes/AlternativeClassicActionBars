@@ -1,0 +1,24 @@
+## Interface: 11200
+## Title: |cff99051bA|cfffffffflternative|cff99051bC|cfffffffflassic|cff99051bA|cffffffffction|cff99051bB|cffffffffars
+## Notes: Action bar addon to keep Vanilla-Styled Bars / Menus with more functionality + extra Bars
+## Author: Trusty
+## SavedVariables: ACABDB, ACABProfilesDB
+## SavedVariablesPerCharacter: ACABCharDB
+
+Core.lua
+Database.lua
+DefaultBars.lua
+NativeElements.lua
+PetStanceBars.lua
+ExperienceBar.lua
+Bar.lua
+Button.lua
+HoverBind.lua
+Minimap.lua
+Menu.lua
+UIWidgets.lua
+Settings.lua
+SettingsBars.lua
+SettingsGeneral.lua
+Events.lua
+bindings.xml

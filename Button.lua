@@ -2,25 +2,23 @@
 -- Single action-slot-backed button. Plain, non-secure frame backed by a
 -- real vanilla action slot, driven through native
 -- UseAction/PlaceAction/PickupAction/HasAction. Pet Bar buttons
--- (self.isPetSlot) are the one exception - backed by a pet slot (1-10)
--- instead, driven through CastPetAction/GetPetActionInfo/
--- GetPetActionCooldown/TogglePetAutocast.
+-- (self.isPetSlot) are the one exception - backed by a pet slot (1-10),
+-- driven through CastPetAction/GetPetActionInfo/GetPetActionCooldown/
+-- TogglePetAutocast.
 --
 -- Engine-invoked script handlers (OnClick, OnEvent, OnEnter, OnLeave,
 -- OnDragStart, OnReceiveDrag) receive the frame via the global `this`, not
 -- a `self` parameter. Methods called explicitly with `:` receive `self`.
--- Every handler below is a plain function using `this`; every method
--- called directly uses `:`.
 
-local BTV = BTVanilla
+local ACAB = AlternativeClassicActionBars
 
 -- Hotkey/Count/Macro text's inset from the button's own edges, by border
--- style (BTV:IsVanillaBorderStyle) - applied by
--- BTVButtonMixin:ApplyButtonTextInsets, and read back by
+-- style (ACAB:IsVanillaBorderStyle) - applied by
+-- ACABButtonMixin:ApplyButtonTextInsets, and read back by
 -- SetTruncatedButtonText for the matching truncation maxWidth so the two
 -- never drift apart.
-BTV.BUTTON_TEXT_INSET_VANILLA = 0
-BTV.BUTTON_TEXT_INSET_MODERN = 2
+ACAB.BUTTON_TEXT_INSET_VANILLA = 0
+ACAB.BUTTON_TEXT_INSET_MODERN = 2
 
 -- Gets the quality color for an action slot holding an equipped item.
 -- Matches the action slot's texture against each inventory slot's texture
@@ -48,7 +46,7 @@ local EQUIP_SLOTS_TO_SCAN = {
 	19, -- tabard
 }
 
-function BTV:GetActionItemQualityColor(actionSlot)
+function ACAB:GetActionItemQualityColor(actionSlot)
 	if not GetInventoryItemQuality or not GetInventoryItemTexture or not GetActionTexture or not GetItemQualityColor then
 		return nil
 	end
@@ -79,22 +77,47 @@ local function IsAlwaysShowMultibars()
 	return ALWAYS_SHOW_MULTIBARS == "1" or ALWAYS_SHOW_MULTIBARS == 1
 end
 
--- Exposed as a BTV: method too so Menu.lua's minimap-dropdown toggle can
+-- Exposed as a ACAB: method too so Menu.lua's minimap-dropdown toggle can
 -- read the same check.
-BTV.IsAlwaysShowMultibars = IsAlwaysShowMultibars
+ACAB.IsAlwaysShowMultibars = IsAlwaysShowMultibars
 
 -- Real vanilla fires ACTIONBAR_SHOWGRID/ACTIONBAR_HIDEGRID whenever the
 -- player picks up/releases a spell, item, or macro, making empty native
 -- action buttons temporarily reappear while dragging. This flag mirrors
 -- that state for custom-bar buttons, which never registered for those
 -- events individually.
-BTV.isShowingActionGrid = false
+ACAB.isShowingActionGrid = false
+
+-- Iterates every pool button across every bar (custom bars 6+ and default
+-- bars 1-5 alike), calling fn(btn) for each. No table allocation and no
+-- per-button lookups beyond the traversal itself - unlike HoverBind.lua's
+-- ACAB:ForEachButton, which builds a descriptor table per button for
+-- hoverbind-mode UI and isn't meant for a hot per-tick sweep. Shared by the
+-- sweep/setter functions below and by the consolidated range ticker.
+function ACAB:ForEachPoolButton(fn)
+	local barId
+	local bar
+
+	for barId, bar in pairs(ACAB.bars) do
+		if bar and bar.buttons then
+			local i
+
+			for i = 1, table.getn(bar.buttons) do
+				local btn = bar.buttons[i]
+
+				if btn then
+					fn(btn)
+				end
+			end
+		end
+	end
+end
 
 -- Re-evaluates UpdateGridVisibility on every live custom-bar button.
-function BTV:SweepCustomBarGridVisibility()
+function ACAB:SweepCustomBarGridVisibility()
 	local barId
 
-	for barId, bar in pairs(BTV.bars) do
+	for barId, bar in pairs(ACAB.bars) do
 		if bar and bar.buttons then
 			local i
 
@@ -107,39 +130,26 @@ function BTV:SweepCustomBarGridVisibility()
 			end
 
 			-- Re-flow too - the Pet Bar's condensed layout suspends
-			-- itself while BTV.isShowingActionGrid is true (Bar.lua's
+			-- itself while ACAB.isShowingActionGrid is true (Bar.lua's
 			-- LayoutButtons), so the ACTIONBAR_SHOWGRID/HIDEGRID toggle
 			-- below must re-run it to switch between the full grid and
 			-- the condensed one.
-			BTV:LayoutButtons(bar)
+			ACAB:LayoutButtons(bar)
 		end
 	end
 end
 
 -- Re-sweeps every live button's UpdateRange, covering every bar in
--- BTV.bars (custom bars id 6+ and default bars 1-5 alike).
-function BTV:SweepAllButtonRangeTint()
-	local barId
-	local bar
-
-	for barId, bar in pairs(BTV.bars) do
-		if bar and bar.buttons then
-			local i
-
-			for i = 1, table.getn(bar.buttons) do
-				local btn = bar.buttons[i]
-
-				if btn then
-					btn:UpdateRange()
-				end
-			end
-		end
-	end
+-- ACAB.bars (custom bars id 6+ and default bars 1-5 alike).
+function ACAB:SweepAllButtonRangeTint()
+	ACAB:ForEachPoolButton(function(btn)
+		btn:UpdateRange()
+	end)
 end
 
 -- Menu.lua's minimap-dropdown entry. Toggles the plain global and forces
 -- an immediate visual refresh on both default and custom bars.
-function BTV:ToggleAlwaysShowMultibars()
+function ACAB:ToggleAlwaysShowMultibars()
 	local newState = not IsAlwaysShowMultibars()
 
 	ALWAYS_SHOW_MULTIBARS = newState and "1" or nil
@@ -150,19 +160,10 @@ function BTV:ToggleAlwaysShowMultibars()
 	end
 
 	-- Custom bars: no native equivalent, sweep them directly.
-	BTV:SweepCustomBarGridVisibility()
+	ACAB:SweepCustomBarGridVisibility()
 end
 
-local gridVisibilityFrame = CreateFrame("Frame")
-gridVisibilityFrame:RegisterEvent("ACTIONBAR_SHOWGRID")
-gridVisibilityFrame:RegisterEvent("ACTIONBAR_HIDEGRID")
-gridVisibilityFrame:SetScript("OnEvent", function()
-	BTV.isShowingActionGrid = (event == "ACTIONBAR_SHOWGRID")
-
-	BTV:SweepCustomBarGridVisibility()
-end)
-
-BTVButtonMixin = {}
+ACABButtonMixin = {}
 
 -- Global hotkey/count text font size (Settings.lua's General tab): the
 -- native default (path/size/flags) is captured once, module-level, the
@@ -170,7 +171,27 @@ BTVButtonMixin = {}
 -- FontString rather than hardcoded.
 local hasCapturedFontDefaults = false
 
-function BTVButtonMixin:Init(parent, actionSlot, slotIndex)
+-- One shared ticker covers every button's range/usability + grid-visibility
+-- refresh, instead of each button running its own independent 0.2s
+-- C_Timer. Started lazily on the first button's Init() (same lazy-singleton
+-- pattern as Core.lua's StartHoverPollTicker) and never cancelled - buttons
+-- are permanent for the addon's lifetime once created.
+local sharedRangeTicker
+
+local function EnsureSharedRangeTicker()
+	if sharedRangeTicker or not (C_Timer and C_Timer.NewTicker) then
+		return
+	end
+
+	sharedRangeTicker = C_Timer.NewTicker(0.2, function()
+		ACAB:ForEachPoolButton(function(btn)
+			btn:UpdateRange()
+			btn:UpdateGridVisibility()
+		end)
+	end)
+end
+
+function ACABButtonMixin:Init(parent, actionSlot, slotIndex)
 	self.actionSlot = actionSlot
 	self.parentBar = parent
 	self.slotIndex = slotIndex
@@ -192,13 +213,13 @@ function BTVButtonMixin:Init(parent, actionSlot, slotIndex)
 
 	-- Default bars (1-5) are already dispatched by a real native keybind
 	-- action name, so their hotkey text shows that name directly instead
-	-- of going through the custom-bar TRUSTYBARSBIND<n> dispatch table.
+	-- of going through the custom-bar ACABBIND<n> dispatch table.
 	-- Bar 1's dynamic slot can land inside the 73-120 pool range while
 	-- stance-swapped onto page 7-9, so self.nativeBindingId is also used
 	-- below to keep it out of that table.
 	if parent.config and (parent.config.fixedActionSlots or parent.config.dynamicMainBar) and slotIndex then
-		local prefix = BTV.DEFAULT_BAR_BINDING_PREFIXES and
-			BTV.DEFAULT_BAR_BINDING_PREFIXES[parent.config.id]
+		local prefix = ACAB.DEFAULT_BAR_BINDING_PREFIXES and
+			ACAB.DEFAULT_BAR_BINDING_PREFIXES[parent.config.id]
 
 		if prefix then
 			self.nativeBindingId = prefix .. tostring(slotIndex)
@@ -206,29 +227,29 @@ function BTVButtonMixin:Init(parent, actionSlot, slotIndex)
 	end
 
 	-- Registers this button as the live target for HoverBind.lua's
-	-- bindings.xml-driven TRUSTYBARSBIND<n> dispatch (n = actionSlot - 72,
+	-- bindings.xml-driven ACABBIND<n> dispatch (n = actionSlot - 72,
 	-- range 1-48), keyed by action slot. Guarded on self.nativeBindingId
 	-- so a bar-1 button stance-swapped onto a slot >= 73 is never
 	-- registered here, since it already dispatches via its own native
 	-- binding name.
-	if actionSlot >= BTV.ACTION_SLOT_START and not self.nativeBindingId then
-		BTV.customBindTargets = BTV.customBindTargets or {}
-		BTV.customBindTargets[actionSlot - 72] = self
+	if actionSlot >= ACAB.ACTION_SLOT_START and not self.nativeBindingId then
+		ACAB.customBindTargets = ACAB.customBindTargets or {}
+		ACAB.customBindTargets[actionSlot - 72] = self
 	end
 
 	-- Registers this button as the live target for HoverBind.lua's
-	-- bindings.xml-driven TRUSTYBARSPETBIND<n> dispatch, keyed by pet slot
+	-- bindings.xml-driven ACABPETBIND<n> dispatch, keyed by pet slot
 	-- (1-10) directly.
 	if self.isPetSlot then
-		BTV.petBindTargets = BTV.petBindTargets or {}
-		BTV.petBindTargets[actionSlot] = self
+		ACAB.petBindTargets = ACAB.petBindTargets or {}
+		ACAB.petBindTargets[actionSlot] = self
 	end
 
-	-- Same, for HoverBind.lua's bindings.xml-driven TRUSTYBARSSTANCEBIND<n>
+	-- Same, for HoverBind.lua's bindings.xml-driven ACABSTANCEBIND<n>
 	-- dispatch, keyed by shapeshift form index (1-10) directly.
 	if self.isStanceSlot then
-		BTV.stanceBindTargets = BTV.stanceBindTargets or {}
-		BTV.stanceBindTargets[actionSlot] = self
+		ACAB.stanceBindTargets = ACAB.stanceBindTargets or {}
+		ACAB.stanceBindTargets[actionSlot] = self
 	end
 
 	-- Equipped-item ring, quality-colored. CENTER-only anchor has no
@@ -244,7 +265,7 @@ function BTVButtonMixin:Init(parent, actionSlot, slotIndex)
 	-- Native-accurate button border, default bars 1-5 only. Custom bars
 	-- (id 6+) have no native chrome to replicate and keep the
 	-- SetBackdrop-drawn border further below instead.
-	self.hasNativeBorder = BTV:IsVanillaBorderStyle()
+	self.hasNativeBorder = ACAB:IsVanillaBorderStyle()
 
 	if self.hasNativeBorder then
 		-- Explicit sublevel -1, still above self.icon's own "ARTWORK"
@@ -260,7 +281,7 @@ function BTVButtonMixin:Init(parent, actionSlot, slotIndex)
 	-- a resized buttonSize from the previous bar, so using the global default
 	-- here would make the buttons temporarily/default-sized until a later
 	-- resize event corrects them.
-	self:ApplySize((parent.config and parent.config.buttonSize) or BTV.BUTTON_SIZE)
+	self:ApplySize((parent.config and parent.config.buttonSize) or ACAB.BUTTON_SIZE)
 	self:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 	self:RegisterForDrag("LeftButton")
 	self:EnableMouse(true)
@@ -305,7 +326,7 @@ function BTVButtonMixin:Init(parent, actionSlot, slotIndex)
 		local nativeModel = getglobal("PetActionButton" .. tostring(actionSlot) .. "AutoCast")
 
 		if nativeModel then
-			-- Native size (~27px), not BTV.BUTTON_SIZE - used to scale the
+			-- Native size (~27px), not ACAB.BUTTON_SIZE - used to scale the
 			-- glow proportionally in UpdateAutoCastGlowScale.
 			self.autoCastGlowModelNativeSize = nativeModel:GetWidth() or 27
 
@@ -370,13 +391,13 @@ function BTVButtonMixin:Init(parent, actionSlot, slotIndex)
 
 	-- Captures both font templates' native (path, size, flags) once.
 	-- Must run after both FontStrings are created and before the SetFont
-	-- calls below, which need BTV.NATIVE_HOTKEY_FONT/NATIVE_COUNT_FONT.
+	-- calls below, which need ACAB.NATIVE_HOTKEY_FONT/NATIVE_COUNT_FONT.
 	if not hasCapturedFontDefaults then
 		local hkPath, hkSize, hkFlags = self.hotkey:GetFont()
 		local cntPath, cntSize, cntFlags = self.count:GetFont()
 
-		BTV.NATIVE_HOTKEY_FONT = { path = hkPath, size = hkSize, flags = hkFlags }
-		BTV.NATIVE_COUNT_FONT = { path = cntPath, size = cntSize, flags = cntFlags }
+		ACAB.NATIVE_HOTKEY_FONT = { path = hkPath, size = hkSize, flags = hkFlags }
+		ACAB.NATIVE_COUNT_FONT = { path = cntPath, size = cntSize, flags = cntFlags }
 
 		-- Real vanilla macro-name font, captured from a native action
 		-- button's own Name region rather than hardcoded. Falls back to
@@ -385,58 +406,57 @@ function BTVButtonMixin:Init(parent, actionSlot, slotIndex)
 
 		if macroFontFrame and macroFontFrame.GetFont then
 			local mPath, mSize, mFlags = macroFontFrame:GetFont()
-			BTV.NATIVE_MACRO_FONT = { path = mPath, size = mSize, flags = mFlags }
+			ACAB.NATIVE_MACRO_FONT = { path = mPath, size = mSize, flags = mFlags }
 		else
-			BTV.NATIVE_MACRO_FONT = BTV.NATIVE_HOTKEY_FONT
+			ACAB.NATIVE_MACRO_FONT = ACAB.NATIVE_HOTKEY_FONT
 		end
 
 		-- Hotkey text's default color, used to reset the "tint whole
 		-- button on out of range" state back to normal.
 		local hkR, hkG, hkB = self.hotkey:GetTextColor()
-		BTV.NATIVE_HOTKEY_TEXT_COLOR = { r = hkR, g = hkG, b = hkB }
+		ACAB.NATIVE_HOTKEY_TEXT_COLOR = { r = hkR, g = hkG, b = hkB }
 
 		hasCapturedFontDefaults = true
 	end
 
 	-- Applies the current saved font size, falling back to the captured
-	-- native size when BTVanillaDB.hotkeyFontSize/countFontSize is nil.
-	-- Live-verified: real vanilla uses Fonts\ARIALN.ttf for both HotKey
-	-- and Count (NATIVE_HOTKEY_FONT/NATIVE_COUNT_FONT already capture
-	-- this, via the matching NumberFontNormalSmall/NumberFontNormal
-	-- templates) - distinct from NATIVE_MACRO_FONT's FRIZQT__.TTF.
+	-- native size when ACABDB.hotkeyFontSize/countFontSize is nil.
+	-- Real vanilla uses Fonts\ARIALN.ttf for both HotKey and Count
+	-- (NATIVE_HOTKEY_FONT/NATIVE_COUNT_FONT already capture this) -
+	-- distinct from NATIVE_MACRO_FONT's FRIZQT__.TTF.
 	self.hotkey:SetFont(
-		BTV.NATIVE_HOTKEY_FONT.path,
-		(BTVanillaDB and BTVanillaDB.hotkeyFontSize) or BTV.NATIVE_HOTKEY_FONT.size,
-		BTV.NATIVE_HOTKEY_FONT.flags
+		ACAB.NATIVE_HOTKEY_FONT.path,
+		(ACABDB and ACABDB.hotkeyFontSize) or ACAB.NATIVE_HOTKEY_FONT.size,
+		ACAB.NATIVE_HOTKEY_FONT.flags
 	)
 
 	self.count:SetFont(
-		BTV.NATIVE_COUNT_FONT.path,
-		(BTVanillaDB and BTVanillaDB.countFontSize) or BTV.NATIVE_COUNT_FONT.size,
-		BTV.NATIVE_COUNT_FONT.flags
+		ACAB.NATIVE_COUNT_FONT.path,
+		(ACABDB and ACABDB.countFontSize) or ACAB.NATIVE_COUNT_FONT.size,
+		ACAB.NATIVE_COUNT_FONT.flags
 	)
 
 	-- Macro name text, bottom-left. Anchored by ApplyButtonTextInsets below.
 	self.macroText = self:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
 	self.macroText:SetJustifyH("LEFT")
 	self.macroText:SetFont(
-		BTV.NATIVE_MACRO_FONT.path,
-		(BTVanillaDB and BTVanillaDB.macroFontSize) or BTV.NATIVE_MACRO_FONT.size,
-		BTV.NATIVE_MACRO_FONT.flags
+		ACAB.NATIVE_MACRO_FONT.path,
+		(ACABDB and ACABDB.macroFontSize) or ACAB.NATIVE_MACRO_FONT.size,
+		ACAB.NATIVE_MACRO_FONT.flags
 	)
 
 	-- Anchors all three now that they all exist and self.hasNativeBorder
 	-- (set earlier in Init) is known.
 	self:ApplyButtonTextInsets()
 
-	self:SetScript("OnClick", BTVButtonMixin.OnClick)
-	self:SetScript("OnReceiveDrag", BTVButtonMixin.OnReceiveDrag)
-	self:SetScript("OnDragStart", BTVButtonMixin.OnDragStart)
-	self:SetScript("OnDragStop", BTVButtonMixin.OnDragStop)
-	self:SetScript("OnMouseWheel", BTVButtonMixin.OnMouseWheel)
-	self:SetScript("OnEnter", BTVButtonMixin.OnEnter)
-	self:SetScript("OnLeave", BTVButtonMixin.OnLeave)
-	self:SetScript("OnMouseDown", BTVButtonMixin.OnMouseDown)
+	self:SetScript("OnClick", ACABButtonMixin.OnClick)
+	self:SetScript("OnReceiveDrag", ACABButtonMixin.OnReceiveDrag)
+	self:SetScript("OnDragStart", ACABButtonMixin.OnDragStart)
+	self:SetScript("OnDragStop", ACABButtonMixin.OnDragStop)
+	self:SetScript("OnMouseWheel", ACABButtonMixin.OnMouseWheel)
+	self:SetScript("OnEnter", ACABButtonMixin.OnEnter)
+	self:SetScript("OnLeave", ACABButtonMixin.OnLeave)
+	self:SetScript("OnMouseDown", ACABButtonMixin.OnMouseDown)
 
 	self:RegisterEvent("ACTIONBAR_SLOT_CHANGED")
 	-- Drives the item stack-count text when bag count changes without a
@@ -481,37 +501,32 @@ function BTVButtonMixin:Init(parent, actionSlot, slotIndex)
 		self:RegisterEvent("PLAYER_AURAS_CHANGED")
 	end
 
-	self:SetScript("OnEvent", BTVButtonMixin.OnEvent)
+	self:SetScript("OnEvent", ACABButtonMixin.OnEvent)
 
 	self:Refresh()
 
 	-- Range/usability can change without a dedicated event (e.g. walking
 	-- toward/away from a target); also self-heals grid visibility if
 	-- ALWAYS_SHOW_MULTIBARS changes while a bar's settings page is open.
-	if C_Timer and C_Timer.NewTicker then
-		local button = self
-		self.rangeTicker = C_Timer.NewTicker(0.2, function()
-			button:UpdateRange()
-			button:UpdateGridVisibility()
-		end)
-	end
+	-- One shared ticker covers every button - see EnsureSharedRangeTicker.
+	EnsureSharedRangeTicker()
 end
 
 -- Resizes the button and everything anchored to it that isn't already
 -- purely anchor-relative. icon/glow auto-track via their TOPLEFT/
 -- BOTTOMRIGHT anchors; equipRing and border are CENTER-anchored with no
 -- implied size, so their size is recomputed explicitly here.
-function BTVButtonMixin:ApplySize(size)
+function ACABButtonMixin:ApplySize(size)
 	self.buttonSize = size
 	self:SetWidth(size)
 	self:SetHeight(size)
 	if self.equipRing then
-		local ringSize = size * BTV.EQUIP_RING_RATIO
+		local ringSize = size * ACAB.EQUIP_RING_RATIO
 		self.equipRing:SetWidth(ringSize)
 		self.equipRing:SetHeight(ringSize)
 	end
 	if self.border then
-		local borderSize = size * BTV.BORDER_RATIO
+		local borderSize = size * ACAB.BORDER_RATIO
 		self.border:SetWidth(borderSize)
 		self.border:SetHeight(borderSize)
 	end
@@ -532,7 +547,7 @@ end
 
 -- Rescales the reparented autocast glow Model to the button's current size
 -- via SetModelScale, which doesn't reload/reset the model like SetModel does.
-function BTVButtonMixin:UpdateAutoCastGlowScale()
+function ACABButtonMixin:UpdateAutoCastGlowScale()
 	if not self.autoCastGlowModel or not self.autoCastGlowModelNativeSize
 		or self.autoCastGlowModelNativeSize == 0
 		or not self.autoCastGlowModel.SetModelScale
@@ -540,15 +555,15 @@ function BTVButtonMixin:UpdateAutoCastGlowScale()
 		return
 	end
 
-	self.autoCastGlowModel:SetModelScale((self.buttonSize or BTV.BUTTON_SIZE) / self.autoCastGlowModelNativeSize)
+	self.autoCastGlowModel:SetModelScale((self.buttonSize or ACAB.BUTTON_SIZE) / self.autoCastGlowModelNativeSize)
 end
 
 -- Re-anchors hotkey/count/macro text for the current border style
--- (BTV.BUTTON_TEXT_INSET_VANILLA/_MODERN) and stores the active inset on
+-- (ACAB.BUTTON_TEXT_INSET_VANILLA/_MODERN) and stores the active inset on
 -- self.buttonTextInset, read back by SetTruncatedButtonText for a matching
 -- truncation maxWidth.
-function BTVButtonMixin:ApplyButtonTextInsets()
-	local inset = self.hasNativeBorder and BTV.BUTTON_TEXT_INSET_VANILLA or BTV.BUTTON_TEXT_INSET_MODERN
+function ACABButtonMixin:ApplyButtonTextInsets()
+	local inset = self.hasNativeBorder and ACAB.BUTTON_TEXT_INSET_VANILLA or ACAB.BUTTON_TEXT_INSET_MODERN
 
 	self.buttonTextInset = inset
 
@@ -571,8 +586,8 @@ end
 -- Re-applies the current global border style to an already-created button
 -- without recreating the frame. Must stay in lockstep with every
 -- self.hasNativeBorder-gated block in Init.
-function BTVButtonMixin:ApplyBorderStyle()
-	self.hasNativeBorder = BTV:IsVanillaBorderStyle()
+function ACABButtonMixin:ApplyBorderStyle()
+	self.hasNativeBorder = ACAB:IsVanillaBorderStyle()
 
 	self:ApplyButtonTextInsets()
 
@@ -590,7 +605,7 @@ function BTVButtonMixin:ApplyBorderStyle()
 	end
 
 	-- Reuses ApplySize's own border-sizing math.
-	self:ApplySize(self.buttonSize or BTV.BUTTON_SIZE)
+	self:ApplySize(self.buttonSize or ACAB.BUTTON_SIZE)
 
 	local iconInset = self.hasNativeBorder and 0 or 2
 	self.icon:ClearAllPoints()
@@ -613,7 +628,7 @@ function BTVButtonMixin:ApplyBorderStyle()
 	self:SetBackdropBorderColor(0, 0, 0, 0)
 
 	-- Matches the autocast glow Model's own Init-time anchor math (see
-	-- BTVButtonMixin:Init) for the border style now in effect.
+	-- ACABButtonMixin:Init) for the border style now in effect.
 	if self.autoCastGlowModel then
 		local modelInset = self.hasNativeBorder and 0 or 1
 		local modelYShift = self.hasNativeBorder and -1 or 0
@@ -629,7 +644,7 @@ end
 -- Shows or hides this pool slot without destroying it, used when a bar's
 -- buttonCount is smaller than the pool size. The frame, its events, and
 -- its script handlers stay intact while hidden.
-function BTVButtonMixin:SetSlotVisible(visible)
+function ACABButtonMixin:SetSlotVisible(visible)
 	self.slotVisible = visible and true or false
 	self:UpdateGridVisibility()
 end
@@ -639,22 +654,20 @@ end
 -- (whether anything is on the slot, or the user wants empty slots shown
 -- anyway). Called from both SetSlotVisible and Refresh so either kind of
 -- change re-evaluates visibility through this one place.
-function BTVButtonMixin:UpdateGridVisibility()
+function ACABButtonMixin:UpdateGridVisibility()
 	local hasContent = self:IsSlotFilled() and true or false
 
 	-- Real vanilla's Main Bar never hides an empty button, unlike the multi
-	-- bars (2-5) - but only while "Use Default Blizzard Layout" is still on
-	-- (BTVanillaDB.useDefaultLayout ~= false). Once the user turns that off
-	-- and starts positioning bar 1 like any other TrustyBars bar, it drops
-	-- this native quirk and follows the same toggle-based condition as
-	-- every other bar.
+	-- bars (2-5) - but only while "Use Default Blizzard Layout" is on. Once
+	-- the user turns that off, bar 1 follows the same toggle-based
+	-- condition as every other bar.
 	local isMainBar = self.parentBar and self.parentBar.config and self.parentBar.config.dynamicMainBar
-		and BTVanillaDB and BTVanillaDB.useDefaultLayout ~= false
+		and ACABDB and ACABDB.useDefaultLayout ~= false
 
 	-- Real vanilla's own Pet Bar always shows all 10 slots, blank where
 	-- unassigned - condensing (hiding empty slots) is opt-in per
-	-- cfg.condenseEmptyPetSlots (BTV:ShouldCondensePetBarSlots).
-	local petBarShowEmpty = self.isPetSlot and not BTV:ShouldCondensePetBarSlots()
+	-- cfg.condenseEmptyPetSlots (ACAB:ShouldCondensePetBarSlots).
+	local petBarShowEmpty = self.isPetSlot and not ACAB:ShouldCondensePetBarSlots()
 
 	-- ALWAYS_SHOW_MULTIBARS only ever governed the real Blizzard multi
 	-- bars (2-5) in native vanilla, never the Pet Bar - excluded here so
@@ -662,19 +675,19 @@ function BTVButtonMixin:UpdateGridVisibility()
 	-- Pet Bar's own dedicated Condense checkbox.
 	local alwaysShowMultibars = (not self.isPetSlot) and IsAlwaysShowMultibars()
 
-	-- BTV.isShowingActionGrid makes an empty slot temporarily reappear
+	-- ACAB.isShowingActionGrid makes an empty slot temporarily reappear
 	-- while something is picked up to place, matching native behavior.
-	-- BTV:IsEditMode() is ORed in too so every slot is interactable
+	-- ACAB:IsEditMode() is ORed in too so every slot is interactable
 	-- (right-click-for-settings) while in edit mode, matching how default
 	-- bars' overlay owns mouse interaction across the whole bar area.
-	if self.slotVisible and (isMainBar or petBarShowEmpty or hasContent or alwaysShowMultibars or BTV.isShowingActionGrid or BTV:IsEditMode()) then
+	if self.slotVisible and (isMainBar or petBarShowEmpty or hasContent or alwaysShowMultibars or ACAB.isShowingActionGrid or ACAB:IsEditMode()) then
 		self:Show()
 	else
 		self:Hide()
 	end
 
 	-- Backdrop visibility is a deliberately narrower condition than
-	-- Show/Hide above - it must NOT include the BTV:IsEditMode() term, or
+	-- Show/Hide above - it must NOT include the ACAB:IsEditMode() term, or
 	-- every empty slot's border would reappear purely because edit mode
 	-- Show()s it for interactability.
 	self:UpdateBackdropVisibility()
@@ -682,16 +695,16 @@ end
 
 -- Toggles only the backdrop's color/border alpha; the template set once
 -- in Init is never touched again. Condition matches UpdateGridVisibility
--- minus the BTV:IsEditMode() OR-term, so an empty slot's backdrop border
+-- minus the ACAB:IsEditMode() OR-term, so an empty slot's backdrop border
 -- never appears purely because edit mode made the slot interactable.
-function BTVButtonMixin:UpdateBackdropVisibility()
+function ACABButtonMixin:UpdateBackdropVisibility()
 	local hasContent = self:IsSlotFilled() and true or false
 
 	-- Same useDefaultLayout-gated Main Bar exemption as UpdateGridVisibility.
 	local isMainBar = self.parentBar and self.parentBar.config and self.parentBar.config.dynamicMainBar
-		and BTVanillaDB and BTVanillaDB.useDefaultLayout ~= false
+		and ACABDB and ACABDB.useDefaultLayout ~= false
 
-	local shown = self.slotVisible and (isMainBar or hasContent or IsAlwaysShowMultibars() or BTV.isShowingActionGrid)
+	local shown = self.slotVisible and (isMainBar or hasContent or IsAlwaysShowMultibars() or ACAB.isShowingActionGrid)
 
 	if shown then
 		self:SetBackdropColor(0, 0, 0, 0.75)
@@ -708,13 +721,11 @@ function BTVButtonMixin:UpdateBackdropVisibility()
 		self:SetBackdropBorderColor(0, 0, 0, 0)
 	end
 
-	-- self.border (vanilla-style only) is otherwise permanently Shown once
-	-- created, unlike the backdrop above - only matters for a slot the
-	-- button's own frame stays Shown for despite being empty (the Pet Bar's
-	-- petBarShowEmpty case in UpdateGridVisibility), since every other bar
-	-- already Hides the whole frame (and so this border with it) instead.
-	-- Guarded on hasNativeBorder too, or a leftover vanilla-style texture
-	-- reappears here after switching to modern style.
+	-- self.border (vanilla-style only) stays permanently Shown once created,
+	-- unlike the backdrop above - matters only for the Pet Bar's
+	-- petBarShowEmpty case, since every other empty bar Hides the whole
+	-- frame instead. Guarded on hasNativeBorder too, or a leftover texture
+	-- reappears after switching to modern style.
 	if self.border and self.hasNativeBorder then
 		if shown then
 			self.border:Show()
@@ -728,23 +739,23 @@ end
 -- called from Bar.lua's ApplyBarShape whenever a bar's slotStart, grid
 -- shape, or page/stance state changes which native slot a pool slot
 -- should show. The frame itself never changes; only
--- BTV.customBindTargets' old/new slot indices need updating to follow it.
-function BTVButtonMixin:Rebind(newActionSlot)
+-- ACAB.customBindTargets' old/new slot indices need updating to follow it.
+function ACABButtonMixin:Rebind(newActionSlot)
 	local oldActionSlot = self.actionSlot
 
 	-- Clears the old index first so a stale entry never briefly points at
 	-- a button that no longer owns that slot. Guarded the same way Init
 	-- is: fixed-slot default-bar buttons and bar 1's dynamic-slot buttons
 	-- (self.nativeBindingId set) never touch this table.
-	if BTV.customBindTargets and oldActionSlot and oldActionSlot >= BTV.ACTION_SLOT_START and not self.nativeBindingId then
-		BTV.customBindTargets[oldActionSlot - 72] = nil
+	if ACAB.customBindTargets and oldActionSlot and oldActionSlot >= ACAB.ACTION_SLOT_START and not self.nativeBindingId then
+		ACAB.customBindTargets[oldActionSlot - 72] = nil
 	end
 
 	self.actionSlot = newActionSlot
 
-	if newActionSlot >= BTV.ACTION_SLOT_START and not self.nativeBindingId then
-		BTV.customBindTargets = BTV.customBindTargets or {}
-		BTV.customBindTargets[newActionSlot - 72] = self
+	if newActionSlot >= ACAB.ACTION_SLOT_START and not self.nativeBindingId then
+		ACAB.customBindTargets = ACAB.customBindTargets or {}
+		ACAB.customBindTargets[newActionSlot - 72] = self
 	end
 
 	self:Refresh()
@@ -754,7 +765,7 @@ end
 -- with the global vanilla API function of the (near-)same name that this
 -- method wraps. Pet Bar buttons check GetPetActionInfo's name return
 -- instead - self.actionSlot holds a pet slot (1-10), not a real action slot.
-function BTVButtonMixin:IsSlotFilled()
+function ACABButtonMixin:IsSlotFilled()
 	if self.isPetSlot then
 		return GetPetActionInfo and GetPetActionInfo(self.actionSlot) ~= nil
 	end
@@ -770,7 +781,7 @@ function BTVButtonMixin:IsSlotFilled()
 	return HasAction and HasAction(self.actionSlot)
 end
 
-function BTVButtonMixin:UpdateState()
+function ACABButtonMixin:UpdateState()
 	-- Pet Bar: GetPetActionInfo's isActive is IsCurrentAction's equivalent.
 	if self.isPetSlot then
 		-- Call directly, not "X and X(...)" - "and"/"or" collapse a
@@ -789,7 +800,7 @@ function BTVButtonMixin:UpdateState()
 			self.glow:Hide()
 		end
 
-		local petCfg = BTVanillaDB and BTVanillaDB.defaultBars and BTVanillaDB.defaultBars[BTV.PET_BAR_ID]
+		local petCfg = ACABDB and ACABDB.defaultBars and ACABDB.defaultBars[ACAB.PET_BAR_ID]
 		local animate = petCfg and petCfg.animateAutoCastGlow == true
 
 		-- The Model self-animates once shown - just Show/Hide, no ticker.
@@ -840,7 +851,7 @@ function BTVButtonMixin:UpdateState()
 	end
 end
 
-function BTVButtonMixin:UpdateEquipRing()
+function ACABButtonMixin:UpdateEquipRing()
 	-- Pet/stance actions have no equip-quality concept.
 	if self.isPetSlot or self.isStanceSlot then
 		self.equipRing:Hide()
@@ -852,7 +863,7 @@ function BTVButtonMixin:UpdateEquipRing()
 		return
 	end
 
-	local r, g, b = BTV:GetActionItemQualityColor(self.actionSlot)
+	local r, g, b = ACAB:GetActionItemQualityColor(self.actionSlot)
 	if r then
 		self.equipRing:SetVertexColor(r, g, b)
 		self.equipRing:Show()
@@ -867,7 +878,7 @@ end
 -- Item stack-count text. A consumable/stackable action with exactly 1
 -- charge still shows "1", matching real vanilla ActionButton_UpdateCount;
 -- a non-stacking action (a spell) stays blank.
-function BTVButtonMixin:UpdateCount()
+function ACABButtonMixin:UpdateCount()
 	if not self.count then
 		return
 	end
@@ -946,14 +957,14 @@ local function CompactBindingKeyText(key)
 	return table.concat(parts, "-")
 end
 
--- Keybind hotkey text - see HoverBind.lua's BTV:GetHoverBindingId for how
+-- Keybind hotkey text - see HoverBind.lua's ACAB:GetHoverBindingId for how
 -- the binding-action name is resolved.
-function BTVButtonMixin:UpdateHotkeyText()
+function ACABButtonMixin:UpdateHotkeyText()
 	if not self.hotkey then
 		return
 	end
 
-	local key = self.actionSlot and GetBindingKey(BTV:GetHoverBindingId(self))
+	local key = self.actionSlot and GetBindingKey(ACAB:GetHoverBindingId(self))
 
 	self:SetTruncatedButtonText(self.hotkey, key and CompactBindingKeyText(key) or "")
 end
@@ -980,28 +991,28 @@ end
 -- method on every Refresh and by ApplySize/the Set*FontSize sweeps, so a
 -- resize or font size change always re-fits rather than leaving stale
 -- truncation.
-function BTVButtonMixin:SetTruncatedButtonText(fontString, text)
+function ACABButtonMixin:SetTruncatedButtonText(fontString, text)
 	if not text or text == "" then
 		fontString:Hide()
 		return
 	end
 
 	local inset = self.buttonTextInset or 0
-	local maxWidth = (self.buttonSize or BTV.BUTTON_SIZE) - (2 * inset)
+	local maxWidth = (self.buttonSize or ACAB.BUTTON_SIZE) - (2 * inset)
 
 	SetTruncatedText(fontString, text, maxWidth)
 	fontString:Show()
 end
 
 -- Shows the macro name (GetActionText) for a macro action, truncated to
--- the button's own width, while BTVanillaDB.showMacroText is on.
-function BTVButtonMixin:UpdateMacroText()
+-- the button's own width, while ACABDB.showMacroText is on.
+function ACABButtonMixin:UpdateMacroText()
 	if not self.macroText then
 		return
 	end
 
 	-- Pet/stance actions have no macro/name-text concept shown on this button.
-	if self.isPetSlot or self.isStanceSlot or not (BTVanillaDB and BTVanillaDB.showMacroText) then
+	if self.isPetSlot or self.isStanceSlot or not (ACABDB and ACABDB.showMacroText) then
 		self.macroText:Hide()
 		return
 	end
@@ -1011,7 +1022,7 @@ function BTVButtonMixin:UpdateMacroText()
 	self:SetTruncatedButtonText(self.macroText, text or "")
 end
 
-function BTVButtonMixin:Refresh()
+function ACABButtonMixin:Refresh()
 	if self.isPetSlot then
 		-- Call directly, not "X and X(...)" - "and"/"or" collapse a
 		-- multi-return call to one value. subtext (2nd) must stay captured
@@ -1071,11 +1082,11 @@ function BTVButtonMixin:Refresh()
 	-- laid out from the final post-event state regardless of dispatch
 	-- order.
 	if self.isPetSlot and self.parentBar then
-		BTV:LayoutButtons(self.parentBar)
+		ACAB:LayoutButtons(self.parentBar)
 	end
 end
 
-function BTVButtonMixin:UpdateCooldown()
+function ACABButtonMixin:UpdateCooldown()
 	if not self.actionSlot or not CooldownFrame_SetTimer then
 		return
 	end
@@ -1110,12 +1121,12 @@ function BTVButtonMixin:UpdateCooldown()
 	CooldownFrame_SetTimer(self.cooldown, start or 0, duration or 0, enable or 0)
 end
 
-function BTVButtonMixin:UpdateRange()
+function ACABButtonMixin:UpdateRange()
 	-- Hoverbind mode owns icon tinting outright while active (HoverBind.lua's
 	-- ApplyHoverBindVisual/tint pass) - short-circuit here so range/usability
 	-- tinting can't fight it. Normal tinting resumes as soon as hoverbind
 	-- mode turns off, since events keep calling UpdateRange throughout.
-	if BTV:IsHoverBindMode() then
+	if ACAB:IsHoverBindMode() then
 		return
 	end
 
@@ -1154,10 +1165,10 @@ function BTVButtonMixin:UpdateRange()
 	end
 
 	-- Real Blizzard action buttons only tint the hotkey text red on
-	-- out-of-range, never the whole icon. BTVanillaDB.tintWholeButtonOnRange
+	-- out-of-range, never the whole icon. ACABDB.tintWholeButtonOnRange
 	-- (default true) lets users opt into that native-accurate behavior.
 	local outOfRange = (inRange == 0)
-	local tintWholeButton = BTVanillaDB == nil or BTVanillaDB.tintWholeButtonOnRange ~= false
+	local tintWholeButton = ACABDB == nil or ACABDB.tintWholeButtonOnRange ~= false
 
 	-- Matches real vanilla ActionButton_UpdateUsable's priority chain:
 	-- out-of-range wins outright when applicable, otherwise
@@ -1185,8 +1196,8 @@ end
 
 -- Restores self.hotkey to its captured native default color. Falls back
 -- to plain white if no button has captured it yet this session.
-function BTVButtonMixin:ResetHotkeyRangeColor()
-	local c = BTV.NATIVE_HOTKEY_TEXT_COLOR
+function ACABButtonMixin:ResetHotkeyRangeColor()
+	local c = ACAB.NATIVE_HOTKEY_TEXT_COLOR
 
 	if c then
 		self.hotkey:SetTextColor(c.r, c.g, c.b)
@@ -1195,7 +1206,7 @@ function BTVButtonMixin:ResetHotkeyRangeColor()
 	end
 end
 
-function BTVButtonMixin:PlaceCursor()
+function ACABButtonMixin:PlaceCursor()
 	-- Pet/Stance Bar slots are fixed by the game (not drag-reassignable) -
 	-- dropping a spell/item/macro cursor onto one is a no-op.
 	if self.isPetSlot or self.isStanceSlot then
@@ -1211,7 +1222,7 @@ end
 -- Plain functions from here down: engine-invoked script handlers, using
 -- the global `this` (see the file-level note above).
 
-function BTVButtonMixin.OnEvent()
+function ACABButtonMixin.OnEvent()
 	if event == "ACTIONBAR_SLOT_CHANGED" then
 		local changedSlot = arg1
 		if not changedSlot or changedSlot == 0 or changedSlot == this.actionSlot then
@@ -1255,12 +1266,12 @@ function BTVButtonMixin.OnEvent()
 	end
 end
 
-function BTVButtonMixin.OnClick()
+function ACABButtonMixin.OnClick()
 	-- Edit-mode interaction (right-click-to-settings, bar drag) is owned
 	-- by Bar.lua's per-bar overlay, which sits at TOOLTIP strata above
 	-- this button's own HIGH strata, so this handler never fires while
 	-- editing.
-	if BTV:ButtonHasCursor() then
+	if ACAB:ButtonHasCursor() then
 		this:PlaceCursor()
 	elseif this.isPetSlot then
 		-- Matches real vanilla PetActionButton_OnClick: left click casts,
@@ -1301,28 +1312,28 @@ end
 -- OnClick only fires for LeftButton/RightButton (the only two registered via
 -- RegisterForClicks). Middle/Button4/Button5 never generate a click, but they
 -- do reach OnMouseDown regardless of RegisterForClicks - hoverbind mode uses
--- that to capture them as keybinds (HoverBind.lua's BTV:HandleHoverBindMouseButton).
-function BTVButtonMixin.OnMouseDown()
-	if not BTV:IsHoverBindMode() then
+-- that to capture them as keybinds (HoverBind.lua's ACAB:HandleHoverBindMouseButton).
+function ACABButtonMixin.OnMouseDown()
+	if not ACAB:IsHoverBindMode() then
 		return
 	end
 	if arg1 == "LeftButton" or arg1 == "RightButton" then
 		return
 	end
-	if BTV.HandleHoverBindMouseButton then
-		BTV:HandleHoverBindMouseButton(this, arg1)
+	if ACAB.HandleHoverBindMouseButton then
+		ACAB:HandleHoverBindMouseButton(this, arg1)
 	end
 end
 
 -- None of the handlers below need an edit-mode guard: Bar.lua's per-bar
--- overlay wins every hit-test within the bar while BTV:IsEditMode() is
+-- overlay wins every hit-test within the bar while ACAB:IsEditMode() is
 -- true, so drag-to-move-bar and right-click-to-settings are handled by
 -- the overlay's own scripts instead.
-function BTVButtonMixin.OnReceiveDrag()
+function ACABButtonMixin.OnReceiveDrag()
 	this:PlaceCursor()
 end
 
-function BTVButtonMixin.OnDragStart()
+function ACABButtonMixin.OnDragStart()
 	-- Pet/Stance Bar slots are fixed by the game, not drag-reassignable.
 	if this.isPetSlot or this.isStanceSlot then
 		return
@@ -1330,7 +1341,7 @@ function BTVButtonMixin.OnDragStart()
 
 	-- Lock Action Bars gates whether dragging a filled button picks up its
 	-- action, backed by the real Blizzard global LOCK_ACTIONBAR.
-	if BTV:IsLockActionBars() then
+	if ACAB:IsLockActionBars() then
 		return
 	end
 
@@ -1340,11 +1351,11 @@ function BTVButtonMixin.OnDragStart()
 	end
 end
 
-function BTVButtonMixin.OnDragStop()
+function ACABButtonMixin.OnDragStop()
 end
 
-function BTVButtonMixin.OnMouseWheel()
-	if not BTV:IsEditMode() then
+function ACABButtonMixin.OnMouseWheel()
+	if not ACAB:IsEditMode() then
 		return
 	end
 	-- arg1 is the scroll delta: positive = scroll up, negative = scroll down.
@@ -1359,17 +1370,17 @@ function BTVButtonMixin.OnMouseWheel()
 	-- and are never gated here.
 	local barId = bar.config.id
 
-	if BTV:IsDefaultBarFamilyId(barId) and
-		BTVanillaDB and BTVanillaDB.useDefaultLayout ~= false then
+	if ACAB:IsDefaultBarFamilyId(barId) and
+		ACABDB and ACABDB.useDefaultLayout ~= false then
 		return
 	end
 
 	local step = 2
 	local newSize = bar.config.buttonSize + (delta * step)
-	BTV:SetBarButtonSize(bar, newSize)
+	ACAB:SetBarButtonSize(bar, newSize)
 end
 
-function BTVButtonMixin.OnEnter()
+function ACABButtonMixin.OnEnter()
 	GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
 	if this.isPetSlot then
 		-- Special command slots are isToken actions, not real pet spells -
@@ -1390,7 +1401,7 @@ function BTVButtonMixin.OnEnter()
 		elseif this:IsSlotFilled() and GameTooltip.SetPetAction then
 			GameTooltip:SetPetAction(this.actionSlot)
 		else
-			GameTooltip:SetText("BTVanilla")
+			GameTooltip:SetText("AlternativeClassicActionBars")
 		end
 	elseif this.isStanceSlot then
 		-- GameTooltip:SetShapeshift exists on this client; a hand-built
@@ -1405,12 +1416,12 @@ function BTVButtonMixin.OnEnter()
 				name = nameVal
 			end
 
-			GameTooltip:SetText(name or "BTVanilla", 1, 1, 1)
+			GameTooltip:SetText(name or "AlternativeClassicActionBars", 1, 1, 1)
 		end
 	elseif this:IsSlotFilled() and GameTooltip.SetAction then
 		GameTooltip:SetAction(this.actionSlot)
 	else
-		GameTooltip:SetText("BTVanilla")
+		GameTooltip:SetText("AlternativeClassicActionBars")
 		GameTooltip:AddLine("Drag a spell, item, or macro here.", 1, 1, 1)
 	end
 	GameTooltip:Show()
@@ -1418,20 +1429,20 @@ function BTVButtonMixin.OnEnter()
 	-- Hoverbind (HoverBind.lua): only touches the capture frame while
 	-- hoverbind mode is actually on, so this is a no-op the rest of the
 	-- time - existing OnEnter behavior above is otherwise untouched.
-	if BTV:IsHoverBindMode() and BTV.SetHoverBindHoveredCustomButton then
-		BTV:SetHoverBindHoveredCustomButton(this)
+	if ACAB:IsHoverBindMode() and ACAB.SetHoverBindHoveredCustomButton then
+		ACAB:SetHoverBindHoveredCustomButton(this)
 	end
 end
 
-function BTVButtonMixin.OnLeave()
+function ACABButtonMixin.OnLeave()
 	GameTooltip:Hide()
 
-	if BTV:IsHoverBindMode() and BTV.ClearHoverBindHoveredButton then
-		BTV:ClearHoverBindHoveredButton(this)
+	if ACAB:IsHoverBindMode() and ACAB.ClearHoverBindHoveredButton then
+		ACAB:ClearHoverBindHoveredButton(this)
 	end
 end
 
-function BTV:ButtonHasCursor()
+function ACAB:ButtonHasCursor()
 	if GetCursorInfo then
 		local cursorType = GetCursorInfo()
 		if cursorType == "spell" or cursorType == "item" or cursorType == "macro" then
@@ -1450,11 +1461,11 @@ function BTV:ButtonHasCursor()
 	return false
 end
 
-function BTV:CreateActionButton(parent, actionSlot, slotIndex)
+function ACAB:CreateActionButton(parent, actionSlot, slotIndex)
 	-- Frame names are stable for the bar's entire lifetime: one button
 	-- object per pool slot, created exactly once.
 	local frameName =
-		"BTVanillaButton" ..
+		"ACABButton" ..
 		tostring(parent.config.id) ..
 		"_" ..
 		tostring(slotIndex or 1)
@@ -1466,9 +1477,9 @@ function BTV:CreateActionButton(parent, actionSlot, slotIndex)
 	)
 
 	if Mixin then
-		Mixin(button, BTVButtonMixin)
+		Mixin(button, ACABButtonMixin)
 	else
-		for k, v in pairs(BTVButtonMixin) do
+		for k, v in pairs(ACABButtonMixin) do
 			button[k] = v
 		end
 	end
@@ -1481,139 +1492,96 @@ end
 -------------------------------------------------------------------------
 -- Global hotkey/count font size (Settings.lua's General tab)
 --
--- Sweeps every live button in BTV.bars, covering custom bars (id 6+) and
+-- Sweeps every live button in ACAB.bars, covering custom bars (id 6+) and
 -- default bars (1-5) alike.
 -------------------------------------------------------------------------
 
-function BTV:SetHotkeyFontSize(size)
+function ACAB:SetHotkeyFontSize(size)
 	self:EnsureDB()
 
 	-- Rounds to an integer since GetFont() can return a float size.
 	size = math.floor(size + 0.5)
 
-	BTVanillaDB.hotkeyFontSize = size
+	ACABDB.hotkeyFontSize = size
 
 	-- Nothing captured yet (no button created this session) - the write
 	-- above is enough, the next button Init will pick it up directly.
-	if not BTV.NATIVE_HOTKEY_FONT then
+	if not ACAB.NATIVE_HOTKEY_FONT then
 		return
 	end
 
-	local path = BTV.NATIVE_HOTKEY_FONT.path
-	local flags = BTV.NATIVE_HOTKEY_FONT.flags
-	local barId
-	local bar
+	local path = ACAB.NATIVE_HOTKEY_FONT.path
+	local flags = ACAB.NATIVE_HOTKEY_FONT.flags
 
-	for barId, bar in pairs(BTV.bars) do
-		if bar and bar.buttons then
-			local i
+	ACAB:ForEachPoolButton(function(btn)
+		if btn.hotkey then
+			btn.hotkey:SetFont(path, size, flags)
 
-			for i = 1, table.getn(bar.buttons) do
-				local btn = bar.buttons[i]
-
-				if btn and btn.hotkey then
-					btn.hotkey:SetFont(path, size, flags)
-
-					-- SetFont alone doesn't re-run truncation - see
-					-- SetMacroFontSize's identical fix below.
-					btn:UpdateHotkeyText()
-				end
-			end
+			-- SetFont alone doesn't re-run truncation - see
+			-- SetMacroFontSize's identical fix below.
+			btn:UpdateHotkeyText()
 		end
-	end
+	end)
 end
 
-function BTV:SetCountFontSize(size)
+function ACAB:SetCountFontSize(size)
 	self:EnsureDB()
 
 	-- Rounds to an integer since GetFont() can return a float size.
 	size = math.floor(size + 0.5)
 
-	BTVanillaDB.countFontSize = size
+	ACABDB.countFontSize = size
 
-	if not BTV.NATIVE_COUNT_FONT then
+	if not ACAB.NATIVE_COUNT_FONT then
 		return
 	end
 
-	local path = BTV.NATIVE_COUNT_FONT.path
-	local flags = BTV.NATIVE_COUNT_FONT.flags
-	local barId
-	local bar
+	local path = ACAB.NATIVE_COUNT_FONT.path
+	local flags = ACAB.NATIVE_COUNT_FONT.flags
 
-	for barId, bar in pairs(BTV.bars) do
-		if bar and bar.buttons then
-			local i
-
-			for i = 1, table.getn(bar.buttons) do
-				local btn = bar.buttons[i]
-
-				if btn and btn.count then
-					btn.count:SetFont(path, size, flags)
-					btn:UpdateCount()
-				end
-			end
+	ACAB:ForEachPoolButton(function(btn)
+		if btn.count then
+			btn.count:SetFont(path, size, flags)
+			btn:UpdateCount()
 		end
-	end
+	end)
 end
 
-function BTV:SetMacroFontSize(size)
+function ACAB:SetMacroFontSize(size)
 	self:EnsureDB()
 
 	-- Rounds to an integer since GetFont() can return a float size.
 	size = math.floor(size + 0.5)
 
-	BTVanillaDB.macroFontSize = size
+	ACABDB.macroFontSize = size
 
 	-- Nothing captured yet (no button created this session) - the write
 	-- above is enough, the next button Init will pick it up directly.
-	if not BTV.NATIVE_MACRO_FONT then
+	if not ACAB.NATIVE_MACRO_FONT then
 		return
 	end
 
-	local path = BTV.NATIVE_MACRO_FONT.path
-	local flags = BTV.NATIVE_MACRO_FONT.flags
-	local barId
-	local bar
+	local path = ACAB.NATIVE_MACRO_FONT.path
+	local flags = ACAB.NATIVE_MACRO_FONT.flags
 
-	for barId, bar in pairs(BTV.bars) do
-		if bar and bar.buttons then
-			local i
+	ACAB:ForEachPoolButton(function(btn)
+		if btn.macroText then
+			btn.macroText:SetFont(path, size, flags)
 
-			for i = 1, table.getn(bar.buttons) do
-				local btn = bar.buttons[i]
-
-				if btn and btn.macroText then
-					btn.macroText:SetFont(path, size, flags)
-
-					-- SetFont alone doesn't re-run truncation - without this,
-					-- a button already showing an old-size truncated macro
-					-- name would keep that stale text at the new font size.
-					btn:UpdateMacroText()
-				end
-			end
+			-- SetFont alone doesn't re-run truncation - without this,
+			-- a button already showing an old-size truncated macro
+			-- name would keep that stale text at the new font size.
+			btn:UpdateMacroText()
 		end
-	end
+	end)
 end
 
-function BTV:SetMacroTextEnabled(enabled)
+function ACAB:SetMacroTextEnabled(enabled)
 	self:EnsureDB()
 
-	BTVanillaDB.showMacroText = enabled and true or false
+	ACABDB.showMacroText = enabled and true or false
 
-	local barId
-	local bar
-
-	for barId, bar in pairs(BTV.bars) do
-		if bar and bar.buttons then
-			local i
-
-			for i = 1, table.getn(bar.buttons) do
-				local btn = bar.buttons[i]
-
-				if btn then
-					btn:UpdateMacroText()
-				end
-			end
-		end
-	end
+	ACAB:ForEachPoolButton(function(btn)
+		btn:UpdateMacroText()
+	end)
 end

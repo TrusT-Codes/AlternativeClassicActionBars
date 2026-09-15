@@ -1,206 +1,206 @@
 <Bindings>
-  <Binding name='TRUSTYBARSBIND1'>
-    TrustyBars_HoverBindFire(1)
+  <Binding name='ACABBIND1'>
+    ACAB_HoverBindFire(1)
   </Binding>
-  <Binding name='TRUSTYBARSBIND2'>
-    TrustyBars_HoverBindFire(2)
+  <Binding name='ACABBIND2'>
+    ACAB_HoverBindFire(2)
   </Binding>
-  <Binding name='TRUSTYBARSBIND3'>
-    TrustyBars_HoverBindFire(3)
+  <Binding name='ACABBIND3'>
+    ACAB_HoverBindFire(3)
   </Binding>
-  <Binding name='TRUSTYBARSBIND4'>
-    TrustyBars_HoverBindFire(4)
+  <Binding name='ACABBIND4'>
+    ACAB_HoverBindFire(4)
   </Binding>
-  <Binding name='TRUSTYBARSBIND5'>
-    TrustyBars_HoverBindFire(5)
+  <Binding name='ACABBIND5'>
+    ACAB_HoverBindFire(5)
   </Binding>
-  <Binding name='TRUSTYBARSBIND6'>
-    TrustyBars_HoverBindFire(6)
+  <Binding name='ACABBIND6'>
+    ACAB_HoverBindFire(6)
   </Binding>
-  <Binding name='TRUSTYBARSBIND7'>
-    TrustyBars_HoverBindFire(7)
+  <Binding name='ACABBIND7'>
+    ACAB_HoverBindFire(7)
   </Binding>
-  <Binding name='TRUSTYBARSBIND8'>
-    TrustyBars_HoverBindFire(8)
+  <Binding name='ACABBIND8'>
+    ACAB_HoverBindFire(8)
   </Binding>
-  <Binding name='TRUSTYBARSBIND9'>
-    TrustyBars_HoverBindFire(9)
+  <Binding name='ACABBIND9'>
+    ACAB_HoverBindFire(9)
   </Binding>
-  <Binding name='TRUSTYBARSBIND10'>
-    TrustyBars_HoverBindFire(10)
+  <Binding name='ACABBIND10'>
+    ACAB_HoverBindFire(10)
   </Binding>
-  <Binding name='TRUSTYBARSBIND11'>
-    TrustyBars_HoverBindFire(11)
+  <Binding name='ACABBIND11'>
+    ACAB_HoverBindFire(11)
   </Binding>
-  <Binding name='TRUSTYBARSBIND12'>
-    TrustyBars_HoverBindFire(12)
+  <Binding name='ACABBIND12'>
+    ACAB_HoverBindFire(12)
   </Binding>
-  <Binding name='TRUSTYBARSBIND13'>
-    TrustyBars_HoverBindFire(13)
+  <Binding name='ACABBIND13'>
+    ACAB_HoverBindFire(13)
   </Binding>
-  <Binding name='TRUSTYBARSBIND14'>
-    TrustyBars_HoverBindFire(14)
+  <Binding name='ACABBIND14'>
+    ACAB_HoverBindFire(14)
   </Binding>
-  <Binding name='TRUSTYBARSBIND15'>
-    TrustyBars_HoverBindFire(15)
+  <Binding name='ACABBIND15'>
+    ACAB_HoverBindFire(15)
   </Binding>
-  <Binding name='TRUSTYBARSBIND16'>
-    TrustyBars_HoverBindFire(16)
+  <Binding name='ACABBIND16'>
+    ACAB_HoverBindFire(16)
   </Binding>
-  <Binding name='TRUSTYBARSBIND17'>
-    TrustyBars_HoverBindFire(17)
+  <Binding name='ACABBIND17'>
+    ACAB_HoverBindFire(17)
   </Binding>
-  <Binding name='TRUSTYBARSBIND18'>
-    TrustyBars_HoverBindFire(18)
+  <Binding name='ACABBIND18'>
+    ACAB_HoverBindFire(18)
   </Binding>
-  <Binding name='TRUSTYBARSBIND19'>
-    TrustyBars_HoverBindFire(19)
+  <Binding name='ACABBIND19'>
+    ACAB_HoverBindFire(19)
   </Binding>
-  <Binding name='TRUSTYBARSBIND20'>
-    TrustyBars_HoverBindFire(20)
+  <Binding name='ACABBIND20'>
+    ACAB_HoverBindFire(20)
   </Binding>
-  <Binding name='TRUSTYBARSBIND21'>
-    TrustyBars_HoverBindFire(21)
+  <Binding name='ACABBIND21'>
+    ACAB_HoverBindFire(21)
   </Binding>
-  <Binding name='TRUSTYBARSBIND22'>
-    TrustyBars_HoverBindFire(22)
+  <Binding name='ACABBIND22'>
+    ACAB_HoverBindFire(22)
   </Binding>
-  <Binding name='TRUSTYBARSBIND23'>
-    TrustyBars_HoverBindFire(23)
+  <Binding name='ACABBIND23'>
+    ACAB_HoverBindFire(23)
   </Binding>
-  <Binding name='TRUSTYBARSBIND24'>
-    TrustyBars_HoverBindFire(24)
+  <Binding name='ACABBIND24'>
+    ACAB_HoverBindFire(24)
   </Binding>
-  <Binding name='TRUSTYBARSBIND25'>
-    TrustyBars_HoverBindFire(25)
+  <Binding name='ACABBIND25'>
+    ACAB_HoverBindFire(25)
   </Binding>
-  <Binding name='TRUSTYBARSBIND26'>
-    TrustyBars_HoverBindFire(26)
+  <Binding name='ACABBIND26'>
+    ACAB_HoverBindFire(26)
   </Binding>
-  <Binding name='TRUSTYBARSBIND27'>
-    TrustyBars_HoverBindFire(27)
+  <Binding name='ACABBIND27'>
+    ACAB_HoverBindFire(27)
   </Binding>
-  <Binding name='TRUSTYBARSBIND28'>
-    TrustyBars_HoverBindFire(28)
+  <Binding name='ACABBIND28'>
+    ACAB_HoverBindFire(28)
   </Binding>
-  <Binding name='TRUSTYBARSBIND29'>
-    TrustyBars_HoverBindFire(29)
+  <Binding name='ACABBIND29'>
+    ACAB_HoverBindFire(29)
   </Binding>
-  <Binding name='TRUSTYBARSBIND30'>
-    TrustyBars_HoverBindFire(30)
+  <Binding name='ACABBIND30'>
+    ACAB_HoverBindFire(30)
   </Binding>
-  <Binding name='TRUSTYBARSBIND31'>
-    TrustyBars_HoverBindFire(31)
+  <Binding name='ACABBIND31'>
+    ACAB_HoverBindFire(31)
   </Binding>
-  <Binding name='TRUSTYBARSBIND32'>
-    TrustyBars_HoverBindFire(32)
+  <Binding name='ACABBIND32'>
+    ACAB_HoverBindFire(32)
   </Binding>
-  <Binding name='TRUSTYBARSBIND33'>
-    TrustyBars_HoverBindFire(33)
+  <Binding name='ACABBIND33'>
+    ACAB_HoverBindFire(33)
   </Binding>
-  <Binding name='TRUSTYBARSBIND34'>
-    TrustyBars_HoverBindFire(34)
+  <Binding name='ACABBIND34'>
+    ACAB_HoverBindFire(34)
   </Binding>
-  <Binding name='TRUSTYBARSBIND35'>
-    TrustyBars_HoverBindFire(35)
+  <Binding name='ACABBIND35'>
+    ACAB_HoverBindFire(35)
   </Binding>
-  <Binding name='TRUSTYBARSBIND36'>
-    TrustyBars_HoverBindFire(36)
+  <Binding name='ACABBIND36'>
+    ACAB_HoverBindFire(36)
   </Binding>
-  <Binding name='TRUSTYBARSBIND37'>
-    TrustyBars_HoverBindFire(37)
+  <Binding name='ACABBIND37'>
+    ACAB_HoverBindFire(37)
   </Binding>
-  <Binding name='TRUSTYBARSBIND38'>
-    TrustyBars_HoverBindFire(38)
+  <Binding name='ACABBIND38'>
+    ACAB_HoverBindFire(38)
   </Binding>
-  <Binding name='TRUSTYBARSBIND39'>
-    TrustyBars_HoverBindFire(39)
+  <Binding name='ACABBIND39'>
+    ACAB_HoverBindFire(39)
   </Binding>
-  <Binding name='TRUSTYBARSBIND40'>
-    TrustyBars_HoverBindFire(40)
+  <Binding name='ACABBIND40'>
+    ACAB_HoverBindFire(40)
   </Binding>
-  <Binding name='TRUSTYBARSBIND41'>
-    TrustyBars_HoverBindFire(41)
+  <Binding name='ACABBIND41'>
+    ACAB_HoverBindFire(41)
   </Binding>
-  <Binding name='TRUSTYBARSBIND42'>
-    TrustyBars_HoverBindFire(42)
+  <Binding name='ACABBIND42'>
+    ACAB_HoverBindFire(42)
   </Binding>
-  <Binding name='TRUSTYBARSBIND43'>
-    TrustyBars_HoverBindFire(43)
+  <Binding name='ACABBIND43'>
+    ACAB_HoverBindFire(43)
   </Binding>
-  <Binding name='TRUSTYBARSBIND44'>
-    TrustyBars_HoverBindFire(44)
+  <Binding name='ACABBIND44'>
+    ACAB_HoverBindFire(44)
   </Binding>
-  <Binding name='TRUSTYBARSBIND45'>
-    TrustyBars_HoverBindFire(45)
+  <Binding name='ACABBIND45'>
+    ACAB_HoverBindFire(45)
   </Binding>
-  <Binding name='TRUSTYBARSBIND46'>
-    TrustyBars_HoverBindFire(46)
+  <Binding name='ACABBIND46'>
+    ACAB_HoverBindFire(46)
   </Binding>
-  <Binding name='TRUSTYBARSBIND47'>
-    TrustyBars_HoverBindFire(47)
+  <Binding name='ACABBIND47'>
+    ACAB_HoverBindFire(47)
   </Binding>
-  <Binding name='TRUSTYBARSBIND48'>
-    TrustyBars_HoverBindFire(48)
+  <Binding name='ACABBIND48'>
+    ACAB_HoverBindFire(48)
   </Binding>
-  <Binding name='TRUSTYBARSPETBIND1'>
-    TrustyBars_PetHoverBindFire(1)
+  <Binding name='ACABPETBIND1'>
+    ACAB_PetHoverBindFire(1)
   </Binding>
-  <Binding name='TRUSTYBARSPETBIND2'>
-    TrustyBars_PetHoverBindFire(2)
+  <Binding name='ACABPETBIND2'>
+    ACAB_PetHoverBindFire(2)
   </Binding>
-  <Binding name='TRUSTYBARSPETBIND3'>
-    TrustyBars_PetHoverBindFire(3)
+  <Binding name='ACABPETBIND3'>
+    ACAB_PetHoverBindFire(3)
   </Binding>
-  <Binding name='TRUSTYBARSPETBIND4'>
-    TrustyBars_PetHoverBindFire(4)
+  <Binding name='ACABPETBIND4'>
+    ACAB_PetHoverBindFire(4)
   </Binding>
-  <Binding name='TRUSTYBARSPETBIND5'>
-    TrustyBars_PetHoverBindFire(5)
+  <Binding name='ACABPETBIND5'>
+    ACAB_PetHoverBindFire(5)
   </Binding>
-  <Binding name='TRUSTYBARSPETBIND6'>
-    TrustyBars_PetHoverBindFire(6)
+  <Binding name='ACABPETBIND6'>
+    ACAB_PetHoverBindFire(6)
   </Binding>
-  <Binding name='TRUSTYBARSPETBIND7'>
-    TrustyBars_PetHoverBindFire(7)
+  <Binding name='ACABPETBIND7'>
+    ACAB_PetHoverBindFire(7)
   </Binding>
-  <Binding name='TRUSTYBARSPETBIND8'>
-    TrustyBars_PetHoverBindFire(8)
+  <Binding name='ACABPETBIND8'>
+    ACAB_PetHoverBindFire(8)
   </Binding>
-  <Binding name='TRUSTYBARSPETBIND9'>
-    TrustyBars_PetHoverBindFire(9)
+  <Binding name='ACABPETBIND9'>
+    ACAB_PetHoverBindFire(9)
   </Binding>
-  <Binding name='TRUSTYBARSPETBIND10'>
-    TrustyBars_PetHoverBindFire(10)
+  <Binding name='ACABPETBIND10'>
+    ACAB_PetHoverBindFire(10)
   </Binding>
-  <Binding name='TRUSTYBARSSTANCEBIND1'>
-    TrustyBars_StanceHoverBindFire(1)
+  <Binding name='ACABSTANCEBIND1'>
+    ACAB_StanceHoverBindFire(1)
   </Binding>
-  <Binding name='TRUSTYBARSSTANCEBIND2'>
-    TrustyBars_StanceHoverBindFire(2)
+  <Binding name='ACABSTANCEBIND2'>
+    ACAB_StanceHoverBindFire(2)
   </Binding>
-  <Binding name='TRUSTYBARSSTANCEBIND3'>
-    TrustyBars_StanceHoverBindFire(3)
+  <Binding name='ACABSTANCEBIND3'>
+    ACAB_StanceHoverBindFire(3)
   </Binding>
-  <Binding name='TRUSTYBARSSTANCEBIND4'>
-    TrustyBars_StanceHoverBindFire(4)
+  <Binding name='ACABSTANCEBIND4'>
+    ACAB_StanceHoverBindFire(4)
   </Binding>
-  <Binding name='TRUSTYBARSSTANCEBIND5'>
-    TrustyBars_StanceHoverBindFire(5)
+  <Binding name='ACABSTANCEBIND5'>
+    ACAB_StanceHoverBindFire(5)
   </Binding>
-  <Binding name='TRUSTYBARSSTANCEBIND6'>
-    TrustyBars_StanceHoverBindFire(6)
+  <Binding name='ACABSTANCEBIND6'>
+    ACAB_StanceHoverBindFire(6)
   </Binding>
-  <Binding name='TRUSTYBARSSTANCEBIND7'>
-    TrustyBars_StanceHoverBindFire(7)
+  <Binding name='ACABSTANCEBIND7'>
+    ACAB_StanceHoverBindFire(7)
   </Binding>
-  <Binding name='TRUSTYBARSSTANCEBIND8'>
-    TrustyBars_StanceHoverBindFire(8)
+  <Binding name='ACABSTANCEBIND8'>
+    ACAB_StanceHoverBindFire(8)
   </Binding>
-  <Binding name='TRUSTYBARSSTANCEBIND9'>
-    TrustyBars_StanceHoverBindFire(9)
+  <Binding name='ACABSTANCEBIND9'>
+    ACAB_StanceHoverBindFire(9)
   </Binding>
-  <Binding name='TRUSTYBARSSTANCEBIND10'>
-    TrustyBars_StanceHoverBindFire(10)
+  <Binding name='ACABSTANCEBIND10'>
+    ACAB_StanceHoverBindFire(10)
   </Binding>
 </Bindings>
