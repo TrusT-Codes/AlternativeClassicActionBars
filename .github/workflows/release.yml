@@ -1,0 +1,36 @@
+name: Release
+
+# Push a tag like "v1.0.0-beta" to build the addon zip and publish a GitHub Release.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Build addon zip
+        shell: pwsh
+        run: ./scripts/Build-Release.ps1 -Version "${{ steps.version.outputs.version }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: AlternativeClassicActionBars ${{ steps.version.outputs.version }}
+          files: dist/AlternativeClassicActionBars-${{ steps.version.outputs.version }}.zip
+          generate_release_notes: true
+          prerelease: ${{ contains(steps.version.outputs.version, '-') }}
