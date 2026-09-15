@@ -53,7 +53,7 @@ That's it. No menu, no scrolling through a giant list looking for the right slot
 
 - **Edit Layout mode** — drag any bar or element with snap-to-grid and snap-to-adjacent-element alignment
 - **Custom action bars** — add extra bars beyond the default five, each its own grid of size/position/columns/rows
-- **Native element styling / positioning ** — reposition and rescale the Bag Bar, Micro Menu, Key Ring, Latency Bar, Cast Bar, Page Indicator, and Tooltip without losing native behavior
+- **Native element styling / positioning** — reposition and rescale the Bag Bar, Micro Menu, Key Ring, Latency Bar, Cast Bar, Page Indicator, and Tooltip without losing native behavior
 - **Vanilla OR Improved Pet Bar & Stance Bar** — Use the native UI Pet or Stance Bar OR use the improved ActionBar Styled Bars. Both offering you the option to scale, move and align them however you desire
 - **Better Experience Bar** — Optionally enable functionality inspired by the **BetterExperienceBar** Addon. Shows total / percentage of RestedXP. Change colors of the Exp-Bar and more. Try it out!
 - **Profiles** — create, copy, export, and import full layout profiles
