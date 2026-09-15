@@ -953,38 +953,38 @@ function ACAB:ApplyDragSnap(frame, pos, centerSnap)
 	local boxWidth = width * scale + ilPx + irPx
 	local boxHeight = height * scale + itPx + ibPx
 
-	-- Snap to Grid and Snap to Adjacent Elements are mutually exclusive
-	-- per drag - grid wins when both are enabled, since it's the more
-	-- specific/deliberate of the two.
-	local adjustedLeft, adjustedTop
+	-- Snap to Adjacent Elements takes priority per axis - Snap to Grid
+	-- only fills in whichever axis Adjacent Elements left unresolved.
+	local adjLeft, adjTop = ACAB:ComputeSnapAdjustment(
+		proposedLeft,
+		proposedTop,
+		boxWidth,
+		boxHeight,
+		frame
+	)
 
-	if ACABDB and ACABDB.snapToGrid then
-		if centerSnap then
-			adjustedLeft, adjustedTop = ACAB:ComputeCenterGridSnapAdjustment(
-				proposedLeft,
-				proposedTop,
-				boxWidth,
-				boxHeight,
-				scale
-			)
-		else
-			adjustedLeft, adjustedTop = ACAB:ComputeGridSnapAdjustment(
-				proposedLeft,
-				proposedTop,
-				boxWidth,
-				boxHeight,
-				scale
-			)
-		end
-	else
-		adjustedLeft, adjustedTop = ACAB:ComputeSnapAdjustment(
+	local gridLeft, gridTop
+
+	if centerSnap then
+		gridLeft, gridTop = ACAB:ComputeCenterGridSnapAdjustment(
 			proposedLeft,
 			proposedTop,
 			boxWidth,
 			boxHeight,
-			frame
+			scale
+		)
+	else
+		gridLeft, gridTop = ACAB:ComputeGridSnapAdjustment(
+			proposedLeft,
+			proposedTop,
+			boxWidth,
+			boxHeight,
+			scale
 		)
 	end
+
+	local adjustedLeft = adjLeft or gridLeft
+	local adjustedTop = adjTop or gridTop
 
 	if adjustedLeft then
 		pos.x = (adjustedLeft + ilPx) / scale
