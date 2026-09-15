@@ -1,18 +1,12 @@
 -- Bar.lua
--- Multi-bar grid engine for BTVanilla, backed by the action-slot pool.
---
+-- Multi-bar grid engine for AlternativeClassicActionBars, backed by the action-slot pool.
 -- Each bar's saved config: id, point, relativePoint, x, y, cols, rows,
--- buttonSize, slotStart, buttonCount.
---
--- Bar IDs are persistent identities, not array indices (e.g. bars 1, 2, 4
--- can exist after bar 3 is deleted). Action slots are also persistent -
--- deleting a bar never moves or reassigns another bar's slots. New bars
--- search the whole action-slot pool for a free contiguous block rather
--- than starting after the highest existing bar.
+-- buttonSize, slotStart, buttonCount. Bar IDs are persistent identities,
+-- not array indices - action slots are also persistent across deletion.
 
-local BTV = BTVanilla
+local ACAB = AlternativeClassicActionBars
 
-BTV.bars = {}
+ACAB.bars = {}
 
 -------------------------------------------------------------------------
 -- PixelUtil wrappers
@@ -39,6 +33,19 @@ end
 -- Helpers
 -------------------------------------------------------------------------
 
+-- Iterates every created bar (custom bars 6+ and default-bar-family bars
+-- 1-5 alike once wrapped), calling fn(barId, bar) for each.
+function ACAB:ForEachBar(fn)
+	local barId
+	local bar
+
+	for barId, bar in pairs(self.bars) do
+		if bar then
+			fn(barId, bar)
+		end
+	end
+end
+
 -- cfg.spacing may be absent on a bar saved before spacing was tracked;
 -- default to 0.
 local function BarFrameSize(cfg)
@@ -64,7 +71,7 @@ end
 -- Position
 -------------------------------------------------------------------------
 
-function BTV:ApplyBarPosition(bar)
+function ACAB:ApplyBarPosition(bar)
 	if not bar or not bar.config then
 		return
 	end
@@ -87,7 +94,7 @@ end
 -- Button layout
 -------------------------------------------------------------------------
 
-function BTV:LayoutButtons(bar)
+function ACAB:LayoutButtons(bar)
 	if not bar or not bar.buttons or not bar.config then
 		return
 	end
@@ -98,12 +105,9 @@ function BTV:LayoutButtons(bar)
 	local spacing = cfg.spacing or 0
 	local i
 
-	-- Pet Bar condense: compact only the currently-filled slots into
-	-- sequential grid cells instead of reserving every slot's own fixed
-	-- cell, same "collapse empty slots" idea as DefaultBars.lua's
-	-- ApplyGridAnchoredShape (Micro Menu). Suspended while edit mode or
-	-- the action-grid preview forces every slot visible, so the user can
-	-- still see/reach every real slot while customizing/placing.
+	-- Pet Bar condense: compacts only filled slots into sequential grid
+	-- cells (see DefaultBars.lua's Micro Menu equivalent). Suspended during
+	-- edit mode / action-grid preview so every slot stays reachable.
 	local condensePet = cfg.isPetBar and self:ShouldCondensePetBarSlots()
 		and not self:IsEditMode() and not self.isShowingActionGrid
 
@@ -150,14 +154,10 @@ end
 -------------------------------------------------------------------------
 -- Bar-level edit-mode overlay
 --
--- One full-bar-sized overlay frame owns all edit-mode interaction (drag,
--- right-click-to-settings, scroll-to-resize) for a bar. It sits above the
--- bar/buttons' own "HIGH" strata at "TOOLTIP" while edit mode is on, so it
--- wins every hit-test across the whole bar area, including gaps between
--- hidden pool slots that have no button frame of their own to catch a
--- click. Outside edit mode it is mouse-disabled and inert. This is the
--- only edit-mode hitbox tint in the addon; there is no per-button
--- equivalent.
+-- One full-bar-sized overlay owns drag/right-click-settings/scroll-resize
+-- for a bar, sitting above it at TOOLTIP strata while edit mode is on so
+-- it catches clicks even over gaps between hidden pool slots. Inert
+-- outside edit mode. The only edit-mode hitbox tint in the addon.
 -------------------------------------------------------------------------
 
 local barOverlays = {}
@@ -171,7 +171,7 @@ local function EnsureBarOverlay(bar)
 
 	overlay = CreateFrame(
 		"Frame",
-		"BTVanillaBarOverlay" .. tostring(bar.config.id),
+		"ACABBarOverlay" .. tostring(bar.config.id),
 		bar
 	)
 
@@ -185,7 +185,7 @@ local function EnsureBarOverlay(bar)
 	-- bounds via GetElementVisualInset so the tint reaches the visible
 	-- native border's outer edge; custom bars (id 6+, all insets 0) just
 	-- SetAllPoints(bar).
-	local insetLeft, insetRight, insetTop, insetBottom = BTV:GetElementVisualInset(bar)
+	local insetLeft, insetRight, insetTop, insetBottom = ACAB:GetElementVisualInset(bar)
 
 	if insetLeft ~= 0 or insetRight ~= 0 or insetTop ~= 0 or insetBottom ~= 0 then
 		overlay:SetPoint("TOPLEFT", bar, "TOPLEFT", -insetLeft, insetTop)
@@ -215,21 +215,21 @@ local function EnsureBarOverlay(bar)
 	end)
 
 	-- Centered element-name label, shown/hidden together with the overlay
-	-- (it has no Show/Hide of its own) - reuses BTV:GetBarDisplayName, the
+	-- (it has no Show/Hide of its own) - reuses ACAB:GetBarDisplayName, the
 	-- same name Settings.lua's bar list/page title shows.
 	local nameText = overlay:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 	nameText:SetPoint("CENTER", overlay, "CENTER", 0, 0)
-	nameText:SetText(BTV:GetBarDisplayName(bar.config.id))
+	nameText:SetText(ACAB:GetBarDisplayName(bar.config.id))
 
 	-- RegisterForDrag is set once here unconditionally; only
 	-- EnableMouse/strata toggle per edit-mode state, in
 	-- ApplyEditModeVisual below.
 	overlay:RegisterForDrag("LeftButton")
 	overlay:SetScript("OnDragStart", function()
-		BTV:StartBarDrag(bar)
+		ACAB:StartBarDrag(bar)
 	end)
 	overlay:SetScript("OnDragStop", function()
-		BTV:StopBarDrag(bar)
+		ACAB:StopBarDrag(bar)
 	end)
 
 	-- Right-click-to-settings. While mouse-enabled (edit mode only) this
@@ -237,7 +237,7 @@ local function EnsureBarOverlay(bar)
 	-- place that opens bar settings via right-click.
 	overlay:SetScript("OnMouseUp", function()
 		if arg1 == "RightButton" then
-			BTV:OpenBarSettings(bar)
+			ACAB:OpenBarSettings(bar)
 		end
 	end)
 
@@ -245,21 +245,21 @@ local function EnsureBarOverlay(bar)
 	-- drag-to-move does, not just directly over an individual button.
 	overlay:EnableMouseWheel(true)
 	overlay:SetScript("OnMouseWheel", function()
-		if not BTV:IsEditMode() then
+		if not ACAB:IsEditMode() then
 			return
 		end
 
 		local barId = bar.config.id
 
-		if BTV:IsDefaultBarFamilyId(barId) and
-			BTVanillaDB and BTVanillaDB.useDefaultLayout ~= false then
+		if ACAB:IsDefaultBarFamilyId(barId) and
+			ACABDB and ACABDB.useDefaultLayout ~= false then
 			return
 		end
 
 		local delta = arg1 or 0
 		local step = 2
 
-		BTV:SetBarButtonSize(bar, bar.config.buttonSize + (delta * step))
+		ACAB:SetBarButtonSize(bar, bar.config.buttonSize + (delta * step))
 	end)
 
 	overlay:EnableMouse(false)
@@ -274,29 +274,25 @@ end
 -- Edit mode visuals
 -------------------------------------------------------------------------
 
-function BTV:ApplyEditModeVisual()
+function ACAB:ApplyEditModeVisual()
 	local editMode = self:IsEditMode()
 
-	local barId
-	for barId, bar in pairs(self.bars) do
+	self:ForEachBar(function(barId, bar)
 		-- Default-bar-family bars (1-5, Pet Bar) are individually draggable
 		-- only when edit mode is on AND useDefaultLayout is false (mirrors
-		-- DefaultBars.lua's own CanDragDefaultLayout). Computed once here so
-		-- both the per-button tint and the bar-level overlay below agree on
-		-- the same "is this bar actually individually draggable right now"
-		-- condition.
-		local isDefaultBar1to5 = BTV:IsDefaultBarFamilyId(barId)
+		-- DefaultBars.lua's CanDragDefaultLayout).
+		local isDefaultBar1to5 = ACAB:IsDefaultBarFamilyId(barId)
 
 		local canEdit = editMode
 
 		if isDefaultBar1to5 then
-			canEdit = editMode and BTVanillaDB and BTVanillaDB.useDefaultLayout == false
+			canEdit = editMode and ACABDB and ACABDB.useDefaultLayout == false
 		end
 
 		-- There is deliberately no per-button edit-mode tint for any bar
 		-- kind; the bar-level overlay hitbox tint below is the only
 		-- edit-mode tint in the addon.
-		if bar and bar.buttons then
+		if bar.buttons then
 			local i
 
 			for i = 1, table.getn(bar.buttons) do
@@ -339,7 +335,7 @@ function BTV:ApplyEditModeVisual()
 				overlay:Hide()
 			end
 		end
-	end
+	end)
 
 	-- Also refreshes DefaultBars.lua's own overlays (gated on
 	-- CanDragDefaultLayout, not just edit mode) so both bar kinds update
@@ -354,18 +350,10 @@ end
 -------------------------------------------------------------------------
 -- Layout grid overlay (Edit Layout mode)
 --
--- Light-blue reference grid spanning the whole screen, spaced at
--- BTV:GetLayoutGridSpacing() (Core.lua - tracks the current button
--- size/border style), with a single darker/thicker line through the exact
--- screen center on each axis. Purely visual - BTVanillaDB.snapToGrid
--- (Core.lua's BTV:ComputeGridSnapAdjustment, wired into DefaultBars.lua's
--- ApplyDragSnap) is the separate setting that controls drag behavior.
---
--- BTVanillaDB.showLayoutGrid is the base on/off state; holding Ctrl while
--- in Edit Layout mode temporarily flips it (mirrors Shift's temporary
--- override of Snap to Adjacent Elements) via a C_Timer.NewTicker poll -
--- CLAUDE.md's scheduling convention - rather than a hand-rolled OnUpdate,
--- since visibility must track Ctrl even when nothing is being dragged.
+-- Reference grid spanning the screen at ACAB:GetLayoutGridSpacing(),
+-- center line highlighted. Purely visual - ACABDB.snapToGrid controls
+-- drag behavior separately. ACABDB.showLayoutGrid is the base on/off
+-- state; Ctrl temporarily flips it via a C_Timer.NewTicker poll.
 -------------------------------------------------------------------------
 
 local LAYOUT_GRID_LINE_COLOR = { 0.4, 0.75, 1.0, 0.35 }
@@ -374,13 +362,8 @@ local LAYOUT_GRID_LINE_THICKNESS = 1
 local LAYOUT_GRID_CENTER_THICKNESS = 3
 local LAYOUT_GRID_CTRL_POLL_INTERVAL = 0.05
 
--- Extra whole grid-line steps drawn past the screen edge on every side,
--- on top of the minimum math.ceil already needs - a safety margin so
--- minor rect/rounding variance never leaves the boundary looking like a
--- missing line. The exact cell size at the visible edge already varies
--- run to run (spacing rarely divides the screen evenly) and that's
--- accepted as fine - this buffer isn't trying to fix that, just guards
--- against landing suspiciously close to it.
+-- Extra whole grid-line steps drawn past the screen edge, on top of the
+-- minimum math.ceil already needs, as a safety margin against rounding.
 local LAYOUT_GRID_EDGE_OVERSHOOT_LINES = 5
 
 local layoutGridFrame
@@ -393,7 +376,7 @@ local function EnsureLayoutGridFrame()
 		return layoutGridFrame
 	end
 
-	layoutGridFrame = CreateFrame("Frame", "BTVanillaLayoutGridFrame", UIParent)
+	layoutGridFrame = CreateFrame("Frame", "ACABLayoutGridFrame", UIParent)
 	layoutGridFrame:SetAllPoints(UIParent)
 	layoutGridFrame:SetFrameStrata("BACKGROUND")
 	layoutGridFrame:EnableMouse(false)
@@ -425,19 +408,16 @@ local function GetOrCreatePoolLine(pool, index, frame)
 end
 
 -- Rebuilds every grid line texture from scratch at the current
--- BTV:GetLayoutGridSpacing(). Called whenever Edit Layout mode is entered
+-- ACAB:GetLayoutGridSpacing(). Called whenever Edit Layout mode is entered
 -- and whenever the border style/baseline button size changes while it's
--- already active (BTV:ApplyGlobalButtonStyle).
-function BTV:RebuildLayoutGrid()
+-- already active (ACAB:ApplyGlobalButtonStyle).
+function ACAB:RebuildLayoutGrid()
 	local frame = EnsureLayoutGridFrame()
 
-	-- BTV:GetLayoutGridSpacing() is a LOCAL unit (a raw button-size number,
-	-- same units as button:SetWidth()) - this frame shares that same local
-	-- unit space with every other default-scale frame (nothing in this
-	-- addon applies a custom :SetScale to either a bar or this overlay),
-	-- so it's used directly as a SetPoint offset below with NO scale
-	-- conversion - dividing by GetEffectiveScale() here would double-
-	-- convert and shrink the grid relative to actual button size.
+	-- ACAB:GetLayoutGridSpacing() is a LOCAL unit, same space this frame
+	-- shares with every other default-scale frame - used directly as a
+	-- SetPoint offset with no scale conversion (dividing by
+	-- GetEffectiveScale() here would double-convert and shrink the grid).
 	local spacing = self:GetLayoutGridSpacing()
 
 	if not spacing or spacing <= 0 then
@@ -446,15 +426,10 @@ function BTV:RebuildLayoutGrid()
 		return
 	end
 
-	-- Reads UIParent's own dimensions directly rather than this overlay's
-	-- (frame:GetWidth()/GetHeight()) - frame is SetAllPoints(UIParent) so
-	-- they're meant to be identical, but frame rects resolve LAZILY on
-	-- this client against the anchor's own cached rect (documented in
-	-- docs/01-Environment-Capability-Analysis.md §5af and already worked
-	-- around in Settings.lua) - reading a freshly SetAllPoints() child
-	-- immediately can return a stale/short rect. UIParent's own rect is
-	-- always already resolved (root frame, present since login), so this
-	-- sidesteps the issue entirely instead of forcing a resolve pass.
+	-- Reads UIParent's own dimensions rather than this overlay's - frame
+	-- rects resolve lazily on this client against the anchor's cached rect
+	-- (docs/01-Environment-Capability-Analysis.md §5af); UIParent's rect is
+	-- always already resolved since login, sidestepping the issue.
 	local width = UIParent:GetWidth()
 	local height = UIParent:GetHeight()
 
@@ -462,16 +437,9 @@ function BTV:RebuildLayoutGrid()
 		return
 	end
 
-	-- math.ceil (not math.floor) so the last line covering the screen
-	-- lands beyond the visible edge instead of stopping short of it, plus
-	-- a generous extra buffer of whole steps past that - a single plain,
-	-- uniformly-spaced grid extending out from the center lines with no
-	-- special-cased "exact edge" line and no recentering of the outermost
-	-- step (both tried and reverted - see this function's git history/
-	-- project memory). The exact leftover cell size at the visible edge
-	-- necessarily varies since spacing rarely divides the screen evenly -
-	-- accepted as fine; the buffer just guards against that boundary ever
-	-- landing so close to the true edge that it reads as a missing line.
+	-- math.ceil (not math.floor) so the last line covers the visible edge
+	-- instead of stopping short, plus a buffer of extra steps - a single
+	-- uniform grid with no special-cased edge line.
 	local halfCountX = math.ceil((width / 2) / spacing) + LAYOUT_GRID_EDGE_OVERSHOOT_LINES
 	local halfCountY = math.ceil((height / 2) / spacing) + LAYOUT_GRID_EDGE_OVERSHOOT_LINES
 
@@ -518,14 +486,14 @@ function BTV:RebuildLayoutGrid()
 end
 
 -- True if the grid should actually be on screen right now: Edit Layout
--- mode active AND (BTVanillaDB.showLayoutGrid, XOR'd with Ctrl currently
+-- mode active AND (ACABDB.showLayoutGrid, XOR'd with Ctrl currently
 -- held).
 local function ComputeLayoutGridShouldShow()
-	if not BTV:IsEditMode() then
+	if not ACAB:IsEditMode() then
 		return false
 	end
 
-	local base = BTVanillaDB and BTVanillaDB.showLayoutGrid or false
+	local base = ACABDB and ACABDB.showLayoutGrid or false
 	local ctrlHeld = IsControlKeyDown and IsControlKeyDown()
 
 	if ctrlHeld then
@@ -535,7 +503,7 @@ local function ComputeLayoutGridShouldShow()
 	return base
 end
 
-function BTV:RefreshLayoutGridVisibility()
+function ACAB:RefreshLayoutGridVisibility()
 	local frame = EnsureLayoutGridFrame()
 
 	if ComputeLayoutGridShouldShow() then
@@ -548,7 +516,7 @@ end
 -- Called from ApplyEditModeVisual on every edit-mode toggle - (re)builds
 -- the grid and starts/stops the Ctrl-poll ticker together with the mode
 -- itself.
-function BTV:ApplyLayoutGridVisual()
+function ACAB:ApplyLayoutGridVisual()
 	local editMode = self:IsEditMode()
 
 	if layoutGridCtrlTicker then
@@ -562,8 +530,8 @@ function BTV:ApplyLayoutGridVisual()
 
 		if C_Timer and C_Timer.NewTicker then
 			layoutGridCtrlTicker = C_Timer.NewTicker(LAYOUT_GRID_CTRL_POLL_INTERVAL, function()
-				if BTV:IsEditMode() then
-					BTV:RefreshLayoutGridVisibility()
+				if ACAB:IsEditMode() then
+					ACAB:RefreshLayoutGridVisibility()
 				end
 			end)
 		end
@@ -576,7 +544,7 @@ end
 -- Button size
 -------------------------------------------------------------------------
 
-function BTV:SetBarButtonSize(bar, newSize)
+function ACAB:SetBarButtonSize(bar, newSize)
 	if not bar or not bar.config then
 		return
 	end
@@ -617,12 +585,10 @@ function BTV:SetBarButtonSize(bar, newSize)
 
 	self:LayoutButtons(bar)
 
-	-- BTV:GetLayoutGridSpacing() tracks Main Bar's (id 1) buttonSize live
-	-- (unless Use Custom Grid Size is on, in which case this is a no-op
-	-- change) - every buttonSize-changing path (per-bar/global sliders,
-	-- scroll-wheel resize, border-style switch) funnels through this one
-	-- function, so this is the single place that needs to rebuild the
-	-- grid rather than each call site remembering to.
+	-- Every buttonSize-changing path funnels through this function, so
+	-- this is the single place that rebuilds the grid instead of each
+	-- caller remembering to (ACAB:GetLayoutGridSpacing tracks Main Bar's
+	-- size live).
 	if bar.config.id == 1 and self:IsEditMode() then
 		self:RebuildLayoutGrid()
 	end
@@ -633,10 +599,10 @@ end
 --
 -- Mirrors DefaultBars.lua's SetDefaultBarSpacing (clamp, write, reapply);
 -- writes directly to bar.config since a custom bar's cfg IS its own
--- BTVanillaDB.bars[] entry.
+-- ACABDB.bars[] entry.
 -------------------------------------------------------------------------
 
-function BTV:SetBarSpacing(bar, spacing)
+function ACAB:SetBarSpacing(bar, spacing)
 	if not bar or not bar.config then
 		return
 	end
@@ -666,7 +632,7 @@ function BTV:SetBarSpacing(bar, spacing)
 
 	self:ApplyBarShape(bar)
 
-	-- Vanilla-style grid spacing (BTV:GetLayoutGridSpacing) includes Main
+	-- Vanilla-style grid spacing (ACAB:GetLayoutGridSpacing) includes Main
 	-- Bar's real configured spacing, not just its buttonSize - see that
 	-- function's own comment.
 	if bar.config.id == 1 and self:IsEditMode() then
@@ -678,7 +644,7 @@ end
 -- Only show on hover (Settings.lua's per-bar checkbox/slider)
 -------------------------------------------------------------------------
 
-function BTV:SetBarHoverOnly(bar, enabled)
+function ACAB:SetBarHoverOnly(bar, enabled)
 	if not bar or not bar.config then
 		return
 	end
@@ -688,7 +654,7 @@ function BTV:SetBarHoverOnly(bar, enabled)
 	self:ApplyBarShape(bar)
 end
 
-function BTV:SetBarHoverDuration(bar, duration)
+function ACAB:SetBarHoverDuration(bar, duration)
 	if not bar or not bar.config then
 		return
 	end
@@ -706,31 +672,26 @@ end
 
 -------------------------------------------------------------------------
 -- Global border/spacing style sweep (General tab checkbox,
--- BTVanillaDB.modernBorderStyle / useDefaultLayout's forced-vanilla lock)
+-- ACABDB.modernBorderStyle / useDefaultLayout's forced-vanilla lock)
 --
--- Re-styles every bar's buttons for the current global style
--- (BTV:IsVanillaBorderStyle(), via Button.lua's
--- BTVButtonMixin:ApplyBorderStyle) on every call. On a real style
--- transition (tracked via BTVanillaDB.lastAppliedVanillaStyle, not on
--- every call) it also shifts every bar's buttonSize by
--- BTV.MODERN_BUTTON_SIZE_DELTA, nudges position to compensate, and shifts
--- real spacing by the same amount in the opposite direction so
--- buttonSize + spacing stays visually constant - Settings.lua's
--- GetSpacingDisplayOffset cancels this shift so the displayed spacing
--- number never changes. Not a live lock; per-bar sliders stay freely
--- adjustable afterward.
+-- Re-styles every bar's buttons for the current global style. On a real
+-- style transition (tracked via ACABDB.lastAppliedVanillaStyle) it
+-- also shifts buttonSize by ACAB.MODERN_BUTTON_SIZE_DELTA, nudges position
+-- to compensate, and shifts spacing the opposite way so buttonSize +
+-- spacing stays visually constant. Not a live lock; per-bar sliders stay
+-- freely adjustable afterward.
 -------------------------------------------------------------------------
 
-function BTV:ApplyGlobalButtonStyle()
+function ACAB:ApplyGlobalButtonStyle()
 	if not self.bars then
 		return
 	end
 
 	local vanilla = self:IsVanillaBorderStyle()
 
-	if BTVanillaDB.lastAppliedVanillaStyle == nil then
-		BTVanillaDB.lastAppliedVanillaStyle = vanilla
-	elseif BTVanillaDB.lastAppliedVanillaStyle ~= vanilla then
+	if ACABDB.lastAppliedVanillaStyle == nil then
+		ACABDB.lastAppliedVanillaStyle = vanilla
+	elseif ACABDB.lastAppliedVanillaStyle ~= vanilla then
 		local delta = vanilla and -self.MODERN_BUTTON_SIZE_DELTA or self.MODERN_BUTTON_SIZE_DELTA
 
 		-- posShift compensates for the size delta being anchor-relative,
@@ -744,42 +705,34 @@ function BTV:ApplyGlobalButtonStyle()
 		-- spacing stays visually constant across the switch.
 		local spacingDelta = vanilla and self.VANILLA_SPACING_FLOOR or -self.VANILLA_SPACING_FLOOR
 
-		-- useDefaultLayout turning ON forces vanilla=true here and its own
-		-- OnClick already reset bars 1-5's buttonSize/position to native
-		-- values before calling this function - applying the delta on top
-		-- would double-shift them. Skip bars 1-5 in that case only; extra
-		-- bars 6-9 (never touched by that reset) still need the delta.
-		local skipDefaultBars = BTVanillaDB.useDefaultLayout ~= false
+		-- useDefaultLayout turning ON already reset bars 1-5's buttonSize/
+		-- position to native values before this runs - applying the delta
+		-- again would double-shift them, so skip bars 1-5 in that case only.
+		local skipDefaultBars = ACABDB.useDefaultLayout ~= false
 
-		local barId
-		local bar
-
-		for barId, bar in pairs(self.bars) do
-			if bar and bar.config and bar.config.buttonSize and
-				not (skipDefaultBars and BTV:IsDefaultBarFamilyId(barId)) then
+		self:ForEachBar(function(barId, bar)
+			if bar.config and bar.config.buttonSize and
+				not (skipDefaultBars and ACAB:IsDefaultBarFamilyId(barId)) then
 				self:SetBarButtonSize(bar, bar.config.buttonSize + delta)
 				self:SetBarPosition(bar, (bar.config.x or 0) + dx, (bar.config.y or 0) + dy)
 				self:SetBarSpacing(bar, (bar.config.spacing or 0) + spacingDelta)
 			end
-		end
+		end)
 
 		-- The global buttonSize override (if enabled) needs the same
 		-- shift applied to its own stored value, then re-applied so it
 		-- stays authoritative over whatever the per-bar loop above just
 		-- wrote.
-		if BTVanillaDB.globalButtonSizeEnabled and BTVanillaDB.globalButtonSizeValue then
-			BTVanillaDB.globalButtonSizeValue = BTVanillaDB.globalButtonSizeValue + delta
+		if ACABDB.globalButtonSizeEnabled and ACABDB.globalButtonSizeValue then
+			ACABDB.globalButtonSizeValue = ACABDB.globalButtonSizeValue + delta
 			self:ApplyGlobalButtonSize()
 		end
 
-		BTVanillaDB.lastAppliedVanillaStyle = vanilla
+		ACABDB.lastAppliedVanillaStyle = vanilla
 	end
 
-	local barId
-	local bar
-
-	for barId, bar in pairs(self.bars) do
-		if bar and bar.config then
+	self:ForEachBar(function(barId, bar)
+		if bar.config then
 			local i
 
 			for i = 1, table.getn(bar.buttons) do
@@ -790,7 +743,7 @@ function BTV:ApplyGlobalButtonStyle()
 				end
 			end
 		end
-	end
+	end)
 
 	-- Stance Bar is a chain-anchored container of real Blizzard buttons,
 	-- not one of self.bars above - swept separately via its own
@@ -799,7 +752,7 @@ function BTV:ApplyGlobalButtonStyle()
 		self:ApplyStanceBarBorderStyle()
 	end
 
-	-- BTV:GetLayoutGridSpacing() tracks this same border style/baseline
+	-- ACAB:GetLayoutGridSpacing() tracks this same border style/baseline
 	-- size - rebuild the layout grid immediately if Edit Layout mode is
 	-- currently active, instead of leaving it stale until next toggle.
 	if self:IsEditMode() then
@@ -809,21 +762,17 @@ end
 
 -------------------------------------------------------------------------
 -- Global spacing/button-size overrides (General tab checkboxes,
--- BTVanillaDB.globalSpacingEnabled/globalButtonSizeEnabled)
+-- ACABDB.globalSpacingEnabled/globalButtonSizeEnabled)
 --
 -- While enabled, the General-tab slider is the single source of truth for
--- every bar in self.bars (default 1-5 + extra 6-9; simple bars like Bag
--- Bar/Micro Menu are never in self.bars); each bar's own per-bar slider
--- locks (Settings.lua's RefreshBarPageGlobalOverrideGating). No-ops while
--- disabled, leaving each bar's last-applied value in place. Also no-ops
--- while useDefaultLayout is on (its reset cascade already owns bars 1-5's
--- spacing/size then, and the General-tab sliders are locked too - see
--- RefreshGeneralPanel).
+-- every bar in self.bars; each bar's own per-bar slider locks. No-ops
+-- while disabled, or while useDefaultLayout is on (its own reset cascade
+-- owns bars 1-5's spacing/size then).
 -------------------------------------------------------------------------
 
-function BTV:ApplyGlobalSpacing()
-	if not (self.bars and BTVanillaDB.globalSpacingEnabled) or
-		BTVanillaDB.useDefaultLayout ~= false then
+function ACAB:ApplyGlobalSpacing()
+	if not (self.bars and ACABDB.globalSpacingEnabled) or
+		ACABDB.useDefaultLayout ~= false then
 		return
 	end
 
@@ -832,41 +781,35 @@ function BTV:ApplyGlobalSpacing()
 	-- so the same displayed number applies the correct real spacing per
 	-- style.
 	local floor = self:IsVanillaBorderStyle() and self.VANILLA_SPACING_FLOOR or 0
-	local real = (BTVanillaDB.globalSpacingValue or 0) + floor
+	local real = (ACABDB.globalSpacingValue or 0) + floor
 
-	local barId
-	local bar
-
-	for barId, bar in pairs(self.bars) do
-		if bar and bar.config then
+	self:ForEachBar(function(barId, bar)
+		if bar.config then
 			self:SetBarSpacing(bar, real)
 		end
-	end
+	end)
 end
 
-function BTV:ApplyGlobalButtonSize()
-	if not (self.bars and BTVanillaDB.globalButtonSizeEnabled) or
-		BTVanillaDB.useDefaultLayout ~= false then
+function ACAB:ApplyGlobalButtonSize()
+	if not (self.bars and ACABDB.globalButtonSizeEnabled) or
+		ACABDB.useDefaultLayout ~= false then
 		return
 	end
 
-	local size = BTVanillaDB.globalButtonSizeValue or self.BUTTON_SIZE
+	local size = ACABDB.globalButtonSizeValue or self.BUTTON_SIZE
 
-	local barId
-	local bar
-
-	for barId, bar in pairs(self.bars) do
-		if bar and bar.config then
+	self:ForEachBar(function(barId, bar)
+		if bar.config then
 			self:SetBarButtonSize(bar, size)
 		end
-	end
+	end)
 end
 
 -------------------------------------------------------------------------
 -- Apply position directly from settings
 -------------------------------------------------------------------------
 
-function BTV:SetBarPosition(bar, x, y)
+function ACAB:SetBarPosition(bar, x, y)
 	if not bar or not bar.config then
 		return
 	end
@@ -892,7 +835,7 @@ end
 -- (12, Core.lua), the pool size every custom bar allocates at creation.
 -------------------------------------------------------------------------
 
-function BTV:SetBarLayout(bar, cols, rows)
+function ACAB:SetBarLayout(bar, cols, rows)
 	if not bar or not bar.config then
 		return false
 	end
@@ -942,7 +885,7 @@ end
 -- button pool itself - ApplyBarShape shows/hides existing pool slots.
 -------------------------------------------------------------------------
 
-function BTV:SetBarButtonCount(bar, count)
+function ACAB:SetBarButtonCount(bar, count)
 	if not bar or not bar.config then
 		return false
 	end
@@ -978,11 +921,11 @@ end
 
 -- Returns true when a bar currently occupies a given action slot.
 
-function BTV:IsActionSlotUsed(slot, ignoredBarId)
+function ACAB:IsActionSlotUsed(slot, ignoredBarId)
 	local i
 
-	for i = 1, table.getn(BTVanillaDB.bars) do
-		local cfg = BTVanillaDB.bars[i]
+	for i = 1, table.getn(ACABDB.bars) do
+		local cfg = ACABDB.bars[i]
 
 		if cfg and cfg.id ~= ignoredBarId then
 			local count = (cfg.cols or 0) * (cfg.rows or 0)
@@ -1002,7 +945,7 @@ end
 
 -- Checks whether a complete contiguous slot range is free.
 
-function BTV:IsActionSlotRangeFree(startSlot, count, ignoredBarId)
+function ACAB:IsActionSlotRangeFree(startSlot, count, ignoredBarId)
 	if not startSlot or not count then
 		return false
 	end
@@ -1030,21 +973,6 @@ end
 -- slots. Scans the whole action-slot pool from ACTION_SLOT_START rather
 -- than starting after the highest existing bar, so a slot freed by
 -- deleting a bar in the middle of the range can be reused.
---
--- Example:
---
---   Bar 1 -> 73-84
---   Bar 2 -> 85-96
---   Bar 3 -> 97-108
---   Bar 4 -> 109-120
---
--- Delete Bar 2:
---
---   Bar 1 -> 73-84
---   Bar 3 -> 97-108
---   Bar 4 -> 109-120
---
--- New bar can now correctly use 85-96.
 
 -- Page 10 (slots 109-120) is the only range no native paging mechanism
 -- ever reaches (Bar 1's own paging tops out at page 6, slots 61-72; stance/
@@ -1053,7 +981,7 @@ end
 -- assignment, only falling back to 73-108 once page 10 is exhausted.
 local PREFERRED_SLOT_START = 109
 
-function BTV:GetNextFreeSlotStart(neededCount)
+function ACAB:GetNextFreeSlotStart(neededCount)
 	if not neededCount or neededCount < 1 then
 		return nil
 	end
@@ -1083,20 +1011,14 @@ end
 -- Apply a bar's shape (grid, slotStart, buttonCount) to its existing
 -- button pool
 --
--- The button-slot pool is created once, in CreateBarFromConfig, and never
--- destroyed - bars are permanent, there is no bar deletion in this addon.
--- Any layout change (grid shape, button count, or slotStart) just:
---
---   1. Re-maps which action slot each pool slot points at (Rebind),
---   2. Shows pool slots up to buttonCount and hides the rest,
---   3. Repositions/resizes via the existing LayoutButtons math.
---
--- Rebind (Button.lua) keeps BTV.customBindTargets updated as each pool
--- slot's actionSlot changes, so a TRUSTYBARSBIND<n> binding (HoverBind.lua)
--- aimed at a specific action slot stays valid across any resize/relayout.
+-- The button-slot pool is created once and never destroyed - bars are
+-- permanent. A layout change re-maps each pool slot's action slot
+-- (Rebind), shows/hides slots up to buttonCount, and repositions via
+-- LayoutButtons. Rebind (Button.lua) keeps ACAB.customBindTargets updated
+-- so a ACABBIND<n> binding stays valid across resize/relayout.
 -------------------------------------------------------------------------
 
-function BTV:ApplyBarShape(bar)
+function ACAB:ApplyBarShape(bar)
 	if not bar or not bar.config or not bar.buttons then
 		return
 	end
@@ -1117,22 +1039,18 @@ function BTV:ApplyBarShape(bar)
 			local slotValid
 
 			-- Fixed-slot bars (default bars 2-5, Pet Bar) always rebind pool
-			-- slot i to the same fixed value cfg.fixedActionSlots[i] (a real
-			-- action slot for bars 2-5, a pet slot 1-10 for the Pet Bar) -
-			-- unlike a free-pool custom bar (id 6+), there is no
-			-- slotStart to derive this from, and no ACTION_SLOT_END
-			-- pool-range check applies (native slots 1-72, and pet slots
-			-- 1-10, are both outside the 73-120 pool range entirely).
+			-- slot i to cfg.fixedActionSlots[i] - a real action slot for bars
+			-- 2-5, a pet slot 1-10 for the Pet Bar. No ACTION_SLOT_END
+			-- pool-range check applies since these are outside 73-120.
 			if cfg.fixedActionSlots then
 				desiredSlot = cfg.fixedActionSlots[i]
 				slotValid = desiredSlot ~= nil
 			elseif cfg.dynamicMainBar then
-				-- Bar 1 (Main) only: pool slot i has no single permanent
-				-- action slot - it is recomputed every call from whichever
-				-- page/bonus-bar state currently applies (see
-				-- DefaultBars.lua's GetMainBarEffectivePage/
+				-- Bar 1 (Main) only: pool slot i has no permanent action
+				-- slot - it's recomputed every call from the current
+				-- page/bonus-bar state (DefaultBars.lua's
 				-- GetMainBarSlotForIndex). Calling
-				-- BTV:ApplyBarShape(BTV.bars[1]) after a page/stance change
+				-- ACAB:ApplyBarShape(ACAB.bars[1]) after a page/stance change
 				-- is enough to pick up the new slots.
 				desiredSlot = self:GetMainBarSlotForIndex(i)
 				slotValid = desiredSlot ~= nil
@@ -1181,12 +1099,12 @@ end
 -- Bar creation
 -------------------------------------------------------------------------
 
-function BTV:CreateBarFromConfig(cfg)
+function ACAB:CreateBarFromConfig(cfg)
 	local barW, barH = BarFrameSize(cfg)
 
 	local bar = CreateFrame(
 		"Frame",
-		"BTVanillaBar" .. tostring(cfg.id),
+		"ACABBar" .. tostring(cfg.id),
 		UIParent
 	)
 
@@ -1225,15 +1143,15 @@ function BTV:CreateBarFromConfig(cfg)
 	bar:RegisterForDrag("LeftButton")
 
 	bar:SetScript("OnDragStart", function()
-		if not BTV:IsEditMode() then
+		if not ACAB:IsEditMode() then
 			return
 		end
 
-		BTV:StartBarDrag(this)
+		ACAB:StartBarDrag(this)
 	end)
 
 	bar:SetScript("OnDragStop", function()
-		BTV:StopBarDrag(this)
+		ACAB:StopBarDrag(this)
 	end)
 
 	bar.config = cfg
@@ -1252,11 +1170,9 @@ function BTV:CreateBarFromConfig(cfg)
 		local slot
 
 		-- Fixed-slot bars (default bars 2-5, Pet Bar): each pool slot i is
-		-- permanently tied to cfg.fixedActionSlots[i] - a real native action
-		-- slot discovered once from the live Blizzard button frame
+		-- permanently tied to cfg.fixedActionSlots[i] - a real action slot
 		-- (Core.lua's CaptureFixedActionSlots) for bars 2-5, or a pet slot
-		-- 1-10 identity map (Core.lua's SeedOneDefaultBar) for the Pet Bar -
-		-- never the free 73-120 pool a real custom bar (id 6+) allocates from.
+		-- 1-10 identity map for the Pet Bar - never the free 73-120 pool.
 		if cfg.fixedActionSlots then
 			slot = cfg.fixedActionSlots[i]
 
@@ -1264,10 +1180,9 @@ function BTV:CreateBarFromConfig(cfg)
 				break
 			end
 		elseif cfg.dynamicMainBar then
-			-- Bar 1 (Main) only, resolved the same way ApplyBarShape does
-			-- - the initial pool-creation slot just needs to be a valid
-			-- slot to bind to, since the ApplyBarShape call at the end of
-			-- this function immediately re-resolves every button anyway.
+			-- Bar 1 (Main) only, resolved the same way ApplyBarShape does -
+			-- the initial slot just needs to be valid to bind to, since
+			-- ApplyBarShape at the end of this function re-resolves it.
 			slot = self:GetMainBarSlotForIndex(i)
 
 			if not slot then
@@ -1304,15 +1219,15 @@ end
 -- Create all bars from SavedVariables
 -------------------------------------------------------------------------
 
-function BTV:CreateAllBars()
+function ACAB:CreateAllBars()
 	self:EnsureDB()
 
 	self.bars = {}
 
 	local i
 
-	for i = 1, table.getn(BTVanillaDB.bars) do
-		local cfg = BTVanillaDB.bars[i]
+	for i = 1, table.getn(ACABDB.bars) do
+		local cfg = ACABDB.bars[i]
 
 		if cfg and cfg.id then
 			local bar = self:CreateBarFromConfig(cfg)
@@ -1340,12 +1255,12 @@ end
 -- Extra Bar enable/disable (ids 6-9)
 --
 -- Mirrors DefaultBars.lua's SetDefaultBarEnabled against a true custom-bar
--- config (bar.config IS this exact BTVanillaDB.bars[] entry). Capacity is
--- fixed at BTV.EXTRA_BAR_COUNT (4), seeded once by Core.lua's
+-- config (bar.config IS this exact ACABDB.bars[] entry). Capacity is
+-- fixed at ACAB.EXTRA_BAR_COUNT (4), seeded once by Core.lua's
 -- EnsureExtraBars - there is no add/remove-bar flow.
 -------------------------------------------------------------------------
 
-function BTV:IsExtraBarId(barId)
+function ACAB:IsExtraBarId(barId)
 	return barId ~= nil
 		and barId >= self.EXTRA_BAR_ID_START
 		and barId < self.EXTRA_BAR_ID_START + self.EXTRA_BAR_COUNT
@@ -1355,7 +1270,7 @@ end
 -- have no native Blizzard anchor to reset to (unlike default bars 1-5),
 -- so this restores the same position/buttonSize/spacing/grid layout a
 -- freshly-created Extra Bar would get (seedExtraBarConfig, Core.lua).
-function BTV:ResetExtraBarLayout(barId)
+function ACAB:ResetExtraBarLayout(barId)
 	local bar = self.bars and self.bars[barId]
 
 	if not bar or not bar.config then
@@ -1372,7 +1287,7 @@ function BTV:ResetExtraBarLayout(barId)
 	self:SetBarPosition(bar, x, y)
 end
 
-function BTV:SetExtraBarEnabled(barId, enabled)
+function ACAB:SetExtraBarEnabled(barId, enabled)
 	local bar = self.bars and self.bars[barId]
 
 	if not bar or not bar.config then
@@ -1393,16 +1308,14 @@ end
 -------------------------------------------------------------------------
 -- Extra Bar slot lookup
 --
--- Resolves pool-slot `slotIndex` (1-12) of Extra Bar `barId` to its
--- currently-bound native action slot - used by DefaultBars.lua's
--- GetMainBarSlotForIndex to read an assigned Extra Bar's own content.
--- Deliberately does not check bar.config.enabled or bar:IsShown(): an
--- Extra Bar assigned as a stance/page content source keeps supplying the
--- Main Bar regardless of whether it is separately shown as its own
--- visible bar.
+-- Resolves pool-slot `slotIndex` (1-12) of Extra Bar `barId` to its bound
+-- native action slot, used by DefaultBars.lua's GetMainBarSlotForIndex.
+-- Deliberately ignores enabled/IsShown - an Extra Bar assigned as a
+-- stance/page source keeps supplying Main Bar regardless of its own
+-- visibility.
 -------------------------------------------------------------------------
 
-function BTV:GetExtraBarSlotForIndex(barId, slotIndex)
+function ACAB:GetExtraBarSlotForIndex(barId, slotIndex)
 	local bar = self.bars and self.bars[barId]
 
 	if not bar or not bar.config or not bar.config.slotStart then
@@ -1421,16 +1334,12 @@ end
 -------------------------------------------------------------------------
 -- Bar drag
 --
--- Bars start/stop the same shared cursor-tracking OnUpdate loop
--- DefaultBars.lua's chain-anchored elements (Bag Bar, Micro Menu, Stance
--- Bar, Key Ring, Latency Bar, Experience Bar, Page Indicator) use for
--- live, real-time snap-while-dragging - see DefaultBars.lua's
--- BTV:StartSharedDrag/StopSharedDrag and its dragKind == "bar" branch,
--- which reads/writes bar.config.x/y directly and calls
--- BTV:ApplyBarPosition(bar) every tick.
+-- Bars use the same shared cursor-tracking loop DefaultBars.lua's
+-- chain-anchored elements use for live snap-while-dragging (see
+-- ACAB:StartSharedDrag/StopSharedDrag, dragKind == "bar").
 -------------------------------------------------------------------------
 
-function BTV:StartBarDrag(bar)
+function ACAB:StartBarDrag(bar)
 	if not bar or not bar.config then
 		return
 	end
@@ -1438,14 +1347,10 @@ function BTV:StartBarDrag(bar)
 	local cfg = bar.config
 
 	-- Normalize to the TOPLEFT-of-bar/BOTTOMLEFT-of-UIParent anchor
-	-- convention Core.lua's CaptureNativeAnchor and every chain-anchored
-	-- element already use - needed because a real custom/Extra Bar (id 6+)
-	-- is originally seeded CENTER/CENTER (Core.lua's seedExtraBarConfig),
-	-- under which the same cfg.x/cfg.y numbers would mean an offset from
-	-- screen CENTER rather than from UIParent's BOTTOMLEFT corner. Reading
-	-- the bar's own real GetLeft()/GetTop() sidesteps converting between
-	-- anchor conventions by hand; this is a one-time, permanent
-	-- normalization.
+	-- convention every chain-anchored element uses - needed since a real
+	-- custom/Extra Bar is originally seeded CENTER/CENTER. Reading the
+	-- bar's own GetLeft()/GetTop() sidesteps converting anchor conventions
+	-- by hand.
 	local scale = bar:GetEffectiveScale()
 	local uiParentScale = UIParent:GetEffectiveScale()
 	local left, top = bar:GetLeft(), bar:GetTop()
@@ -1464,7 +1369,7 @@ function BTV:StartBarDrag(bar)
 	self:StartSharedDrag("bar", cfg.id, cfg.x, cfg.y)
 end
 
-function BTV:StopBarDrag(bar)
+function ACAB:StopBarDrag(bar)
 	if not bar then
 		return
 	end
