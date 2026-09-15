@@ -1408,6 +1408,14 @@ function ACAB:RunLoginSequence(earlyLeft, earlyTop, settledLeft, settledTop, wai
 	ACAB:SetCastBarScale(ACABDB.castBarScale or 1)
 	ACAB:ApplyCastBarPosition()
 
+	-- Extra Bar 1/2 and Pet Bar are all live by now (CreateAllBars/
+	-- SetupPetBarNativeContainer above) - establishes this session's
+	-- correct stacked Y immediately instead of waiting for the first
+	-- relevant toggle.
+	if ACABDB.useDefaultLayout ~= false then
+		ACAB:ReflowCastBarForStackToggle()
+	end
+
 	ACAB:ApplyExpBarColors()
 
 	ACAB:ApplyBetterExpBarVisual()
