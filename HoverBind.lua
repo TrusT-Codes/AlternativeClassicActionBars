@@ -4,76 +4,73 @@
 --
 -- Default-bar buttons (bars 1-5) bind through native binding actions
 -- (ACTIONBUTTON1-12, MULTIACTIONBAR#BUTTON1-12). Custom-bar slots (bars
--- 6+) bind through this addon's own bindings.xml-declared actions
--- (TRUSTYBARSBIND1-48, one per free action slot 73-120), each invoking
--- TrustyBars_HoverBindFire(N). Styled Pet Bar slots (bar 10) use their own
--- TRUSTYBARSPETBIND1-10/TrustyBars_PetHoverBindFire(N), keyed directly by
--- pet slot 1-10. Styled Stance Bar slots (bar 11) use their own
--- TRUSTYBARSSTANCEBIND1-10/TrustyBars_StanceHoverBindFire(N), keyed
--- directly by shapeshift form index 1-10. The "Use Vanilla Pet/Stance Bar"
--- native containers' real PetActionButton1-10/ShapeshiftButton1-N aren't
--- Bar.lua/Button.lua pool buttons at all, so they're outside this whole
--- system (same as Bag Bar/Micro Menu already are) and keybind only through
--- native Blizzard Keybindings. Do not use SetBindingClick or
--- SetBinding(key, "BONUSACTIONBUTTON1") for custom slots - both record in
--- the binding system but the client's input dispatcher never fires them on
--- this client.
+-- 6+) have no native per-slot binding action, so they bind through this
+-- addon's own bindings.xml-declared actions: ACABBIND1-48 (one per
+-- free action slot 73-120), ACABPETBIND1-10 (styled Pet Bar, keyed
+-- by pet slot), ACABSTANCEBIND1-10 (styled Stance Bar, keyed by
+-- shapeshift form index). The native "Use Vanilla Pet/Stance Bar"
+-- containers aren't Bar.lua/Button.lua pool buttons, so they're outside
+-- this system (like Bag Bar/Micro Menu) and keybind only via native
+-- Blizzard Keybindings.
+--
+-- WARNING: SetBindingClick and SetBinding(key, "BONUSACTIONBUTTON1") are
+-- both dead ends for custom slots on this client - they record in the
+-- binding system but the input dispatcher never fires them.
 
-local BTV = BTVanilla
+local ACAB = AlternativeClassicActionBars
 
 -- Custom-bar slot -> button lookup, keyed by actionSlot - 72 (1-48,
--- matching bindings.xml's TRUSTYBARSBIND1-48). Kept in sync by Button.lua
+-- matching bindings.xml's ACABBIND1-48). Kept in sync by Button.lua
 -- wherever a custom-bar button's actionSlot is set.
-BTV.customBindTargets = {}
+ACAB.customBindTargets = {}
 
 -- Pet Bar slot -> button lookup, keyed by pet slot 1-10 directly (matching
--- bindings.xml's TRUSTYBARSPETBIND1-10). Styled Pet Bar only - see the
+-- bindings.xml's ACABPETBIND1-10). Styled Pet Bar only - see the
 -- file header.
-BTV.petBindTargets = {}
+ACAB.petBindTargets = {}
 
 -- Same, for the styled Stance Bar - keyed by shapeshift form index 1-10
--- directly (matching bindings.xml's TRUSTYBARSSTANCEBIND1-10).
-BTV.stanceBindTargets = {}
+-- directly (matching bindings.xml's ACABSTANCEBIND1-10).
+ACAB.stanceBindTargets = {}
 
--- Must be a bare global function, not a BTV: method - bindings.xml's
--- TRUSTYBARSBIND1-48 bodies can only invoke a plain global function name.
-function TrustyBars_HoverBindFire(slotIndex)
-	local btn = BTV.customBindTargets and BTV.customBindTargets[slotIndex]
+-- Must be a bare global function, not a ACAB: method - bindings.xml's
+-- ACABBIND1-48 bodies can only invoke a plain global function name.
+function ACAB_HoverBindFire(slotIndex)
+	local btn = ACAB.customBindTargets and ACAB.customBindTargets[slotIndex]
 	if btn then
 		btn:Click()
 	end
 end
 
--- Same as TrustyBars_HoverBindFire, for bindings.xml's TRUSTYBARSPETBIND1-10.
-function TrustyBars_PetHoverBindFire(petSlot)
-	local btn = BTV.petBindTargets and BTV.petBindTargets[petSlot]
+-- Same as ACAB_HoverBindFire, for bindings.xml's ACABPETBIND1-10.
+function ACAB_PetHoverBindFire(petSlot)
+	local btn = ACAB.petBindTargets and ACAB.petBindTargets[petSlot]
 	if btn then
 		btn:Click()
 	end
 end
 
--- Same as TrustyBars_HoverBindFire, for bindings.xml's TRUSTYBARSSTANCEBIND1-10.
-function TrustyBars_StanceHoverBindFire(stanceIndex)
-	local btn = BTV.stanceBindTargets and BTV.stanceBindTargets[stanceIndex]
+-- Same as ACAB_HoverBindFire, for bindings.xml's ACABSTANCEBIND1-10.
+function ACAB_StanceHoverBindFire(stanceIndex)
+	local btn = ACAB.stanceBindTargets and ACAB.stanceBindTargets[stanceIndex]
 	if btn then
 		btn:Click()
 	end
 end
 
--- Single source of truth for a button's real binding-action name: default-
--- bar buttons use their precomputed native name, styled Pet Bar slots use
--- TRUSTYBARSPETBIND<petSlot>, styled Stance Bar slots use
--- TRUSTYBARSSTANCEBIND<formIndex>, everything else (real custom bars 6+)
--- uses TRUSTYBARSBIND<actionSlot-72>.
-function BTV:GetHoverBindingId(btn)
+-- Resolves a button's real binding-action name: default-bar buttons use
+-- their precomputed native name, styled Pet/Stance Bar slots use
+-- ACABPETBIND<petSlot>/ACABSTANCEBIND<formIndex>, custom bars
+-- (6+) use ACABBIND<actionSlot-72>.
+function ACAB:GetHoverBindingId(btn)
 	if btn.nativeBindingId then
 		return btn.nativeBindingId
 	elseif btn.isPetSlot then
-		return "TRUSTYBARSPETBIND" .. tostring(btn.actionSlot)
+		return "ACABPETBIND" .. tostring(btn.actionSlot)
 	elseif btn.isStanceSlot then
-		return "TRUSTYBARSSTANCEBIND" .. tostring(btn.actionSlot)
+		return "ACABSTANCEBIND" .. tostring(btn.actionSlot)
 	else
-		return "TRUSTYBARSBIND" .. tostring(btn.actionSlot - 72)
+		return "ACABBIND" .. tostring(btn.actionSlot - 72)
 	end
 end
 
@@ -82,7 +79,7 @@ end
 -- MULTIACTIONBAR2BUTTON# for MultiBarBottomRight, MULTIACTIONBAR3BUTTON#
 -- for MultiBarRight, MULTIACTIONBAR4BUTTON# for MultiBarLeft). Mirrors
 -- DefaultBars.lua's DEFAULT_BAR_FRAME_PREFIXES.
-BTV.DEFAULT_BAR_BINDING_PREFIXES = {
+ACAB.DEFAULT_BAR_BINDING_PREFIXES = {
 	[1] = "ACTIONBUTTON",          -- Main bar.
 	[2] = "MULTIACTIONBAR1BUTTON", -- Bottom Left.
 	[3] = "MULTIACTIONBAR2BUTTON", -- Bottom Right.
@@ -90,27 +87,12 @@ BTV.DEFAULT_BAR_BINDING_PREFIXES = {
 	[5] = "MULTIACTIONBAR4BUTTON", -- Right 2.
 }
 
--------------------------------------------------------------------------
--- BTV:ForEachButton(fn)
---
--- Calls fn(ref) for every visible button on both default bars (1-5) and
--- custom bars (6+), where ref is:
---   ref.kind          always "custom" - both bar kinds are Bar.lua/
---                      Button.lua pool buttons; ref.fixedSlotBar is what
---                      distinguishes them.
---   ref.frame          the pool button Frame.
---   ref.bindingId       see BTV:GetHoverBindingId.
---   ref.actionSlot       action slot the button is bound to (73-120 for
---                      custom bars, indexes BTV.customBindTargets as
---                      actionSlot - 72; 1-10 for the styled Pet Bar,
---                      indexes BTV.petBindTargets directly).
---   ref.barId          1-5 (default) or 6+ (custom).
---   ref.slotIndex       1-12 within the bar.
---   ref.fixedSlotBar     true when btn.nativeBindingId is set (default-bar
---                      button).
--------------------------------------------------------------------------
+-- Calls fn(ref) for every visible button on bars 1-5 and 6+ (both are
+-- Bar.lua/Button.lua pool buttons). ref = { kind = "custom", frame,
+-- bindingId, actionSlot, barId, slotIndex, fixedSlotBar (true if
+-- btn.nativeBindingId is set, i.e. a default-bar button) }.
 
-function BTV:ForEachButton(fn)
+function ACAB:ForEachButton(fn)
 	local barId
 	for barId, bar in pairs(self.bars) do
 		if bar and bar.buttons then
@@ -139,7 +121,7 @@ end
 -- Bound check
 -------------------------------------------------------------------------
 
-function BTV:IsButtonBound(ref)
+function ACAB:IsButtonBound(ref)
 	return GetBindingKey(ref.bindingId) ~= nil
 end
 
@@ -147,13 +129,13 @@ end
 -- Tinting
 --
 -- Overrides Button.lua's normal range/usability tint while hoverbind mode
--- is active (UpdateRange short-circuits on BTV:IsHoverBindMode()).
+-- is active (UpdateRange short-circuits on ACAB:IsHoverBindMode()).
 -------------------------------------------------------------------------
 
 local HOVERBIND_BOUND_COLOR   = { 0.2, 1.0, 0.2 }
 local HOVERBIND_UNBOUND_COLOR = { 1.0, 0.25, 0.25 }
 
-function BTV:TintHoverBindButton(ref)
+function ACAB:TintHoverBindButton(ref)
 	local icon = ref.frame.icon
 	if not icon then
 		return
@@ -177,7 +159,7 @@ end
 -- shortly after a one-shot tint, so keep this on a ticker.
 local HOVERBIND_TINT_INTERVAL = 0.25
 
-function BTV:ApplyHoverBindVisual(enabled)
+function ACAB:ApplyHoverBindVisual(enabled)
 	if self.hoverBindTintTicker then
 		self.hoverBindTintTicker:Cancel()
 		self.hoverBindTintTicker = nil
@@ -189,8 +171,8 @@ function BTV:ApplyHoverBindVisual(enabled)
 			self.hoverBindTintTicker = C_Timer.NewTicker(HOVERBIND_TINT_INTERVAL, function()
 				-- Guards against hoverbind mode changing again before this
 				-- already-queued tick fires.
-				if BTV:IsHoverBindMode() then
-					BTV:ForEachButton(function(ref) BTV:TintHoverBindButton(ref) end)
+				if ACAB:IsHoverBindMode() then
+					ACAB:ForEachButton(function(ref) ACAB:TintHoverBindButton(ref) end)
 				end
 			end)
 		end
@@ -219,7 +201,7 @@ end
 -- covering both default and custom bars through one entry point.
 -------------------------------------------------------------------------
 
-function BTV:SetHoverBindHoveredCustomButton(btn)
+function ACAB:SetHoverBindHoveredCustomButton(btn)
 	if not self.hoverBindCaptureFrame or not btn or not btn.parentBar or not btn.parentBar.config then
 		return
 	end
@@ -237,7 +219,7 @@ function BTV:SetHoverBindHoveredCustomButton(btn)
 	}
 end
 
-function BTV:ClearHoverBindHoveredButton(frame)
+function ACAB:ClearHoverBindHoveredButton(frame)
 	if not self.hoverBindCaptureFrame then
 		return
 	end
@@ -258,10 +240,9 @@ local MODIFIER_KEYS = {
 }
 
 -- Mouse-button OnMouseDown arg1 name -> SetBinding/GetBindingKey key string.
--- Live-confirmed on this client (diag2 + SetBinding round-trip): OnMouseDown
--- reports "MiddleButton"/"Button4"/"Button5", but the binding system itself
--- only recognizes "BUTTON3"/"BUTTON4"/"BUTTON5". LeftButton/RightButton are
--- deliberately absent - those stay reserved for normal button use.
+-- OnMouseDown reports "MiddleButton"/"Button4"/"Button5", but the binding
+-- system only recognizes "BUTTON3"/"BUTTON4"/"BUTTON5". LeftButton/
+-- RightButton are deliberately absent - reserved for normal button use.
 local MOUSE_BUTTON_BINDING_KEYS = {
 	MiddleButton = "BUTTON3",
 	Button4 = "BUTTON4",
@@ -278,7 +259,7 @@ end
 
 -- Refreshes tint/hotkey text for hovered after its binding changed.
 local function RefreshHoverBindTarget(hovered)
-	BTV:TintHoverBindButton(hovered)
+	ACAB:TintHoverBindButton(hovered)
 	if hovered.frame.UpdateHotkeyText then
 		hovered.frame:UpdateHotkeyText()
 	end
@@ -287,7 +268,7 @@ end
 local function ApplyHoverBindKey(hovered, combo)
 	local previousAction = GetBindingAction(combo)
 	if previousAction and previousAction ~= "" and previousAction ~= hovered.bindingId then
-		BTV:Print("Rebound " .. combo .. " (was: " .. previousAction .. ")")
+		ACAB:Print("Rebound " .. combo .. " (was: " .. previousAction .. ")")
 	end
 
 	-- SetBinding only adds a key, it never clears old keys for an action.
@@ -328,7 +309,7 @@ local function ClearHoverBindKey(hovered)
 
 	SaveBindings(GetCurrentBindingSet())
 
-	BTV:Print("Cleared keybind for " .. hovered.bindingId)
+	ACAB:Print("Cleared keybind for " .. hovered.bindingId)
 
 	RefreshHoverBindTarget(hovered)
 end
@@ -356,7 +337,7 @@ end
 -- any mouse button besides Left/Right (those never reach here - see the
 -- guard in Button.lua). arg1's OnMouseDown name is looked up against
 -- MOUSE_BUTTON_BINDING_KEYS since it isn't the string SetBinding expects.
-function BTV:HandleHoverBindMouseButton(frame, buttonName)
+function ACAB:HandleHoverBindMouseButton(frame, buttonName)
 	local captureFrame = self.hoverBindCaptureFrame
 	local hovered = captureFrame and captureFrame.hoveredButton
 	if not hovered or hovered.frame ~= frame then
@@ -372,24 +353,13 @@ function BTV:HandleHoverBindMouseButton(frame, buttonName)
 end
 
 local function CreateHoverBindCaptureFrame()
-	local f = CreateFrame("Frame", "BTVanillaHoverBindCaptureFrame", UIParent)
+	local f = CreateFrame("Frame", "ACABHoverBindCaptureFrame", UIParent)
 	f:EnableKeyboard(false)
 	f:Hide()
 	f:SetScript("OnKeyDown", HoverBindCaptureFrame_OnKeyDown)
-	BTV.hoverBindCaptureFrame = f
+	ACAB.hoverBindCaptureFrame = f
 	return f
 end
 
 CreateHoverBindCaptureFrame()
 
--------------------------------------------------------------------------
--- Default-bar button hover hookup - no-op
---
--- Hover tracking for default-bar buttons happens through Button.lua's own
--- OnEnter/OnLeave (BTV:SetHoverBindHoveredCustomButton), same as custom
--- bars. Kept as a callable no-op since Core.lua still calls it at
--- PLAYER_LOGIN.
--------------------------------------------------------------------------
-
-function BTV:HookAllDefaultBarButtons()
-end

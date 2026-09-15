@@ -1,318 +1,91 @@
 -- Core.lua
--- BTVanilla: Bartender2-style action bar addon for Vanilla 1.12.1.
---
--- Constraints this file depends on:
---   - No SecureHandler*/SecureActionButtonTemplate on this client. Custom
---     buttons are backed by real vanilla action slots instead.
---   - Vanilla action system: 120 slots (10 pages x 12). Pages 7-10 (slots
---     73-120) are free and never touched by the default UI.
---   - SetPoint/SetSize work unrestricted during combat. InCombatLockdown()
---     always returns false here - never gate logic on it.
---   - Lua 5.0 has no `%` operator - use n - (math.floor(n/d)*d) instead.
+-- AlternativeClassicActionBars: Bartender2-style action bar addon for Vanilla 1.12.1.
+-- No SecureHandler system on this client - buttons are backed by real action slots 73-120 (pages 7-10, unused by default UI).
+-- SetPoint/SetSize are unrestricted during combat; InCombatLockdown() always returns false here.
+-- Lua 5.0 has no `%` operator - use n - (math.floor(n/d)*d) instead.
 
-BTVanilla = {}
-local BTV = BTVanilla
+AlternativeClassicActionBars = {}
+local ACAB = AlternativeClassicActionBars
 
 -- Action slot pool: pages 7-10, never surfaced by the default Blizzard UI.
-BTV.ACTION_SLOT_START = 73
-BTV.ACTION_SLOT_END   = 120
+ACAB.ACTION_SLOT_START = 73
+ACAB.ACTION_SLOT_END   = 120
 
 -- Defaults used when creating a NEW bar. Existing bars keep their own
 -- saved config.
-BTV.BUTTON_SIZE = 36
-BTV.BUTTON_COLS = 12
-BTV.BUTTON_ROWS = 1
+ACAB.BUTTON_SIZE = 36
+ACAB.BUTTON_COLS = 12
+ACAB.BUTTON_ROWS = 1
 
 -- Minimum bar spacing while vanilla border style is active, to avoid the
 -- native border texture's overhang causing adjacent buttons to overlap.
 -- 0 in modern style.
-BTV.VANILLA_SPACING_FLOOR = 4
+ACAB.VANILLA_SPACING_FLOOR = 4
 
--- Extra buttonSize modern-style buttons need over vanilla-style ones to
--- look the same size (modern's border is bounded to its own frame, vanilla's
--- overhangs via a larger texture). Real spacing shifts by the same amount
--- in the opposite direction on a style switch, so buttonSize + spacing
--- stays visually constant - see BTV:ApplyGlobalButtonStyle.
-BTV.MODERN_BUTTON_SIZE_DELTA = 4
+-- Extra buttonSize modern-style buttons need over vanilla-style buttons to
+-- look the same size; spacing shifts by the same amount in the opposite
+-- direction on a style switch (see ACAB:ApplyGlobalButtonStyle).
+ACAB.MODERN_BUTTON_SIZE_DELTA = 4
 
--- Position nudge applied alongside MODERN_BUTTON_SIZE_DELTA so a bar
--- doesn't visually shift when its buttonSize grows/shrinks from an
--- anchored (not centered) corner.
-BTV.MODERN_BUTTON_SIZE_POSITION_SHIFT = 2
+-- Position nudge paired with MODERN_BUTTON_SIZE_DELTA so an anchored
+-- (non-centered) bar doesn't visually shift when buttonSize changes.
+ACAB.MODERN_BUTTON_SIZE_POSITION_SHIFT = 2
 
--- Fixed pool size for a custom bar's button slots. Every grid preset the
--- Settings UI offers totals exactly 12 buttons. Buttons beyond a bar's
--- current buttonCount are hidden, never destroyed, so a bound action slot
--- stays valid across resizes/relayouts.
-BTV.MAX_BAR_BUTTONS = 12
+-- Fixed pool size for a custom bar's button slots (every grid preset totals
+-- 12). Buttons beyond buttonCount are hidden, not destroyed, so bound
+-- action slots stay valid across resizes.
+ACAB.MAX_BAR_BUTTONS = 12
 
 -- Equip-quality ring size ratio, matching vanilla's own ActionButtonTemplate.
-BTV.EQUIP_RING_RATIO = 62 / 36
+ACAB.EQUIP_RING_RATIO = 62 / 36
 
 -- Native border texture ("Interface\Buttons\UI-Quickslot2") ratio to
 -- button size (66/36 at the default 36px button).
-BTV.BORDER_RATIO = 66 / 36
+ACAB.BORDER_RATIO = 66 / 36
 
 -- Vertical anchor offset of the native border texture (1px down from
 -- center) - asymmetric top/bottom overhang.
-BTV.BORDER_Y_OFFSET = 1
+ACAB.BORDER_Y_OFFSET = 1
 
 -- Flat pixel amount subtracted from the border's visual inset on every
 -- side (transparent padding baked into the border texture asset).
-BTV.BORDER_TEXTURE_FUDGE = 12
+ACAB.BORDER_TEXTURE_FUDGE = 12
 
--- Extra top-only trim applied on top of GetHitRectInsets() for Micro Menu -
--- shared by the edit-mode overlay's own top anchor (DefaultBars.lua's
--- EnsureContainerOverlay/ApplyGridAnchoredShape) and the grid layout's
--- row-to-row spacing (ApplyGridAnchoredShape), so both stay in sync off one
--- value.
-BTV.MICRO_MENU_OVERLAY_TOP_FUDGE = 2
+-- Extra top-only trim on top of GetHitRectInsets() for Micro Menu - shared
+-- by the edit-mode overlay's top anchor and the grid layout's row spacing,
+-- so both stay in sync off one value.
+ACAB.MICRO_MENU_OVERLAY_TOP_FUDGE = 2
 
--- Latency Bar edit-mode overlay inset, live-measured (cursor-hover vs.
--- frame-edge diagnostic) against MainMenuBarPerformanceBarFrame's real
--- visible green bar art, which sits well inside the frame's own 16x64
--- bounds (transparent padding baked into the texture asset, same class
--- of issue as Micro Menu's oversized hit-rect above).
-BTV.LATENCY_BAR_OVERLAY_INSET = { left = 1, right = 6.5, top = 14, bottom = 11 }
+-- Latency Bar edit-mode overlay inset - MainMenuBarPerformanceBarFrame's
+-- visible bar art sits inside a larger frame with transparent padding.
+ACAB.LATENCY_BAR_OVERLAY_INSET = { left = 1, right = 6.5, top = 14, bottom = 11 }
 
 -- "Snap to Adjacent Elements": how close (real screen pixels) a dragged
 -- edge must get to another edge before it snaps.
-BTV.SNAP_THRESHOLD = 8
+ACAB.SNAP_THRESHOLD = 8
 
--- Schema version for BTVanillaDB.defaultBars/bars. Bumping this reseeds
--- default bars and wipes BTVanillaDB.bars - see EnsureDB below.
-BTV.SCHEMA_VERSION = 8
 
--- One-shot per session (login/reload), not per EnsureDB call - see
--- EnsureDB's hoverBindMode reset.
-local hasResetHoverBindModeThisSession = false
+-- Pet Bar: a 6th default-bar family member, wrapping PetActionButton1-10.
+-- Not backed by the 1-120 action-slot pool (see Button.lua's isPetSlot
+-- branch) - fixedActionSlots here is a pet-slot identity map (1-10).
+ACAB.PET_BAR_ID = 10
 
--- Captures a default bar's on-screen position from its first real
--- Blizzard button frame, converted to real screen pixels and expressed as
--- a UIParent-relative TOPLEFT/BOTTOMLEFT anchor.
-local function CaptureNativeAnchor(self, id)
-	local buttons = self.GetDefaultBarButtons and self:GetDefaultBarButtons(id)
-
-	if not buttons then
-		return nil
-	end
-
-	local first = buttons[1]
-
-	if not first then
-		return nil
-	end
-
-	local left = first:GetLeft()
-	local top = first:GetTop()
-
-	if not left or not top then
-		return nil
-	end
-
-	local buttonScale = first:GetEffectiveScale()
-	local targetScale = UIParent:GetEffectiveScale()
-
-	if not buttonScale or not targetScale or targetScale == 0 then
-		return nil
-	end
-
-	local screenX = left * buttonScale
-	local screenY = top * buttonScale
-
-	return {
-		point = "TOPLEFT",
-		relativePoint = "BOTTOMLEFT",
-		x = screenX / targetScale,
-		y = screenY / targetScale,
-	}
-end
-
--- Captures the native gap between adjacent buttons on default bar `id`.
--- Returns spacing (rounded to the nearest pixel), isUniform, and the raw
--- gaps array.
-local function CaptureNativeSpacing(self, id, grid)
-	local buttons = self.GetDefaultBarButtons and self:GetDefaultBarButtons(id)
-
-	if not buttons then
-		return nil
-	end
-
-	local horizontal = (grid.cols or 1) > (grid.rows or 1)
-
-	local positions = {}
-	local i
-
-	for i = 1, table.getn(buttons) do
-		local btn = buttons[i]
-
-		if not btn then
-			break
-		end
-
-		local pos = horizontal and btn:GetLeft() or btn:GetBottom()
-
-		if not pos then
-			return nil
-		end
-
-		positions[i] = pos
-	end
-
-	local count = table.getn(positions)
-
-	if count < 2 then
-		return nil
-	end
-
-	local size = horizontal and buttons[1]:GetWidth() or buttons[1]:GetHeight()
-	size = size or self.BUTTON_SIZE
-
-	local gaps = {}
-	local n
-
-	for n = 1, count - 1 do
-		local delta = positions[n + 1] - positions[n]
-
-		if delta < 0 then
-			delta = -delta
-		end
-
-		gaps[n] = delta - size
-	end
-
-	-- Bucket gaps within 0.5px of each other, take the majority bucket.
-	local buckets = {}
-	local gi
-
-	for gi = 1, table.getn(gaps) do
-		local g = gaps[gi]
-		local matched = false
-		local bi
-
-		for bi = 1, table.getn(buckets) do
-			local b = buckets[bi]
-			local diff = g - b.value
-
-			if diff < 0 then
-				diff = -diff
-			end
-
-			if diff <= 0.5 then
-				b.count = b.count + 1
-				matched = true
-				break
-			end
-		end
-
-		if not matched then
-			table.insert(buckets, { value = g, count = 1 })
-		end
-	end
-
-	local majority = buckets[1]
-	local bi
-
-	for bi = 2, table.getn(buckets) do
-		if buckets[bi].count > majority.count then
-			majority = buckets[bi]
-		end
-	end
-
-	local uniform = table.getn(buckets) == 1
-
-	-- Convert from the native button family's own scale to the bar
-	-- frame's scale (== UIParent's).
-	local buttonScale = buttons[1]:GetEffectiveScale()
-	local targetScale = UIParent:GetEffectiveScale()
-
-	if buttonScale and targetScale and targetScale ~= 0 then
-		majority.value = (majority.value * buttonScale) / targetScale
-	end
-
-	local spacing = math.floor(majority.value + 0.5)
-
-	if spacing < 0 then
-		spacing = 0
-	end
-
-	return spacing, uniform, gaps
-end
-
--- Discovers default bar `id`'s (2-5) 12 real action-slot numbers from its
--- live Blizzard button frames (btn.action), falling back to the known
--- fixed multibar slot offsets if that field is missing.
-local FIXED_SLOT_FALLBACK_OFFSET = {
-	[2] = 60, -- MultiBarBottomLeft
-	[3] = 48, -- MultiBarBottomRight
-	[4] = 12, -- MultiBarRight
-	[5] = 24, -- MultiBarLeft
-}
-
-local function CaptureFixedActionSlots(self, id)
-	local buttons = self.GetDefaultBarButtons and self:GetDefaultBarButtons(id)
-
-	if not buttons then
-		return nil
-	end
-
-	local slots = {}
-	local usedFallback = false
-	local i
-
-	for i = 1, table.getn(buttons) do
-		local btn = buttons[i]
-
-		if not btn then
-			return nil
-		end
-
-		local slot = btn.action
-
-		if not slot then
-			local offset = FIXED_SLOT_FALLBACK_OFFSET[id]
-
-			if offset then
-				slot = offset + i
-				usedFallback = true
-			end
-		end
-
-		if not slot then
-			return nil
-		end
-
-		slots[i] = slot
-	end
-
-	return slots, usedFallback
-end
-
--- Pet Bar: a 6th "default bar" family member, wrapping PetActionButton1-10.
--- Not backed by the 1-120 action-slot system (see Button.lua's isPetSlot
--- branch) - fixedActionSlots here is a pet-slot identity map (1-10), not
--- real action slots. Extra Bars occupy ids 6-9, so 10 is free.
-BTV.PET_BAR_ID = 10
-
--- Stance Bar: a 7th "default bar" family member, styled-mode-only entry.
--- This id (and its BTVanillaDB.defaultBars[STANCE_BAR_ID] cfg) drives ONLY
--- the opt-in custom-styled grid mode (Button.lua's isStanceSlot branch) -
--- the pre-existing native mode (ShapeshiftButton1-N reparented into
--- BTV.stanceBarContainer, DefaultBars.lua) keeps using its own separate
--- top-level BTVanillaDB.stanceBar* fields entirely untouched. Which mode is
--- actually active is cfg.useNativeStanceBar (default true), resolved
--- through BTV:IsStanceBarNativeModeEffective().
-BTV.STANCE_BAR_ID = 11
+-- Stance Bar: a 7th default-bar family member, styled-mode-only entry.
+-- Drives only the opt-in custom-styled grid mode (Button.lua's isStanceSlot
+-- branch); the native mode (ShapeshiftButton1-N) keeps its own separate
+-- ACABDB.stanceBar* fields untouched. Active mode is
+-- cfg.useNativeStanceBar, resolved via ACAB:IsStanceBarNativeModeEffective().
+ACAB.STANCE_BAR_ID = 11
 
 -- Every default-bar-family id, in display order. Loops that need to cover
 -- "the whole default-bar family" (bars 1-5, Pet Bar, Stance Bar) iterate
 -- this instead of a hardcoded 1-5 range.
-BTV.DEFAULT_BAR_IDS = { 1, 2, 3, 4, 5, BTV.PET_BAR_ID, BTV.STANCE_BAR_ID }
+ACAB.DEFAULT_BAR_IDS = { 1, 2, 3, 4, 5, ACAB.PET_BAR_ID, ACAB.STANCE_BAR_ID }
 
--- True for any id in BTV.DEFAULT_BAR_IDS - the shared predicate every
+-- True for any id in ACAB.DEFAULT_BAR_IDS - the shared predicate every
 -- useDefaultLayout-lock/"is this a default bar" check reads instead of a
 -- hardcoded id range.
-function BTV:IsDefaultBarFamilyId(barId)
+function ACAB:IsDefaultBarFamilyId(barId)
 	if not barId then
 		return false
 	end
@@ -330,30 +103,24 @@ end
 
 -- Grid shape for each default bar. Position is captured live, not stored
 -- here - see CaptureNativeAnchor.
-BTV.DEFAULT_BAR_GRID = {
+ACAB.DEFAULT_BAR_GRID = {
 	[1] = { cols = 12, rows = 1 },                      -- Main.
 	[2] = { cols = 12, rows = 1, enabled = false },      -- Bottom Left.
 	[3] = { cols = 12, rows = 1, enabled = false },      -- Bottom Right.
 	[4] = { cols = 1,  rows = 12, enabled = false },     -- Right.
 	[5] = { cols = 1,  rows = 12, enabled = false },     -- Right 2.
-	-- Pet Bar/Stance Bar default enabled (unlike bars 2-5, which are
-	-- genuinely opt-in extras) - both have a native-mode counterpart that's
-	-- always shown with no enable/disable concept of its own, so switching
-	-- to styled mode should keep showing the bar, not hide it.
-	[BTV.PET_BAR_ID] = { cols = 10, rows = 1, enabled = true }, -- Pet Bar.
-	-- Stance Bar (styled mode): base preset only - SeedOneDefaultBar
-	-- overrides cols/rows/buttonCount from the live GetNumShapeshiftForms()
-	-- count right after using this table for the initial anchor/spacing
-	-- capture's horizontal-orientation guess.
-	[BTV.STANCE_BAR_ID] = { cols = 10, rows = 1, enabled = true },
+	-- Pet Bar/Stance Bar default enabled - both always show via a native-mode
+	-- counterpart with no enable/disable of its own.
+	[ACAB.PET_BAR_ID] = { cols = 10, rows = 1, enabled = true }, -- Pet Bar.
+	-- Stance Bar base preset only - SeedOneDefaultBar overrides cols/rows
+	-- from the live GetNumShapeshiftForms() count.
+	[ACAB.STANCE_BAR_ID] = { cols = 10, rows = 1, enabled = true },
 }
 
--- Native FrameXML global backing each default bar's own Interface Options
--- checkbox. Session-scoped cosmetic use only - these globals do not
--- persist across a real logout on this client, so never read them as the
--- source of truth for what to apply at login. Pet Bar has no equivalent
--- native checkbox/global - table lookup is nil-safe wherever this is read.
-BTV.SHOW_MULTI_ACTIONBAR_GLOBAL = {
+-- Native FrameXML global backing each default bar's Interface Options
+-- checkbox. Session-scoped only - doesn't persist across logout, so never
+-- read as the source of truth for what to apply at login.
+ACAB.SHOW_MULTI_ACTIONBAR_GLOBAL = {
 	[2] = "SHOW_MULTI_ACTIONBAR_1",
 	[3] = "SHOW_MULTI_ACTIONBAR_2",
 	[4] = "SHOW_MULTI_ACTIONBAR_3",
@@ -361,21 +128,21 @@ BTV.SHOW_MULTI_ACTIONBAR_GLOBAL = {
 }
 
 -- Friendly display names for the default-bar family.
-BTV.DEFAULT_BAR_NAMES = {
+ACAB.DEFAULT_BAR_NAMES = {
 	[1] = "Main Bar",
 	[2] = "Action Bar 1",
 	[3] = "Action Bar 2",
 	[4] = "Right Action Bar 1",
 	[5] = "Right Action Bar 2",
-	[BTV.PET_BAR_ID] = "Pet Bar",
-	[BTV.STANCE_BAR_ID] = "Stance Bar",
+	[ACAB.PET_BAR_ID] = "Pet Bar",
+	[ACAB.STANCE_BAR_ID] = "Stance Bar",
 }
 
 -- Extra Bars (ids EXTRA_BAR_ID_START..+COUNT-1) are numbered from 1 for
 -- the user. String-keyed chain-anchored elements (Bag Bar, Stance Bar,
 -- etc.) are handled separately via EnsureContainerOverlay's displayName
 -- argument.
-function BTV:GetBarDisplayName(barId)
+function ACAB:GetBarDisplayName(barId)
 	if self.DEFAULT_BAR_NAMES[barId] then
 		return self.DEFAULT_BAR_NAMES[barId]
 	end
@@ -387,1423 +154,83 @@ function BTV:GetBarDisplayName(barId)
 	return "Extra Bar " .. tostring((barId or 0) - 5)
 end
 
--- Fallback anchor only used if CaptureNativeAnchor can't read a real
--- Blizzard frame at all.
-local FALLBACK_ANCHOR = {
-	[1] = { point = "BOTTOM", relativePoint = "BOTTOM", x = 0, y = 0 },
-	[2] = { point = "BOTTOM", relativePoint = "BOTTOM", x = 0, y = 42 },
-	[3] = { point = "BOTTOM", relativePoint = "BOTTOM", x = 0, y = 84 },
-	[4] = { point = "RIGHT", relativePoint = "RIGHT", x = -18, y = 0 },
-	[5] = { point = "RIGHT", relativePoint = "RIGHT", x = -58, y = 0 },
-	[BTV.PET_BAR_ID] = { point = "BOTTOM", relativePoint = "BOTTOM", x = -200, y = 130 },
-	-- Only used if CaptureNativeAnchor can't read a real ShapeshiftButton1
-	-- this session (e.g. a class with zero learned forms at first login).
-	[BTV.STANCE_BAR_ID] = { point = "BOTTOM", relativePoint = "BOTTOM", x = 0, y = 90 },
-}
-
--- Builds one default-bar-family id's fresh saved config, capturing its
--- real native anchor/spacing/action-slots. Shared by seedDefaultBars (all
--- ids) and EnsureDB's migration path (a single missing id, e.g. an
--- existing save from before the Pet Bar existed).
-local function SeedOneDefaultBar(self, id)
-	local grid = self.DEFAULT_BAR_GRID[id]
-	local anchor = CaptureNativeAnchor(self, id) or FALLBACK_ANCHOR[id]
-
-	local spacing, uniform, gaps = CaptureNativeSpacing(self, id, grid)
-
-	spacing = spacing or 0
-
-	if gaps then
-		local gapStr = ""
-		local gi
-
-		for gi = 1, table.getn(gaps) do
-			gapStr = gapStr .. string.format("%.1f", gaps[gi])
-
-			if gi < table.getn(gaps) then
-				gapStr = gapStr .. ", "
-			end
-		end
-
-		self:Print(
-			"Default bar " .. tostring(id) .. " native spacing capture: " ..
-			(uniform and "uniform" or "NON-UNIFORM") ..
-			", using " .. tostring(spacing) .. "px. Raw gaps: " .. gapStr
-		)
-	end
-
-	-- NOT read from BTV.SHOW_MULTI_ACTIONBAR_GLOBAL - that global does
-	-- not survive a logout on this client.
-	local enabled = grid.enabled
-
-	local cfg = {
-		id = id,
-
-		enabled = enabled,
-		point = anchor.point,
-		relativePoint = anchor.relativePoint,
-		x = anchor.x,
-		y = anchor.y,
-		cols = grid.cols,
-		rows = grid.rows,
-		buttonSize = self:GetCurrentButtonSizeBaseline(),
-		spacing = spacing,
-		buttonCount = grid.cols * grid.rows,
-
-		-- Permanent pristine snapshot for "Reset to Blizzard Default".
-		nativeAnchor = {
-			point = anchor.point,
-			relativePoint = anchor.relativePoint,
-			x = anchor.x,
-			y = anchor.y,
-		},
-		nativeSpacing = spacing,
-	}
-
-	if id == 1 then
-		cfg.dynamicMainBar = true
-	end
-
-	if id >= 2 and id <= 5 then
-		local fixedActionSlots, usedFallback = CaptureFixedActionSlots(self, id)
-
-		if fixedActionSlots then
-			cfg.fixedActionSlots = fixedActionSlots
-
-			local slotStr = ""
-			local si
-
-			for si = 1, table.getn(fixedActionSlots) do
-				slotStr = slotStr .. tostring(fixedActionSlots[si])
-
-				if si < table.getn(fixedActionSlots) then
-					slotStr = slotStr .. ", "
-				end
-			end
-
-			self:Print(
-				"Default bar " .. tostring(id) .. " fixed action slots: " ..
-				slotStr ..
-				(usedFallback and
-					" (FALLBACK offsets used - button.action was missing, please verify live)" or
-					" (confirmed via button.action)")
-			)
-		else
-			self:Print(
-				"WARNING: Default bar " .. tostring(id) ..
-				" could not discover its real action slots this session " ..
-				"- it will keep using the old native-Blizzard-frame layout " ..
-				"until this succeeds on a later login."
-			)
-		end
-	end
-
-	-- Pet Bar: pet slots 1-10 are an identity map (pool index N always
-	-- drives pet slot N), not real action slots discovered from a live
-	-- button's own .action field - no CaptureFixedActionSlots call needed.
-	if id == self.PET_BAR_ID then
-		cfg.isPetBar = true
-
-		local petSlots = {}
-		local ps
-
-		for ps = 1, 10 do
-			petSlots[ps] = ps
-		end
-
-		cfg.fixedActionSlots = petSlots
-
-		-- Default off: matches real vanilla's own Pet Bar, which always
-		-- shows all 10 slots blank where unassigned.
-		cfg.condenseEmptyPetSlots = false
-	end
-
-	-- Stance Bar (styled mode): pool index N always drives shapeshift form
-	-- index N directly (no "empty slot" concept - see Button.lua's
-	-- isStanceSlot IsSlotFilled). Pool is a fixed MAX_STANCE_BUTTONS (10)
-	-- slots so it never needs growing at runtime; cfg.buttonCount tracks
-	-- the LIVE GetNumShapeshiftForms() count instead, and gets recomputed
-	-- on UPDATE_SHAPESHIFT_FORMS (DefaultBars.lua) whenever that changes.
-	if id == self.STANCE_BAR_ID then
-		cfg.isStanceBar = true
-
-		local stanceSlots = {}
-		local ss
-
-		for ss = 1, self.MAX_STANCE_BUTTONS do
-			stanceSlots[ss] = ss
-		end
-
-		cfg.fixedActionSlots = stanceSlots
-
-		local liveCount = GetNumShapeshiftForms and GetNumShapeshiftForms() or 0
-
-		if liveCount > self.MAX_STANCE_BUTTONS then
-			liveCount = self.MAX_STANCE_BUTTONS
-		end
-
-		cfg.cols = liveCount > 0 and liveCount or 1
-		cfg.rows = 1
-		cfg.buttonCount = liveCount
-
-		-- Defaults on: today's only behavior (real ShapeshiftButton1-N),
-		-- so an existing user sees no change until they opt into styled mode.
-		if cfg.useNativeStanceBar == nil then
-			cfg.useNativeStanceBar = true
-		end
-	end
-
-	return cfg
-end
-
--- Builds a fresh BTVanillaDB.defaultBars table for every default-bar-family
--- id (BTV.DEFAULT_BAR_IDS).
-local function seedDefaultBars(self)
-	local result = {}
-	local i
-
-	for i = 1, table.getn(self.DEFAULT_BAR_IDS) do
-		local id = self.DEFAULT_BAR_IDS[i]
-
-		result[id] = SeedOneDefaultBar(self, id)
-	end
-
-	return result
-end
-
--- On-demand recapture of every default bar's native anchor/spacing, run
--- synchronously so the caller can confirm the result immediately (unlike
--- an automatic one-shot marker, which can silently be consumed by an
--- earlier login on this account-wide SavedVariables setup). Reapplies
--- live if bars already exist this session.
-function BTV:RecaptureDefaultBarNativeAnchors()
-	self:EnsureDB()
-
-	local fresh = seedDefaultBars(self)
-	local i
-
-	-- Updates each existing cfg table IN PLACE instead of replacing
-	-- BTVanillaDB.defaultBars wholesale - self.bars[id].config is the same
-	-- table reference captured at login, so swapping the table here would
-	-- orphan every already-created bar from its own saved config. Only
-	-- anchor/spacing/action-slot fields are copied; enabled, grid shape,
-	-- buttonSize, and every other user setting are left untouched.
-	for i = 1, table.getn(self.DEFAULT_BAR_IDS) do
-		local id = self.DEFAULT_BAR_IDS[i]
-		local oldCfg = BTVanillaDB.defaultBars[id]
-		local newCfg = fresh[id]
-
-		-- Pet Bar/Stance Bar in native mode reparent their real Blizzard
-		-- buttons into our own container - once that container exists,
-		-- GetLeft()/GetTop() on those buttons reports our own last-applied
-		-- position back, not Blizzard's native one, so skip recapturing
-		-- these ids once their container already exists.
-		local selfReferencing =
-			(id == self.PET_BAR_ID and self.petBarNativeContainer) or
-			(id == self.STANCE_BAR_ID and self.stanceBarContainer)
-
-		if selfReferencing then
-			-- Leave oldCfg's anchor/spacing untouched.
-		elseif oldCfg and newCfg then
-			oldCfg.point = newCfg.point
-			oldCfg.relativePoint = newCfg.relativePoint
-			oldCfg.x = newCfg.x
-			oldCfg.y = newCfg.y
-			oldCfg.spacing = newCfg.spacing
-			oldCfg.nativeAnchor = newCfg.nativeAnchor
-			oldCfg.nativeSpacing = newCfg.nativeSpacing
-
-			if newCfg.fixedActionSlots then
-				oldCfg.fixedActionSlots = newCfg.fixedActionSlots
-			end
-		elseif newCfg then
-			-- No existing cfg for this id at all (e.g. a save from before
-			-- the Pet Bar existed) - nothing to preserve, so the fresh
-			-- table becomes the real one.
-			BTVanillaDB.defaultBars[id] = newCfg
-		end
-	end
-
-	self:Print("Recapture complete. New cfg.x/cfg.y per default bar:")
-
-	for i = 1, table.getn(self.DEFAULT_BAR_IDS) do
-		local id = self.DEFAULT_BAR_IDS[i]
-		local cfg = BTVanillaDB.defaultBars[id]
-
-		if cfg then
-			self:Print(string.format(
-				"  Bar %d: x=%.2f y=%.2f (point=%s, relativePoint=%s)",
-				id, cfg.x or -1, cfg.y or -1,
-				tostring(cfg.point), tostring(cfg.relativePoint)
-			))
-		end
-	end
-
-	if self.bars and self.bars[1] then
-		self:ApplyAllDefaultBars()
-		self:Print("Live bar positions re-applied from the fresh capture.")
-	end
-
-	-- Re-derives Pet Bar's x/y from Bar 3/Bar 1's just-refreshed nativeAnchor.
-	if self.SyncPetBarAnchorX then
-		self:SyncPetBarAnchorX()
-	end
-
-	if self.petBarNativeContainer and BTVanillaDB.useDefaultLayout ~= false then
-		local bar3Cfg = BTVanillaDB.defaultBars[3]
-		self:ReflowPetBarForBar3Toggle(bar3Cfg and bar3Cfg.enabled)
-	end
-end
-
--- Clears the stored native anchor + position for every single-real-frame
--- wrapped element (Key Ring/Latency Bar/Exp Bar/Cast Bar). Unlike
--- RecaptureDefaultBarNativeAnchors above (bars 1-5, which reads a
--- SEPARATE, never-repositioned real Blizzard button), these elements
--- ARE the one real Blizzard frame this addon repositions directly - it's
--- still sitting wherever THIS session's own earlier Apply*Position call
--- already put it, so nothing here can re-measure Blizzard's true native
--- position live; only clearing the stored capture and letting the fresh
--- read happen on the NEXT reload (before this session's own
--- Apply*Position has touched the frame yet) gets Blizzard's real
--- position. CaptureXPositionIfNeeded's own "already captured" guard is
--- what this clears; the actual fresh capture then runs from
--- RunLoginSequence, after the same WaitForNativeBarSettle poll bars 1-5
--- already rely on.
-function BTV:RecaptureWrappedNativeFrameAnchors()
-	self:EnsureDB()
-
-	BTVanillaDB.keyRingPosition = nil
-	BTVanillaDB.keyRingNativeAnchor = nil
-	BTVanillaDB.latencyBarPosition = nil
-	BTVanillaDB.latencyBarNativeAnchor = nil
-	BTVanillaDB.expBarPosition = nil
-	BTVanillaDB.expBarNativeAnchor = nil
-	BTVanillaDB.castBarPosition = nil
-	BTVanillaDB.castBarNativeAnchor = nil
-
-	self:Print("Key Ring/Latency Bar/Exp Bar/Cast Bar native anchors cleared - /reload now to capture them fresh.")
-end
 
 -------------------------------------------------------------------------
 -- Extra Bars 1-4 (ids 6-9)
 --
--- Always exist in BTVanillaDB.bars, toggled via cfg.enabled rather than
+-- Always exist in ACABDB.bars, toggled via cfg.enabled rather than
 -- added/removed. Each is still a real Bar.lua custom bar under the hood.
 -------------------------------------------------------------------------
 
-BTV.EXTRA_BAR_ID_START = 6
-BTV.EXTRA_BAR_COUNT = 4
+ACAB.EXTRA_BAR_ID_START = 6
+ACAB.EXTRA_BAR_COUNT = 4
 
--- Fallback only - used if the referenced default bar's native anchor
--- (below) isn't captured yet. TOPLEFT/BOTTOMLEFT-to-UIParent, same
--- convention as every other Action Bar - stacked vertically by index so
--- the 4 don't overlap.
-local function GetFallbackExtraBarPosition(self, index)
-	return 20, 150 + (index * ((self.BUTTON_ROWS * self.BUTTON_SIZE) + 40))
+
+function ACAB:Print(msg)
+	DEFAULT_CHAT_FRAME:AddMessage("|cff33ccff[AlternativeClassicActionBars]|r " .. tostring(msg))
 end
 
--- Extra Bar N's default position/shape sits one (or two, for Extra Bar 4)
--- button-size-plus-spacing pitch to the given side of a specific default
--- bar's OWN default (native) position - matching that bar's default grid
--- shape/spacing/button size so it reads as a direct visual extension of
--- it. Index is 0-3 for Extra Bar 1-4.
-local EXTRA_BAR_DEFAULT_REFERENCE = {
-	[0] = { refId = 2, side = "above", pitchCount = 1 }, -- Extra Bar 1: above Action Bar 1.
-	[1] = { refId = 3, side = "above", pitchCount = 1 }, -- Extra Bar 2: above Action Bar 2.
-	[2] = { refId = 5, side = "left",  pitchCount = 1 }, -- Extra Bar 3: left of Right Action Bar 2.
-	[3] = { refId = 5, side = "left",  pitchCount = 2 }, -- Extra Bar 4: left of Right Action Bar 2 (double pitch, i.e. left of Extra Bar 3).
-}
-
--- Shared between seedExtraBarConfig below and BTV:ResetExtraBarLayout
--- (Bar.lua), so a freshly-created bar and a "Reset to Default" click land
--- in the same place. Returns x, y, cols, rows, buttonSize, spacing.
-function BTV:GetDefaultExtraBarLayout(index)
-	local ref = EXTRA_BAR_DEFAULT_REFERENCE[index]
-	local refCfg = ref and BTVanillaDB.defaultBars and BTVanillaDB.defaultBars[ref.refId]
-	local grid = ref and self.DEFAULT_BAR_GRID[ref.refId]
-
-	if not ref or not refCfg or not refCfg.nativeAnchor or not grid then
-		local x, y = GetFallbackExtraBarPosition(self, index)
-		return x, y, self.BUTTON_COLS, self.BUTTON_ROWS, self:GetCurrentButtonSizeBaseline(), 0
-	end
-
-	local buttonSize = self.BUTTON_SIZE
-	local spacing = refCfg.nativeSpacing or refCfg.spacing or 0
-	local pitch = (buttonSize + spacing) * ref.pitchCount
-
-	local x = refCfg.nativeAnchor.x
-	local y = refCfg.nativeAnchor.y
-
-	if ref.side == "above" then
-		y = y + pitch
-	elseif ref.side == "left" then
-		x = x - pitch
-	end
-
-	return x, y, grid.cols, grid.rows, buttonSize, spacing
-end
-
--- Allocates one Extra Bar's config.
-local function seedExtraBarConfig(self, id)
-	local index = id - self.EXTRA_BAR_ID_START
-	local x, y, cols, rows, buttonSize, spacing = self:GetDefaultExtraBarLayout(index)
-
-	local needed = cols * rows
-	local slotStart = self:GetNextFreeSlotStart(needed)
-
-	if not slotStart then
-		self:Print(
-			"WARNING: Extra Bar " .. tostring(id - self.EXTRA_BAR_ID_START + 1) ..
-			" could not be allocated a free action-slot block this session " ..
-			"- the 48-slot free pool (73-120) is unexpectedly already full."
-		)
-
-		return nil
-	end
-
-	return {
-		id = id,
-
-		point = "TOPLEFT",
-		relativePoint = "BOTTOMLEFT",
-		x = x,
-		y = y,
-
-		cols = cols,
-		rows = rows,
-
-		buttonSize = buttonSize,
-
-		slotStart = slotStart,
-		buttonCount = cols * rows,
-
-		spacing = spacing,
-
-		enabled = false,
-	}
-end
-
--- One-time migration: Extra Bars used to seed with a CENTER/CENTER anchor,
--- which put x=0/y=0 at screen-center instead of the TOPLEFT/BOTTOMLEFT
--- bottom-left-origin convention every other Action Bar uses - broke the
--- X/Y position sliders' min/max (0 could never reach the true left/bottom
--- edge). Converts the CENTER-anchored offset into an equivalent
--- TOPLEFT/BOTTOMLEFT one, preserving the bar's real on-screen position
--- instead of silently relocating it. No-op once already migrated.
-function BTV:MigrateExtraBarAnchor(cfg)
-	if not cfg or cfg.point ~= "CENTER" then
+-- Hides `frame` and permanently neuters its Show() to a no-op, so no
+-- later native code path (e.g. a re-run FrameXML update function) can
+-- make it visible again. Idempotent via frame.ACABShowNeutered - safe to
+-- call every time the caller's own reason to hide `frame` recurs.
+function ACAB:NeuterFrameShow(frame)
+	if not frame then
 		return
 	end
 
-	local screenWidth = GetScreenWidth() or 1024
-	local screenHeight = GetScreenHeight() or 768
-	local cols = cfg.cols or self.BUTTON_COLS
-	local rows = cfg.rows or self.BUTTON_ROWS
-	local buttonSize = cfg.buttonSize or self:GetCurrentButtonSizeBaseline()
-	local spacing = cfg.spacing or 0
+	frame:Hide()
 
-	local barWidth = (cols * buttonSize) + ((cols - 1) * spacing)
-	local barHeight = (rows * buttonSize) + ((rows - 1) * spacing)
-
-	local centerX = (screenWidth / 2) + (cfg.x or 0)
-	local centerY = (screenHeight / 2) + (cfg.y or 0)
-
-	cfg.point = "TOPLEFT"
-	cfg.relativePoint = "BOTTOMLEFT"
-	cfg.x = centerX - (barWidth / 2)
-	cfg.y = centerY + (barHeight / 2)
-end
-
--- Ensures exactly BTV.EXTRA_BAR_COUNT Extra Bar configs exist.
-function BTV:EnsureExtraBars()
-	local id
-
-	for id = self.EXTRA_BAR_ID_START, self.EXTRA_BAR_ID_START + self.EXTRA_BAR_COUNT - 1 do
-		local found = false
-		local i
-
-		for i = 1, table.getn(BTVanillaDB.bars) do
-			if BTVanillaDB.bars[i] and BTVanillaDB.bars[i].id == id then
-				found = true
-				self:MigrateExtraBarAnchor(BTVanillaDB.bars[i])
-				break
-			end
-		end
-
-		if not found then
-			local cfg = seedExtraBarConfig(self, id)
-
-			if cfg then
-				table.insert(BTVanillaDB.bars, cfg)
-			end
-		end
+	if not frame.ACABShowNeutered then
+		frame.Show = function() end
+		frame.ACABShowNeutered = true
 	end
 end
 
--------------------------------------------------------------------------
--- Profiles
---
--- BTVanillaDB is always the active profile's live data. BTVanillaProfilesDB
--- (account-wide) stores every profile's data keyed by name.
--- BTVanillaCharDB (per-character) stores which profile this character
--- currently uses.
--------------------------------------------------------------------------
-
-BTV.DEFAULT_PROFILE_NAME = "Default"
-
--- Plain recursive deep copy - BTVanillaDB only ever holds plain data.
-function BTV:DeepCopyTable(t)
-	if type(t) ~= "table" then
-		return t
-	end
-
-	local copy = {}
-	local k, v
-
-	for k, v in pairs(t) do
-		copy[k] = self:DeepCopyTable(v)
-	end
-
-	return copy
-end
-
--- Sorted list of every saved profile name, Default always first.
-function BTV:GetProfileNames()
-	local names = {}
-	local n = 0
-	local name
-
-	for name in pairs(BTVanillaProfilesDB or {}) do
-		if name ~= self.DEFAULT_PROFILE_NAME then
-			n = n + 1
-			names[n] = name
-		end
-	end
-
-	table.sort(names)
-
-	local result = { self.DEFAULT_PROFILE_NAME }
-	local i
-
-	for i = 1, n do
-		table.insert(result, names[i])
-	end
-
-	return result
-end
-
--- Resolves which profile this character uses, migrates any pre-existing
--- account data into Default exactly once, and loads the resolved
--- profile's data into BTVanillaDB. Must run before EnsureDB.
-function BTV:ResolveActiveProfile()
-	if not BTVanillaCharDB then
-		BTVanillaCharDB = {
-			activeProfile = self.DEFAULT_PROFILE_NAME,
-			hasSelectedProfileBefore = false,
-		}
-	end
-
-	if not BTVanillaProfilesDB then
-		BTVanillaProfilesDB = {}
-	end
-
-	if not BTVanillaProfilesDB[self.DEFAULT_PROFILE_NAME] and BTVanillaDB then
-		BTVanillaProfilesDB[self.DEFAULT_PROFILE_NAME] = self:DeepCopyTable(BTVanillaDB)
-	end
-
-	if not BTVanillaCharDB.hasSelectedProfileBefore then
-		self.pendingFirstLoginDialog = true
-	end
-
-	local activeProfile = BTVanillaCharDB.activeProfile or self.DEFAULT_PROFILE_NAME
-
-	self.activeProfileName = activeProfile
-
-	local snapshot = BTVanillaProfilesDB[activeProfile]
-
-	if snapshot then
-		BTVanillaDB = self:DeepCopyTable(snapshot)
-	else
-		BTVanillaDB = nil
-	end
-end
-
--- Writes the live BTVanillaDB back into BTVanillaProfilesDB[activeProfileName].
-function BTV:SaveActiveProfileData()
-	if not self.activeProfileName or not BTVanillaDB then
-		return
-	end
-
-	BTVanillaProfilesDB = BTVanillaProfilesDB or {}
-	BTVanillaProfilesDB[self.activeProfileName] = self:DeepCopyTable(BTVanillaDB)
-end
-
--- Creates a new profile seeded from Default's current data.
-function BTV:CreateProfile(name)
-	if not name or name == "" then
-		return false, "Profile name cannot be empty."
-	end
-
-	BTVanillaProfilesDB = BTVanillaProfilesDB or {}
-
-	if BTVanillaProfilesDB[name] then
-		return false, "A profile named \"" .. name .. "\" already exists."
-	end
-
-	local defaultData = BTVanillaProfilesDB[self.DEFAULT_PROFILE_NAME]
-
-	BTVanillaProfilesDB[name] = defaultData and self:DeepCopyTable(defaultData) or {}
-
-	return true
-end
-
--- Deletes a profile. Default is never deletable; deleting the active
--- profile falls the character back to Default.
-function BTV:DeleteProfile(name)
-	if not name or name == self.DEFAULT_PROFILE_NAME then
-		return false, "The Default profile cannot be deleted."
-	end
-
-	if not BTVanillaProfilesDB or not BTVanillaProfilesDB[name] then
-		return false, "Profile \"" .. tostring(name) .. "\" does not exist."
-	end
-
-	BTVanillaProfilesDB[name] = nil
-
-	if BTVanillaCharDB and BTVanillaCharDB.activeProfile == name then
-		BTVanillaCharDB.activeProfile = self.DEFAULT_PROFILE_NAME
-
-		-- Also update the live in-memory pointer/data, not just
-		-- BTVanillaCharDB's - otherwise PLAYER_LOGOUT's SaveActiveProfileData
-		-- (fired by the caller's ReloadUI) saves BTVanillaDB back under the
-		-- just-deleted name, resurrecting it (same class of bug fixed for
-		-- CopyProfileInto/ApplyImportedProfileData above).
-		self.activeProfileName = self.DEFAULT_PROFILE_NAME
-		BTVanillaDB = self:DeepCopyTable(BTVanillaProfilesDB[self.DEFAULT_PROFILE_NAME] or {})
-	end
-
-	return true
-end
-
--- Overwrites targetName's saved data with a copy of sourceName's.
-function BTV:CopyProfileInto(sourceName, targetName)
-	if not BTVanillaProfilesDB or not BTVanillaProfilesDB[sourceName] then
-		return false, "Source profile \"" .. tostring(sourceName) .. "\" does not exist."
-	end
-
-	if not targetName or targetName == "" then
-		return false, "Invalid target profile."
-	end
-
-	BTVanillaProfilesDB[targetName] = self:DeepCopyTable(BTVanillaProfilesDB[sourceName])
-
-	if targetName == self.activeProfileName then
-		BTVanillaDB = self:DeepCopyTable(BTVanillaProfilesDB[targetName])
-	end
-
-	return true
-end
-
--------------------------------------------------------------------------
--- Profile export/import
---
--- A profile's data is serialized as this addon's own compact table-literal
--- syntax (a signature prefix followed by nested [key]=value pairs), not
--- executed as Lua - importing never runs loadstring on pasted text.
--------------------------------------------------------------------------
-
-local PROFILE_EXPORT_PREFIX = "TBVPROFILE1:"
-
-BTV.PROFILE_IMPORT_ERROR_MESSAGE =
-	"Invalid Profile Import Syntax, please double check you copied all " ..
-	"Text correctly on your Export and try again"
-
-local function EscapeExportString(s)
-	s = string.gsub(s, "\\", "\\\\")
-	s = string.gsub(s, "\"", "\\\"")
-	s = string.gsub(s, "\n", "\\n")
-	s = string.gsub(s, "\r", "\\r")
-	s = string.gsub(s, "\t", "\\t")
-
-	return s
-end
-
-local function SerializeValue(value, parts)
-	if type(value) == "table" then
-		table.insert(parts, "{")
-
-		local k, v
-
-		for k, v in pairs(value) do
-			if v ~= nil then
-				table.insert(parts, "[")
-				SerializeValue(k, parts)
-				table.insert(parts, "]=")
-				SerializeValue(v, parts)
-				table.insert(parts, ",")
-			end
-		end
-
-		table.insert(parts, "}")
-	elseif type(value) == "string" then
-		table.insert(parts, "\"" .. EscapeExportString(value) .. "\"")
-	elseif type(value) == "number" then
-		table.insert(parts, tostring(value))
-	elseif type(value) == "boolean" then
-		table.insert(parts, value and "true" or "false")
-	else
-		table.insert(parts, "nil")
-	end
-end
-
--- Serializes the currently active profile's live settings into a single
--- exportable string.
-function BTV:ExportActiveProfileString()
-	local parts = {}
-
-	SerializeValue(BTVanillaDB, parts)
-
-	return PROFILE_EXPORT_PREFIX .. table.concat(parts, "")
-end
-
--- Manual recursive-descent parser matching SerializeValue's exact grammar -
--- a hand-rolled table literal ([key]=value pairs, quoted strings, numbers,
--- booleans), never Lua source that gets executed.
-local function NewImportParser(str)
-	return { str = str, pos = 1, len = string.len(str) }
-end
-
-local function SkipImportWhitespace(p)
-	while p.pos <= p.len do
-		local c = string.sub(p.str, p.pos, p.pos)
-
-		if c == " " or c == "\t" or c == "\n" or c == "\r" then
-			p.pos = p.pos + 1
-		else
-			break
-		end
-	end
-end
-
-local ParseImportValue
-
-local function ParseImportString(p)
-	p.pos = p.pos + 1
-
-	local resultParts = {}
-
-	while true do
-		if p.pos > p.len then
-			return nil, "unterminated string"
-		end
-
-		local c = string.sub(p.str, p.pos, p.pos)
-
-		if c == "\"" then
-			p.pos = p.pos + 1
-			break
-		elseif c == "\\" then
-			local nextC = string.sub(p.str, p.pos + 1, p.pos + 1)
-
-			if nextC == "\\" then
-				table.insert(resultParts, "\\")
-			elseif nextC == "\"" then
-				table.insert(resultParts, "\"")
-			elseif nextC == "n" then
-				table.insert(resultParts, "\n")
-			elseif nextC == "r" then
-				table.insert(resultParts, "\r")
-			elseif nextC == "t" then
-				table.insert(resultParts, "\t")
-			else
-				return nil, "bad escape sequence"
-			end
-
-			p.pos = p.pos + 2
-		else
-			table.insert(resultParts, c)
-			p.pos = p.pos + 1
-		end
-	end
-
-	return table.concat(resultParts, "")
-end
-
-local function ParseImportNumberOrKeyword(p)
-	local startPos = p.pos
-
-	while p.pos <= p.len do
-		local c = string.sub(p.str, p.pos, p.pos)
-
-		if c == "," or c == "}" or c == "]" then
-			break
-		end
-
-		p.pos = p.pos + 1
-	end
-
-	local token = string.sub(p.str, startPos, p.pos - 1)
-
-	if token == "true" then
-		return true
-	elseif token == "false" then
-		return false
-	elseif token == "nil" then
+-- Shared clamp/rounding for every native-element Scale setter (SetBagBarScale,
+-- SetMicroMenuScale, SetPetBarNativeScale, SetStanceBarScale, etc.) - rounds
+-- to 0.1 and clamps to [0.5, 2.0]. Returns nil for a non-numeric input.
+function ACAB:ClampScaleSetting(scale)
+	scale = tonumber(scale)
+
+	if not scale then
 		return nil
 	end
 
-	local num = tonumber(token)
+	scale = math.floor((scale * 10) + 0.5) / 10
 
-	if not num then
-		return nil, "invalid token"
+	if scale < 0.5 then
+		scale = 0.5
 	end
 
-	return num
+	if scale > 2.0 then
+		scale = 2.0
+	end
+
+	return scale
 end
 
-local function ParseImportTable(p)
-	p.pos = p.pos + 1
+-- Shared clamp/rounding for every native-element Spacing setter - rounds to
+-- the nearest whole pixel. Each caller supplies its own min/max range.
+-- Returns nil for a non-numeric input.
+function ACAB:ClampSpacingSetting(spacing, minSpacing, maxSpacing)
+	spacing = tonumber(spacing)
 
-	local result = {}
-
-	SkipImportWhitespace(p)
-
-	if string.sub(p.str, p.pos, p.pos) == "}" then
-		p.pos = p.pos + 1
-		return result
-	end
-
-	while true do
-		SkipImportWhitespace(p)
-
-		if string.sub(p.str, p.pos, p.pos) ~= "[" then
-			return nil, "expected '[' for table key"
-		end
-
-		p.pos = p.pos + 1
-		SkipImportWhitespace(p)
-
-		local key, keyErr = ParseImportValue(p)
-
-		if key == nil and keyErr then
-			return nil, keyErr
-		end
-
-		SkipImportWhitespace(p)
-
-		if string.sub(p.str, p.pos, p.pos) ~= "]" then
-			return nil, "expected ']' after table key"
-		end
-
-		p.pos = p.pos + 1
-		SkipImportWhitespace(p)
-
-		if string.sub(p.str, p.pos, p.pos) ~= "=" then
-			return nil, "expected '=' after table key"
-		end
-
-		p.pos = p.pos + 1
-		SkipImportWhitespace(p)
-
-		local value, valueErr = ParseImportValue(p)
-
-		if value == nil and valueErr then
-			return nil, valueErr
-		end
-
-		if key ~= nil then
-			result[key] = value
-		end
-
-		SkipImportWhitespace(p)
-
-		local c = string.sub(p.str, p.pos, p.pos)
-
-		if c == "," then
-			p.pos = p.pos + 1
-			SkipImportWhitespace(p)
-
-			if string.sub(p.str, p.pos, p.pos) == "}" then
-				p.pos = p.pos + 1
-				break
-			end
-		elseif c == "}" then
-			p.pos = p.pos + 1
-			break
-		else
-			return nil, "expected ',' or '}' in table"
-		end
-	end
-
-	return result
-end
-
-ParseImportValue = function(p)
-	SkipImportWhitespace(p)
-
-	if p.pos > p.len then
-		return nil, "unexpected end of input"
-	end
-
-	local c = string.sub(p.str, p.pos, p.pos)
-
-	if c == "{" then
-		return ParseImportTable(p)
-	elseif c == "\"" then
-		return ParseImportString(p)
-	else
-		return ParseImportNumberOrKeyword(p)
-	end
-end
-
-local function ParseImportBody(body)
-	local p = NewImportParser(body)
-	local value, err = ParseImportValue(p)
-
-	if err then
+	if not spacing then
 		return nil
 	end
 
-	SkipImportWhitespace(p)
+	spacing = math.floor(spacing + 0.5)
 
-	if p.pos <= p.len then
-		return nil
+	if spacing < minSpacing then
+		spacing = minSpacing
 	end
 
-	return value
-end
-
--- Validates and parses an exported profile string without applying it.
--- Returns true, dataTable on success or false, errorMessage on failure.
-function BTV:ParseProfileImportString(str)
-	if type(str) ~= "string" then
-		return false, self.PROFILE_IMPORT_ERROR_MESSAGE
-	end
-
-	local prefixLen = string.len(PROFILE_EXPORT_PREFIX)
-
-	if string.sub(str, 1, prefixLen) ~= PROFILE_EXPORT_PREFIX then
-		return false, self.PROFILE_IMPORT_ERROR_MESSAGE
-	end
-
-	local body = string.sub(str, prefixLen + 1)
-	local ok, result = pcall(ParseImportBody, body)
-
-	if not ok or type(result) ~= "table" then
-		return false, self.PROFILE_IMPORT_ERROR_MESSAGE
-	end
-
-	return true, result
-end
-
--- Overwrites the currently active profile (live data and its saved-profile
--- entry) with already-parsed import data - mirrors CopyProfileInto's dual
--- write so a PLAYER_LOGOUT-triggered SaveActiveProfileData right before the
--- caller's ReloadUI() can't clobber it.
-function BTV:ApplyImportedProfileData(data)
-	BTVanillaDB = self:DeepCopyTable(data)
-
-	BTVanillaProfilesDB = BTVanillaProfilesDB or {}
-	BTVanillaProfilesDB[self.activeProfileName] = self:DeepCopyTable(data)
-end
-
--- Switches this character to an existing profile and reloads the UI.
-function BTV:SwitchProfile(name)
-	if not BTVanillaProfilesDB or not BTVanillaProfilesDB[name] then
-		return false, "Profile \"" .. tostring(name) .. "\" does not exist."
-	end
-
-	self:SaveActiveProfileData()
-
-	BTVanillaCharDB = BTVanillaCharDB or {}
-	BTVanillaCharDB.activeProfile = name
-	BTVanillaCharDB.hasSelectedProfileBefore = true
-
-	ReloadUI()
-
-	return true
-end
-
--- Shared "enter a new profile name" dialog used by both the Profiles tab
--- and the first-login dialog.
-function BTV:ShowCreateProfileDialog(onCreated)
-	self:ShowDialog({
-		title = "New Profile",
-		message = "Enter the name for the new profile",
-		mode = "textinput",
-		buttons = {
-			{
-				text = "Accept",
-				isDefault = true,
-				onClick = function(value)
-					local ok, reason = BTV:CreateProfile(value)
-
-					if ok then
-						BTV:SwitchProfile(value)
-					elseif reason then
-						BTV:Print(reason)
-					end
-
-					if onCreated then
-						onCreated(ok, value)
-					end
-				end,
-			},
-			{ text = "Cancel", onClick = function() end },
-		},
-	})
-end
-
--- First-ever-login-with-profiles dialog for this character.
-function BTV:ShowFirstLoginDialog()
-	local buttons = {
-		{
-			text = "I know what im doing, use default profile",
-			isDefault = true,
-			onClick = function()
-				BTVanillaCharDB = BTVanillaCharDB or {}
-				BTVanillaCharDB.hasSelectedProfileBefore = true
-			end,
-		},
-		{
-			text = "Create a named profile",
-			onClick = function()
-				BTV:ShowCreateProfileDialog()
-			end,
-		},
-		{
-			text = "Create a profile for this character",
-			onClick = function()
-				local charName = UnitName("player") or "Unknown"
-				local realmName = GetRealmName() or "Unknown"
-				local charProfileName = charName .. " - " .. realmName
-
-				local ok, reason = BTV:CreateProfile(charProfileName)
-
-				if ok then
-					BTV:SwitchProfile(charProfileName)
-				elseif reason then
-					BTV:Print(reason)
-				end
-			end,
-		},
-	}
-
-	if table.getn(self:GetProfileNames()) > 1 then
-		table.insert(buttons, {
-			text = "use existing profile",
-			onClick = function()
-				BTV:ShowDialog({
-					title = "Use Existing Profile",
-					message = "Choose a profile to use for this character.",
-					mode = "dropdown",
-					options = BTV:GetProfileNames(),
-					buttons = {
-						{
-							text = "Accept",
-							isDefault = true,
-							onClick = function(value)
-								if value then
-									BTV:SwitchProfile(value)
-								end
-							end,
-						},
-						{ text = "Cancel", onClick = function() end },
-					},
-				})
-			end,
-		})
-	end
-
-	self:ShowDialog({
-		title = "Welcome to TrustyBars",
-		message = "Thank you for choosing TrustyBars, you are currently using the Profile \"Default\". " ..
-			"The Default profile is locked and cannot be edited - Edit Layout mode and Settings changes are unavailable while it is active.\n\n" ..
-			"Do you wish to create a new custom profile or a profile for this character?",
-		mode = "confirm",
-		buttons = buttons,
-	})
-end
-
-function BTV:EnsureDB()
-	if not BTVanillaDB then
-		BTVanillaDB = {}
-	end
-	if BTVanillaDB.editMode == nil then
-		BTVanillaDB.editMode = false
-	end
-	if BTVanillaDB.minimapAngle == nil then
-		BTVanillaDB.minimapAngle = 200
-	end
-
-	if BTVanillaDB.useDefaultLayout == nil then
-		BTVanillaDB.useDefaultLayout = true
-	end
-
-	if BTVanillaDB.modernBorderStyle == nil then
-		BTVanillaDB.modernBorderStyle = false
-	end
-
-	if BTVanillaDB.bypassRightActionBar2Dependency == nil then
-		BTVanillaDB.bypassRightActionBar2Dependency = false
-	end
-
-	if BTVanillaDB.lastAppliedVanillaStyle == nil then
-		BTVanillaDB.lastAppliedVanillaStyle = BTV:IsVanillaBorderStyle()
-	end
-
-	if BTVanillaDB.globalSpacingEnabled == nil then
-		BTVanillaDB.globalSpacingEnabled = false
-	end
-
-	if BTVanillaDB.globalSpacingValue == nil then
-		BTVanillaDB.globalSpacingValue = 0
-	end
-
-	if BTVanillaDB.globalButtonSizeEnabled == nil then
-		BTVanillaDB.globalButtonSizeEnabled = false
-	end
-
-	if BTVanillaDB.globalButtonSizeValue == nil then
-		BTVanillaDB.globalButtonSizeValue = BTV.BUTTON_SIZE
-	end
-
-	if BTVanillaDB.mainBarPaginationEnabled == nil then
-		BTVanillaDB.mainBarPaginationEnabled = true
-	end
-	if BTVanillaDB.mainBarStanceSwapEnabled == nil then
-		BTVanillaDB.mainBarStanceSwapEnabled = true
-	end
-
-	-- mainBarStanceBarAssignment/mainBarPageBarAssignment stay nil
-	-- (unassigned) until the user explicitly picks an Extra Bar.
-
-	if BTVanillaDB.mainBarPageIndicatorScale == nil then
-		BTVanillaDB.mainBarPageIndicatorScale = 1
-	end
-
-	-- stanceBarPosition/stanceBarNativeAnchor are captured lazily on
-	-- first real build (DefaultBars.lua), not seeded here.
-
-	-- Self-heal a corrupted stanceBarNativeGap value every EnsureDB call
-	-- (a bad capture nils it so the next login attempts a real capture).
-	if BTVanillaDB.stanceBarNativeGap
-		and (BTVanillaDB.stanceBarNativeGap <= 0 or BTVanillaDB.stanceBarNativeGap >= self.BUTTON_SIZE) then
-		BTVanillaDB.stanceBarNativeGap = nil
-	end
-
-	if BTVanillaDB.tintWholeButtonOnRange == nil then
-		BTVanillaDB.tintWholeButtonOnRange = true
-	end
-
-	if BTVanillaDB.disableBlizzardArt == nil then
-		BTVanillaDB.disableBlizzardArt = false
-	end
-
-	if BTVanillaDB.snapToAdjacentElements == nil then
-		BTVanillaDB.snapToAdjacentElements = true
-	end
-
-	-- One-time correction for saves that already had this explicitly
-	-- false from before the default flipped to true.
-	if not BTVanillaDB.snapDefaultCorrectedOnce then
-		BTVanillaDB.snapDefaultCorrectedOnce = true
-		BTVanillaDB.snapToAdjacentElements = true
-	end
-
-	if BTVanillaDB.showLayoutGrid == nil then
-		BTVanillaDB.showLayoutGrid = true
-	end
-
-	if BTVanillaDB.snapToGrid == nil then
-		BTVanillaDB.snapToGrid = true
-	end
-
-	if BTVanillaDB.useCustomGridSize == nil then
-		BTVanillaDB.useCustomGridSize = false
-	end
-
-	if BTVanillaDB.bagBarEnabled == nil then
-		BTVanillaDB.bagBarEnabled = true
-	end
-	if BTVanillaDB.microMenuEnabled == nil then
-		BTVanillaDB.microMenuEnabled = true
-	end
-
-	if BTVanillaDB.stanceBarEnabled == nil then
-		BTVanillaDB.stanceBarEnabled = true
-	end
-
-	if BTVanillaDB.keyRingEnabled == nil then
-		BTVanillaDB.keyRingEnabled = true
-	end
-	if BTVanillaDB.latencyBarEnabled == nil then
-		BTVanillaDB.latencyBarEnabled = true
-	end
-	if BTVanillaDB.latencyBarScale == nil then
-		BTVanillaDB.latencyBarScale = 1
-	end
-
-	if BTVanillaDB.expBarEnabled == nil then
-		BTVanillaDB.expBarEnabled = true
-	end
-	if BTVanillaDB.expBarScale == nil then
-		BTVanillaDB.expBarScale = 1
-	end
-
-	-- Only-show-on-hover for simple elements (Bag Bar's pair also governs the Key Ring frame). Grid-bar cfg tables use nil-safe cfg.hoverOnly/cfg.hoverDuration reads instead.
-	if BTVanillaDB.bagBarHoverOnly == nil then
-		BTVanillaDB.bagBarHoverOnly = false
-	end
-	if BTVanillaDB.bagBarHoverDuration == nil then
-		BTVanillaDB.bagBarHoverDuration = 3
-	end
-
-	if BTVanillaDB.microMenuHoverOnly == nil then
-		BTVanillaDB.microMenuHoverOnly = false
-	end
-	if BTVanillaDB.microMenuHoverDuration == nil then
-		BTVanillaDB.microMenuHoverDuration = 3
-	end
-
-	if BTVanillaDB.latencyBarHoverOnly == nil then
-		BTVanillaDB.latencyBarHoverOnly = false
-	end
-	if BTVanillaDB.latencyBarHoverDuration == nil then
-		BTVanillaDB.latencyBarHoverDuration = 3
-	end
-
-	if BTVanillaDB.expBarHoverOnly == nil then
-		BTVanillaDB.expBarHoverOnly = false
-	end
-	if BTVanillaDB.expBarHoverDuration == nil then
-		BTVanillaDB.expBarHoverDuration = 3
-	end
-
-	if BTVanillaDB.castBarScale == nil then
-		BTVanillaDB.castBarScale = 1
-	end
-
-	if BTVanillaDB.betterExpBarEnabled == nil then
-		BTVanillaDB.betterExpBarEnabled = false
-	end
-
-	if BTVanillaDB.expBarShowCurrentOverMax == nil then
-		BTVanillaDB.expBarShowCurrentOverMax = true
-	end
-	if BTVanillaDB.expBarShowPercent == nil then
-		BTVanillaDB.expBarShowPercent = true
-	end
-	if BTVanillaDB.expBarShowLevel == nil then
-		BTVanillaDB.expBarShowLevel = true
-	end
-	if BTVanillaDB.expBarShowRestedPercent == nil then
-		BTVanillaDB.expBarShowRestedPercent = true
-	end
-	if BTVanillaDB.expBarShowRestedTotal == nil then
-		BTVanillaDB.expBarShowRestedTotal = true
-	end
-
-	-- expBarColorEarned/Rested (+ native snapshots) and expBarFontSize are
-	-- captured lazily from the live frame, not seeded here.
-
-	if not BTVanillaDB.expBarTextColor then
-		BTVanillaDB.expBarTextColor = { r = 1, g = 0.82, b = 0 }
-	end
-
-	if BTVanillaDB.expBarGlowPulseInterval == nil then
-		BTVanillaDB.expBarGlowPulseInterval = 1.5
-	end
-
-	if BTVanillaDB.keyRingScale == nil then
-		BTVanillaDB.keyRingScale = 1
-	end
-
-	if BTVanillaDB.bagBarScale == nil then
-		BTVanillaDB.bagBarScale = 1
-	end
-	if BTVanillaDB.microMenuScale == nil then
-		BTVanillaDB.microMenuScale = 1
-	end
-	if BTVanillaDB.stanceBarScale == nil then
-		BTVanillaDB.stanceBarScale = 1
-	end
-
-	if BTVanillaDB.bagBarOrientation == nil then
-		BTVanillaDB.bagBarOrientation = false
-	end
-	if BTVanillaDB.stanceBarOrientation == nil then
-		BTVanillaDB.stanceBarOrientation = false
-	end
-
-	-- Micro Menu uses a fixed grid (cols x rows) instead of an
-	-- orientation flag - default is one row of 8, same look as before.
-	if BTVanillaDB.microMenuCols == nil then
-		BTVanillaDB.microMenuCols = 8
-	end
-	if BTVanillaDB.microMenuRows == nil then
-		BTVanillaDB.microMenuRows = 1
-	end
-
-	-- bagBarSpacing/microMenuSpacing/stanceBarSpacing (+ native snapshots)
-	-- are captured lazily on first real container build.
-
-	-- One-time forced recapture of Bag Bar/Micro Menu/Stance Bar spacing,
-	-- so an existing save picks up the corrected median-based capture
-	-- math. Not a schema bump - that would also wipe BTVanillaDB.bars.
-	if not BTVanillaDB.spacingRecaptureDone then
-		BTVanillaDB.spacingRecaptureDone = true
-
-		BTVanillaDB.bagBarSpacing = nil
-		BTVanillaDB.bagBarNativeSpacing = nil
-		BTVanillaDB.microMenuSpacing = nil
-		BTVanillaDB.microMenuNativeSpacing = nil
-		BTVanillaDB.stanceBarSpacing = nil
-		BTVanillaDB.stanceBarNativeSpacing = nil
-	end
-
-	-- hotkeyFontSize/countFontSize/macroFontSize stay nil until the user
-	-- moves a slider; Button.lua treats nil as "use the captured default".
-
-	if BTVanillaDB.showMacroText == nil then
-		BTVanillaDB.showMacroText = false
-	end
-
-	-- One-time forced recapture of default-bar native anchors/spacing
-	-- (clears BTVanillaDB.defaultBars so seedDefaultBars reruns), without
-	-- wiping BTVanillaDB.bars the way a schema bump would.
-	if not BTVanillaDB.anchorRecaptureDone then
-		BTVanillaDB.anchorRecaptureDone = true
-
-		BTVanillaDB.defaultBars = nil
-
-		BTVanillaDB.mainBarPageIndicatorNativeAnchor = nil
-		BTVanillaDB.mainBarPageIndicatorPosition = nil
-	end
-
-	if not BTVanillaDB.anchorScaleFixDone then
-		BTVanillaDB.anchorScaleFixDone = true
-
-		BTVanillaDB.defaultBars = nil
-
-		BTVanillaDB.mainBarPageIndicatorNativeAnchor = nil
-		BTVanillaDB.mainBarPageIndicatorPosition = nil
-	end
-
-	if not BTVanillaDB.anchorTimingFixDone then
-		BTVanillaDB.anchorTimingFixDone = true
-
-		BTVanillaDB.defaultBars = nil
-
-		BTVanillaDB.mainBarPageIndicatorNativeAnchor = nil
-		BTVanillaDB.mainBarPageIndicatorPosition = nil
-	end
-
-	if not BTVanillaDB.anchorEnterWorldFixDone then
-		BTVanillaDB.anchorEnterWorldFixDone = true
-
-		BTVanillaDB.defaultBars = nil
-
-		BTVanillaDB.mainBarPageIndicatorNativeAnchor = nil
-		BTVanillaDB.mainBarPageIndicatorPosition = nil
-	end
-
-	if not BTVanillaDB.schemaVersion or BTVanillaDB.schemaVersion < self.SCHEMA_VERSION then
-		BTVanillaDB.schemaVersion = self.SCHEMA_VERSION
-		BTVanillaDB.defaultBars = seedDefaultBars(self)
-		BTVanillaDB.bars = {}
-	end
-
-	if not BTVanillaDB.defaultBars then
-		BTVanillaDB.defaultBars = seedDefaultBars(self)
-	end
-
-	-- Migration-safe: an existing save from before the Pet Bar existed has
-	-- BTVanillaDB.defaultBars already populated (ids 1-5) but no entry for
-	-- BTV.PET_BAR_ID - seed just that one id rather than bumping
-	-- SCHEMA_VERSION (which would wipe BTVanillaDB.bars).
-	if not BTVanillaDB.defaultBars[self.PET_BAR_ID] then
-		BTVanillaDB.defaultBars[self.PET_BAR_ID] = SeedOneDefaultBar(self, self.PET_BAR_ID)
-	end
-
-	-- Structural constants for the Pet Bar cfg, re-asserted every call so a
-	-- save from before this field existed self-heals without a reseed.
-	do
-		local petCfg = BTVanillaDB.defaultBars[self.PET_BAR_ID]
-
-		petCfg.isPetBar = true
-
-		local petSlots = {}
-		local ps
-
-		for ps = 1, 10 do
-			petSlots[ps] = ps
-		end
-
-		petCfg.fixedActionSlots = petSlots
-
-		-- User-editable, so nil-checked rather than reasserted every call
-		-- (unlike isPetBar/fixedActionSlots above), so an existing choice
-		-- persists.
-		if petCfg.condenseEmptyPetSlots == nil then
-			petCfg.condenseEmptyPetSlots = false
-		end
-
-		if petCfg.animateAutoCastGlow == nil then
-			petCfg.animateAutoCastGlow = false
-		end
-	end
-
-	-- Pet Bar's own default position is set later, by SetupPetBarNativeContainer.
-
-	-- Migration-safe: an existing save from before the Stance Bar's styled
-	-- mode existed has no entry for BTV.STANCE_BAR_ID - seed just that one
-	-- id, same treatment as the Pet Bar migration above. This is purely
-	-- additive - the pre-existing native-mode BTVanillaDB.stanceBar* fields
-	-- are never touched here.
-	if not BTVanillaDB.defaultBars[self.STANCE_BAR_ID] then
-		BTVanillaDB.defaultBars[self.STANCE_BAR_ID] = SeedOneDefaultBar(self, self.STANCE_BAR_ID)
-	end
-
-	-- Structural constants for the Stance Bar cfg, re-asserted every call so
-	-- a save from before this field existed self-heals without a reseed.
-	do
-		local stanceCfg = BTVanillaDB.defaultBars[self.STANCE_BAR_ID]
-
-		stanceCfg.isStanceBar = true
-
-		local stanceSlots = {}
-		local ss
-
-		for ss = 1, self.MAX_STANCE_BUTTONS do
-			stanceSlots[ss] = ss
-		end
-
-		stanceCfg.fixedActionSlots = stanceSlots
-
-		-- User-editable, so nil-checked rather than reasserted every call -
-		-- an existing choice persists.
-		if stanceCfg.useNativeStanceBar == nil then
-			stanceCfg.useNativeStanceBar = true
-		end
-	end
-
-	if not BTVanillaDB.bars then
-		BTVanillaDB.bars = {}
-	end
-
-	self:EnsureExtraBars()
-
-	-- Force hoverbind off once per session, not on every EnsureDB call
-	-- (which would stomp BTV:SetHoverBindMode(true) mid-session).
-	if not hasResetHoverBindModeThisSession then
-		BTVanillaDB.hoverBindMode = false
-		hasResetHoverBindModeThisSession = true
+	if spacing > maxSpacing then
+		spacing = maxSpacing
 	end
-end
 
-function BTV:Print(msg)
-	DEFAULT_CHAT_FRAME:AddMessage("|cff33ccff[BTVanilla]|r " .. tostring(msg))
+	return spacing
 end
 
 -------------------------------------------------------------------------
@@ -1837,14 +264,9 @@ local function GetRealScreenBounds(region, insetLeft, insetRight, insetTop, inse
 	return (left - insetLeft) * scale, (right + insetRight) * scale, (top + insetTop) * scale, (bottom - insetBottom) * scale
 end
 
--- Shared calibrated-overhang math for a vanilla-style button of the given
--- size: how far its native border TEXTURE actually reads as visible
--- beyond the button's own frame bounds, after BORDER_TEXTURE_FUDGE
--- corrects for the texture's own transparent padding (the raw
--- BORDER_RATIO ratio alone overstates it - see BORDER_TEXTURE_FUDGE's own
--- comment). Used by both GetElementVisualInset below (per-frame, gates on
--- frame.config.id) and BTV:GetLayoutGridSpacing (Edit Layout mode's
--- reference grid, which has no single frame to measure against).
+-- Calibrated border-texture overhang for a vanilla-style button of the
+-- given size, beyond the button's own frame bounds. Used by both
+-- GetElementVisualInset below and ACAB:GetLayoutGridSpacing.
 local function ComputeVanillaBorderInsets(buttonSize, borderRatio, yOffset, fudge)
 	local uniform = buttonSize * (borderRatio - 1) / 2
 
@@ -1865,7 +287,7 @@ end
 -- overhangs its own frame bounds on each side, non-zero only for default
 -- bars 1-5 in vanilla border style. Custom bars and every chain-anchored
 -- element return 0.
-function BTV:GetElementVisualInset(frame)
+function ACAB:GetElementVisualInset(frame)
 	if frame and frame.config and frame.config.id and self:IsVanillaBorderStyle() then
 		local buttonSize = frame.config.buttonSize or self.BUTTON_SIZE
 
@@ -1882,7 +304,7 @@ end
 
 -- Every currently visible/enabled draggable element except `excludeElement`,
 -- as real-screen-pixel bounding boxes.
-function BTV:GetAllSnapTargetBoxes(excludeElement)
+function ACAB:GetAllSnapTargetBoxes(excludeElement)
 	local boxes = {}
 
 	local function AddBox(frame)
@@ -1925,12 +347,12 @@ end
 -- element's top-left corner, checking screen edges/corners (same-side
 -- only) and every other visible element's edges (either side, to allow
 -- edge-to-edge stacking). Each axis returns nil if it shouldn't snap.
-function BTV:ComputeSnapAdjustment(proposedLeft, proposedTop, width, height, excludeElement)
+function ACAB:ComputeSnapAdjustment(proposedLeft, proposedTop, width, height, excludeElement)
 	if IsShiftKeyDown and IsShiftKeyDown() then
 		return nil, nil
 	end
 
-	if not BTVanillaDB or not BTVanillaDB.snapToAdjacentElements then
+	if not ACABDB or not ACABDB.snapToAdjacentElements then
 		return nil, nil
 	end
 
@@ -2041,32 +463,17 @@ local function BestSnapCandidate(proposed, candidates)
 	return best
 end
 
--- Computes a grid-snapped (proposedLeft, proposedTop) for a dragged
--- element's top-left corner. Unlike ComputeSnapAdjustment (edge-to-edge,
--- threshold-gated against OTHER elements), this snaps every tick against
--- the layout grid itself (BTV:GetLayoutGridSpacing(), same screen-center
--- origin the grid overlay is drawn from - Bar.lua's RebuildLayoutGrid),
--- and considers three ways an axis can land on a grid line: the near
--- edge, the far edge, or the center - whichever keeps the element closest
--- to the cursor wins, so an edge locks onto a line to align a bar's
--- border with the grid just as readily as the center locking onto a line
--- intersection. The screen's own edges are included as explicit
--- candidates too, since they aren't guaranteed to fall on a regular
--- spacing multiple from screen center.
---
--- `scale` is the dragged frame's own GetEffectiveScale() (same value
--- DefaultBars.lua's ApplyDragSnap already computed to convert its local
--- width/height into the real screen pixels proposedLeft/proposedTop/
--- width/height are given in here) - BTV:GetLayoutGridSpacing() is a LOCAL
--- unit (a raw button-size number, same units as button:SetWidth()), so it
--- needs the same conversion before comparing against real-pixel screen
--- coordinates.
-function BTV:ComputeGridSnapAdjustment(proposedLeft, proposedTop, width, height, scale)
+-- Grid-snaps a dragged element's top-left corner against the layout grid
+-- (ACAB:GetLayoutGridSpacing(), same origin as the grid overlay), checking
+-- near edge, far edge, and center per axis - whichever keeps the element
+-- closest to the cursor wins. Screen edges are included as candidates too.
+-- `scale` converts GetLayoutGridSpacing()'s local units to real screen pixels.
+function ACAB:ComputeGridSnapAdjustment(proposedLeft, proposedTop, width, height, scale)
 	if IsShiftKeyDown and IsShiftKeyDown() then
 		return nil, nil
 	end
 
-	if not BTVanillaDB or not BTVanillaDB.snapToGrid then
+	if not ACABDB or not ACABDB.snapToGrid then
 		return nil, nil
 	end
 
@@ -2147,12 +554,12 @@ end
 
 -- Snaps proposedLeft/proposedTop's near edge, far edge, or center - each
 -- only within its own capture radius - to the nearest grid line per axis.
-function BTV:ComputeCenterGridSnapAdjustment(proposedLeft, proposedTop, width, height, scale)
+function ACAB:ComputeCenterGridSnapAdjustment(proposedLeft, proposedTop, width, height, scale)
 	if IsShiftKeyDown and IsShiftKeyDown() then
 		return nil, nil
 	end
 
-	if not BTVanillaDB or not BTVanillaDB.snapToGrid then
+	if not ACABDB or not ACABDB.snapToGrid then
 		return nil, nil
 	end
 
@@ -2218,23 +625,23 @@ end
 
 -- Single source of truth for the global border/spacing style - Button.lua
 -- and GetElementVisualInset above must both read this.
-function BTV:IsVanillaBorderStyle()
-	if BTVanillaDB and BTVanillaDB.useDefaultLayout ~= false then
+function ACAB:IsVanillaBorderStyle()
+	if ACABDB and ACABDB.useDefaultLayout ~= false then
 		return true
 	end
 
-	return not (BTVanillaDB and BTVanillaDB.modernBorderStyle)
+	return not (ACABDB and ACABDB.modernBorderStyle)
 end
 
 -- Single source of truth for whether the Pet Bar is effectively in native
 -- (real PetActionButton1-10) mode - forces native+uncondensed while
 -- default layout is on, regardless of the user's stored preference.
-function BTV:IsPetBarNativeModeEffective()
-	if BTVanillaDB and BTVanillaDB.useDefaultLayout ~= false then
+function ACAB:IsPetBarNativeModeEffective()
+	if ACABDB and ACABDB.useDefaultLayout ~= false then
 		return true
 	end
 
-	local cfg = BTVanillaDB and BTVanillaDB.defaultBars and BTVanillaDB.defaultBars[self.PET_BAR_ID]
+	local cfg = ACABDB and ACABDB.defaultBars and ACABDB.defaultBars[self.PET_BAR_ID]
 
 	return cfg and cfg.useNativePetBar == true
 end
@@ -2242,30 +649,25 @@ end
 -- Single source of truth for whether the Stance Bar is effectively in
 -- native (real ShapeshiftButton1-N) mode - forces native while default
 -- layout is on, regardless of the user's stored preference. Mirrors
--- BTV:IsPetBarNativeModeEffective exactly.
-function BTV:IsStanceBarNativeModeEffective()
-	if BTVanillaDB and BTVanillaDB.useDefaultLayout ~= false then
+-- ACAB:IsPetBarNativeModeEffective exactly.
+function ACAB:IsStanceBarNativeModeEffective()
+	if ACABDB and ACABDB.useDefaultLayout ~= false then
 		return true
 	end
 
-	local cfg = BTVanillaDB and BTVanillaDB.defaultBars and BTVanillaDB.defaultBars[self.STANCE_BAR_ID]
+	local cfg = ACABDB and ACABDB.defaultBars and ACABDB.defaultBars[self.STANCE_BAR_ID]
 
 	return cfg and cfg.useNativeStanceBar == true
 end
 
 -- Re-syncs the Stance Bar (styled mode) cfg's buttonCount/cols/rows against
--- the LIVE GetNumShapeshiftForms() count - called at login and on every
--- UPDATE_SHAPESHIFT_FORMS (DefaultBars.lua's stanceFormEventFrame). A no-op
--- (returns false) only when both buttonCount matches AND cols*rows still
--- exactly accounts for it - checking cols*rows too (not just buttonCount)
--- matters: a cfg can have a matching buttonCount but a stale cols/rows from
--- an earlier mismatch, which a buttonCount-only check would never self-heal.
--- A legitimate custom shape (e.g. 2x2 for 4 forms) is left alone. Returns
--- true when it changed something, so the caller knows to re-layout/refresh.
-function BTV:ApplyStanceBarLiveShape()
+-- the live GetNumShapeshiftForms() count - called at login and on every
+-- UPDATE_SHAPESHIFT_FORMS. Leaves a legitimate custom shape alone (matching
+-- buttonCount AND cols*rows). Returns true if it changed something.
+function ACAB:ApplyStanceBarLiveShape()
 	self:EnsureDB()
 
-	local cfg = BTVanillaDB.defaultBars[self.STANCE_BAR_ID]
+	local cfg = ACABDB.defaultBars[self.STANCE_BAR_ID]
 
 	if not cfg then
 		return false
@@ -2295,12 +697,12 @@ end
 -- Single source of truth for whether the Pet Bar should hide empty slots -
 -- real vanilla never does, so this is forced false while default layout is
 -- on regardless of the user's stored preference.
-function BTV:ShouldCondensePetBarSlots()
-	if BTVanillaDB and BTVanillaDB.useDefaultLayout ~= false then
+function ACAB:ShouldCondensePetBarSlots()
+	if ACABDB and ACABDB.useDefaultLayout ~= false then
 		return false
 	end
 
-	local cfg = BTVanillaDB and BTVanillaDB.defaultBars and BTVanillaDB.defaultBars[self.PET_BAR_ID]
+	local cfg = ACABDB and ACABDB.defaultBars and ACABDB.defaultBars[self.PET_BAR_ID]
 
 	return cfg and cfg.condenseEmptyPetSlots == true
 end
@@ -2309,7 +711,7 @@ end
 -- SeedOneDefaultBar) that currently have a pet ability/command assigned.
 -- Used to size the condensed bar's actual on-screen footprint for the
 -- Position sliders' clamp range (Settings.lua's GetActionBarCoordinateRange).
-function BTV:GetPetBarFilledSlotCount()
+function ACAB:GetPetBarFilledSlotCount()
 	if not GetPetActionInfo then
 		return 0
 	end
@@ -2328,7 +730,7 @@ end
 
 -- buttonSize a brand-new bar should seed at, already correct for the
 -- currently active style.
-function BTV:GetCurrentButtonSizeBaseline()
+function ACAB:GetCurrentButtonSizeBaseline()
 	if self:IsVanillaBorderStyle() then
 		return self.BUTTON_SIZE
 	end
@@ -2337,40 +739,13 @@ function BTV:GetCurrentButtonSizeBaseline()
 end
 
 -- Layout-grid line spacing (Edit Layout mode).
---
--- BTVanillaDB.useCustomGridSize (default false, EnsureDB) overrides
--- everything below with a flat user-chosen number (BTVanillaDB.
--- customGridSize, the Edit Mode tab's "Use custom Grid Size" slider) when
--- on.
---
--- Otherwise, tracks the Main Bar's (bar id 1) CURRENT buttonSize live -
--- not a fixed baseline constant - so resizing Main Bar (its own settings
--- page, the General tab's Global Button Size override, or scroll-wheel
--- resize while editing, all of which funnel through BTV:SetBarButtonSize)
--- immediately changes grid spacing too, via that function's own rebuild
--- hook. Falls back to GetCurrentButtonSizeBaseline() only if Main Bar
--- somehow isn't in BTV.bars yet (e.g. very first load).
---
--- Vanilla style ALSO adds Main Bar's real configured cfg.spacing (via the
--- same rebuild hook in BTV:SetBarSpacing/BTV:SetDefaultBarSpacing) - this
--- is the actual button-to-button PITCH real buttons tile at
--- (BarFrameSize/LayoutButtons' own layout formula: buttonSize + spacing),
--- not a border-overhang correction. An earlier version added
--- BTV:GetElementVisualInset's calibrated border-texture overhang instead
--- (reusing the Edit Layout overlay hitbox's own math) - REVERTED: that
--- overhang is a BAR-LEVEL correction (how far the whole bar's outer edge
--- needs to expand to visually contain every button's overhanging border
--- as one unit) and is irrelevant to PER-BUTTON tiling, since adjacent
--- buttons' oversized native borders overlap each other rather than adding
--- real distance between buttons - using it here caused visible cumulative
--- drift between grid lines and buttons across a bar with many buttons
--- (each cell ended up wider than the real per-button pitch). Modern style
--- is deliberately left untouched (buttonSize alone, no spacing added) -
--- already confirmed to align perfectly, do not add spacing there too
--- without separately re-confirming live.
-function BTV:GetLayoutGridSpacing()
-	if BTVanillaDB and BTVanillaDB.useCustomGridSize and BTVanillaDB.customGridSize then
-		return BTVanillaDB.customGridSize
+-- ACABDB.useCustomGridSize overrides everything with a flat user value.
+-- Otherwise tracks Main Bar's live buttonSize (+ spacing in vanilla style,
+-- matching real button-to-button pitch). Modern style uses buttonSize alone -
+-- do not add spacing there without re-confirming live, it already aligns.
+function ACAB:GetLayoutGridSpacing()
+	if ACABDB and ACABDB.useCustomGridSize and ACABDB.customGridSize then
+		return ACABDB.customGridSize
 	end
 
 	local mainBar = self.bars and self.bars[1]
@@ -2391,16 +766,16 @@ end
 -- Edit mode ("Configure Layout")
 -------------------------------------------------------------------------
 
-function BTV:IsEditMode()
-	return BTVanillaDB and BTVanillaDB.editMode == true
+function ACAB:IsEditMode()
+	return ACABDB and ACABDB.editMode == true
 end
 
 -- The Default profile can never be edited.
-function BTV:IsDefaultProfileActive()
-	return not BTVanillaCharDB or BTVanillaCharDB.activeProfile == self.DEFAULT_PROFILE_NAME
+function ACAB:IsDefaultProfileActive()
+	return not ACABCharDB or ACABCharDB.activeProfile == self.DEFAULT_PROFILE_NAME
 end
 
-function BTV:SetEditMode(enabled)
+function ACAB:SetEditMode(enabled)
 	self:EnsureDB()
 	enabled = enabled and true or false
 
@@ -2414,7 +789,7 @@ function BTV:SetEditMode(enabled)
 		self:SetHoverBindMode(false)
 	end
 
-	BTVanillaDB.editMode = enabled
+	ACABDB.editMode = enabled
 	self:ApplyEditModeVisual()
 
 	if enabled then
@@ -2424,7 +799,7 @@ function BTV:SetEditMode(enabled)
 	end
 end
 
-function BTV:ToggleEditMode()
+function ACAB:ToggleEditMode()
 	self:SetEditMode(not self:IsEditMode())
 	self:Print(self:IsEditMode()
 		and "Configure Layout ON - drag buttons to move bars, scroll to scale, right-click for bar settings. Hold Shift while dragging to temporarily disable snapping. Hold Ctrl to temporarily show/hide the layout grid."
@@ -2437,11 +812,11 @@ end
 -- Mutually exclusive with edit mode.
 -------------------------------------------------------------------------
 
-function BTV:IsHoverBindMode()
-	return BTVanillaDB and BTVanillaDB.hoverBindMode == true
+function ACAB:IsHoverBindMode()
+	return ACABDB and ACABDB.hoverBindMode == true
 end
 
-function BTV:SetHoverBindMode(enabled)
+function ACAB:SetHoverBindMode(enabled)
 	self:EnsureDB()
 	enabled = enabled and true or false
 
@@ -2450,7 +825,7 @@ function BTV:SetHoverBindMode(enabled)
 		return
 	end
 
-	BTVanillaDB.hoverBindMode = enabled
+	ACABDB.hoverBindMode = enabled
 
 	if self.ApplyHoverBindVisual then
 		self:ApplyHoverBindVisual(enabled)
@@ -2463,7 +838,7 @@ function BTV:SetHoverBindMode(enabled)
 	end
 end
 
-function BTV:ToggleHoverBindMode()
+function ACAB:ToggleHoverBindMode()
 	if not self:IsHoverBindMode() and self:IsEditMode() then
 		self:Print("Cannot enable Hoverbind while Configure Layout is on.")
 		return
@@ -2491,7 +866,7 @@ local HOVER_POLL_TICK_INTERVAL = 0.06
 local hoverFadeFrames = {}
 
 -- Clamps to the 0-10s hover-fade duration range, or nil if not a valid number. Shared by every Set*HoverDuration setter.
-function BTV:ClampHoverDuration(duration)
+function ACAB:ClampHoverDuration(duration)
 	duration = tonumber(duration)
 
 	if not duration then
@@ -2543,7 +918,7 @@ local function StartHoverPollTicker()
 	end
 
 	hoverPollTicker = C_Timer.NewTicker(HOVER_POLL_TICK_INTERVAL, function()
-		if BTV:IsEditMode() or BTV:IsHoverBindMode() then
+		if ACAB:IsEditMode() or ACAB:IsHoverBindMode() then
 			return
 		end
 
@@ -2551,33 +926,33 @@ local function StartHoverPollTicker()
 		local frame
 
 		for frame in pairs(hoverFadeFrames) do
-			if frame.btvHoverOnlyEnabled then
+			if frame.ACABHoverOnlyEnabled then
 				local hovering = IsPointOverFrame(x, y, frame)
 
-				if hovering and not frame.btvHoverOnlyHovering then
-					BTV:CancelHoverFadeTicker(frame)
+				if hovering and not frame.ACABHoverOnlyHovering then
+					ACAB:CancelHoverFadeTicker(frame)
 					frame:SetAlpha(1)
-				elseif not hovering and frame.btvHoverOnlyHovering then
-					BTV:StartHoverFadeTicker(frame, frame.btvHoverOnlyGetDuration and frame.btvHoverOnlyGetDuration() or 3)
+				elseif not hovering and frame.ACABHoverOnlyHovering then
+					ACAB:StartHoverFadeTicker(frame, frame.ACABHoverOnlyGetDuration and frame.ACABHoverOnlyGetDuration() or 3)
 				end
 
-				frame.btvHoverOnlyHovering = hovering
+				frame.ACABHoverOnlyHovering = hovering
 			end
 		end
 	end)
 end
 
--- Cancel()-and-nil, same convention as Button.lua's rangeTicker.
-function BTV:CancelHoverFadeTicker(frame)
-	if frame.btvHoverFadeTicker then
-		frame.btvHoverFadeTicker:Cancel()
-		frame.btvHoverFadeTicker = nil
+-- Cancel()-and-nil, same convention used for tickers elsewhere in this codebase.
+function ACAB:CancelHoverFadeTicker(frame)
+	if frame.ACABHoverFadeTicker then
+		frame.ACABHoverFadeTicker:Cancel()
+		frame.ACABHoverFadeTicker = nil
 	end
 end
 
 -- Full alpha for the first 4/5 of duration, then a linear fade to 0 over the last 1/5. duration <= 0 hides immediately.
 -- Edit Layout/Hoverbind mode force alpha 1 while active, rechecked every tick.
-function BTV:StartHoverFadeTicker(frame, duration)
+function ACAB:StartHoverFadeTicker(frame, duration)
 	self:CancelHoverFadeTicker(frame)
 
 	duration = tonumber(duration) or 0
@@ -2592,8 +967,8 @@ function BTV:StartHoverFadeTicker(frame, duration)
 
 	frame:SetAlpha(1)
 
-	frame.btvHoverFadeTicker = C_Timer.NewTicker(HOVER_FADE_TICK_INTERVAL, function()
-		if BTV:IsEditMode() or BTV:IsHoverBindMode() then
+	frame.ACABHoverFadeTicker = C_Timer.NewTicker(HOVER_FADE_TICK_INTERVAL, function()
+		if ACAB:IsEditMode() or ACAB:IsHoverBindMode() then
 			frame:SetAlpha(1)
 			return
 		end
@@ -2602,7 +977,7 @@ function BTV:StartHoverFadeTicker(frame, duration)
 
 		if elapsed >= duration then
 			frame:SetAlpha(0)
-			BTV:CancelHoverFadeTicker(frame)
+			ACAB:CancelHoverFadeTicker(frame)
 			return
 		end
 
@@ -2615,19 +990,19 @@ function BTV:StartHoverFadeTicker(frame, duration)
 end
 
 -- Registers `frame` (once, idempotent) into the shared poll registry, starting the poll ticker on first registration.
-function BTV:InstallHoverFadeController(frame)
-	if frame.btvHoverFadeInstalled then
+function ACAB:InstallHoverFadeController(frame)
+	if frame.ACABHoverFadeInstalled then
 		return
 	end
 
-	frame.btvHoverFadeInstalled = true
+	frame.ACABHoverFadeInstalled = true
 	hoverFadeFrames[frame] = frame
 
 	StartHoverPollTicker()
 end
 
 -- Central per-frame apply/toggle for every settings-change path that owns a hover-only-eligible frame.
-function BTV:ApplyHoverOnlyState(frame, enabled, getDuration)
+function ACAB:ApplyHoverOnlyState(frame, enabled, getDuration)
 	if not frame then
 		return
 	end
@@ -2635,8 +1010,8 @@ function BTV:ApplyHoverOnlyState(frame, enabled, getDuration)
 	enabled = enabled and true or false
 
 	-- Stored on the frame so the poll ticker always reads the latest value.
-	frame.btvHoverOnlyEnabled = enabled
-	frame.btvHoverOnlyGetDuration = getDuration
+	frame.ACABHoverOnlyEnabled = enabled
+	frame.ACABHoverOnlyGetDuration = getDuration
 
 	if not enabled then
 		self:CancelHoverFadeTicker(frame)
@@ -2649,10 +1024,10 @@ function BTV:ApplyHoverOnlyState(frame, enabled, getDuration)
 	self:InstallHoverFadeController(frame)
 
 	-- Immediate bounds check so toggling on while the cursor is already over the frame doesn't snap it to hidden.
-	frame.btvHoverOnlyHovering = IsCursorOverFrame(frame)
+	frame.ACABHoverOnlyHovering = IsCursorOverFrame(frame)
 
-	if not frame.btvHoverFadeTicker then
-		if self:IsEditMode() or self:IsHoverBindMode() or frame.btvHoverOnlyHovering then
+	if not frame.ACABHoverFadeTicker then
+		if self:IsEditMode() or self:IsHoverBindMode() or frame.ACABHoverOnlyHovering then
 			frame:SetAlpha(1)
 		else
 			frame:SetAlpha(0)
@@ -2661,7 +1036,7 @@ function BTV:ApplyHoverOnlyState(frame, enabled, getDuration)
 end
 
 -- Forces every installed hover-fade frame to alpha 1, so hover-only elements stay visible while editing/binding.
-function BTV:ForceHoverFadeFramesVisible()
+function ACAB:ForceHoverFadeFramesVisible()
 	local frame
 
 	for frame in pairs(hoverFadeFrames) do
@@ -2670,7 +1045,7 @@ function BTV:ForceHoverFadeFramesVisible()
 end
 
 -- Snaps every installed hover-fade frame back to its normal hidden-until-hover state, undoing ForceHoverFadeFramesVisible.
-function BTV:RestoreHoverFadeFrames()
+function ACAB:RestoreHoverFadeFrames()
 	if self:IsEditMode() or self:IsHoverBindMode() then
 		return
 	end
@@ -2678,7 +1053,7 @@ function BTV:RestoreHoverFadeFrames()
 	local frame
 
 	for frame in pairs(hoverFadeFrames) do
-		if frame.btvHoverOnlyEnabled and not frame.btvHoverFadeTicker and not frame.btvHoverOnlyHovering then
+		if frame.ACABHoverOnlyEnabled and not frame.ACABHoverFadeTicker and not frame.ACABHoverOnlyHovering then
 			frame:SetAlpha(0)
 		end
 	end
@@ -2691,15 +1066,15 @@ end
 -- same global Blizzard's own Interface Options checkbox uses.
 -------------------------------------------------------------------------
 
-function BTV:IsLockActionBars()
+function ACAB:IsLockActionBars()
 	return LOCK_ACTIONBAR == "1"
 end
 
-function BTV:SetLockActionBars(enabled)
+function ACAB:SetLockActionBars(enabled)
 	LOCK_ACTIONBAR = enabled and "1" or "0"
 end
 
-function BTV:ToggleLockActionBars()
+function ACAB:ToggleLockActionBars()
 	self:SetLockActionBars(not self:IsLockActionBars())
 	self:Print(self:IsLockActionBars()
 		and "Action bars locked - dragging a filled button no longer picks up its action."
@@ -2710,14 +1085,14 @@ end
 -- Load
 -------------------------------------------------------------------------
 
--- Polls ActionButton1's real position until two consecutive reads agree
--- (or a timeout is hit), since its true native position is not guaranteed
--- final the instant PLAYER_ENTERING_WORLD fires.
+-- Polls ActionButton1's position until two consecutive reads agree (or a
+-- timeout), since its native position isn't guaranteed final immediately
+-- after PLAYER_ENTERING_WORLD.
 local SETTLE_POLL_INTERVAL = 0.1
 local SETTLE_STABLE_READS_REQUIRED = 2
 local SETTLE_TIMEOUT = 3
 
-local function WaitForNativeBarSettle(callback)
+function ACAB:WaitForNativeBarSettle(callback)
 	local ref = getglobal("ActionButton1")
 
 	if not ref or not C_Timer or not C_Timer.NewTicker then
@@ -2752,7 +1127,7 @@ local function WaitForNativeBarSettle(callback)
 			ticker:Cancel()
 
 			if timedOut and not settled then
-				BTV:Print(
+				ACAB:Print(
 					"WARNING: native action bar position did not settle within " ..
 					tostring(SETTLE_TIMEOUT) .. "s - proceeding with its current, " ..
 					"possibly not-yet-final position."
@@ -2764,22 +1139,11 @@ local function WaitForNativeBarSettle(callback)
 	end)
 end
 
--- Same stability-polling pattern as WaitForNativeBarSettle above, but
--- watching `frame.btvSwallowedAnchor` (DefaultBars.lua's
--- InstallReanchorGuard - only set on frames with a reanchor guard
--- installed, currently Latency Bar/Cast Bar) instead of GetLeft()/
--- GetTop(): a synchronous GetPoint(1) read at login can observe native
--- code's own not-yet-final anchor attempt (confirmed live on Latency
--- Bar - an early read saw a different offset than what native code
--- consistently, repeatedly tried to re-assert moments later), so this
--- waits for that repeated re-assertion to actually happen and stop
--- changing, instead of guessing when to sample it. callback receives the
--- settled anchor table, or nil if nothing was ever observed (no guard on
--- this frame, or the native re-anchor genuinely hasn't happened yet -
--- ResolveNativeAnchorToAbsolute/Reset*Layout re-check
--- frame.btvSwallowedAnchor again at click-time regardless, so a native
--- re-anchor that only happens later in the session (docs/01-...md §5w:
--- suspected combat/loot-end trigger) still gets picked up then).
+-- Same stability-polling pattern as WaitForNativeBarSettle, but watches
+-- frame.ACABSwallowedAnchor (set by DefaultBars.lua's InstallReanchorGuard,
+-- only on Latency Bar/Cast Bar) instead of GetLeft()/GetTop(), since a
+-- synchronous read at login can catch native code's anchor attempt before
+-- it settles. callback receives the settled anchor, or nil if none observed.
 local function WaitForWrappedFrameAnchorSettle(frame, callback)
 	if not frame or not C_Timer or not C_Timer.NewTicker then
 		callback(nil)
@@ -2795,7 +1159,7 @@ local function WaitForWrappedFrameAnchorSettle(frame, callback)
 			and a.relativePoint == b.relativePoint and a.x == b.x and a.y == b.y
 	end
 
-	local lastAnchor = frame.btvSwallowedAnchor
+	local lastAnchor = frame.ACABSwallowedAnchor
 	local stableCount = 0
 	local elapsed = 0
 
@@ -2803,7 +1167,7 @@ local function WaitForWrappedFrameAnchorSettle(frame, callback)
 	ticker = C_Timer.NewTicker(SETTLE_POLL_INTERVAL, function()
 		elapsed = elapsed + SETTLE_POLL_INTERVAL
 
-		local anchor = frame.btvSwallowedAnchor
+		local anchor = frame.ACABSwallowedAnchor
 
 		if anchor and SameAnchor(anchor, lastAnchor) then
 			stableCount = stableCount + 1
@@ -2823,28 +1187,22 @@ local function WaitForWrappedFrameAnchorSettle(frame, callback)
 	end)
 end
 
--- Re-checks ActionButton1 once fully settled and, only if it drifted from
--- what was captured, silently recaptures/reapplies via
--- RecaptureDefaultBarNativeAnchors - a no-op if the original capture was
--- already correct. A fresh install can still recenter the MainMenuBar
--- cluster after WaitForNativeBarSettle's own poll already reported stable.
+-- Re-checks ActionButton1 once settled and silently recaptures if it
+-- drifted from what was captured (RecaptureDefaultBarNativeAnchors).
 local DRIFT_TOLERANCE = 1
 
--- Stricter than WaitForNativeBarSettle's own 2-read requirement (which has
--- plateaued early before) - a full second of stable reads before the drift
--- check above runs, instead of a flat guessed delay.
+-- Stricter than WaitForNativeBarSettle's own requirement - a full second of
+-- stable reads before the drift check above runs.
 local POST_LOGIN_SETTLE_STABLE_READS = 10
 local POST_LOGIN_SETTLE_TIMEOUT = 10
 
--- Copies Bar 3's (or Bar 1's) current nativeAnchor.x into Pet Bar's own
--- cfg.x - PetActionButton1/PetActionBarFrame's own position is never read
--- for this (unreliable on this client, unrelated to bar state or timing).
+-- Copies Bar 3's (or Bar 1's) current nativeAnchor.x into Pet Bar's cfg.x.
 -- Reapplies live if the container already exists.
-function BTV:SyncPetBarAnchorX()
-	local defaults = BTVanillaDB and BTVanillaDB.defaultBars
-	local cfg = defaults and defaults[BTV.PET_BAR_ID]
+function ACAB:SyncPetBarAnchorX()
+	local defaults = ACABDB and ACABDB.defaultBars
+	local cfg = defaults and defaults[ACAB.PET_BAR_ID]
 
-	if not cfg or BTVanillaDB.useDefaultLayout == false then
+	if not cfg or ACABDB.useDefaultLayout == false then
 		return
 	end
 
@@ -2864,30 +1222,30 @@ function BTV:SyncPetBarAnchorX()
 	cfg.nativeAnchor.relativePoint = "BOTTOMLEFT"
 	cfg.nativeAnchor.x = anchor.x
 
-	if BTV.petBarNativeContainer then
-		BTV:ApplyPetBarNativePosition()
+	if ACAB.petBarNativeContainer then
+		ACAB:ApplyPetBarNativePosition()
 	end
 end
 
 local function SetupPetBarNativeContainer()
-	local cfg = BTVanillaDB and BTVanillaDB.defaultBars and BTVanillaDB.defaultBars[BTV.PET_BAR_ID]
+	local cfg = ACABDB and ACABDB.defaultBars and ACABDB.defaultBars[ACAB.PET_BAR_ID]
 
-	if not cfg or BTV.petBarNativeContainer then
+	if not cfg or ACAB.petBarNativeContainer then
 		return
 	end
 
-	BTV:SyncPetBarAnchorX()
-	BTV:CreatePetBarNativeContainer()
+	ACAB:SyncPetBarAnchorX()
+	ACAB:CreatePetBarNativeContainer()
 
-	if BTVanillaDB.useDefaultLayout ~= false then
-		local bar3Cfg = BTVanillaDB.defaultBars[3]
-		BTV:ReflowPetBarForBar3Toggle(bar3Cfg and bar3Cfg.enabled)
+	if ACABDB.useDefaultLayout ~= false then
+		local bar3Cfg = ACABDB.defaultBars[3]
+		ACAB:ReflowPetBarForBar3Toggle(bar3Cfg and bar3Cfg.enabled)
 	end
 end
 
 local function VerifyDefaultBarAnchorsSettled()
-	local cfg = BTVanillaDB and BTVanillaDB.defaultBars and BTVanillaDB.defaultBars[1]
-	local liveAnchor = cfg and CaptureNativeAnchor(BTV, 1)
+	local cfg = ACABDB and ACABDB.defaultBars and ACABDB.defaultBars[1]
+	local liveAnchor = cfg and ACAB:CaptureNativeAnchor(1)
 
 	if not cfg or not cfg.nativeAnchor or not liveAnchor then
 		return
@@ -2895,11 +1253,7 @@ local function VerifyDefaultBarAnchorsSettled()
 
 	if math.abs(liveAnchor.x - cfg.nativeAnchor.x) > DRIFT_TOLERANCE
 		or math.abs(liveAnchor.y - cfg.nativeAnchor.y) > DRIFT_TOLERANCE then
-		BTV:Print(
-			"Native action bar position drifted after login settle - " ..
-			"recapturing automatically."
-		)
-		BTV:RecaptureDefaultBarNativeAnchors()
+		ACAB:RecaptureDefaultBarNativeAnchors()
 	end
 end
 
@@ -2939,154 +1293,246 @@ end
 
 -- Full login sequence, run once WaitForNativeBarSettle confirms the
 -- native bars have settled.
-local function RunLoginSequence(earlyLeft, earlyTop, settledLeft, settledTop, waited)
-	if earlyLeft and settledLeft then
-		BTV:Print(string.format(
-			"Anchor capture: left early=%.2f settled=%.2f, top early=%.2f settled=%.2f (waited %.2fs)",
-			earlyLeft, settledLeft, earlyTop or 0, settledTop or 0, waited or 0
-		))
-	end
+function ACAB:RunLoginSequence(earlyLeft, earlyTop, settledLeft, settledTop, waited)
+	ACAB:ResolveActiveProfile()
 
-	BTV:ResolveActiveProfile()
+	ACAB:EnsureDB()
 
-	BTV:EnsureDB()
+	-- Must run before CreateFixedSlotDefaultBars/CreateBagBarAndMicroMenu -
+	-- these frames are repositioned directly (not measured via a separate
+	-- untouched reference frame like bars 1-5), so capturing after that
+	-- reflow would measure an already-disturbed position. No-op on later logins.
+	ACAB:CaptureKeyRingPositionIfNeeded()
+	ACAB:CaptureLatencyBarPositionIfNeeded()
+	ACAB:CaptureExpBarPositionIfNeeded()
+	ACAB:CaptureCastBarPositionIfNeeded()
 
-	-- Must run before CreateFixedSlotDefaultBars/CreateBagBarAndMicroMenu,
-	-- same reasoning as CaptureStanceBarNativeGap just below: Key Ring/
-	-- Latency Bar/Exp Bar/Cast Bar are each a single real Blizzard frame
-	-- this addon repositions directly (not a separate untouched
-	-- reference frame like bars 1-5 have), and each is a native sibling
-	-- of the action-bar/bag-bar cluster those calls hide and reflow -
-	-- capturing after that reflow measures the frame's native anchor
-	-- already resolved against an already-disturbed layout, not
-	-- Blizzard's true untouched position (confirmed live: reproducibly
-	-- off by ~8px on Latency Bar, matching only with the addon fully
-	-- disabled). No-ops on every later login once each is captured.
-	BTV:CaptureKeyRingPositionIfNeeded()
-	BTV:CaptureLatencyBarPositionIfNeeded()
-	BTV:CaptureExpBarPositionIfNeeded()
-	BTV:CaptureCastBarPositionIfNeeded()
-
-	-- Gives Latency Bar/Cast Bar's true native anchor (native code's own
-	-- repeated SetPoint attempts, tracked by InstallReanchorGuard - the
-	-- only two of these four elements with a reanchor guard installed)
-	-- its best chance of being correct as early as possible this login,
-	-- rather than only ever correcting itself the next time the user
-	-- happens to open Settings and click Reset. Asynchronous - doesn't
-	-- block the rest of this login sequence.
+	-- Gives Latency Bar/Cast Bar's native anchor its best chance of being
+	-- correct this login, instead of only correcting on the next manual
+	-- recapture. Asynchronous - doesn't block the rest of login.
 	do
 		local function SyncNativeAnchorFromSwallow(frame, dbKey)
 			WaitForWrappedFrameAnchorSettle(frame, function(anchor)
 				if anchor then
-					BTVanillaDB[dbKey] = anchor
+					ACABDB[dbKey] = anchor
 				end
 			end)
 		end
 
-		SyncNativeAnchorFromSwallow(getglobal(BTV.LATENCY_BAR_FRAME_NAME), "latencyBarNativeAnchor")
-		SyncNativeAnchorFromSwallow(getglobal(BTV.CAST_BAR_FRAME_NAME), "castBarNativeAnchor")
+		SyncNativeAnchorFromSwallow(getglobal(ACAB.LATENCY_BAR_FRAME_NAME), "latencyBarNativeAnchor")
+		SyncNativeAnchorFromSwallow(getglobal(ACAB.CAST_BAR_FRAME_NAME), "castBarNativeAnchor")
 	end
 
 	-- Must run before CreateFixedSlotDefaultBars builds the Stance Bar's
-	-- styled-mode button pool, so cfg.buttonCount already reflects the
-	-- live form count this session (covers a class that learned/lost a
-	-- form between two logins).
-	BTV:ApplyStanceBarLiveShape()
+	-- button pool, so buttonCount reflects this session's live form count.
+	ACAB:ApplyStanceBarLiveShape()
 
-	BTV:CreateAllBars()
+	ACAB:CreateAllBars()
 
-	-- Must run before CreateFixedSlotDefaultBars, which hides bar 2's
-	-- real buttons and would otherwise cause this to capture
-	-- ShapeshiftBarFrame in an already-reflowed state.
-	BTV:CaptureStanceBarNativeGap()
+	-- Must run before CreateFixedSlotDefaultBars, which hides bar 2's real
+	-- buttons and would otherwise capture ShapeshiftBarFrame already-reflowed.
+	ACAB:CaptureStanceBarNativeGap()
 
-	BTV:CreateFixedSlotDefaultBars()
+	ACAB:CreateFixedSlotDefaultBars()
 
-	BTV:ApplyAllDefaultBars()
+	ACAB:ApplyAllDefaultBars()
 
-	BTV:ApplyGlobalButtonStyle()
+	ACAB:ApplyGlobalButtonStyle()
 
-	BTV:ApplyGlobalSpacing()
-	BTV:ApplyGlobalButtonSize()
+	ACAB:ApplyGlobalSpacing()
+	ACAB:ApplyGlobalButtonSize()
 
-	BTV:HookAllDefaultBarButtons()
+	ACAB:CreateStanceBarContainer()
 
-	BTV:CreateStanceBarContainer()
-
-	if BTVanillaDB.useDefaultLayout ~= false then
-		local bar2Cfg = BTVanillaDB.defaultBars[2]
-		BTV:ReflowStanceBarForBar2Toggle(bar2Cfg and bar2Cfg.enabled)
+	if ACABDB.useDefaultLayout ~= false then
+		local bar2Cfg = ACABDB.defaultBars[2]
+		ACAB:ReflowStanceBarForBar2Toggle(bar2Cfg and bar2Cfg.enabled)
 	end
 
-	BTV:CreateBagBarAndMicroMenu()
+	ACAB:CreateBagBarAndMicroMenu()
 	SetupPetBarNativeContainer()
 
-	BTV:CreatePageIndicatorContainer()
+	ACAB:CreatePageIndicatorContainer()
 
-	BTV:SetKeyRingEnabled(BTVanillaDB.keyRingEnabled ~= false)
+	ACAB:SetKeyRingEnabled(ACABDB.keyRingEnabled ~= false)
 
-	BTV:SetKeyRingScale(BTVanillaDB.keyRingScale or 1)
-	BTV:ApplyKeyRingPosition()
+	ACAB:SetKeyRingScale(ACABDB.keyRingScale or 1)
+	ACAB:ApplyKeyRingPosition()
 
-	BTV:SetLatencyBarEnabled(BTVanillaDB.latencyBarEnabled ~= false)
-	BTV:SetLatencyBarScale(BTVanillaDB.latencyBarScale or 1)
-	BTV:ApplyLatencyBarPosition()
+	ACAB:SetLatencyBarEnabled(ACABDB.latencyBarEnabled ~= false)
+	ACAB:SetLatencyBarScale(ACABDB.latencyBarScale or 1)
+	ACAB:ApplyLatencyBarPosition()
 
-	BTV:SetExpBarEnabled(BTVanillaDB.expBarEnabled ~= false)
-	BTV:SetExpBarScale(BTVanillaDB.expBarScale or 1)
-	BTV:ApplyExpBarPosition()
+	ACAB:SetExpBarEnabled(ACABDB.expBarEnabled ~= false)
+	ACAB:SetExpBarScale(ACABDB.expBarScale or 1)
+	ACAB:ApplyExpBarPosition()
 
-	BTV:SetCastBarScale(BTVanillaDB.castBarScale or 1)
-	BTV:ApplyCastBarPosition()
+	ACAB:SetCastBarScale(ACABDB.castBarScale or 1)
+	ACAB:ApplyCastBarPosition()
 
-	BTV:ApplyExpBarColors()
+	ACAB:ApplyExpBarColors()
 
-	BTV:ApplyBetterExpBarVisual()
+	ACAB:ApplyBetterExpBarVisual()
 
-	BTV:ApplyBlizzardArtVisibility()
+	ACAB:ApplyBlizzardArtVisibility()
 
-	BTV:CreateMinimapButton()
+	ACAB:CreateMinimapButton()
 
-	BTV:Print("Loaded. Click the minimap button for options.")
+	ACAB:Print("Fully initialized! Click the minimap button or use /acab for options.")
 
-	if BTV.pendingFirstLoginDialog then
-		BTV.pendingFirstLoginDialog = nil
-		BTV:ShowFirstLoginDialog()
+	if ACAB.pendingFirstLoginDialog then
+		ACAB.pendingFirstLoginDialog = nil
+		ACAB:ShowFirstLoginDialog()
 	end
 
 	WaitForPostLoginSettleThenVerify()
 end
 
--- PLAYER_ENTERING_WORLD (not PLAYER_LOGIN) so the native MainMenuBar
--- cluster's own layout pass has more room to finish before the settle
--- poll starts measuring. Unregistered after the first fire.
-local loadFrame = CreateFrame("Frame")
-loadFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-loadFrame:RegisterEvent("PLAYER_LOGOUT")
 
-loadFrame:SetScript("OnEvent", function()
-	if event == "PLAYER_LOGOUT" then
-		BTV:SaveActiveProfileData()
+-- Temporary diagnostic for the position/timing bugs found after the 1.0
+-- rename (Main Bar style-switch drift, Micro Menu reset, initial-load
+-- offsets, Pet Bar anchor, Extra Bar seed anchors). Run "/acab diag1 <label>"
+-- at each repro step to dump saved position config + a few live frame
+-- anchors, then diff the labeled dumps. Remove once findings are confirmed.
+local function DiagPrint(msg)
+	DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99[ACABdiag]|r " .. msg)
+end
+
+local function DiagBarCfg(id, label)
+	local cfg = ACABDB.defaultBars and ACABDB.defaultBars[id]
+
+	if not cfg then
+		DiagPrint(label .. ": no cfg")
 		return
 	end
 
-	loadFrame:UnregisterEvent("PLAYER_ENTERING_WORLD")
-	WaitForNativeBarSettle(RunLoginSequence)
-end)
+	DiagPrint(string.format("%s pos=%s %s,%s size=%s spacing=%s enabled=%s",
+		label, tostring(cfg.point), tostring(cfg.x), tostring(cfg.y),
+		tostring(cfg.buttonSize), tostring(cfg.spacing), tostring(cfg.enabled)))
 
--- /btv recapture - forces a fresh, synchronous capture of every default
--- bar's native anchor (see RecaptureDefaultBarNativeAnchors above), plus
--- clears Key Ring/Latency Bar/Exp Bar/Cast Bar's own stored anchors so
--- they capture fresh on the next /reload (see
--- RecaptureWrappedNativeFrameAnchors above - unlike the default bars,
--- this half only takes effect after a reload, not immediately).
--- /btv with no argument toggles the main menu.
-SLASH_BTVANILLA1 = "/btv"
-SlashCmdList["BTVANILLA"] = function(msg)
-	if msg == "recapture" then
-		BTV:RecaptureDefaultBarNativeAnchors()
-		BTV:RecaptureWrappedNativeFrameAnchors()
+	local na = cfg.nativeAnchor
+
+	if na then
+		DiagPrint(string.format("%s nativeAnchor=%s %s,%s nativeSpacing=%s",
+			label, tostring(na.point), tostring(na.x), tostring(na.y), tostring(cfg.nativeSpacing)))
 	else
-		BTV:ToggleMainMenu()
+		DiagPrint(label .. " nativeAnchor=nil")
+	end
+end
+
+-- ACABDB.bars is a plain array (custom bars 10+ live here too), not keyed
+-- by id - scan for the entry whose .id field matches.
+local function DiagExtraBar(id, label)
+	local cfg = nil
+	local i
+
+	if ACABDB.bars then
+		for i = 1, table.getn(ACABDB.bars) do
+			if ACABDB.bars[i] and ACABDB.bars[i].id == id then
+				cfg = ACABDB.bars[i]
+				break
+			end
+		end
+	end
+
+	if not cfg then
+		DiagPrint(label .. ": no cfg")
+		return
+	end
+
+	DiagPrint(string.format("%s pos=%s rel=%s %s,%s size=%s spacing=%s enabled=%s",
+		label, tostring(cfg.point), tostring(cfg.relativePoint), tostring(cfg.x), tostring(cfg.y),
+		tostring(cfg.buttonSize), tostring(cfg.spacing), tostring(cfg.enabled)))
+end
+
+local function DiagElement(prefix, label)
+	local pos = ACABDB[prefix .. "Position"]
+	local na = ACABDB[prefix .. "NativeAnchor"]
+
+	if pos then
+		DiagPrint(string.format("%s pos=%s %s,%s", label, tostring(pos.point), tostring(pos.x), tostring(pos.y)))
+	else
+		DiagPrint(label .. " pos=nil")
+	end
+
+	if na then
+		DiagPrint(string.format("%s nativeAnchor=%s %s,%s", label, tostring(na.point), tostring(na.x), tostring(na.y)))
+	else
+		DiagPrint(label .. " nativeAnchor=nil")
+	end
+end
+
+local function DiagFrame(name, label)
+	local frame = getglobal(name)
+
+	if not frame then
+		DiagPrint(label .. ": frame missing")
+		return
+	end
+
+	local left = frame.GetLeft and frame:GetLeft()
+	local bottom = frame.GetBottom and frame:GetBottom()
+	local point, relTo, relPoint, x, y = frame:GetPoint()
+
+	DiagPrint(string.format("%s live left=%s bottom=%s point=%s rel=%s relPoint=%s x=%s y=%s",
+		label, tostring(left), tostring(bottom), tostring(point),
+		relTo and relTo:GetName() or "nil", tostring(relPoint), tostring(x), tostring(y)))
+end
+
+local function RunDiag1(stage)
+	ACAB:EnsureDB()
+
+	DiagPrint("--- diag1 [" .. tostring(stage) .. "] ---")
+	DiagPrint(string.format("useDefaultLayout=%s lastAppliedVanillaStyle=%s schemaVersion=%s",
+		tostring(ACABDB.useDefaultLayout), tostring(ACABDB.lastAppliedVanillaStyle), tostring(ACABDB.schemaVersion)))
+
+	local id
+
+	for id = 1, 5 do
+		DiagBarCfg(id, "bar" .. id)
+	end
+
+	DiagBarCfg(ACAB.PET_BAR_ID, "petBar")
+
+	for id = ACAB.EXTRA_BAR_ID_START, ACAB.EXTRA_BAR_ID_START + ACAB.EXTRA_BAR_COUNT - 1 do
+		DiagExtraBar(id, "extraBar" .. (id - ACAB.EXTRA_BAR_ID_START + 1))
+	end
+
+	local bar3 = ACABDB.defaultBars and ACABDB.defaultBars[3]
+	local bar3Enabled = bar3 and bar3.enabled
+	local baselineY = ACAB.GetPetBarBaselineY and ACAB:GetPetBarBaselineY(bar3Enabled)
+
+	DiagPrint(string.format("bar3.enabled=%s GetPetBarBaselineY=%s", tostring(bar3Enabled), tostring(baselineY)))
+
+	DiagElement("stanceBar", "stanceBar")
+	DiagElement("bagBar", "bagBar")
+	DiagElement("microMenu", "microMenu")
+	DiagElement("keyRing", "keyRing")
+	DiagElement("latencyBar", "latencyBar")
+	DiagElement("castBar", "castBar")
+	DiagElement("expBar", "expBar")
+	DiagElement("mainBarPageIndicator", "pageIndicator")
+
+	DiagFrame("ActionButton1", "ActionButton1")
+	DiagFrame("PetActionButton1", "PetActionButton1")
+	DiagFrame(ACAB.LATENCY_BAR_FRAME_NAME, "LatencyBarFrame")
+	DiagFrame(ACAB.CAST_BAR_FRAME_NAME, "CastBarFrame")
+	DiagFrame(ACAB.KEYRING_BUTTON_NAME, "KeyRingButton")
+
+	DiagPrint("--- end diag1 ---")
+end
+
+-- /acab recapture - forces a fresh capture of every default bar's native
+-- anchor, plus clears Key Ring/Latency Bar/Exp Bar/Cast Bar's stored
+-- anchors (takes effect after a /reload). /acab alone toggles the main menu.
+SLASH_ACAB1 = "/acab"
+SlashCmdList["ACAB"] = function(msg)
+	if msg == "recapture" then
+		ACAB:RecaptureDefaultBarNativeAnchors()
+		ACAB:RecaptureWrappedNativeFrameAnchors()
+	elseif msg and string.find(msg, "^diag1") then
+		RunDiag1(string.gsub(msg, "^diag1%s*", ""))
+	else
+		ACAB:ToggleMainMenu()
 	end
 end
