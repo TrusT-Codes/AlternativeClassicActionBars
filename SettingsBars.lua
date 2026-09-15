@@ -1129,6 +1129,46 @@ function ACAB:GetOrCreateBarPage(barId)
 
 	self:AddHoverOnlyReflowRow(page, buttonSizeSlider, ACAB.INDENT_INPUT, buttonSizeSliderY)
 
+	-- Lock icon - every bar kind gets one (Action/Extra Bars 1-9 and
+	-- Pet Bar/Stance Bar's own styled-mode page alike), matching
+	-- ApplyGlobalButtonSize's own scope (Bar.lua). Hidden/shown and kept
+	-- in sync by RefreshBarPageGlobalOverrideGating, not here - this only
+	-- wires the click.
+	local buttonSizeLockButton = ACAB:CreateLockToggleButton(
+		page,
+		"ACABBar" .. tostring(barId) .. "ButtonSizeLockButton",
+		{
+			anchor = { "LEFT", buttonSizeSlider, "RIGHT", 4, 0 },
+			tooltipTitle = "Button Size",
+			lockedLine = "Locked to the General tab's global Button Size. Click to unlock and set an independent value for this bar.",
+			unlockedLine = "Unlocked - independent of the General tab's global Button Size. Click to re-lock and sync it.",
+			onClick = function()
+				local cfg = ACAB:GetBarConfig(page.barId)
+
+				if not cfg then
+					return
+				end
+
+				cfg.buttonSizeUnlocked = not (cfg.buttonSizeUnlocked == true)
+
+				if not cfg.buttonSizeUnlocked then
+					local bar = ACAB.bars[page.barId]
+
+					if bar then
+						ACAB:ApplyGlobalButtonSizeToBar(bar)
+					end
+				end
+
+				ACAB:RefreshBarSettingsPage(page.barId)
+			end,
+		}
+	)
+
+	buttonSizeLockButton:SetLocked(true)
+	buttonSizeLockButton:Hide()
+
+	page.buttonSizeLockButton = buttonSizeLockButton
+
 	-------------------------------------------------------------------------
 	-- Spacing - every bar kind gets this control, default bars 1-5 and
 	-- custom bars 6+. Mirrors the Button Size slider's live-value-label/
@@ -1216,6 +1256,43 @@ function ACAB:GetOrCreateBarPage(barId)
 		page.spacingSlider = spacingSlider
 
 		self:AddHoverOnlyReflowRow(page, spacingSlider, ACAB.INDENT_INPUT, spacingSliderY)
+
+		-- Lock icon - mirrors the Button Size lock button above exactly,
+		-- for the General tab's global Spacing override.
+		local spacingLockButton = ACAB:CreateLockToggleButton(
+			page,
+			"ACABBar" .. tostring(barId) .. "SpacingLockButton",
+			{
+				anchor = { "LEFT", spacingSlider, "RIGHT", 4, 0 },
+				tooltipTitle = "Spacing",
+				lockedLine = "Locked to the General tab's global Spacing. Click to unlock and set an independent value for this bar.",
+				unlockedLine = "Unlocked - independent of the General tab's global Spacing. Click to re-lock and sync it.",
+				onClick = function()
+					local cfg = ACAB:GetBarConfig(page.barId)
+
+					if not cfg then
+						return
+					end
+
+					cfg.spacingUnlocked = not (cfg.spacingUnlocked == true)
+
+					if not cfg.spacingUnlocked then
+						local bar = ACAB.bars[page.barId]
+
+						if bar then
+							ACAB:ApplyGlobalSpacingToBar(bar)
+						end
+					end
+
+					ACAB:RefreshBarSettingsPage(page.barId)
+				end,
+			}
+		)
+
+		spacingLockButton:SetLocked(true)
+		spacingLockButton:Hide()
+
+		page.spacingLockButton = spacingLockButton
 
 		if isDefault then
 			-------------------------------------------------------------------------
@@ -3507,36 +3584,57 @@ end
 
 -- Locks (dims, EnableMouse(false)) a full bar page's own spacing/
 -- buttonSize sliders while the corresponding global override (General
--- tab) is enabled - only ever called from RefreshBarSettingsPage's
+-- tab) is enabled AND this bar hasn't been unlocked from it via its own
+-- lock icon (cfg.spacingUnlocked/buttonSizeUnlocked, toggled by
+-- page.spacingLockButton/buttonSizeLockButton's onClick in
+-- GetOrCreateBarPage) - only ever called from RefreshBarSettingsPage's
 -- non-simple-bar path above, so simple bar pages (Bag Bar/Micro Menu/
--- etc.) are naturally never affected, matching the global overrides'
--- scope (true action bars 1-9 only).
+-- etc.) are naturally never affected. Pet Bar/Stance Bar's styled-mode
+-- page goes through this same path and is treated identically to every
+-- other bar - see Bar.lua's ApplyGlobalSpacing/ApplyGlobalButtonSize.
 function ACAB:RefreshBarPageGlobalOverrideGating(page)
 	if not page then
 		return
 	end
+
+	local cfg = ACAB:GetBarConfig(page.barId)
 
 	-- Must also respect the Default-profile/Default-layout lock
 	-- (ACAB:ApplyProfileLockGating, called just before this in
 	-- RefreshBarSettingsPage/RefreshSimpleBarPage) - without this, this
 	-- function unconditionally RE-ENABLES the slider whenever the global
 	-- override checkbox happens to be off, blindly overwriting whatever
-	-- that other lock had just set.
+	-- that other lock had just set. While alsoLocked, the lock icons hide
+	-- too - clicking them couldn't free anything from a lock that broad.
 	local alsoLocked = self:IsDefaultProfileActive()
 		or (page.isDefault and ACABDB.useDefaultLayout == true)
 
 	if page.spacingSlider then
-		local locked = alsoLocked or (ACABDB.globalSpacingEnabled == true)
+		local globalOn = ACABDB.globalSpacingEnabled == true
+		local unlocked = cfg and cfg.spacingUnlocked == true
+		local locked = alsoLocked or (globalOn and not unlocked)
 
 		page.spacingSlider:EnableMouse(not locked)
 		page.spacingSlider:SetAlpha(locked and 0.5 or 1)
+
+		if page.spacingLockButton then
+			page.spacingLockButton:SetShown(globalOn and not alsoLocked)
+			page.spacingLockButton:SetLocked(not unlocked)
+		end
 	end
 
 	if page.buttonSizeSlider then
-		local locked = alsoLocked or (ACABDB.globalButtonSizeEnabled == true)
+		local globalOn = ACABDB.globalButtonSizeEnabled == true
+		local unlocked = cfg and cfg.buttonSizeUnlocked == true
+		local locked = alsoLocked or (globalOn and not unlocked)
 
 		page.buttonSizeSlider:EnableMouse(not locked)
 		page.buttonSizeSlider:SetAlpha(locked and 0.5 or 1)
+
+		if page.buttonSizeLockButton then
+			page.buttonSizeLockButton:SetShown(globalOn and not alsoLocked)
+			page.buttonSizeLockButton:SetLocked(not unlocked)
+		end
 	end
 end
 

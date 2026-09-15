@@ -568,10 +568,12 @@ function ACAB:GetOrCreateGeneralPanel()
 	-------------------------------------------------------------------------
 	-- Global Spacing / global ButtonSize overrides: unlike other controls
 	-- in this panel, these sliders are Shown/Hidden per the checkbox's
-	-- checked state. Applies to true action bars only (default 1-5 +
-	-- extra 6-9), never simple bars - see ACAB:ApplyGlobalSpacing/
-	-- ApplyGlobalButtonSize (Bar.lua). Both also lock (dim) whenever
-	-- useDefaultLayout forces vanilla styling.
+	-- checked state. Applies to every bar (default 1-5, extra 6-9, Pet Bar,
+	-- Stance Bar), never simple/native-backed pages - see
+	-- ACAB:ApplyGlobalSpacing/ApplyGlobalButtonSize (Bar.lua). Both also
+	-- lock (dim) whenever useDefaultLayout forces vanilla styling. Any bar
+	-- can opt out individually via its own lock icon next to its Spacing/
+	-- ButtonSize slider (SettingsBars.lua's per-bar lock toggle).
 	-------------------------------------------------------------------------
 
 	-- OnClick is wired further below - it closes over the slider/labels
@@ -583,9 +585,9 @@ function ACAB:GetOrCreateGeneralPanel()
 			title = "Toggle global Spacing",
 			lines = {
 				"When enabled, disables the Option to set Spacing on " ..
-				"individual Action / Extra Bars.",
+				"individual bars.",
 				"Instead shows a new Slider to set the Spacing globally for " ..
-				"all Action / Extra Bars.",
+				"every bar. Unlock a bar's own lock icon to exempt it.",
 			},
 		},
 	})
@@ -656,9 +658,9 @@ function ACAB:GetOrCreateGeneralPanel()
 			title = "Toggle global Button size",
 			lines = {
 				"When enabled, disables the Option to set the Button size on " ..
-				"individual Action / Extra Bars.",
+				"individual bars.",
 				"Instead shows a new Slider to set the Button size globally " ..
-				"for all Action / Extra Bars.",
+				"for every bar. Unlock a bar's own lock icon to exempt it.",
 			},
 		},
 	})
