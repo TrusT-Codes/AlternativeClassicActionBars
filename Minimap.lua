@@ -2,12 +2,12 @@
 -- Minimap button that opens the main context menu on click. Positioned by
 -- angle around the minimap's circumference, draggable to reposition.
 
-local BTV = BTVanilla
+local ACAB = AlternativeClassicActionBars
 
 local MINIMAP_ICON_RADIUS = 80 -- distance from minimap center, in pixels
 
 local function ApplyMinimapPosition(button)
-	local angle = BTVanillaDB.minimapAngle or 200
+	local angle = ACABDB.minimapAngle or 200
 	local rad = angle * (math.pi / 180)
 	local x = math.cos(rad) * MINIMAP_ICON_RADIUS
 	local y = math.sin(rad) * MINIMAP_ICON_RADIUS
@@ -23,7 +23,7 @@ local function Minimap_OnDragUpdate()
 	local scale = Minimap:GetEffectiveScale()
 	px, py = px / scale, py / scale
 	local angle = math.deg(math.atan2(py - my, px - mx))
-	BTVanillaDB.minimapAngle = angle
+	ACABDB.minimapAngle = angle
 	ApplyMinimapPosition(this)
 end
 
@@ -36,12 +36,12 @@ local function Minimap_OnDragStop()
 end
 
 local function Minimap_OnClick()
-	BTV:ToggleMainMenu()
+	ACAB:ToggleMainMenu()
 end
 
 local function Minimap_OnEnter()
 	GameTooltip:SetOwner(this, "ANCHOR_LEFT")
-	GameTooltip:SetText("BTVanilla")
+	GameTooltip:SetText("AlternativeClassicActionBars")
 	GameTooltip:AddLine("Click for options.", 1, 1, 1)
 	GameTooltip:Show()
 end
@@ -50,15 +50,15 @@ local function Minimap_OnLeave()
 	GameTooltip:Hide()
 end
 
-function BTV:CreateMinimapButton()
+function ACAB:CreateMinimapButton()
 	if self.minimapButton then
 		return self.minimapButton
 	end
-	if BTVanillaDB.minimapAngle == nil then
-		BTVanillaDB.minimapAngle = 200
+	if ACABDB.minimapAngle == nil then
+		ACABDB.minimapAngle = 200
 	end
 
-	local button = CreateFrame("Button", "BTVanillaMinimapButton", Minimap)
+	local button = CreateFrame("Button", "ACABMinimapButton", Minimap)
 	button:SetWidth(31)
 	button:SetHeight(31)
 	button:SetFrameStrata("MEDIUM")
