@@ -461,6 +461,12 @@ function ACAB:RecaptureWrappedNativeFrameAnchors()
 	ACABDB.castBarPosition = nil
 	ACABDB.castBarNativeAnchor = nil
 
+	-- Stack-reflow floor (GetCastBarBaselineY, NativeElements.lua) - must
+	-- clear alongside castBarPosition above or it keeps stacking off the
+	-- stale pre-recapture floor forever instead of re-deriving from the
+	-- freshly captured position.
+	ACABDB.castBarStackBaseY = nil
+
 	self:Print("Key Ring/Latency Bar/Exp Bar/Cast Bar native anchors cleared - /reload now to capture them fresh.")
 end
 
@@ -511,6 +517,53 @@ function ACAB:GetDefaultExtraBarLayout(index)
 	end
 
 	return x, y, grid.cols, grid.rows, buttonSize, spacing
+end
+
+-- Extra bar's live vertical footprint (real frame height, not the seeded
+-- default) plus the same gap-to-reference-bar spacing GetDefaultExtraBarLayout
+-- above used to seed its position - 0 if the extra bar doesn't exist, isn't
+-- enabled, or is no longer at its own default position (bar.config.
+-- usesDefaultPosition == false - the user dragged/slider-moved it away from
+-- its seeded slot above Action Bar 1/2, so it no longer reads as stacked
+-- there regardless of enabled state). Used by Stance/Pet/Cast Bar baseline
+-- reflow to stack above an enabled Extra Bar the same way they already
+-- stack above Action Bar 1/2.
+function ACAB:GetExtraBarStackPitch(extraBarId)
+	local bar = self.bars and self.bars[extraBarId]
+
+	if not bar or not bar.config or not bar.config.enabled
+		or bar.config.usesDefaultPosition == false then
+		return 0
+	end
+
+	local index = extraBarId - self.EXTRA_BAR_ID_START
+	local ref = EXTRA_BAR_DEFAULT_REFERENCE[index]
+	local refCfg = ref and ACABDB.defaultBars and ACABDB.defaultBars[ref.refId]
+	local gap = (refCfg and (refCfg.nativeSpacing or refCfg.spacing)) or 0
+
+	return (bar:GetHeight() or 0) + gap
+end
+
+-- Nudges Stance/Pet/Cast Bar to resettle the moment Extra Bar 1/2's own
+-- stacking contribution changes - enable/disable while still at default
+-- position, or the usesDefaultPosition flag itself just flipped (Bar.lua's
+-- SetBarPosition/StopBarDrag/ResetExtraBarLayout). Each Reflow* call below
+-- already no-ops on its own guard (useDefaultLayout, and the DEPENDANT
+-- element's own usesDefaultPosition flag), so this is always safe to call.
+function ACAB:ReflowExtraBarDependants(extraBarId)
+	local index = extraBarId - self.EXTRA_BAR_ID_START
+
+	if index == 0 then
+		local bar2Cfg = ACABDB.defaultBars[2]
+		self:ReflowStanceBarForBar2Toggle(bar2Cfg and bar2Cfg.enabled)
+	elseif index == 1 then
+		local bar3Cfg = ACABDB.defaultBars[3]
+		self:ReflowPetBarForBar3Toggle(bar3Cfg and bar3Cfg.enabled)
+	end
+
+	if self.ReflowCastBarForStackToggle then
+		self:ReflowCastBarForStackToggle()
+	end
 end
 
 -- Allocates one Extra Bar's config.
@@ -1313,6 +1366,20 @@ function ACAB:EnsureDB()
 	end
 	if ACABDB.expBarScale == nil then
 		ACABDB.expBarScale = 1
+	end
+
+	-- Stance Bar/Cast Bar "at default position" flags (Pet Bar's own lives
+	-- on its cfg table instead - defaultBars[PET_BAR_ID].usesDefaultPosition,
+	-- nil-safe read like every other grid-bar cfg field, no seeding here).
+	-- ReflowStanceBarForBar2Toggle/ReflowCastBarForStackToggle only ever
+	-- move Y while this stays true - flips false the moment the user drags
+	-- or slider-edits that element's own position.
+	if ACABDB.stanceBarUsesDefaultPosition == nil then
+		ACABDB.stanceBarUsesDefaultPosition = true
+	end
+
+	if ACABDB.castBarUsesDefaultPosition == nil then
+		ACABDB.castBarUsesDefaultPosition = true
 	end
 
 	-- Only-show-on-hover for simple elements (Bag Bar's pair also governs the Key Ring frame). Grid-bar cfg tables use nil-safe cfg.hoverOnly/cfg.hoverDuration reads instead.

@@ -839,6 +839,19 @@ function ACAB:SetBarPosition(bar, x, y)
 	bar.config.y = y
 
 	self:ApplyBarPosition(bar)
+
+	-- Extra Bar 1/2 specifically track their own "still at default
+	-- position" flag (GetExtraBarStackPitch, Database.lua) - this is the
+	-- Settings page X/Y sliders' write path, so the user just moved it by
+	-- hand; flip the flag and let Stance/Pet/Cast Bar resettle immediately
+	-- instead of only on the next unrelated toggle.
+	if self:IsExtraBarId(bar.config.id) and bar.config.usesDefaultPosition ~= false then
+		bar.config.usesDefaultPosition = false
+
+		if ACABDB.useDefaultLayout ~= false then
+			self:ReflowExtraBarDependants(bar.config.id)
+		end
+	end
 end
 
 -------------------------------------------------------------------------
@@ -1299,6 +1312,16 @@ function ACAB:ResetExtraBarLayout(barId)
 	self:SetBarSpacing(bar, spacing)
 	self:SetBarButtonSize(bar, buttonSize)
 	self:SetBarPosition(bar, x, y)
+
+	-- SetBarPosition above just flipped usesDefaultPosition false (it
+	-- can't distinguish this restore from a real user drag) - "Reset to
+	-- Default" means the opposite, so restore it and let Stance/Pet/Cast
+	-- Bar resettle to include this Extra Bar's stack contribution again.
+	bar.config.usesDefaultPosition = true
+
+	if ACABDB.useDefaultLayout ~= false then
+		self:ReflowExtraBarDependants(barId)
+	end
 end
 
 function ACAB:SetExtraBarEnabled(barId, enabled)
@@ -1310,12 +1333,27 @@ function ACAB:SetExtraBarEnabled(barId, enabled)
 
 	enabled = enabled and true or false
 
+	local wasEnabled = bar.config.enabled and true or false
+
 	bar.config.enabled = enabled
 
 	if enabled then
 		bar:Show()
 	else
 		bar:Hide()
+	end
+
+	-- Extra Bar 1 (index 0, above Bar 2) and Extra Bar 2 (index 1, above
+	-- Bar 3) each add to Stance/Pet/Cast Bar's stacked baseline - see
+	-- GetExtraBarStackPitch (Database.lua). Only meaningful in Default
+	-- Layout mode (same guard SetDefaultBarEnabled uses for bar 2/3), and
+	-- only while this Extra Bar is still at its own default position -
+	-- once the user has dragged it elsewhere it no longer counts toward
+	-- anyone else's stack (GetExtraBarStackPitch's own same guard), so
+	-- toggling it further shouldn't move anything either.
+	if enabled ~= wasEnabled and ACABDB.useDefaultLayout ~= false
+		and bar.config.usesDefaultPosition ~= false then
+		self:ReflowExtraBarDependants(barId)
 	end
 end
 
@@ -1389,6 +1427,16 @@ function ACAB:StopBarDrag(bar)
 	end
 
 	self:StopSharedDrag()
+
+	-- Extra Bar 1/2 only - same flag/resettle treatment as SetBarPosition's
+	-- own (the Settings-slider write path); this is the edit-mode-drag path.
+	if bar.config and self:IsExtraBarId(bar.config.id) and bar.config.usesDefaultPosition ~= false then
+		bar.config.usesDefaultPosition = false
+
+		if ACABDB.useDefaultLayout ~= false then
+			self:ReflowExtraBarDependants(bar.config.id)
+		end
+	end
 
 	-- Keeps the Settings X/Y sliders in sync if this bar's page happens to
 	-- already be built/cached. No-op if the Settings window/this bar's
