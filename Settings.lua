@@ -1231,7 +1231,10 @@ local PROFILE_LOCK_MESSAGE_LAYOUT =
 -- ApplyProfileLockGating below - text isn't fixed at creation time since
 -- which of the two messages above applies can change live.
 function ACAB:CreateProfileLockWarning(page)
-	local banner = CreateFrame("Frame", nil, page)
+	-- "Button", not "Frame" - a plain Frame has no "OnClick" script handler
+	-- in this client (only Button/CheckButton do), so the OnClick wired
+	-- below would throw on load otherwise.
+	local banner = CreateFrame("Button", nil, page)
 
 	-- PARENTED to `page` (so it hides/shows along with it) but ANCHORED to
 	-- contentPanel - `page` itself now slides DOWN by this banner's height
