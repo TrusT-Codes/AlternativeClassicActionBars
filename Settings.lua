@@ -1200,7 +1200,7 @@ function ACAB:CreateWideContentScrollFrame(name)
 end
 -------------------------------------------------------------------------
 -- Default-PROFILE lock, distinct from ApplyDefaultLayoutGating below
--- (which gates the unrelated "Use Default Blizzard Layout" checkbox -
+-- (which gates the unrelated "Force default Blizzard layout mode" checkbox -
 -- both gates are independent and can apply to the same controls at once).
 -- The Default PROFILE must never be edited: every settings page shows a
 -- red warning banner and locks its controls while it's active.
@@ -1214,13 +1214,13 @@ local PROFILE_LOCK_MESSAGE_PROFILE =
 	"Go to Profile Settings and set up a profile if you wish to " ..
 	"change Settings or access Layout Edit Mode."
 
--- Text shown while "Use Default Blizzard Layout" (General tab) is on, on
--- pages that gate ONLY applies to (bar 1 and the simple/native-backed
+-- Text shown while "Force default Blizzard layout mode" (General tab) is
+-- on, on pages that gate ONLY applies to (bar 1 and the simple/native-backed
 -- pages - see ApplyDefaultLayoutGating's own header comment).
 local PROFILE_LOCK_MESSAGE_LAYOUT =
-	"Editing Settings is prohibited while using the Default Blizzard " ..
-	"Layout. Disable Default Blizzard Layout under General Settings " ..
-	"if you wish to change Settings or access Layout Edit Mode."
+	"Editing Settings is prohibited while Force default Blizzard layout " ..
+	"mode is enabled. Disable it under General Settings if you wish to " ..
+	"change Settings or access Layout Edit Mode."
 
 -- One reusable warning banner per page - a solid strip anchored right
 -- below the page's title and right above its first content control
@@ -1458,7 +1458,7 @@ function ACAB:ApplyProfileLockGating(page, alsoCheckLayoutLock)
 end
 
 -------------------------------------------------------------------------
--- Default-layout gating (General tab's "Use Default Blizzard Layout")
+-- Default-layout gating (General tab's "Force default Blizzard layout mode")
 --
 -- Uses EnableMouse(false) rather than Slider/Button Enable()/Disable():
 -- a universal Frame method that works on both sliders and the plain
