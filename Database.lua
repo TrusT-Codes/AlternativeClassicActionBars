@@ -1171,37 +1171,18 @@ function ACAB:ShowCreateProfileDialog(onCreated)
 	})
 end
 
--- First-ever-login-with-profiles dialog for this character.
+-- First-ever-login-with-profiles dialog for this character. Trimmed to the
+-- setup wizard entry point plus the "stay on default" escape hatches - the
+-- old inline "named profile"/"character profile" flows now live inside the
+-- wizard itself (ACAB:ShowSetupWizard, SetupWizard.lua).
 function ACAB:ShowFirstLoginDialog()
 	local buttons = {
 		{
-			text = "I know what im doing, use default profile",
+			text = "Set up my first custom Profile",
 			isDefault = true,
+			variant = "prominent",
 			onClick = function()
-				ACABCharDB = ACABCharDB or {}
-				ACABCharDB.hasSelectedProfileBefore = true
-			end,
-		},
-		{
-			text = "Create a named profile",
-			onClick = function()
-				ACAB:ShowCreateProfileDialog()
-			end,
-		},
-		{
-			text = "Create a profile for this character",
-			onClick = function()
-				local charName = UnitName("player") or "Unknown"
-				local realmName = GetRealmName() or "Unknown"
-				local charProfileName = charName .. " - " .. realmName
-
-				local ok, reason = ACAB:CreateProfile(charProfileName)
-
-				if ok then
-					ACAB:SwitchProfile(charProfileName)
-				elseif reason then
-					ACAB:Print(reason)
-				end
+				ACAB:ShowSetupWizard()
 			end,
 		},
 	}
@@ -1232,11 +1213,21 @@ function ACAB:ShowFirstLoginDialog()
 		})
 	end
 
+	table.insert(buttons, {
+		text = "Keep everything default!",
+		danger = true,
+		variant = "minor",
+		onClick = function()
+			ACABCharDB = ACABCharDB or {}
+			ACABCharDB.hasSelectedProfileBefore = true
+		end,
+	})
+
 	self:ShowDialog({
 		title = "Welcome to ACAB",
 		message = "Thank you for choosing ACAB, you are currently using the Profile \"Default\". " ..
 			"The Default profile is locked and cannot be edited - Edit Layout mode and Settings changes are unavailable while it is active.\n\n" ..
-			"Do you wish to create a new custom profile or a profile for this character?",
+			"Do you wish to set up your own custom profile?",
 		mode = "confirm",
 		buttons = buttons,
 	})
