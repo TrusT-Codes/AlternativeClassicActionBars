@@ -1636,12 +1636,14 @@ function ACAB:HighlightGeneralLayoutCheckbox()
 
 	strip:Show()
 
-	-- Two pulses via C_Timer.After rather than a hand-rolled OnUpdate ticker
-	-- (CLAUDE.md: "Scheduling" - reuse ClassicAPI's C_Timer instead).
+	-- Three pulses via C_Timer.After rather than a hand-rolled OnUpdate
+	-- ticker (CLAUDE.md: "Scheduling" - reuse ClassicAPI's C_Timer instead).
 	if C_Timer then
 		C_Timer.After(0.45, function() strip:Hide() end)
 		C_Timer.After(0.75, function() strip:Show() end)
-		C_Timer.After(1.35, function() strip:Hide() end)
+		C_Timer.After(1.2, function() strip:Hide() end)
+		C_Timer.After(1.5, function() strip:Show() end)
+		C_Timer.After(1.95, function() strip:Hide() end)
 	end
 end
 
