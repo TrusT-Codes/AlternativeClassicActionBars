@@ -1267,9 +1267,6 @@ function ACAB:CreateProfileLockWarning(page)
 
 	banner.text = text
 
-	-- lockReason ("layout"/"profile") is stamped by ApplyProfileLockGating
-	-- below on every refresh, so OnClick always acts on whichever lock is
-	-- CURRENTLY shown rather than whichever one first created the banner.
 	banner:EnableMouse(true)
 
 	banner:SetScript("OnEnter", function()
@@ -1280,16 +1277,16 @@ function ACAB:CreateProfileLockWarning(page)
 		this:SetBackdropColor(unpack(this.lockedBackdropColor))
 	end)
 
-	-- "layout" jumps straight to the General tab and pulses the "Force
-	-- default Blizzard layout mode" checkbox; "profile" skips straight to
-	-- the create-profile dialog (the only way off the default profile),
+	-- Re-checks live state rather than trusting a cached reason, so
+	-- priority always matches PROFILE_LOCK_MESSAGE_PROFILE's own priority
+	-- (default profile wins when both are true). Default profile skips
+	-- straight to the create-profile dialog (the only way off it),
 	-- disabling layout-force on success since the confirm-reset dialog it
-	-- would otherwise trigger doesn't apply to a fresh profile.
+	-- would otherwise trigger doesn't apply to a fresh profile. Otherwise,
+	-- if only layout-force is on, jump to the General tab and pulse the
+	-- "Force default Blizzard layout mode" checkbox.
 	banner:SetScript("OnClick", function()
-		if this.lockReason == "layout" then
-			ACAB:OpenSettingsPageByName("general")
-			ACAB:HighlightGeneralLayoutCheckbox()
-		elseif this.lockReason == "profile" then
+		if ACAB:IsDefaultProfileActive() then
 			ACAB:ShowCreateProfileDialog(function(ok)
 				if ok then
 					ACAB:ApplyUseDefaultLayoutChange(false)
@@ -1301,6 +1298,9 @@ function ACAB:CreateProfileLockWarning(page)
 					end
 				end
 			end)
+		elseif ACABDB.useDefaultLayout == true then
+			ACAB:OpenSettingsPageByName("general")
+			ACAB:HighlightGeneralLayoutCheckbox()
 		end
 	end)
 
@@ -1439,10 +1439,9 @@ function ACAB:ApplyProfileLockGating(page, alsoCheckLayoutLock)
 		page.profileLockWarning:SetShown(locked)
 
 		if locked then
-			-- Profile lock takes priority (see PROFILE_LOCK_MESSAGE_PROFILE's
-			-- own comment above) - lockReason drives the banner's OnClick.
-			page.profileLockWarning.lockReason = profileLocked and "profile" or "layout"
-
+			-- Profile lock takes priority - see PROFILE_LOCK_MESSAGE_PROFILE's
+			-- own comment above (the banner's OnClick re-derives this same
+			-- priority live instead of caching it here).
 			SetProfileLockBannerMessage(
 				page.profileLockWarning,
 				profileLocked and PROFILE_LOCK_MESSAGE_PROFILE or PROFILE_LOCK_MESSAGE_LAYOUT
