@@ -1212,7 +1212,7 @@ end
 local PROFILE_LOCK_MESSAGE_PROFILE =
 	"Editing Settings is prohibited while in default profile mode. " ..
 	"Set up a profile if you wish to change Settings or access Layout " ..
-	"Edit Mode. |cffffd100Click here to create one now.|r"
+	"Edit Mode. |cffffd100Click to create one now.|r"
 
 -- Text shown while "Force default Blizzard layout mode" (General tab) is
 -- on, on pages that gate ONLY applies to (bar 1 and the simple/native-backed
@@ -1221,7 +1221,7 @@ local PROFILE_LOCK_MESSAGE_LAYOUT =
 	"Editing Settings is prohibited while Force default Blizzard layout " ..
 	"mode is enabled. Disable it under General Settings if you wish to " ..
 	"change Settings or access Layout Edit Mode. " ..
-	"|cffffd100Click here to jump to General Settings.|r"
+	"|cffffd100Click to jump to General Settings.|r"
 
 -- Single entry point for "the user clicked something locked by the
 -- Default-profile/Force-default-layout gate, now what" - used by the lock
