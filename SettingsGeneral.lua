@@ -1606,6 +1606,45 @@ function ACAB:ShowGeneralView()
 	ACAB:DeferFit(function() ACAB:FitSettingsWindowToGeneralView() end)
 end
 
+-- Brief gold pulse behind the "Force default Blizzard layout mode"
+-- checkbox row - called after the layout-lock warning banner (Settings.lua's
+-- CreateProfileLockWarning) navigates here via /acab settings general, so
+-- the user's eye lands on the control to change rather than having to hunt
+-- for it again.
+function ACAB:HighlightGeneralLayoutCheckbox()
+	local panel = ACAB.settingsFrame and ACAB.settingsFrame.generalPanel
+	local checkbox = panel and panel.useDefaultLayoutCheckbox
+
+	if not checkbox then
+		return
+	end
+
+	if not checkbox.acabHighlightStrip then
+		local label = getglobal(checkbox:GetName() .. "Text")
+		local labelWidth = (label and label:GetStringWidth()) or 200
+		local strip = ACAB:CreateFadeStrip(panel, checkbox:GetWidth() + labelWidth + 16, checkbox:GetHeight() + 10, { edgeFraction = 0.15 })
+
+		strip:SetPoint("LEFT", checkbox, "LEFT", -8, 0)
+		strip:SetFadeColor(ACAB.UI_ACCENT_COLOR[1], ACAB.UI_ACCENT_COLOR[2], ACAB.UI_ACCENT_COLOR[3])
+		strip:SetPeakAlpha(0.55)
+		strip:Hide()
+
+		checkbox.acabHighlightStrip = strip
+	end
+
+	local strip = checkbox.acabHighlightStrip
+
+	strip:Show()
+
+	-- Two pulses via C_Timer.After rather than a hand-rolled OnUpdate ticker
+	-- (CLAUDE.md: "Scheduling" - reuse ClassicAPI's C_Timer instead).
+	if C_Timer then
+		C_Timer.After(0.45, function() strip:Hide() end)
+		C_Timer.After(0.75, function() strip:Show() end)
+		C_Timer.After(1.35, function() strip:Hide() end)
+	end
+end
+
 function ACAB:ShowProfilesView()
 	if not ACAB.settingsFrame then
 		ACAB:CreateSettingsFrame()
