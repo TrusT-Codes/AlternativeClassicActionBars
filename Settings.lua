@@ -1223,6 +1223,37 @@ local PROFILE_LOCK_MESSAGE_LAYOUT =
 	"change Settings or access Layout Edit Mode. " ..
 	"|cffffd100Click here to jump to General Settings.|r"
 
+-- Single entry point for "the user clicked something locked by the
+-- Default-profile/Force-default-layout gate, now what" - used by the lock
+-- banner's OnClick (below) and by any locked control that opts into the
+-- same behavior (CreateLabeledCheckbox's config.onLockedClick, UIWidgets.lua).
+-- Re-checks live state rather than trusting a cached reason, so priority
+-- always matches PROFILE_LOCK_MESSAGE_PROFILE's own priority (default
+-- profile wins when both are true). Default profile skips straight to the
+-- create-profile dialog (the only way off it), disabling layout-force on
+-- success since the confirm-reset dialog it would otherwise trigger
+-- doesn't apply to a fresh profile. Otherwise, if only layout-force is on,
+-- jump to the General tab and pulse the "Force default Blizzard layout
+-- mode" checkbox.
+function ACAB:HandleLockReasonClick()
+	if ACAB:IsDefaultProfileActive() then
+		ACAB:ShowCreateProfileDialog(function(ok)
+			if ok then
+				ACAB:ApplyUseDefaultLayoutChange(false)
+
+				local generalPanel = ACAB.settingsFrame and ACAB.settingsFrame.generalPanel
+
+				if generalPanel and generalPanel.useDefaultLayoutCheckbox then
+					generalPanel.useDefaultLayoutCheckbox:SetChecked(false)
+				end
+			end
+		end)
+	elseif ACABDB.useDefaultLayout == true then
+		ACAB:OpenSettingsPageByName("general")
+		ACAB:HighlightGeneralLayoutCheckbox()
+	end
+end
+
 -- One reusable warning banner per page - a solid strip anchored right
 -- below the page's title and right above its first content control
 -- (PROFILE_LOCK_BANNER_TOP/PROFILE_LOCK_BANNER_HEIGHT reserve that band
@@ -1280,31 +1311,11 @@ function ACAB:CreateProfileLockWarning(page)
 		this:SetBackdropColor(unpack(this.lockedBackdropColor))
 	end)
 
-	-- Re-checks live state rather than trusting a cached reason, so
-	-- priority always matches PROFILE_LOCK_MESSAGE_PROFILE's own priority
-	-- (default profile wins when both are true). Default profile skips
-	-- straight to the create-profile dialog (the only way off it),
-	-- disabling layout-force on success since the confirm-reset dialog it
-	-- would otherwise trigger doesn't apply to a fresh profile. Otherwise,
-	-- if only layout-force is on, jump to the General tab and pulse the
-	-- "Force default Blizzard layout mode" checkbox.
+	-- Shared with every other locked control's click (CreateLabeledCheckbox's
+	-- ACABLocked branch, UIWidgets.lua) - one place owns "what does clicking
+	-- something locked by this reason do".
 	banner:SetScript("OnClick", function()
-		if ACAB:IsDefaultProfileActive() then
-			ACAB:ShowCreateProfileDialog(function(ok)
-				if ok then
-					ACAB:ApplyUseDefaultLayoutChange(false)
-
-					local generalPanel = ACAB.settingsFrame and ACAB.settingsFrame.generalPanel
-
-					if generalPanel and generalPanel.useDefaultLayoutCheckbox then
-						generalPanel.useDefaultLayoutCheckbox:SetChecked(false)
-					end
-				end
-			end)
-		elseif ACABDB.useDefaultLayout == true then
-			ACAB:OpenSettingsPageByName("general")
-			ACAB:HighlightGeneralLayoutCheckbox()
-		end
+		ACAB:HandleLockReasonClick()
 	end)
 
 	banner:Hide()

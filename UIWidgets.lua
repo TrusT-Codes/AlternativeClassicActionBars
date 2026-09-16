@@ -618,9 +618,17 @@ function ACAB:CreateLabeledCheckbox(parent, name, config)
 		-- revert that flip and never call through to `onClick`, instead of
 		-- the usual :Disable() (confirmed live on this client to also
 		-- swallow OnEnter/OnLeave, killing the locked-reason tooltip).
+		-- config.onLockedClick (optional) runs instead - e.g. jumping the
+		-- user to whatever setting is actually blocking this one, same as
+		-- the lock banner's own click (ACAB:HandleLockReasonClick).
 		checkbox:SetScript("OnClick", function()
 			if this.ACABLocked then
 				this:SetChecked(not this:GetChecked())
+
+				if config.onLockedClick then
+					config.onLockedClick()
+				end
+
 				return
 			end
 
