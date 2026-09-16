@@ -1,11 +1,14 @@
 -- SetupWizard.lua
 -- 4-step first-custom-profile setup wizard (ACAB:ShowSetupWizard), launched
--- from Database.lua's ShowFirstLoginDialog "Set up my first custom Profile"
--- button. One lazily-created frame instance is reused across opens
+-- from Database.lua's ShowFirstLoginDialog "Set up a new custom Profile"
+-- button, or - in overwrite mode - from the Profiles settings page's "Run
+-- Setup Wizard" button (SettingsGeneral.lua), which reconfigures the
+-- already-active profile in place instead of creating a new one and skips
+-- the name step. One lazily-created frame instance is reused across opens
 -- (EnsureSetupWizardFrame, same pattern as UIWidgets.lua's EnsureDialogFrame).
 -- Nothing is written to ACABProfilesDB/ACABDB until FinishWizard runs -
 -- closing the wizard early (Cancel/X) leaves self.wizardState discarded and
--- creates no orphan profile.
+-- creates no orphan profile / changes nothing on an existing one.
 --
 -- Engine-invoked script handlers (OnClick, OnEnterPressed, ...) receive the
 -- frame via the global `this`, never as a `self` parameter.
@@ -465,12 +468,25 @@ function ACABSetupWizardMixin:OnLoad()
 	self:Hide()
 end
 
--- Resets all transient wizard state/widgets to their step-1 starting point -
--- run once per ACAB:ShowSetupWizard open, so a previous partial run (closed
--- via Cancel/X) never leaks into the next.
-function ACABSetupWizardMixin:Reset()
+-- Resets all transient wizard state/widgets to their starting point - run
+-- once per ACAB:ShowSetupWizard open, so a previous partial run (closed via
+-- Cancel/X) never leaks into the next.
+--
+-- config.overwriteExisting: reconfigures the given (already-active)
+-- config.profileName in place instead of creating a new profile - used by
+-- the Profiles settings page's "Run Setup Wizard" button. Skips step 1
+-- (the name is fixed to the current profile, not chosen).
+function ACABSetupWizardMixin:Reset(config)
+	config = config or {}
+
+	local overwriteExisting = config.overwriteExisting and true or false
+	local profileName = overwriteExisting
+		and (config.profileName or (ACABCharDB and ACABCharDB.activeProfile) or ACAB.DEFAULT_PROFILE_NAME)
+		or ((UnitName("player") or "Unknown") .. " - " .. (GetRealmName() or "Unknown"))
+
 	self.wizardState = {
-		profileName = (UnitName("player") or "Unknown") .. " - " .. (GetRealmName() or "Unknown"),
+		overwriteExisting = overwriteExisting,
+		profileName = profileName,
 		useDefaultLayout = nil,
 		modernBorderStyle = nil,
 		globalSpacingEnabled = false,
@@ -478,6 +494,8 @@ function ACABSetupWizardMixin:Reset()
 		globalButtonSizeEnabled = false,
 		globalButtonSizeValue = ACAB.BUTTON_SIZE,
 	}
+
+	self.titleText:SetText(overwriteExisting and "Reconfigure Your Profile" or "Set Up Your Profile")
 
 	local step1 = self.steps[1]
 	step1.editBox:SetText(self.wizardState.profileName)
@@ -506,7 +524,14 @@ function ACABSetupWizardMixin:ShowStep(n)
 	end
 
 	self.currentStep = n
-	self.stepText:SetText("Step " .. tostring(n) .. " of 4 - " .. (STEP_TITLES[n] or ""))
+
+	-- Overwrite mode skips step 1 (name is fixed to the current profile),
+	-- so the displayed count is renumbered to "of 3" starting at 1 instead
+	-- of showing a step 1 the user never saw.
+	local totalSteps = self.wizardState.overwriteExisting and 3 or 4
+	local displayStep = self.wizardState.overwriteExisting and (n - 1) or n
+
+	self.stepText:SetText("Step " .. tostring(displayStep) .. " of " .. tostring(totalSteps) .. " - " .. (STEP_TITLES[n] or ""))
 	self:SetHeight(STEP_HEIGHTS[n] or STEP_HEIGHTS[1])
 
 	local step = self.steps[n]
@@ -581,27 +606,9 @@ function ACABSetupWizardMixin:ReflowStep4Preview(which)
 	end
 end
 
--- Creates the profile from wizardState and switches to it (reloads the UI).
--- On a name race (e.g. the name got taken between step 1 and here), sends
--- the user back to step 1 with the rejection message shown instead of
--- silently failing.
-function ACABSetupWizardMixin:FinishWizard()
-	local state = self.wizardState
-
-	local ok, reason = ACAB:CreateProfile(state.profileName)
-
-	if not ok then
-		local step1 = self.steps[1]
-
-		step1.errorText:SetText(reason or "Could not create profile.")
-		step1.errorText:Show()
-
-		self:ShowStep(1)
-		return
-	end
-
-	local data = ACABProfilesDB[state.profileName]
-
+-- Applies wizardState.useDefaultLayout/modernBorderStyle/global spacing+size
+-- onto `data` - shared by FinishWizard's create and overwrite branches.
+local function ApplyWizardStateToProfileData(state, data)
 	data.useDefaultLayout = state.useDefaultLayout
 
 	if state.modernBorderStyle ~= nil then
@@ -617,6 +624,40 @@ function ACABSetupWizardMixin:FinishWizard()
 		data.globalButtonSizeEnabled = state.globalButtonSizeEnabled
 		data.globalButtonSizeValue = state.globalButtonSizeValue
 	end
+end
+
+-- Creates the profile from wizardState and switches to it (reloads the UI),
+-- or - in overwrite mode (Profiles settings page's "Run Setup Wizard") -
+-- applies wizardState directly onto the already-active profile and reloads.
+-- On a name race in create mode (e.g. the name got taken between step 1 and
+-- here), sends the user back to step 1 with the rejection message shown
+-- instead of silently failing.
+function ACABSetupWizardMixin:FinishWizard()
+	local state = self.wizardState
+
+	if state.overwriteExisting then
+		ACABDB = ACABDB or {}
+		ApplyWizardStateToProfileData(state, ACABDB)
+		ACAB:SaveActiveProfileData()
+
+		-- Reloads the UI - nothing after this point runs.
+		ReloadUI()
+		return
+	end
+
+	local ok, reason = ACAB:CreateProfile(state.profileName)
+
+	if not ok then
+		local step1 = self.steps[1]
+
+		step1.errorText:SetText(reason or "Could not create profile.")
+		step1.errorText:Show()
+
+		self:ShowStep(1)
+		return
+	end
+
+	ApplyWizardStateToProfileData(state, ACABProfilesDB[state.profileName])
 
 	-- Reloads the UI - nothing after this point runs.
 	ACAB:SwitchProfile(state.profileName)
@@ -638,13 +679,17 @@ local function EnsureSetupWizardFrame()
 end
 
 -- The one entry point every caller uses to open the wizard - reuses the
--- lazily-created frame and resets it to a fresh step-1 state every time.
-function ACAB:ShowSetupWizard()
+-- lazily-created frame and resets it to a fresh starting state every time.
+--
+-- config (optional): { overwriteExisting = true, profileName = "..." } -
+-- see ACABSetupWizardMixin:Reset. Omit for the normal first-login "create a
+-- new profile" flow, which starts at step 1.
+function ACAB:ShowSetupWizard(config)
 	local wizard = EnsureSetupWizardFrame()
 
-	wizard:Reset()
+	wizard:Reset(config)
 	wizard:Show()
-	wizard:ShowStep(1)
+	wizard:ShowStep(wizard.wizardState.overwriteExisting and 2 or 1)
 
 	return wizard
 end
