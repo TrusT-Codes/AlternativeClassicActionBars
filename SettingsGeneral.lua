@@ -51,9 +51,9 @@ function ACAB:GetOrCreateGeneralPanel()
 	-- local exists.
 	local checkbox = ACAB:CreateLabeledCheckbox(panel, "ACABGeneralUseDefaultLayoutCheckbox", {
 		anchor = { "TOPLEFT", panel, "TOPLEFT", ACAB.INDENT_SECTION, -52 },
-		label = "Use Default Blizzard Layout",
+		label = "Force default Blizzard layout mode",
 		tooltip = {
-			title = "Use Default Blizzard Layout",
+			title = "Force default Blizzard layout mode",
 			lines = {
 				"When enabled, default action bars keep Blizzard's native " ..
 				"position, size, and layout, and can only be shown/hidden - " ..
@@ -79,7 +79,7 @@ function ACAB:GetOrCreateGeneralPanel()
 				this:SetChecked(false)
 
 				ACAB:ShowDialog({
-					title = "Use Default Blizzard Layout",
+					title = "Force default Blizzard layout mode",
 					message = "Enabling this will reset ALL bars to their " ..
 						"default Blizzard position.",
 					warningText = "This action cannot be undone.",
@@ -510,7 +510,7 @@ function ACAB:GetOrCreateGeneralPanel()
 	-- border) or "vanilla" (native Blizzard border). Also shifts every
 	-- bar's button size (and spacing, opposite direction) to keep
 	-- default/extra bars aligned - see ACAB:ApplyGlobalButtonStyle
-	-- (Bar.lua). Locked to vanilla while "Use Default Blizzard Layout" is on.
+	-- (Bar.lua). Locked to vanilla while "Force default Blizzard layout mode" is on.
 	-------------------------------------------------------------------------
 
 	-- Anchors off countTitle (a fixed-X FontString) with the exact offset
@@ -527,8 +527,8 @@ function ACAB:GetOrCreateGeneralPanel()
 				"Choose the button border style used by ALL bars. When " ..
 				"enabled use a slick and thin modern rectangular Border, " ..
 				"when disabled use the default vanilla UI border.",
-				"Locked to vanilla UI Border while 'Use Default Blizzard " ..
-				"Layout' is enabled",
+				"Locked to vanilla UI Border while 'Force default Blizzard " ..
+				"layout mode' is enabled",
 			},
 		},
 		onClick = function()

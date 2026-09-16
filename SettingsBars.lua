@@ -188,8 +188,8 @@ end
 -- Stance/Pet Bar's own position/shape controls stay usable in that state,
 -- so switching AWAY from native there isn't allowed.
 local VANILLA_MODE_LOCKED_TEXT =
-	"Can't change while using Default Blizzard Layout / Profile. Disable " ..
-	"in General Settings to enable this Setting"
+	"Can't change while Force default Blizzard layout mode / Profile is " ..
+	"active. Disable in General Settings to enable this Setting"
 
 -- Shared "Use Vanilla Pet Bar" checkbox, added to both the Pet Bar's full grid page and its simple/native-mode page.
 -- Switching mode only takes effect on the next login (both build paths run once at PLAYER_LOGIN).
@@ -3119,7 +3119,7 @@ ACAB.simpleBarPageConfigs["bagbar"] = {
 		-- Key Ring lives on this same page (see CreateSimpleBarPage's
 		-- `if key == "bagbar"` block), so its position resets here too
 		-- rather than leaving it untouched by the Bag Bar's own Reset
-		-- button - mirrors the "Use Default Blizzard Layout" re-enable
+		-- button - mirrors the "Force default Blizzard layout mode" re-enable
 		-- flow, which calls ACAB:ResetKeyRingPosition() independently
 		-- (Settings.lua's General tab handler). Key Ring's native anchor is
 		-- relative to the Bag Bar container ResetBagBarPosition just moved
@@ -3618,8 +3618,8 @@ function ACAB:RefreshBarSettingsPage(barId)
 	end
 
 	-------------------------------------------------------------------------
-	-- Default-layout lock, numbered default bars (1-5) - while "Use
-	-- Default Blizzard Layout" is on, every one of these bars' controls
+	-- Default-layout lock, numbered default bars (1-5) - while "Force
+	-- default Blizzard layout mode" is on, every one of these bars' controls
 	-- locks except enable/disable, exactly like the Default-profile lock.
 	-- Both share the same combined lock and control list
 	-- (ACAB:ApplyProfileLockGating below).
@@ -4069,7 +4069,7 @@ function ACAB:RebuildMainBarAssignmentRows()
 	container:SetHeight(height)
 end
 
--- Applies a "Use Default Blizzard Layout" checkbox change: persists the
+-- Applies a "Force default Blizzard layout mode" checkbox change: persists the
 -- value, re-gates every affected page, and (only when switching ON from
 -- OFF) runs the full reset-to-Blizzard-default cascade. Split out from the
 -- checkbox's OnClick so the confirm dialog below can defer this call until

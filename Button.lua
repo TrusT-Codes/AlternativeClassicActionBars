@@ -658,7 +658,7 @@ function ACABButtonMixin:UpdateGridVisibility()
 	local hasContent = self:IsSlotFilled() and true or false
 
 	-- Real vanilla's Main Bar never hides an empty button, unlike the multi
-	-- bars (2-5) - but only while "Use Default Blizzard Layout" is on. Once
+	-- bars (2-5) - but only while "Force default Blizzard layout mode" is on. Once
 	-- the user turns that off, bar 1 follows the same toggle-based
 	-- condition as every other bar.
 	local isMainBar = self.parentBar and self.parentBar.config and self.parentBar.config.dynamicMainBar
