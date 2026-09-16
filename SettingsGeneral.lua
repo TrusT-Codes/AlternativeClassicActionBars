@@ -818,9 +818,39 @@ function ACAB:GetOrCreateProfilesPanel()
 
 	local PROFILE_BUTTON_GAP_X = 12
 
+	local wizardButton = CreateFrame("Button", nil, panel)
+	wizardButton:SetHeight(22)
+	wizardButton:SetPoint("TOPLEFT", dropdown, "BOTTOMLEFT", 16, -14)
+	ACAB:StyleModernButton(wizardButton, 0, 0)
+	wizardButton:SetText("Run Setup Wizard")
+	panel.wizardButton = wizardButton
+
+	wizardButton:SetScript("OnClick", function()
+		ACAB:ShowDialog({
+			title = "Run Setup Wizard",
+			message = "This walks you back through the initial setup choices " ..
+				"(Force Default Blizzard Layout, button style, global spacing/size).",
+			warningText = "ATTENTION: Continuing will overwrite these settings " ..
+				"on your current profile and is not reversible.",
+			mode = "confirm",
+			buttons = {
+				{
+					text = "Continue",
+					onClick = function()
+						ACAB:ShowSetupWizard({
+							overwriteExisting = true,
+							profileName = ACABCharDB.activeProfile,
+						})
+					end,
+				},
+				{ text = "Cancel", onClick = function() end },
+			},
+		})
+	end)
+
 	local exportButton = CreateFrame("Button", nil, panel)
 	exportButton:SetHeight(22)
-	exportButton:SetPoint("TOPLEFT", dropdown, "BOTTOMLEFT", 16, -14)
+	exportButton:SetPoint("TOPLEFT", wizardButton, "TOPRIGHT", PROFILE_BUTTON_GAP_X, 0)
 	ACAB:StyleModernButton(exportButton, 0, 0)
 	exportButton:SetText("Export Profile")
 	panel.exportButton = exportButton
@@ -935,19 +965,19 @@ function ACAB:GetOrCreateProfilesPanel()
 	ACAB:ApplyDangerButtonHighlight(deleteButton)
 	panel.deleteButton = deleteButton
 
-	-- Centers the whole 4-button row under the Active Profile row instead
-	-- of left-anchoring it under the dropdown - only exportButton's own
-	-- anchor needs resetting, since copy/import/delete are already chained
-	-- off their left neighbor's TOPRIGHT and follow automatically. Widths
-	-- are only known now that every button's SetText above has run.
+	-- Centers the whole 5-button row under the Active Profile row instead
+	-- of left-anchoring it under the dropdown - only wizardButton's own
+	-- anchor needs resetting, since export/copy/import/delete are already
+	-- chained off their left neighbor's TOPRIGHT and follow automatically.
+	-- Widths are only known now that every button's SetText above has run.
 	local buttonRowY = labelRowTopY - math.max(label:GetHeight(), dropdown:GetHeight()) - 14
-	local totalRowWidth = exportButton:GetWidth() + copyButton:GetWidth()
-		+ importButton:GetWidth() + deleteButton:GetWidth() + (PROFILE_BUTTON_GAP_X * 3)
+	local totalRowWidth = wizardButton:GetWidth() + exportButton:GetWidth() + copyButton:GetWidth()
+		+ importButton:GetWidth() + deleteButton:GetWidth() + (PROFILE_BUTTON_GAP_X * 4)
 
-	exportButton:ClearAllPoints()
-	exportButton:SetPoint(
+	wizardButton:ClearAllPoints()
+	wizardButton:SetPoint(
 		"TOP", panel, "TOP",
-		-(totalRowWidth / 2) + (exportButton:GetWidth() / 2),
+		-(totalRowWidth / 2) + (wizardButton:GetWidth() / 2),
 		buttonRowY
 	)
 
@@ -977,7 +1007,7 @@ function ACAB:GetOrCreateProfilesPanel()
 	return panel
 end
 
--- Refreshes the dropdown's option list/current selection and all 4
+-- Refreshes the dropdown's option list/current selection and all 5
 -- action buttons' visibility (only shown while a non-Default profile is
 -- active, since Default is locked/uneditable) - called whenever the
 -- Profiles view is (re)shown and after any profile CRUD action that
@@ -1001,11 +1031,13 @@ function ACAB:RefreshProfilesPanel()
 	panel.profileDropdown:SetSelected(ACABCharDB.activeProfile)
 
 	if ACABCharDB.activeProfile ~= self.DEFAULT_PROFILE_NAME then
+		panel.wizardButton:Show()
 		panel.exportButton:Show()
 		panel.copyButton:Show()
 		panel.importButton:Show()
 		panel.deleteButton:Show()
 	else
+		panel.wizardButton:Hide()
 		panel.exportButton:Hide()
 		panel.copyButton:Hide()
 		panel.importButton:Hide()
