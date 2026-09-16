@@ -196,12 +196,12 @@ end
 local VANILLA_MODE_LOCKED_TEXT_PROFILE =
 	"Can't change while using the default profile. Set up a profile in " ..
 	"Profile Settings to enable this Setting. " ..
-	"|cffffd100Click here to create one now.|r"
+	"|cffffd100Click to create one now.|r"
 
 local VANILLA_MODE_LOCKED_TEXT_LAYOUT =
 	"Can't change while Force default Blizzard layout mode is enabled. " ..
 	"Disable it in General Settings to enable this Setting. " ..
-	"|cffffd100Click here to jump to General Settings.|r"
+	"|cffffd100Click to jump to General Settings.|r"
 
 local function GetVanillaModeLockedText()
 	if ACAB:IsDefaultProfileActive() then
