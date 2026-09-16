@@ -648,7 +648,16 @@ function ACAB:CreateLabeledCheckbox(parent, name, config)
 			GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
 
 			if this.ACABLocked and lockedText then
-				GameTooltip:SetText(lockedText, 1, 0.15, 0.15, 1, true)
+				-- config.lockedText may be a function instead of a plain
+				-- string, so the shown text can branch on whichever lock
+				-- reason is CURRENTLY active rather than a fixed string.
+				local resolvedText = lockedText
+
+				if type(lockedText) == "function" then
+					resolvedText = lockedText()
+				end
+
+				GameTooltip:SetText(resolvedText, 1, 0.15, 0.15, 1, true)
 			elseif tooltip then
 				GameTooltip:SetText(tooltip.title or "", 1, 1, 1)
 

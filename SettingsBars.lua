@@ -186,10 +186,25 @@ end
 -- is locked (RefreshSimpleBarPage's petLocked/stanceLocked, both cases:
 -- Default Layout or Default Profile) - forcing native mode is what makes
 -- Stance/Pet Bar's own position/shape controls stay usable in that state,
--- so switching AWAY from native there isn't allowed.
-local VANILLA_MODE_LOCKED_TEXT =
-	"Can't change while Force default Blizzard layout mode / Profile is " ..
-	"active. Disable in General Settings to enable this Setting"
+-- so switching AWAY from native there isn't allowed. Two separate strings,
+-- one per reason (default profile takes priority, same as
+-- Settings.lua's PROFILE_LOCK_MESSAGE_PROFILE/_LAYOUT), since the fix is
+-- different for each: create a profile vs. disable layout-force.
+local VANILLA_MODE_LOCKED_TEXT_PROFILE =
+	"Can't change while using the default profile. Set up a profile in " ..
+	"Profile Settings to enable this Setting"
+
+local VANILLA_MODE_LOCKED_TEXT_LAYOUT =
+	"Can't change while Force default Blizzard layout mode is enabled. " ..
+	"Disable it in General Settings to enable this Setting"
+
+local function GetVanillaModeLockedText()
+	if ACAB:IsDefaultProfileActive() then
+		return VANILLA_MODE_LOCKED_TEXT_PROFILE
+	end
+
+	return VANILLA_MODE_LOCKED_TEXT_LAYOUT
+end
 
 -- Shared "Use Vanilla Pet Bar" checkbox, added to both the Pet Bar's full grid page and its simple/native-mode page.
 -- Switching mode only takes effect on the next login (both build paths run once at PLAYER_LOGIN).
@@ -206,7 +221,7 @@ local function CreateUseVanillaPetBarCheckbox(page, y)
 				"disable this option.",
 			},
 		},
-		lockedText = VANILLA_MODE_LOCKED_TEXT,
+		lockedText = GetVanillaModeLockedText,
 		onClick = function()
 			local checked = this:GetChecked() and true or false
 			local clickedCheckbox = this
@@ -263,7 +278,7 @@ local function CreateUseVanillaStanceBarCheckbox(page, y)
 				"disable this option.",
 			},
 		},
-		lockedText = VANILLA_MODE_LOCKED_TEXT,
+		lockedText = GetVanillaModeLockedText,
 		onClick = function()
 			local checked = this:GetChecked() and true or false
 			local clickedCheckbox = this
@@ -314,7 +329,7 @@ local function CreateCondenseEmptyPetSlotsCheckbox(page, y)
 	local checkbox = ACAB:CreateLabeledCheckbox(page, "ACABPetBarCondenseCheckbox", {
 		anchor = { "TOPLEFT", page, "TOPLEFT", ACAB.INDENT_SECTION, y },
 		label = "Condense empty Button Space",
-		lockedText = VANILLA_MODE_LOCKED_TEXT,
+		lockedText = GetVanillaModeLockedText,
 		onClick = function()
 			local checked = this:GetChecked() and true or false
 			local cfg = ACABDB.defaultBars[ACAB.PET_BAR_ID]
@@ -3034,7 +3049,7 @@ function ACAB:RefreshSimpleBarPage(key)
 	-- either lock is active. Runs AFTER ApplyProfileLockGating (not
 	-- folded into the exempt list there) so it has the final say, and
 	-- uses ACAB:LockControlKeepingTooltip instead of ACAB:LockControl so
-	-- the red locked-reason tooltip (VANILLA_MODE_LOCKED_TEXT,
+	-- the red locked-reason tooltip (GetVanillaModeLockedText,
 	-- CreateUseVanillaPetBarCheckbox/CreateUseVanillaStanceBarCheckbox)
 	-- still shows on hover while locked.
 	local vanillaModeLocked = ACAB:IsDefaultProfileActive() or ACABDB.useDefaultLayout == true
