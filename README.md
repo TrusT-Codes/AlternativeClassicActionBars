@@ -30,16 +30,11 @@ Requires a [**ClassicAPI**](https://octowow.st/git/brues/ClassicAPI)-extended cl
 
 Claude Code was used heavily throughout development of this addon. Every change was thoroughly checked for performance and intensively tested in-client by myself before being shipped.
 
-## Showcase
-
-<!--
-  Drop screenshots or GIFs here to show off Edit Layout mode, custom bars,
-  the Experience Bar overlay, profiles, etc. Example:
-  ![Edit Layout mode](docs/media/edit-mode.gif)
--->
-*Screenshots and GIFs coming soon.*
 
 ## ⭐ Spotlight: Hoverbind
+
+<img width="1920" height="1080" alt="Hoverbind" src="https://github.com/user-attachments/assets/183f988f-247c-4d47-9f1b-0b64c3f15c97" />
+
 
 Hoverbind is the fastest way to rebind your action bars, and one of the biggest quality-of-life upgrades ACAB adds. Instead of digging through the Blizzard keybinding menu:
 
@@ -48,6 +43,33 @@ Hoverbind is the fastest way to rebind your action bars, and one of the biggest 
 3. Press the key (or key combo) you want — it's bound instantly
 
 That's it. No menu, no scrolling through a giant list looking for the right slot — just hover and press.
+
+Also highlights any unbound Buttons in Red - and highlights already bound Buttons in green while in HoverBind-Mode, to reward you for not being a Clicker ;)
+
+## Showcase
+
+| Vanilla Styled Borders / Elements | Modern Style Borders & Elements |
+|---|---|
+| ![UI Preview Vanilla Borders](https://github.com/user-attachments/assets/7416db8c-6f5d-4b79-b057-4112b0a062c7) | ![UI Preview Modern Borders and Elements](https://github.com/user-attachments/assets/39dd4405-33b4-43fe-89bf-76a2e9dc2368) |
+
+**Edit Layout Mode**
+<img width="1919" height="1079" alt="EditLayoutMode" src="https://github.com/user-attachments/assets/818b22aa-b50d-4f2e-a034-01ed47c9d583" />
+
+**More customized Preview**
+<img width="1919" height="1079" alt="UI_Preview_Eloran_Modern" src="https://github.com/user-attachments/assets/3c26c290-3458-49cd-a594-b428fcece29e" />
+
+**Settings pages**
+| Bars Settings | Other Settings |
+|---|---|
+| <img width="983" height="770" alt="Settings_Bars" src="https://github.com/user-attachments/assets/37cb0aaa-933d-4810-bc6f-e72f1d9b27ca" /> | <img width="986" height="972" alt="Settings_General" src="https://github.com/user-attachments/assets/a675eb83-4d3d-456f-996a-4ee014195665" /> |
+| <img width="1454" height="1035" alt="Settings_Experiencebar" src="https://github.com/user-attachments/assets/d7db4dce-1b94-479a-88d8-a2d1504fbbce" /> | <img width="986" height="367" alt="Settings_editMode" src="https://github.com/user-attachments/assets/cb77ef81-8192-4968-850d-b55ccf59bce2" /> |
+
+
+**Import / Export Profiles**
+| Import | Export |
+|---|---|
+| <img width="987" height="749" alt="Settings_Import" src="https://github.com/user-attachments/assets/967dbb2f-5a68-441f-b70e-d48423e6db62" /> | <img width="986" height="616" alt="Settings_Export" src="https://github.com/user-attachments/assets/3721b333-7fc1-4ede-86b7-d02e36389cba" /> |
+
 
 ## Features
 
