@@ -33,8 +33,7 @@ Claude Code was used heavily throughout development of this addon. Every change 
 
 ## ⭐ Spotlight: Hoverbind
 
-<img width="1920" height="1080" alt="Hoverbind" src="https://github.com/user-attachments/assets/183f988f-247c-4d47-9f1b-0b64c3f15c97" />
-
+<img width="277" height="48" alt="Hoverbind_cropped_small" src="https://github.com/user-attachments/assets/9e46c332-c570-4f7a-ba06-237d5a096251" />
 
 Hoverbind is the fastest way to rebind your action bars, and one of the biggest quality-of-life upgrades ACAB adds. Instead of digging through the Blizzard keybinding menu:
 
@@ -54,6 +53,10 @@ Also highlights any unbound Buttons in Red - and highlights already bound Button
 
 **Edit Layout Mode**
 <img width="1919" height="1079" alt="EditLayoutMode" src="https://github.com/user-attachments/assets/818b22aa-b50d-4f2e-a034-01ed47c9d583" />
+
+**Snaps to other Elements easily**
+<img width="1027" height="306" alt="snapLayoutNew_cropped" src="https://github.com/user-attachments/assets/b530d0bc-97cb-4f03-bcac-b1c06a876527" />
+
 
 **More customized Preview**
 <img width="1919" height="1079" alt="UI_Preview_Eloran_Modern" src="https://github.com/user-attachments/assets/3c26c290-3458-49cd-a594-b428fcece29e" />
