@@ -1211,8 +1211,8 @@ end
 -- once (the Default profile's own restriction is the broader one).
 local PROFILE_LOCK_MESSAGE_PROFILE =
 	"Editing Settings is prohibited while in default profile mode. " ..
-	"Go to Profile Settings and set up a profile if you wish to " ..
-	"change Settings or access Layout Edit Mode."
+	"Set up a profile if you wish to change Settings or access Layout " ..
+	"Edit Mode. |cffffd100Click here to create one now.|r"
 
 -- Text shown while "Force default Blizzard layout mode" (General tab) is
 -- on, on pages that gate ONLY applies to (bar 1 and the simple/native-backed
@@ -1220,7 +1220,8 @@ local PROFILE_LOCK_MESSAGE_PROFILE =
 local PROFILE_LOCK_MESSAGE_LAYOUT =
 	"Editing Settings is prohibited while Force default Blizzard layout " ..
 	"mode is enabled. Disable it under General Settings if you wish to " ..
-	"change Settings or access Layout Edit Mode."
+	"change Settings or access Layout Edit Mode. " ..
+	"|cffffd100Click here to jump to General Settings.|r"
 
 -- One reusable warning banner per page - a solid strip anchored right
 -- below the page's title and right above its first content control
@@ -1251,7 +1252,10 @@ function ACAB:CreateProfileLockWarning(page)
 		insets = { left = 2, right = 2, top = 2, bottom = 2 },
 	})
 
-	banner:SetBackdropColor(0.35, 0, 0, 0.9)
+	banner.lockedBackdropColor = { 0.35, 0, 0, 0.9 }
+	banner.hoverBackdropColor = { 0.5, 0.08, 0.08, 0.9 }
+
+	banner:SetBackdropColor(unpack(banner.lockedBackdropColor))
 
 	local text = banner:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 
@@ -1262,6 +1266,43 @@ function ACAB:CreateProfileLockWarning(page)
 	text:SetTextColor(1, 0.15, 0.15)
 
 	banner.text = text
+
+	-- lockReason ("layout"/"profile") is stamped by ApplyProfileLockGating
+	-- below on every refresh, so OnClick always acts on whichever lock is
+	-- CURRENTLY shown rather than whichever one first created the banner.
+	banner:EnableMouse(true)
+
+	banner:SetScript("OnEnter", function()
+		this:SetBackdropColor(unpack(this.hoverBackdropColor))
+	end)
+
+	banner:SetScript("OnLeave", function()
+		this:SetBackdropColor(unpack(this.lockedBackdropColor))
+	end)
+
+	-- "layout" jumps straight to the General tab and pulses the "Force
+	-- default Blizzard layout mode" checkbox; "profile" skips straight to
+	-- the create-profile dialog (the only way off the default profile),
+	-- disabling layout-force on success since the confirm-reset dialog it
+	-- would otherwise trigger doesn't apply to a fresh profile.
+	banner:SetScript("OnClick", function()
+		if this.lockReason == "layout" then
+			ACAB:OpenSettingsPageByName("general")
+			ACAB:HighlightGeneralLayoutCheckbox()
+		elseif this.lockReason == "profile" then
+			ACAB:ShowCreateProfileDialog(function(ok)
+				if ok then
+					ACAB:ApplyUseDefaultLayoutChange(false)
+
+					local generalPanel = ACAB.settingsFrame and ACAB.settingsFrame.generalPanel
+
+					if generalPanel and generalPanel.useDefaultLayoutCheckbox then
+						generalPanel.useDefaultLayoutCheckbox:SetChecked(false)
+					end
+				end
+			end)
+		end
+	end)
 
 	banner:Hide()
 
@@ -1398,6 +1439,10 @@ function ACAB:ApplyProfileLockGating(page, alsoCheckLayoutLock)
 		page.profileLockWarning:SetShown(locked)
 
 		if locked then
+			-- Profile lock takes priority (see PROFILE_LOCK_MESSAGE_PROFILE's
+			-- own comment above) - lockReason drives the banner's OnClick.
+			page.profileLockWarning.lockReason = profileLocked and "profile" or "layout"
+
 			SetProfileLockBannerMessage(
 				page.profileLockWarning,
 				profileLocked and PROFILE_LOCK_MESSAGE_PROFILE or PROFILE_LOCK_MESSAGE_LAYOUT
