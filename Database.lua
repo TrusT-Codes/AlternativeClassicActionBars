@@ -1178,7 +1178,7 @@ end
 function ACAB:ShowFirstLoginDialog()
 	local buttons = {
 		{
-			text = "Set up my first custom Profile",
+			text = "Set up a new custom Profile",
 			isDefault = true,
 			variant = "prominent",
 			onClick = function()
@@ -1214,7 +1214,7 @@ function ACAB:ShowFirstLoginDialog()
 	end
 
 	table.insert(buttons, {
-		text = "Keep everything default!",
+		text = "Stay on this uneditable default profile!",
 		danger = true,
 		variant = "minor",
 		onClick = function()
