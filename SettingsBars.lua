@@ -189,14 +189,19 @@ end
 -- so switching AWAY from native there isn't allowed. Two separate strings,
 -- one per reason (default profile takes priority, same as
 -- Settings.lua's PROFILE_LOCK_MESSAGE_PROFILE/_LAYOUT), since the fix is
--- different for each: create a profile vs. disable layout-force.
+-- different for each: create a profile vs. disable layout-force. The
+-- checkbox itself now performs that fix on click too (config.onLockedClick,
+-- ACAB:HandleLockReasonClick), same as the lock banner, so both texts end
+-- with the same gold call-to-action line.
 local VANILLA_MODE_LOCKED_TEXT_PROFILE =
 	"Can't change while using the default profile. Set up a profile in " ..
-	"Profile Settings to enable this Setting"
+	"Profile Settings to enable this Setting. " ..
+	"|cffffd100Click here to create one now.|r"
 
 local VANILLA_MODE_LOCKED_TEXT_LAYOUT =
 	"Can't change while Force default Blizzard layout mode is enabled. " ..
-	"Disable it in General Settings to enable this Setting"
+	"Disable it in General Settings to enable this Setting. " ..
+	"|cffffd100Click here to jump to General Settings.|r"
 
 local function GetVanillaModeLockedText()
 	if ACAB:IsDefaultProfileActive() then
@@ -222,6 +227,7 @@ local function CreateUseVanillaPetBarCheckbox(page, y)
 			},
 		},
 		lockedText = GetVanillaModeLockedText,
+		onLockedClick = function() ACAB:HandleLockReasonClick() end,
 		onClick = function()
 			local checked = this:GetChecked() and true or false
 			local clickedCheckbox = this
@@ -279,6 +285,7 @@ local function CreateUseVanillaStanceBarCheckbox(page, y)
 			},
 		},
 		lockedText = GetVanillaModeLockedText,
+		onLockedClick = function() ACAB:HandleLockReasonClick() end,
 		onClick = function()
 			local checked = this:GetChecked() and true or false
 			local clickedCheckbox = this
@@ -330,6 +337,7 @@ local function CreateCondenseEmptyPetSlotsCheckbox(page, y)
 		anchor = { "TOPLEFT", page, "TOPLEFT", ACAB.INDENT_SECTION, y },
 		label = "Condense empty Button Space",
 		lockedText = GetVanillaModeLockedText,
+		onLockedClick = function() ACAB:HandleLockReasonClick() end,
 		onClick = function()
 			local checked = this:GetChecked() and true or false
 			local cfg = ACABDB.defaultBars[ACAB.PET_BAR_ID]
