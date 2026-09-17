@@ -461,7 +461,15 @@ function ACABSetupWizardMixin:OnLoad()
 
 	local i
 
+	-- Anchor set once here and never touched again - every step uses the
+	-- same anchor (below stepText), so ShowStep only needs to Show/Hide.
+	-- A frame that's re-ClearAllPoints+SetPoint right before its own
+	-- Show() (as this used to be, from inside ShowStep) doesn't resolve
+	-- GetLeft/GetBottom on this client until a frame later (same class of
+	-- issue as ACAB:DeferFit's own doc comment, Settings.lua) - anchoring
+	-- once up front, like titleText/stepText above, avoids it entirely.
 	for i = 1, table.getn(self.steps) do
+		self.steps[i]:SetPoint("TOP", self.stepText, "BOTTOM", 0, -20)
 		self.steps[i]:Hide()
 	end
 
@@ -536,8 +544,6 @@ function ACABSetupWizardMixin:ShowStep(n)
 
 	local step = self.steps[n]
 
-	step:ClearAllPoints()
-	step:SetPoint("TOP", self.stepText, "BOTTOM", 0, -20)
 	step:Show()
 
 	if n == 1 then
