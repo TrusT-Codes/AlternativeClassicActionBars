@@ -1112,6 +1112,35 @@ function ACABSetupWizardMixin:FitHeightToStep(n)
 		local top = wizard:GetTop()
 		local bottom = MeasureStepBottom(step)
 
+		-- Temporary /acab diag - step 6's fit height keeps growing across
+		-- repeated toggles despite two prior fix attempts; this prints the
+		-- exact top/bottom/height numbers each call instead of guessing a
+		-- third time. Remove once the real cause is confirmed.
+		if n == 6 then
+			print(string.format(
+				"|cff33ff33ACAB diag6|r top=%s bottom=%s curHeight=%s newHeight=%s",
+				tostring(top), tostring(bottom), tostring(wizard:GetHeight()),
+				tostring((top and bottom) and ((top - bottom) + NAV_ROW_CLEARANCE + BOTTOM_PADDING) or "nil")
+			))
+
+			local widgets = { step:GetChildren() }
+			local regions = { step:GetRegions() }
+			local wi
+
+			for wi = 1, table.getn(regions) do
+				widgets[table.getn(widgets) + 1] = regions[wi]
+			end
+
+			for wi = 1, table.getn(widgets) do
+				local w = widgets[wi]
+
+				print(string.format(
+					"  #%d shown=%s bottom=%s",
+					wi, tostring(w:IsShown()), tostring(w:GetBottom())
+				))
+			end
+		end
+
 		if not top or not bottom then
 			return
 		end
@@ -1520,6 +1549,31 @@ local function ApplyModernLayoutPreset(state, data)
 			latencyBarOverlayRightGap = frameRight - overlayRight
 		end
 	end
+
+	-- Temporary /acab diag - the x fix landed on the wrong side (overlaps
+	-- Micro Menu instead of sitting flush) despite reading the same kind
+	-- of overlay-vs-frame gap that fixed y correctly; printing the raw
+	-- numbers instead of guessing a sign fix a second time. Remove once
+	-- the real cause is confirmed.
+	print(string.format(
+		"|cff33ff33ACAB diag_lat|r microMenuContainer L=%s R=%s | microMenuOverlay L=%s R=%s | " ..
+		"microMenuRightGap=%s microMenuOverlayWidth=%s microMenuOverlayLeftOffset=%s",
+		tostring(ACAB.microMenuContainer and ACAB.microMenuContainer:GetLeft()),
+		tostring(ACAB.microMenuContainer and ACAB.microMenuContainer:GetRight()),
+		tostring(microMenuOverlay and microMenuOverlay:GetLeft()),
+		tostring(microMenuOverlay and microMenuOverlay:GetRight()),
+		tostring(microMenuRightGap), tostring(microMenuOverlayWidth), tostring(microMenuOverlayLeftOffset)
+	))
+	print(string.format(
+		"|cff33ff33ACAB diag_lat|r latencyBarFrame L=%s R=%s | latencyBarOverlay L=%s R=%s | " ..
+		"latencyBarOverlayRightGap=%s finalX=%s",
+		tostring(latencyBarFrame and latencyBarFrame:GetLeft()),
+		tostring(latencyBarFrame and latencyBarFrame:GetRight()),
+		tostring(latencyBarOverlay and latencyBarOverlay:GetLeft()),
+		tostring(latencyBarOverlay and latencyBarOverlay:GetRight()),
+		tostring(latencyBarOverlayRightGap),
+		tostring(microMenuOverlayLeftOffset + latencyBarOverlayRightGap)
+	))
 
 	-- Latency Bar: its own overlay hitbox flush against Micro Menu's
 	-- overlay hitbox on the left, top edges aligned (nudged down 5 units
