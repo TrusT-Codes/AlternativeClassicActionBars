@@ -757,6 +757,26 @@ function ACAB:SaveActiveProfileData()
 	ACABProfilesDB[self.activeProfileName] = self:DeepCopyTable(ACABDB)
 end
 
+-- Case-insensitive check against every existing profile name (including
+-- Default), so "MyProfile" and "myprofile" can't coexist as two profiles.
+function ACAB:ProfileNameTaken(name)
+	if not name or name == "" then
+		return false
+	end
+
+	local lowerName = string.lower(name)
+	local names = self:GetProfileNames()
+	local i
+
+	for i = 1, table.getn(names) do
+		if string.lower(names[i]) == lowerName then
+			return true
+		end
+	end
+
+	return false
+end
+
 -- Creates a new profile seeded from Default's current data.
 function ACAB:CreateProfile(name)
 	if not name or name == "" then
@@ -765,7 +785,7 @@ function ACAB:CreateProfile(name)
 
 	ACABProfilesDB = ACABProfilesDB or {}
 
-	if ACABProfilesDB[name] then
+	if self:ProfileNameTaken(name) then
 		return false, "A profile named \"" .. name .. "\" already exists."
 	end
 
