@@ -819,7 +819,10 @@ function ACABSetupWizardMixin:OnLoad()
 	self:SetMovable(true)
 	self:RegisterForDrag("LeftButton")
 	self:SetScript("OnDragStart", function() this:StartMoving() end)
-	self:SetScript("OnDragStop", function() this:StopMovingOrSizing() end)
+	self:SetScript("OnDragStop", function()
+		this:StopMovingOrSizing()
+		this:NormalizeAnchorToTopLeft()
+	end)
 
 	self.titleText = self:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 	self.titleText:SetPoint("TOP", self, "TOP", 0, -16)
@@ -1050,18 +1053,25 @@ local function MeasureStepBottom(step)
 	return deepest
 end
 
--- Resizes the wizard to a new height while keeping its current on-screen
--- top-left corner fixed, regardless of what anchor type it currently has.
--- OnLoad's default TOP anchor alone kept the top edge fixed across a plain
--- SetHeight - but dragging the wizard (self:StartMoving/StopMovingOrSizing,
--- OnLoad's own drag handlers) overwrites that anchor with one the engine
--- derives from the drop position, no longer guaranteed to be TOP-anchored,
--- which broke that assumption (confirmed live: the step 6 height-never-
--- shrinks bug came back after dragging the wizard mid-wizard). Capturing
--- GetLeft()/GetTop() and re-anchoring TOPLEFT off UIParent's own BOTTOMLEFT
--- at those exact coordinates makes the top-left corner invariant no matter
--- how the frame got to its current spot, drag included.
-function ACABSetupWizardMixin:ResizeKeepingTop(newHeight)
+-- Re-anchors TOPLEFT off UIParent's own BOTTOMLEFT at the wizard's current
+-- on-screen position - called once, right after a drag ends (OnLoad's
+-- OnDragStop), not on every resize. OnLoad's default TOP anchor alone kept
+-- the top edge fixed across a plain SetHeight - but dragging the wizard
+-- (StartMoving/StopMovingOrSizing) overwrites that anchor with one the
+-- engine derives from the drop position, no longer guaranteed to be TOP-
+-- anchored, which broke that assumption (confirmed live: the step 6
+-- height-never-shrinks bug came back after dragging the wizard mid-
+-- wizard). An earlier version of this fix re-ran this same capture-and-
+-- reanchor on every single FitHeightToStep call instead of just once per
+-- drag - confirmed live to itself be the cause of step 6's height
+-- compounding larger on every checkbox toggle: GetTop() read right after a
+-- ClearAllPoints/SetPoint pair doesn't reliably reflect the new anchor
+-- yet on this client (the same "rects resolve lazily" quirk FitHeightToStep
+-- already works around for step content), so each toggle's re-anchor could
+-- read a still-stale, taller "top" and bake it in as the new anchor.
+-- Confining the reanchor to drag-end only removes that repeated read/
+-- write cycle entirely for the common (never-dragged) case.
+function ACABSetupWizardMixin:NormalizeAnchorToTopLeft()
 	local left = self:GetLeft()
 	local top = self:GetTop()
 
@@ -1069,8 +1079,6 @@ function ACABSetupWizardMixin:ResizeKeepingTop(newHeight)
 		self:ClearAllPoints()
 		self:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
 	end
-
-	self:SetHeight(newHeight)
 end
 
 -- Resizes the wizard to fit step `n`'s actual current content instead of a
@@ -1079,7 +1087,11 @@ end
 -- fixing the step 1 editBox/Next button not appearing at all - see this
 -- branch's commit history), so the measurement is deferred one frame via
 -- ACAB:DeferFit. Guarded on currentStep still matching `n` in case the
--- user already moved on by the time the deferred callback runs.
+-- user already moved on by the time the deferred callback runs. Relies on
+-- whatever anchor is already set (OnLoad's TOP anchor, or
+-- NormalizeAnchorToTopLeft's TOPLEFT one post-drag) keeping the top edge
+-- fixed on its own - see NormalizeAnchorToTopLeft's comment for why this
+-- no longer re-touches the anchor itself.
 function ACABSetupWizardMixin:FitHeightToStep(n)
 	local step = self.steps[n]
 
@@ -1104,7 +1116,7 @@ function ACABSetupWizardMixin:FitHeightToStep(n)
 			return
 		end
 
-		wizard:ResizeKeepingTop((top - bottom) + NAV_ROW_CLEARANCE + BOTTOM_PADDING)
+		wizard:SetHeight((top - bottom) + NAV_ROW_CLEARANCE + BOTTOM_PADDING)
 	end)
 end
 
@@ -1453,6 +1465,28 @@ local function ApplyModernLayoutPreset(state, data)
 
 	local microMenuOverlayTop = bagBarHeight + microMenuHeight - microMenuOverlayTopGap
 
+	-- Same trimmed-hitbox reasoning as microMenuOverlayTopGap above, but
+	-- for the right edge - Micro Menu's container right edge sits flush
+	-- with the screen corner (microMenuPosition's own x=0 above), but its
+	-- overlay's right edge is inset from that by its own fixed gap, and
+	-- the overlay itself is narrower than the container.
+	local microMenuOverlayWidth = (microMenuOverlay and microMenuOverlay:GetWidth()) or microMenuWidth
+	local microMenuRightGap = 0
+
+	if ACAB.microMenuContainer and microMenuOverlay then
+		local containerRight = ACAB.microMenuContainer:GetRight()
+		local overlayRight = microMenuOverlay:GetRight()
+
+		if containerRight and overlayRight then
+			microMenuRightGap = containerRight - overlayRight
+		end
+	end
+
+	-- Micro Menu's overlay left edge, expressed as an offset from the
+	-- screen's own right edge (same coordinate space latencyBarPosition.x
+	-- below is set in, since both use a BOTTOMRIGHT/BOTTOMRIGHT anchor).
+	local microMenuOverlayLeftOffset = -(microMenuRightGap + microMenuOverlayWidth)
+
 	-- Latency Bar's real frame (MainMenuBarPerformanceBarFrame) is bigger
 	-- than its visible art - NativeElements.lua trims that down with its
 	-- own overlayInset when building the frame's hover/drag overlay
@@ -1469,6 +1503,7 @@ local function ApplyModernLayoutPreset(state, data)
 		or (buttonSize * 0.5)
 
 	local latencyBarOverlayBottomGap = 0
+	local latencyBarOverlayRightGap = 0
 
 	if latencyBarFrame and latencyBarOverlay then
 		local frameBottom = latencyBarFrame:GetBottom()
@@ -1477,18 +1512,26 @@ local function ApplyModernLayoutPreset(state, data)
 		if frameBottom and overlayBottom then
 			latencyBarOverlayBottomGap = overlayBottom - frameBottom
 		end
+
+		local frameRight = latencyBarFrame:GetRight()
+		local overlayRight = latencyBarOverlay:GetRight()
+
+		if frameRight and overlayRight then
+			latencyBarOverlayRightGap = frameRight - overlayRight
+		end
 	end
 
-	-- Latency Bar: flush to Micro Menu's left, its own overlay hitbox top
-	-- aligned with Micro Menu's own overlay hitbox top. y anchors the real
-	-- frame's BOTTOM (point/relativePoint above), not the overlay's, so
-	-- the overlay's own height and its bottom-edge gap from the frame are
-	-- both netted out to land the overlay's TOP - not the frame's - at
-	-- microMenuOverlayTop.
+	-- Latency Bar: its own overlay hitbox flush against Micro Menu's
+	-- overlay hitbox on the left, top edges aligned (nudged down 5 units
+	-- to read slightly better against Micro Menu's own icon row). x/y
+	-- anchor the real frame's BOTTOMRIGHT (point/relativePoint above), not
+	-- the overlay's, so both bars' own frame-to-overlay gaps are netted
+	-- out to land the two overlay hitboxes flush/aligned, not the two
+	-- underlying frames.
 	data.latencyBarPosition = {
 		point = "BOTTOMRIGHT", relativePoint = "BOTTOMRIGHT",
-		x = -microMenuWidth,
-		y = (microMenuOverlayTop - latencyBarHeight) - latencyBarOverlayBottomGap,
+		x = microMenuOverlayLeftOffset + latencyBarOverlayRightGap,
+		y = ((microMenuOverlayTop - latencyBarHeight) - latencyBarOverlayBottomGap) - 5,
 	}
 end
 
