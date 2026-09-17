@@ -1589,7 +1589,9 @@ local function DiagWidget(label, widget)
 	local width = widget.GetWidth and widget:GetWidth()
 	local height = widget.GetHeight and widget:GetHeight()
 	local left = widget.GetLeft and widget:GetLeft()
+	local top = widget.GetTop and widget:GetTop()
 	local bottom = widget.GetBottom and widget:GetBottom()
+	local numPoints = widget.GetNumPoints and widget:GetNumPoints()
 
 	local pointOk, point, relTo, relPoint, x, y = false, nil, nil, nil, nil, nil
 
@@ -1601,13 +1603,23 @@ local function DiagWidget(label, widget)
 		point = "ERROR/no-point"
 	end
 
+	-- tostring(relTo) always prints something distinct for a real object
+	-- (vs. the literal string "nil" for an actually-nil target) even when
+	-- relTo has no :GetName() - a prior version of this diagnostic used
+	-- GetName() alone here, which prints "nil" for BOTH an unnamed anchor
+	-- target and a genuinely nil one, indistinguishably.
+	local relDisplay = "nil"
+
+	if relTo then
+		relDisplay = (relTo.GetName and relTo:GetName()) or tostring(relTo)
+	end
+
 	DiagPrint(string.format(
-		"%s type=%s shown=%s visible=%s w=%s h=%s left=%s bottom=%s point=%s rel=%s relPoint=%s x=%s y=%s",
+		"%s type=%s shown=%s visible=%s w=%s h=%s left=%s top=%s bottom=%s numPoints=%s point=%s rel=%s relPoint=%s x=%s y=%s",
 		label, widget.GetObjectType and widget:GetObjectType() or "?",
 		tostring(shown), tostring(visible), tostring(width), tostring(height),
-		tostring(left), tostring(bottom), tostring(point),
-		(relTo and relTo.GetName and relTo:GetName()) or "nil",
-		tostring(relPoint), tostring(x), tostring(y)
+		tostring(left), tostring(top), tostring(bottom), tostring(numPoints), tostring(point),
+		relDisplay, tostring(relPoint), tostring(x), tostring(y)
 	))
 end
 

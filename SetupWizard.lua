@@ -140,7 +140,6 @@ local STEP_HEIGHTS = {
 
 function ACABSetupWizardMixin:BuildStep1()
 	local step = CreateFrame("Frame", nil, self)
-	step:SetWidth(WIZARD_CONTENT_WIDTH)
 
 	local message = step:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	message:SetPoint("TOP", step, "TOP", 0, 0)
@@ -187,7 +186,6 @@ end
 
 function ACABSetupWizardMixin:BuildStep2()
 	local step = CreateFrame("Frame", nil, self)
-	step:SetWidth(WIZARD_CONTENT_WIDTH)
 
 	local message = step:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	message:SetPoint("TOP", step, "TOP", 0, 0)
@@ -231,7 +229,6 @@ end
 
 function ACABSetupWizardMixin:BuildStep3()
 	local step = CreateFrame("Frame", nil, self)
-	step:SetWidth(WIZARD_CONTENT_WIDTH)
 
 	local message = step:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	message:SetPoint("TOP", step, "TOP", 0, 0)
@@ -281,7 +278,6 @@ end
 
 function ACABSetupWizardMixin:BuildStep4()
 	local step = CreateFrame("Frame", nil, self)
-	step:SetWidth(WIZARD_CONTENT_WIDTH)
 
 	local message = step:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	message:SetPoint("TOP", step, "TOP", 0, 0)
@@ -461,15 +457,18 @@ function ACABSetupWizardMixin:OnLoad()
 
 	local i
 
-	-- Anchor set once here and never touched again - every step uses the
-	-- same anchor (below stepText), so ShowStep only needs to Show/Hide.
-	-- A frame that's re-ClearAllPoints+SetPoint right before its own
-	-- Show() (as this used to be, from inside ShowStep) doesn't resolve
-	-- GetLeft/GetBottom on this client until a frame later (same class of
-	-- issue as ACAB:DeferFit's own doc comment, Settings.lua) - anchoring
-	-- once up front, like titleText/stepText above, avoids it entirely.
+	-- Dual TOPLEFT+BOTTOMRIGHT anchor, both corners off `self` directly -
+	-- gives each step frame a real width AND height purely derived from
+	-- self's own (already-resolved) rect, set once here and never touched
+	-- again. STEP_CONTENT_TOP_OFFSET clears titleText+stepText (measured
+	-- live via diag2); the bottom margin clears the Cancel button strip.
+	local STEP_CONTENT_TOP_OFFSET = -66
+	local STEP_CONTENT_BOTTOM_MARGIN = 50
+
 	for i = 1, table.getn(self.steps) do
-		self.steps[i]:SetPoint("TOP", self.stepText, "BOTTOM", 0, -20)
+		self.steps[i]:ClearAllPoints()
+		self.steps[i]:SetPoint("TOPLEFT", self, "TOPLEFT", 20, STEP_CONTENT_TOP_OFFSET)
+		self.steps[i]:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", -20, STEP_CONTENT_BOTTOM_MARGIN)
 		self.steps[i]:Hide()
 	end
 
