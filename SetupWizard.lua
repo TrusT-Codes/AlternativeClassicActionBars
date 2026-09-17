@@ -345,14 +345,14 @@ function ACABSetupWizardMixin:BuildStep3()
 	message:SetJustifyH("CENTER")
 	message:SetText("Choose a button style for your bars. You can change this later in Settings.")
 
-	-- Both bars use the same icon size - that's the real "footprint" a
-	-- vanilla button occupies on a grid (Button.lua's own icon is flush
-	-- to the full button frame; only the decorative border texture
-	-- overlays/overflows past it, same as this preview and real vanilla
-	-- action bars). Shrinking the icon to make the overflowing border's
-	-- outer edge match modern's flush footprint (a previous version of
-	-- this) made vanilla's icon look tiny next to modern's - wrong fix.
-	local previewApparentSize = 30
+	-- Vanilla's icon is flush to the full button frame (Button.lua's own
+	-- Init) with the decorative border texture overlaid/overflowing past
+	-- it, matching real vanilla action bars - shrinking the icon (a
+	-- previous version of this) made it look tiny next to modern's. Still
+	-- visually reads slightly smaller than modern's flush icon+backdrop
+	-- footprint even at equal icon size, so modern gets +2px to match.
+	local vanillaApparentSize = 30
+	local modernApparentSize = vanillaApparentSize + 2
 	local vanillaSpacing = 4
 	local modernSpacing = 0
 
@@ -360,7 +360,7 @@ function ACABSetupWizardMixin:BuildStep3()
 	vanillaLabel:SetPoint("TOP", message, "BOTTOM", -110, -26)
 	vanillaLabel:SetText("Vanilla Style")
 
-	local vanillaBar = CreateWizardPreviewBar(step, false, PREVIEW_SLOT_COUNT, previewApparentSize, vanillaSpacing)
+	local vanillaBar = CreateWizardPreviewBar(step, false, PREVIEW_SLOT_COUNT, vanillaApparentSize, vanillaSpacing)
 	vanillaBar:SetPoint("TOP", vanillaLabel, "BOTTOM", 0, -10)
 
 	local selectVanilla = CreateFrame("Button", nil, step)
@@ -377,7 +377,7 @@ function ACABSetupWizardMixin:BuildStep3()
 	modernLabel:SetPoint("TOP", message, "BOTTOM", 110, -26)
 	modernLabel:SetText("Modern Style")
 
-	local modernBar = CreateWizardPreviewBar(step, true, PREVIEW_SLOT_COUNT, previewApparentSize, modernSpacing)
+	local modernBar = CreateWizardPreviewBar(step, true, PREVIEW_SLOT_COUNT, modernApparentSize, modernSpacing)
 	modernBar:SetPoint("TOP", modernLabel, "BOTTOM", 0, -10)
 
 	local selectModern = CreateFrame("Button", nil, step)
@@ -446,35 +446,50 @@ function ACABSetupWizardMixin:BuildStep5()
 	message:SetJustifyH("CENTER")
 	message:SetText("Set up your Experience Bar.")
 
+	-- Every widget below is anchored directly to `step` (a fixed, stable
+	-- reference) at its own computed cursorY, never chained widget-to-
+	-- widget - a long relative-anchor chain drifted further off-center
+	-- with each additional link (confirmed live: each successive text-
+	-- toggle checkbox below crept further left than the last). Mirrors
+	-- SettingsBars.lua's own cursorY-decrementing pattern for its real
+	-- Experience Bar settings page.
+	local cursorY = -18
+
 	local enabledCheckbox = ACAB:CreateLabeledCheckbox(step, "ACABSetupWizardExpBarEnabledCheckbox", {
-		anchor = { "TOP", message, "BOTTOM", -60, -18 },
+		anchor = { "TOP", step, "TOP", -60, cursorY },
 		label = "Enable Experience Bar",
 		onClick = function()
 			ACAB.setupWizard.wizardState.expBarEnabled = this:GetChecked() and true or false
 			ACAB.setupWizard:UpdateStep5Visibility()
 		end,
 	})
+	cursorY = cursorY - 24 - 22
 
 	local positionLabel = step:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-	positionLabel:SetPoint("TOP", enabledCheckbox, "BOTTOM", 60, -20)
+	positionLabel:SetPoint("TOP", step, "TOP", 0, cursorY)
 	positionLabel:SetText("Where should your experience bar be:")
+	cursorY = cursorY - 16 - 8
 
+	-- Centered under its own label instead of beside it - beside it ran
+	-- past the wizard's right edge.
 	local positionDropdown = ACAB:CreateInlineDropdown(step, 120, "ACABSetupWizardExpBarPositionDropdown")
 	positionDropdown:ClearAllPoints()
-	positionDropdown:SetPoint("LEFT", positionLabel, "RIGHT", 8, -2)
+	positionDropdown:SetPoint("TOP", step, "TOP", 0, cursorY)
 	positionDropdown:SetOptions({ "Bottom", "Top" })
 	positionDropdown.onSelect = function(value)
 		ACAB.setupWizard.wizardState.expBarPositionChoice = value
 	end
+	cursorY = cursorY - 32 - 22
 
 	local betterExpBarCheckbox = ACAB:CreateLabeledCheckbox(step, "ACABSetupWizardBetterExpBarCheckbox", {
-		anchor = { "TOP", positionLabel, "BOTTOM", -60, -24 },
+		anchor = { "TOP", step, "TOP", -80, cursorY },
 		label = "Enable Better Experience Bar",
 		onClick = function()
 			ACAB.setupWizard.wizardState.betterExpBarEnabled = this:GetChecked() and true or false
 			ACAB.setupWizard:UpdateStep5Visibility()
 		end,
 	})
+	cursorY = cursorY - 24 - 20
 
 	-- 5 independently toggleable text segments - same dbKey names as the
 	-- real settings page, stacked in the same order.
@@ -487,14 +502,13 @@ function ACABSetupWizardMixin:BuildStep5()
 	}
 
 	local textToggleCheckboxes = {}
-	local anchorAbove = betterExpBarCheckbox
 	local i
 
 	for i = 1, table.getn(TEXT_TOGGLES) do
 		local toggle = TEXT_TOGGLES[i]
 
 		local checkbox = ACAB:CreateLabeledCheckbox(step, "ACABSetupWizardExpBar" .. toggle.key .. "Checkbox", {
-			anchor = { "TOP", anchorAbove, "BOTTOM", 0, -14 },
+			anchor = { "TOP", step, "TOP", -70, cursorY },
 			label = toggle.label,
 			onClick = function()
 				ACAB.setupWizard.wizardState[toggle.key] = this:GetChecked() and true or false
@@ -502,13 +516,20 @@ function ACABSetupWizardMixin:BuildStep5()
 		})
 
 		textToggleCheckboxes[i] = checkbox
-		anchorAbove = checkbox
+		cursorY = cursorY - 24 - 6
 	end
+
+	cursorY = cursorY - 16
 
 	-- Font size slider - mirrors SettingsBars.lua's own range/step for
 	-- this same control.
+	local fontSizeLabel = step:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	fontSizeLabel:SetPoint("TOP", step, "TOP", 0, cursorY)
+	fontSizeLabel:SetText("Font Size")
+	cursorY = cursorY - 16 - 8
+
 	local fontSizeSlider, fontSizeValueText = ACAB:CreateLabeledSlider(step, "ACABSetupWizardExpBarFontSizeSlider", {
-		anchor = { "TOP", anchorAbove, "BOTTOM", 0, -26 },
+		anchor = { "TOP", step, "TOP", 0, cursorY },
 		width = 180,
 		min = 6,
 		max = 24,
@@ -523,12 +544,13 @@ function ACABSetupWizardMixin:BuildStep5()
 			end
 		end,
 	})
+	cursorY = cursorY - 20 - 14 - 22
 
 	-- 3 color swatches: Earned XP Bar Color, Rested XP Bar Color, Overlay
 	-- Text Color - same order/labels as the real settings page.
-	local function BuildColorRow(anchorFrame, labelText, name, wizardKey)
+	local function BuildColorRow(labelText, name, wizardKey)
 		local label = step:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-		label:SetPoint("TOP", anchorFrame, "BOTTOM", -70, -20)
+		label:SetPoint("TOP", step, "TOP", -70, cursorY)
 		label:SetText(labelText)
 
 		local swatch = CreateWizardColorSwatch(step, name)
@@ -543,22 +565,31 @@ function ACABSetupWizardMixin:BuildStep5()
 			)
 		end)
 
+		cursorY = cursorY - 24 - 14
+
 		return label, swatch
 	end
 
 	local earnedColorLabel, earnedColorSwatch = BuildColorRow(
-		fontSizeSlider, "Earned XP Bar Color", "ACABSetupWizardExpBarEarnedColorSwatch", "expBarColorEarned"
+		"Earned XP Bar Color", "ACABSetupWizardExpBarEarnedColorSwatch", "expBarColorEarned"
 	)
 	local restedColorLabel, restedColorSwatch = BuildColorRow(
-		earnedColorLabel, "Rested XP Bar Color", "ACABSetupWizardExpBarRestedColorSwatch", "expBarColorRested"
+		"Rested XP Bar Color", "ACABSetupWizardExpBarRestedColorSwatch", "expBarColorRested"
 	)
 	local textColorLabel, textColorSwatch = BuildColorRow(
-		restedColorLabel, "Overlay Text Color", "ACABSetupWizardExpBarTextColorSwatch", "expBarTextColor"
+		"Overlay Text Color", "ACABSetupWizardExpBarTextColorSwatch", "expBarTextColor"
 	)
 
+	cursorY = cursorY - 2
+
 	-- Rested-glow pulse interval - mirrors SettingsBars.lua's own range.
+	local pulseIntervalLabel = step:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	pulseIntervalLabel:SetPoint("TOP", step, "TOP", 0, cursorY)
+	pulseIntervalLabel:SetText("Rested Glow Pulse Interval")
+	cursorY = cursorY - 16 - 8
+
 	local pulseIntervalSlider, pulseIntervalValueText = ACAB:CreateLabeledSlider(step, "ACABSetupWizardExpBarPulseIntervalSlider", {
-		anchor = { "TOP", textColorLabel, "BOTTOM", 70, -26 },
+		anchor = { "TOP", step, "TOP", 0, cursorY },
 		width = 180,
 		min = 0.5,
 		max = 3,
@@ -591,6 +622,7 @@ function ACABSetupWizardMixin:BuildStep5()
 	step.positionDropdown = positionDropdown
 	step.betterExpBarCheckbox = betterExpBarCheckbox
 	step.textToggleCheckboxes = textToggleCheckboxes
+	step.fontSizeLabel = fontSizeLabel
 	step.fontSizeSlider = fontSizeSlider
 	step.fontSizeValueText = fontSizeValueText
 	step.earnedColorLabel = earnedColorLabel
@@ -599,6 +631,7 @@ function ACABSetupWizardMixin:BuildStep5()
 	step.restedColorSwatch = restedColorSwatch
 	step.textColorLabel = textColorLabel
 	step.textColorSwatch = textColorSwatch
+	step.pulseIntervalLabel = pulseIntervalLabel
 	step.pulseIntervalSlider = pulseIntervalSlider
 	step.pulseIntervalValueText = pulseIntervalValueText
 
@@ -744,7 +777,17 @@ function ACABSetupWizardMixin:OnLoad()
 	self:SetFrameStrata("FULLSCREEN_DIALOG")
 	self:SetWidth(WIZARD_WIDTH)
 	self:SetHeight(INITIAL_HEIGHT)
-	self:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+
+	-- Anchored by TOP, not CENTER - a CENTER anchor moves the frame's own
+	-- TOP edge every time FitHeightToStep resizes it (top = center +
+	-- height/2), and FitHeightToStep's own measurement reads that same
+	-- TOP edge as its reference point. Confirmed live as the cause of step
+	-- 6 never shrinking back down after a checkbox reveal-then-hide: each
+	-- resize's "top" reading could reflect the previous resize's own
+	-- moved position before it had resolved, compounding upward. Anchoring
+	-- by TOP instead keeps that edge fixed regardless of height, making it
+	-- a stable measurement reference.
+	self:SetPoint("TOP", UIParent, "TOP", 0, -80)
 
 	-- Matches ACABDialogMixin/Settings.lua's own window backdrop.
 	self:SetBackdrop({
@@ -1075,6 +1118,7 @@ function ACABSetupWizardMixin:UpdateStep5Visibility()
 		step.textToggleCheckboxes[i]:SetShown(betterShown)
 	end
 
+	step.fontSizeLabel:SetShown(betterShown)
 	step.fontSizeSlider:SetShown(betterShown)
 	step.fontSizeValueText:SetShown(betterShown)
 	step.earnedColorLabel:SetShown(betterShown)
@@ -1083,6 +1127,7 @@ function ACABSetupWizardMixin:UpdateStep5Visibility()
 	step.restedColorSwatch:SetShown(betterShown)
 	step.textColorLabel:SetShown(betterShown)
 	step.textColorSwatch:SetShown(betterShown)
+	step.pulseIntervalLabel:SetShown(betterShown)
 	step.pulseIntervalSlider:SetShown(betterShown)
 	step.pulseIntervalValueText:SetShown(betterShown)
 
@@ -1206,29 +1251,40 @@ end
 -- (default bar ids 1/2/3, enabling 2/3) centered at the bottom of the
 -- screen (shifted up to clear the Experience Bar if step 5 put it there
 -- too - state.expBarEnabled/expBarPositionChoice, decided before this
--- runs), and clusters Bag Bar (flush in the corner)/Micro Menu (stacked
--- on top of it)/Key Ring (to its left)/Latency Bar (to Micro Menu's left,
--- top-aligned with it) in the bottom-right corner.
+-- runs), aligns the Stance Bar/Pet Bar directly above Action Bar 2 (left/
+-- right edges respectively), and clusters Bag Bar (flush in the corner)/
+-- Micro Menu (stacked on top of it)/Key Ring (to its left)/Latency Bar
+-- (to Micro Menu's left, top-aligned with it) in the bottom-right corner.
 --
 -- Every position is expressed relative to UIParent's own corners, the
 -- same coordinate space ACAB:CaptureNativeAnchor and
 -- ACAB:ApplyBarPosition/ApplyBagBarPosition/ApplyLatencyBarPosition/
--- ApplyKeyRingPosition already use (Database.lua/Bar.lua/
--- NativeElements.lua) - UIParent's own dimensions are already resolution/
--- UI-scale-corrected, so a BOTTOM or BOTTOMRIGHT anchor with a small
--- fixed offset lands in the same relative spot on any screen/scale, with
--- no GetScreenWidth()/uiScale math needed.
+-- ApplyKeyRingPosition/ApplyStanceBarPosition/ApplyPetBarNativePosition
+-- already use (Database.lua/Bar.lua/NativeElements.lua/PetStanceBars.lua)
+-- - UIParent's own dimensions are already resolution/UI-scale-corrected,
+-- so a BOTTOM or BOTTOMRIGHT anchor with a small fixed offset lands in
+-- the same relative spot on any screen/scale, with no
+-- GetScreenWidth()/uiScale math needed.
 --
--- Bag Bar/Micro Menu's own rendered width/height isn't known until after
--- this profile's ReloadUI (it depends on the live client's actual bag
--- count), so Micro Menu/Key Ring/Latency Bar's clearance from Bag Bar is
--- a fixed estimate sized for a full 5-slot bag bar and an 8-button Micro
--- Menu row (data.microMenuCols' own default) at the chosen button size
--- - close for the common case, but a live-client round of calibration
--- (or the reference profile you offered) would tighten this up if it
--- looks off.
+-- Bag Bar/Micro Menu/Key Ring/Latency Bar's real rendered size (bag
+-- count, native icon size) isn't something this addon controls or knows
+-- in advance, but their live containers already exist THIS session
+-- (built at this login, before any of this runs) - reading their current
+-- real GetWidth()/GetHeight() here is safe (size doesn't depend on the
+-- position this function is about to set) and exact, unlike guessing a
+-- size from cols/buttonSize. Every gap in this corner cluster is flush
+-- (0) - confirmed against a reference profile export of a live-built
+-- Modern Layout.
 local function ApplyModernLayoutPreset(state, data)
 	data.disableBlizzardArt = true
+
+	-- Bag Bar sits exactly flush with the screen's corner below - a
+	-- natural target for the Edit Mode "Snap to Grid"/"Snap to Adjacent
+	-- Elements" features (DefaultBars.lua's ApplyDragSnap, on by default),
+	-- which fight any attempt to manually drag it away again afterward.
+	-- Off here so this profile doesn't fight your own later adjustments.
+	data.snapToGrid = false
+	data.snapToAdjacentElements = false
 
 	local buttonSize = (data.globalButtonSizeEnabled and data.globalButtonSizeValue) or ACAB.BUTTON_SIZE
 	local spacing = (data.globalSpacingEnabled and data.globalSpacingValue) or 0
@@ -1261,13 +1317,39 @@ local function ApplyModernLayoutPreset(state, data)
 	actionBar1Cfg.y = bottomMargin + expBarClearance + buttonSize + rowGap
 	data.defaultBars[2] = actionBar1Cfg
 
+	local actionBar2Y = bottomMargin + expBarClearance + ((buttonSize + rowGap) * 2)
 	local actionBar2Cfg = data.defaultBars[3] or {}
 	actionBar2Cfg.enabled = true
 	actionBar2Cfg.point = "BOTTOM"
 	actionBar2Cfg.relativePoint = "BOTTOM"
 	actionBar2Cfg.x = 0
-	actionBar2Cfg.y = bottomMargin + expBarClearance + ((buttonSize + rowGap) * 2)
+	actionBar2Cfg.y = actionBar2Y
 	data.defaultBars[3] = actionBar2Cfg
+
+	-- Action Bar 2 is a 12-column, 1-row grid (Core.lua's DEFAULT_BAR_GRID),
+	-- centered (x=0/point=BOTTOM above), so its left/right edges sit this
+	-- far either side of screen center.
+	local actionBar2Width = (buttonSize * 12) + (spacing * 11)
+	local actionBar2Top = actionBar2Y + buttonSize
+
+	-- Stance Bar: directly above Action Bar 2, left edges aligned.
+	data.stanceBarUsesDefaultPosition = false
+	data.stanceBarPosition = {
+		point = "BOTTOMLEFT", relativePoint = "BOTTOM",
+		x = -(actionBar2Width / 2),
+		y = actionBar2Top + rowGap,
+	}
+
+	-- Pet Bar: directly above Action Bar 2, right edges aligned. Its own
+	-- position lives on defaultBars[PET_BAR_ID] (not a separate top-level
+	-- field like Stance Bar) - see CLAUDE.md's architecture notes.
+	local petBarCfg = data.defaultBars[ACAB.PET_BAR_ID] or {}
+	petBarCfg.usesDefaultPosition = false
+	petBarCfg.point = "BOTTOMRIGHT"
+	petBarCfg.relativePoint = "BOTTOM"
+	petBarCfg.x = actionBar2Width / 2
+	petBarCfg.y = actionBar2Top + rowGap
+	data.defaultBars[ACAB.PET_BAR_ID] = petBarCfg
 
 	-- Bag Bar: flush against the screen's bottom-right corner - no
 	-- measurement needed, this is exact regardless of its real size.
@@ -1276,37 +1358,36 @@ local function ApplyModernLayoutPreset(state, data)
 		x = 0, y = 0,
 	}
 
-	local bagBarWidthEstimate = 5 * (buttonSize + spacing)
-	local bagBarHeightEstimate = buttonSize
+	local bagBarWidth = (ACAB.bagBarContainer and ACAB.bagBarContainer:GetWidth()) or (5 * (buttonSize + spacing))
+	local bagBarHeight = (ACAB.bagBarContainer and ACAB.bagBarContainer:GetHeight()) or buttonSize
 
-	-- Key Ring: directly to Bag Bar's left, same row.
+	-- Key Ring: directly to Bag Bar's left, same row, flush. Anchored by
+	-- its own right edge, so its own width doesn't factor into this.
 	data.keyRingPosition = {
 		point = "BOTTOMRIGHT", relativePoint = "BOTTOMRIGHT",
-		x = -(bagBarWidthEstimate + rowGap), y = 0,
+		x = -bagBarWidth, y = 0,
 	}
 
-	-- Micro Menu: stacked directly on top of Bag Bar, same right edge.
-	local microMenuBottomY = bagBarHeightEstimate + rowGap
-
+	-- Micro Menu: stacked directly on top of Bag Bar, same right edge, flush.
 	data.microMenuPosition = {
 		point = "BOTTOMRIGHT", relativePoint = "BOTTOMRIGHT",
-		x = 0, y = microMenuBottomY,
+		x = 0, y = bagBarHeight,
 	}
 
-	local microMenuCols = data.microMenuCols or 8
-	local microMenuWidthEstimate = microMenuCols * (buttonSize + spacing)
-	local microMenuHeightEstimate = buttonSize
-	local microMenuTopY = microMenuBottomY + microMenuHeightEstimate
+	local microMenuWidth = (ACAB.microMenuContainer and ACAB.microMenuContainer:GetWidth())
+		or ((data.microMenuCols or 8) * (buttonSize + spacing))
+	local microMenuHeight = (ACAB.microMenuContainer and ACAB.microMenuContainer:GetHeight()) or buttonSize
+	local microMenuTop = bagBarHeight + microMenuHeight
 
-	-- Latency Bar: to Micro Menu's left, its own top aligned with Micro
-	-- Menu's top (a small single-line frame, estimated at half a button
-	-- tall for this alignment).
-	local latencyBarHeightEstimate = buttonSize * 0.5
+	local latencyBarFrame = getglobal(ACAB.LATENCY_BAR_FRAME_NAME)
+	local latencyBarHeight = (latencyBarFrame and latencyBarFrame:GetHeight()) or (buttonSize * 0.5)
 
+	-- Latency Bar: flush to Micro Menu's left, its own top aligned with
+	-- Micro Menu's top.
 	data.latencyBarPosition = {
 		point = "BOTTOMRIGHT", relativePoint = "BOTTOMRIGHT",
-		x = -(microMenuWidthEstimate + rowGap),
-		y = microMenuTopY - latencyBarHeightEstimate,
+		x = -microMenuWidth,
+		y = microMenuTop - latencyBarHeight,
 	}
 end
 
