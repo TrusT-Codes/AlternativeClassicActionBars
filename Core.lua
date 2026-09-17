@@ -1573,85 +1573,6 @@ local function RunDiag1(stage)
 	DiagPrint("--- end diag1 ---")
 end
 
--- Temporary diagnostic for the "Step 1 editBox/Next button not appearing"
--- report on the setup wizard. Run "/acab diag2" - opens the wizard to step 1
--- and dumps shown/visible/size/anchor state for every direct child frame
--- and region of the step 1 content frame. Remove once the finding is
--- confirmed.
-local function DiagWidget(label, widget)
-	if not widget then
-		DiagPrint(label .. ": widget missing")
-		return
-	end
-
-	local shown = widget.IsShown and widget:IsShown()
-	local visible = widget.IsVisible and widget:IsVisible()
-	local width = widget.GetWidth and widget:GetWidth()
-	local height = widget.GetHeight and widget:GetHeight()
-	local left = widget.GetLeft and widget:GetLeft()
-	local top = widget.GetTop and widget:GetTop()
-	local bottom = widget.GetBottom and widget:GetBottom()
-	local numPoints = widget.GetNumPoints and widget:GetNumPoints()
-
-	local pointOk, point, relTo, relPoint, x, y = false, nil, nil, nil, nil, nil
-
-	if widget.GetPoint then
-		pointOk, point, relTo, relPoint, x, y = pcall(widget.GetPoint, widget)
-	end
-
-	if not pointOk then
-		point = "ERROR/no-point"
-	end
-
-	-- tostring(relTo) always prints something distinct for a real object
-	-- (vs. the literal string "nil" for an actually-nil target) even when
-	-- relTo has no :GetName() - a prior version of this diagnostic used
-	-- GetName() alone here, which prints "nil" for BOTH an unnamed anchor
-	-- target and a genuinely nil one, indistinguishably.
-	local relDisplay = "nil"
-
-	if relTo then
-		relDisplay = (relTo.GetName and relTo:GetName()) or tostring(relTo)
-	end
-
-	DiagPrint(string.format(
-		"%s type=%s shown=%s visible=%s w=%s h=%s left=%s top=%s bottom=%s numPoints=%s point=%s rel=%s relPoint=%s x=%s y=%s",
-		label, widget.GetObjectType and widget:GetObjectType() or "?",
-		tostring(shown), tostring(visible), tostring(width), tostring(height),
-		tostring(left), tostring(top), tostring(bottom), tostring(numPoints), tostring(point),
-		relDisplay, tostring(relPoint), tostring(x), tostring(y)
-	))
-end
-
-local function RunDiag2()
-	local wizard = ACAB:ShowSetupWizard()
-
-	DiagPrint("--- diag2 (setup wizard step 1) ---")
-	DiagWidget("wizard", wizard)
-	DiagWidget("wizard.titleText", wizard.titleText)
-	DiagWidget("wizard.stepText", wizard.stepText)
-
-	local step1 = wizard.steps and wizard.steps[1]
-
-	DiagWidget("step1", step1)
-
-	if step1 then
-		local children = { step1:GetChildren() }
-		local regions = { step1:GetRegions() }
-		local i
-
-		for i = 1, table.getn(children) do
-			DiagWidget("step1.child" .. i, children[i])
-		end
-
-		for i = 1, table.getn(regions) do
-			DiagWidget("step1.region" .. i, regions[i])
-		end
-	end
-
-	DiagPrint("--- end diag2 ---")
-end
-
 -- /acab settings <pagename> - name -> settings page resolution table.
 -- Mirrors the pages reachable by right-clicking a bar/element in edit mode
 -- (SettingsBars.lua's OpenBarSettingsByKey/OpenDefaultBarSettings).
@@ -1991,8 +1912,6 @@ SlashCmdList["ACAB"] = function(msg)
 		PrintCommandHelp()
 	elseif string.find(msg, "^diag1") then
 		RunDiag1(string.gsub(msg, "^diag1%s*", ""))
-	elseif string.find(msg, "^diag2") then
-		RunDiag2()
 	else
 		ACAB:Print("Unknown command \"" .. msg .. "\". Type " .. ColorKeyName("/acab help") .. " for a list.")
 	end
