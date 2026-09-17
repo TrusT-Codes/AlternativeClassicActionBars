@@ -682,23 +682,37 @@ function ACABSetupWizardMixin:BuildStep6()
 	-- BORDER_RATIO overflow past the bar's nominal edges, plus a margin.
 	local PREVIEW_CLEARANCE = -(10 + (ACAB.BUTTON_SIZE_MAX * ACAB.BORDER_RATIO) + 20)
 
+	-- Every row below anchors directly to previewLabel (a fixed, always-
+	-- shown reference) at its own computed cursorY, never chained widget-
+	-- to-widget like this step used to - chaining sizeCheckbox off
+	-- spacingSlider's BOTTOM (spacingSlider starts Hide()'n) fed a hidden
+	-- sibling's own not-yet-resolved rect into the next row's anchor,
+	-- growing further off on every show/hide toggle. Mirrors step 5's own
+	-- cursorY-anchored-to-step fix for the identical bug there.
+	-- CHECKBOX_HEIGHT/SLIDER_HEIGHT match CreateLabeledCheckbox/
+	-- CreateSettingSlider's own fixed sizes.
+	local CHECKBOX_HEIGHT = 24
+	local SLIDER_HEIGHT = 17
+	local cursorY = PREVIEW_CLEARANCE
+
 	-- Stacked vertically (not side by side like the General settings
 	-- page's own pair) - side by side here runs past the wizard's width.
 	local spacingCheckbox = ACAB:CreateLabeledCheckbox(step, "ACABSetupWizardSpacingCheckbox", {
-		anchor = { "TOP", previewLabel, "BOTTOM", -60, PREVIEW_CLEARANCE },
+		anchor = { "TOP", previewLabel, "BOTTOM", -60, cursorY },
 		label = "Enable global spacing",
 		onClick = function()
 			ACAB.setupWizard.wizardState.globalSpacingEnabled = this:GetChecked() and true or false
 			ACAB.setupWizard:UpdateStep6SliderVisibility()
 		end,
 	})
+	cursorY = cursorY - CHECKBOX_HEIGHT - 14
 
 	-- Mirrors SettingsGeneral.lua's own global-spacing slider config
 	-- (step = ACAB.SPACING_STEP); the useDefaultLayout-driven display-offset
 	-- that slider applies doesn't apply here since the wizard only reaches
 	-- this step after useDefaultLayout has already been chosen "Disable".
 	local spacingSlider, spacingValueText = ACAB:CreateLabeledSlider(step, "ACABSetupWizardSpacingSlider", {
-		anchor = { "TOP", spacingCheckbox, "BOTTOM", 60, -14 },
+		anchor = { "TOP", previewLabel, "BOTTOM", 0, cursorY },
 		width = 180,
 		min = 0,
 		max = ACAB.SPACING_MAX,
@@ -715,19 +729,21 @@ function ACABSetupWizardMixin:BuildStep6()
 	})
 	spacingSlider:Hide()
 	spacingValueText:Hide()
+	cursorY = cursorY - SLIDER_HEIGHT - 22
 
 	local sizeCheckbox = ACAB:CreateLabeledCheckbox(step, "ACABSetupWizardSizeCheckbox", {
-		anchor = { "TOP", spacingSlider, "BOTTOM", -60, -22 },
+		anchor = { "TOP", previewLabel, "BOTTOM", -60, cursorY },
 		label = "Enable global button size",
 		onClick = function()
 			ACAB.setupWizard.wizardState.globalButtonSizeEnabled = this:GetChecked() and true or false
 			ACAB.setupWizard:UpdateStep6SliderVisibility()
 		end,
 	})
+	cursorY = cursorY - CHECKBOX_HEIGHT - 14
 
 	-- Mirrors SettingsGeneral.lua's own global-button-size slider config.
 	local sizeSlider, sizeValueText = ACAB:CreateLabeledSlider(step, "ACABSetupWizardSizeSlider", {
-		anchor = { "TOP", sizeCheckbox, "BOTTOM", 60, -14 },
+		anchor = { "TOP", previewLabel, "BOTTOM", 0, cursorY },
 		width = 180,
 		min = ACAB.BUTTON_SIZE_MIN,
 		max = ACAB.BUTTON_SIZE_MAX,
@@ -1414,25 +1430,65 @@ local function ApplyModernLayoutPreset(state, data)
 	local microMenuWidth = (ACAB.microMenuContainer and ACAB.microMenuContainer:GetWidth())
 		or ((data.microMenuCols or 8) * (buttonSize + spacing))
 	local microMenuHeight = (ACAB.microMenuContainer and ACAB.microMenuContainer:GetHeight()) or buttonSize
-	local microMenuTop = bagBarHeight + microMenuHeight
+
+	-- microMenuPosition above stacks the CONTAINER (bagBarHeight above Bag
+	-- Bar), but Micro Menu's own overlay hitbox - what "top" should
+	-- actually mean here per the reference layout - sits inset from that
+	-- container by a fixed pixel gap (chain-anchored containers trim their
+	-- overlay to the real buttons' own hit-rects). That gap is a pure
+	-- pixel offset, unaffected by where the container itself later moves
+	-- to, so it's safe to read live right now and net it out of the
+	-- target top used below.
+	local microMenuOverlayTopGap = 0
+	local microMenuOverlay = ACAB.microMenuContainer and ACAB.microMenuContainer.ACABOverlay
+
+	if ACAB.microMenuContainer and microMenuOverlay then
+		local containerTop = ACAB.microMenuContainer:GetTop()
+		local overlayTop = microMenuOverlay:GetTop()
+
+		if containerTop and overlayTop then
+			microMenuOverlayTopGap = containerTop - overlayTop
+		end
+	end
+
+	local microMenuOverlayTop = bagBarHeight + microMenuHeight - microMenuOverlayTopGap
 
 	-- Latency Bar's real frame (MainMenuBarPerformanceBarFrame) is bigger
 	-- than its visible art - NativeElements.lua trims that down with its
 	-- own overlayInset when building the frame's hover/drag overlay
 	-- (EnsureContainerOverlay), so that overlay's own GetHeight() is the
-	-- true visual footprint, not the raw frame's.
+	-- true visual footprint, not the raw frame's. Same reasoning as
+	-- microMenuOverlayTopGap above: the gap between the overlay's bottom
+	-- and the real frame's own bottom is a fixed pixel offset, read live
+	-- now and netted out of the frame position computed below (point/
+	-- relativePoint below anchor the real frame, not the overlay).
 	local latencyBarFrame = getglobal(ACAB.LATENCY_BAR_FRAME_NAME)
 	local latencyBarOverlay = latencyBarFrame and latencyBarFrame.ACABOverlay
 	local latencyBarHeight = (latencyBarOverlay and latencyBarOverlay:GetHeight())
 		or (latencyBarFrame and latencyBarFrame:GetHeight())
 		or (buttonSize * 0.5)
 
-	-- Latency Bar: flush to Micro Menu's left, its own top aligned with
-	-- Micro Menu's top.
+	local latencyBarOverlayBottomGap = 0
+
+	if latencyBarFrame and latencyBarOverlay then
+		local frameBottom = latencyBarFrame:GetBottom()
+		local overlayBottom = latencyBarOverlay:GetBottom()
+
+		if frameBottom and overlayBottom then
+			latencyBarOverlayBottomGap = overlayBottom - frameBottom
+		end
+	end
+
+	-- Latency Bar: flush to Micro Menu's left, its own overlay hitbox top
+	-- aligned with Micro Menu's own overlay hitbox top. y anchors the real
+	-- frame's BOTTOM (point/relativePoint above), not the overlay's, so
+	-- the overlay's own height and its bottom-edge gap from the frame are
+	-- both netted out to land the overlay's TOP - not the frame's - at
+	-- microMenuOverlayTop.
 	data.latencyBarPosition = {
 		point = "BOTTOMRIGHT", relativePoint = "BOTTOMRIGHT",
 		x = -microMenuWidth,
-		y = microMenuTop - latencyBarHeight,
+		y = (microMenuOverlayTop - latencyBarHeight) - latencyBarOverlayBottomGap,
 	}
 end
 
