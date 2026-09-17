@@ -48,7 +48,7 @@ local function PreviewIconForSlot(n)
 end
 
 -------------------------------------------------------------------------
--- Cosmetic (non-interactive) preview bars used by steps 3 and 4 - built
+-- Cosmetic (non-interactive) preview bars used by steps 3 and 5 - built
 -- per the vanilla/modern button skin recipe from Button.lua's Init.
 -------------------------------------------------------------------------
 
@@ -97,7 +97,7 @@ local function CreateWizardPreviewSlot(parent, isModern, iconTexture)
 end
 
 -- Resizes/repositions slots already created by CreateWizardPreviewBar in
--- place, without recreating any texture - used by step 4's live slider
+-- place, without recreating any texture - used by step 5's live slider
 -- updates. slots.container is the bar's own container frame.
 local function LayoutWizardPreviewSlots(slots, buttonSize, spacing)
 	local i
@@ -156,18 +156,13 @@ local STEP_TITLES = {
 	[1] = "Name Your Profile",
 	[2] = "Force Default Blizzard Layout",
 	[3] = "Button Style",
-	[4] = "Spacing & Button Size",
+	[4] = "General Layout",
+	[5] = "Spacing & Button Size",
 }
 
--- Fixed per-step frame height (simpler and more predictable than measuring
--- wrapped-text/reveal-state rects live) - tall enough for that step's worst
--- case (step 4 with both sliders revealed).
-local STEP_HEIGHTS = {
-	[1] = 230,
-	[2] = 320,
-	[3] = 300,
-	[4] = 560,
-}
+-- Starting height before the first real fit (FitHeightToStep) replaces
+-- it - only ever visible for one frame.
+local INITIAL_HEIGHT = 200
 
 function ACABSetupWizardMixin:BuildStep1()
 	local step = CreateFrame("Frame", nil, self)
@@ -270,14 +265,21 @@ function ACABSetupWizardMixin:BuildStep3()
 	message:SetJustifyH("CENTER")
 	message:SetText("Choose a button style for your bars. You can change this later in Settings.")
 
-	local previewSize = 30
-	local previewSpacing = 4
+	-- Both bars are sized to the same APPARENT (outer) footprint, not the
+	-- same icon size: vanilla's border renders ACAB.BORDER_RATIO times
+	-- larger than the icon size fed into it (see CreateWizardPreviewSlot),
+	-- so its icon is shrunk by that same ratio to make its outer border
+	-- box match modern's flush icon+backdrop box.
+	local previewApparentSize = 30
+	local vanillaIconSize = previewApparentSize / ACAB.BORDER_RATIO
+	local vanillaSpacing = 4
+	local modernSpacing = 0
 
 	local vanillaLabel = step:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	vanillaLabel:SetPoint("TOP", message, "BOTTOM", -110, -26)
 	vanillaLabel:SetText("Vanilla Style")
 
-	local vanillaBar = CreateWizardPreviewBar(step, false, PREVIEW_SLOT_COUNT, previewSize, previewSpacing)
+	local vanillaBar = CreateWizardPreviewBar(step, false, PREVIEW_SLOT_COUNT, vanillaIconSize, vanillaSpacing)
 	vanillaBar:SetPoint("TOP", vanillaLabel, "BOTTOM", 0, -10)
 
 	local selectVanilla = CreateFrame("Button", nil, step)
@@ -294,7 +296,7 @@ function ACABSetupWizardMixin:BuildStep3()
 	modernLabel:SetPoint("TOP", message, "BOTTOM", 110, -26)
 	modernLabel:SetText("Modern Style")
 
-	local modernBar = CreateWizardPreviewBar(step, true, PREVIEW_SLOT_COUNT, previewSize, previewSpacing)
+	local modernBar = CreateWizardPreviewBar(step, true, PREVIEW_SLOT_COUNT, previewApparentSize, modernSpacing)
 	modernBar:SetPoint("TOP", modernLabel, "BOTTOM", 0, -10)
 
 	local selectModern = CreateFrame("Button", nil, step)
@@ -316,6 +318,43 @@ function ACABSetupWizardMixin:BuildStep4()
 	local message = step:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	message:SetPoint("TOP", step, "TOP", 0, 0)
 	message:SetWidth(WIZARD_CONTENT_WIDTH)
+	message:SetJustifyH("CENTER")
+	message:SetText(
+		"Keep Blizzard's own bar layout, or switch to a centered modern " ..
+		"layout with Blizzard's bar art turned off."
+	)
+
+	local keepButton = CreateFrame("Button", nil, step)
+	keepButton:SetHeight(34)
+	ACAB:StyleModernButton(keepButton, 210, 220)
+	keepButton:SetText("Keep Blizzard Layout + ArtBar enabled")
+	keepButton:SetPoint("TOP", message, "BOTTOM", -120, -20)
+	ACAB:ApplyDangerButtonHighlight(keepButton)
+	keepButton:SetScript("OnClick", function()
+		ACAB.setupWizard.wizardState.generalLayoutFormat = "blizzard"
+		ACAB.setupWizard:FinishWizard()
+	end)
+
+	local modernButton = CreateFrame("Button", nil, step)
+	modernButton:SetHeight(34)
+	ACAB:StyleModernButton(modernButton, 210, 220)
+	modernButton:SetText("Modern Layout + ArtBar disabled")
+	modernButton:SetPoint("TOP", message, "BOTTOM", 120, -20)
+	ACAB:ApplyProminentButtonHighlight(modernButton)
+	modernButton:SetScript("OnClick", function()
+		ACAB.setupWizard.wizardState.generalLayoutFormat = "modern"
+		ACAB.setupWizard:ShowStep(5)
+	end)
+
+	return step
+end
+
+function ACABSetupWizardMixin:BuildStep5()
+	local step = CreateFrame("Frame", nil, self)
+
+	local message = step:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	message:SetPoint("TOP", step, "TOP", 0, 0)
+	message:SetWidth(WIZARD_CONTENT_WIDTH)
 	message:SetHeight(44)
 	message:SetJustifyH("CENTER")
 	message:SetText(
@@ -330,7 +369,7 @@ function ACABSetupWizardMixin:BuildStep4()
 
 	-- One preview bar per style, both anchored at the same spot - only the
 	-- one matching wizardState.modernBorderStyle (chosen on step 3) is
-	-- ever shown (UpdateStep4PreviewStyle), so the bar the user sees here
+	-- ever shown (UpdateStep5PreviewStyle), so the bar the user sees here
 	-- actually matches what they picked instead of always rendering
 	-- vanilla-styled regardless of that choice.
 	local vanillaBarContainer, vanillaBarSlots = CreateWizardPreviewBar(
@@ -361,7 +400,7 @@ function ACABSetupWizardMixin:BuildStep4()
 		label = "Enable global spacing",
 		onClick = function()
 			ACAB.setupWizard.wizardState.globalSpacingEnabled = this:GetChecked() and true or false
-			ACAB.setupWizard:UpdateStep4SliderVisibility()
+			ACAB.setupWizard:UpdateStep5SliderVisibility()
 		end,
 	})
 
@@ -381,7 +420,7 @@ function ACABSetupWizardMixin:BuildStep4()
 		onChange = function(value, suppressApply)
 			if not suppressApply then
 				ACAB.setupWizard.wizardState.globalSpacingValue = value
-				ACAB.setupWizard:ReflowStep4Preview()
+				ACAB.setupWizard:ReflowStep5Preview()
 			end
 		end,
 	})
@@ -393,7 +432,7 @@ function ACABSetupWizardMixin:BuildStep4()
 		label = "Enable global button size",
 		onClick = function()
 			ACAB.setupWizard.wizardState.globalButtonSizeEnabled = this:GetChecked() and true or false
-			ACAB.setupWizard:UpdateStep4SliderVisibility()
+			ACAB.setupWizard:UpdateStep5SliderVisibility()
 		end,
 	})
 
@@ -412,7 +451,7 @@ function ACABSetupWizardMixin:BuildStep4()
 		onChange = function(value, suppressApply)
 			if not suppressApply then
 				ACAB.setupWizard.wizardState.globalButtonSizeValue = value
-				ACAB.setupWizard:ReflowStep4Preview()
+				ACAB.setupWizard:ReflowStep5Preview()
 			end
 		end,
 	})
@@ -448,7 +487,7 @@ function ACABSetupWizardMixin:OnLoad()
 	-- window and any other addon UI.
 	self:SetFrameStrata("FULLSCREEN_DIALOG")
 	self:SetWidth(WIZARD_WIDTH)
-	self:SetHeight(STEP_HEIGHTS[1])
+	self:SetHeight(INITIAL_HEIGHT)
 	self:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
 
 	-- Matches ACABDialogMixin/Settings.lua's own window backdrop.
@@ -499,6 +538,7 @@ function ACABSetupWizardMixin:OnLoad()
 		self:BuildStep2(),
 		self:BuildStep3(),
 		self:BuildStep4(),
+		self:BuildStep5(),
 	}
 
 	local i
@@ -542,6 +582,7 @@ function ACABSetupWizardMixin:Reset(config)
 		profileName = profileName,
 		useDefaultLayout = nil,
 		modernBorderStyle = nil,
+		generalLayoutFormat = nil,
 		globalSpacingEnabled = false,
 		globalSpacingValue = 0,
 		globalButtonSizeEnabled = false,
@@ -554,19 +595,19 @@ function ACABSetupWizardMixin:Reset(config)
 	step1.editBox:SetText(self.wizardState.profileName)
 	step1.errorText:Hide()
 
-	local step4 = self.steps[4]
-	step4.spacingCheckbox:SetChecked(false)
-	step4.sizeCheckbox:SetChecked(false)
+	local step5 = self.steps[5]
+	step5.spacingCheckbox:SetChecked(false)
+	step5.sizeCheckbox:SetChecked(false)
 
-	step4.spacingSlider.suppressApply = true
-	step4.spacingSlider:SetValue(0)
-	step4.spacingSlider.suppressApply = nil
+	step5.spacingSlider.suppressApply = true
+	step5.spacingSlider:SetValue(0)
+	step5.spacingSlider.suppressApply = nil
 
-	step4.sizeSlider.suppressApply = true
-	step4.sizeSlider:SetValue(ACAB.BUTTON_SIZE)
-	step4.sizeSlider.suppressApply = nil
+	step5.sizeSlider.suppressApply = true
+	step5.sizeSlider:SetValue(ACAB.BUTTON_SIZE)
+	step5.sizeSlider.suppressApply = nil
 
-	self:UpdateStep4SliderVisibility()
+	self:UpdateStep5SliderVisibility()
 end
 
 function ACABSetupWizardMixin:ShowStep(n)
@@ -579,21 +620,23 @@ function ACABSetupWizardMixin:ShowStep(n)
 	self.currentStep = n
 
 	-- Overwrite mode skips step 1 (name is fixed to the current profile),
-	-- so the displayed count is renumbered to "of 3" starting at 1 instead
+	-- so the displayed count is renumbered to "of 4" starting at 1 instead
 	-- of showing a step 1 the user never saw, and Back has nothing to go
-	-- back to until step 3.
+	-- back to until step 3. Total is the max reachable step regardless of
+	-- mode - choosing "Keep Blizzard Layout" on step 4 or "Lock down
+	-- default Elements!" on step 2 finishes without ever visiting step 5,
+	-- same as this counter already not visiting every number in order.
 	local firstStep = self.wizardState.overwriteExisting and 2 or 1
-	local totalSteps = self.wizardState.overwriteExisting and 3 or 4
+	local totalSteps = self.wizardState.overwriteExisting and 4 or 5
 	local displayStep = self.wizardState.overwriteExisting and (n - 1) or n
 
 	self.stepText:SetText("Step " .. tostring(displayStep) .. " of " .. tostring(totalSteps) .. " - " .. (STEP_TITLES[n] or ""))
-	self:SetHeight(STEP_HEIGHTS[n] or STEP_HEIGHTS[1])
 	self.backButton:SetShown(n > firstStep)
 
 	local step = self.steps[n]
 
-	if n == 4 then
-		self:UpdateStep4PreviewStyle()
+	if n == 5 then
+		self:UpdateStep5PreviewStyle()
 	end
 
 	step:Show()
@@ -602,14 +645,81 @@ function ACABSetupWizardMixin:ShowStep(n)
 		step.editBox:SetFocus()
 		step.editBox:HighlightText()
 	end
+
+	self:FitHeightToStep(n)
 end
 
 -- Back always steps to currentStep-1 - every reachable path through the
--- wizard is a straight line (step 2's "Lock down default Elements!"
--- finishes immediately rather than skipping ahead to step 4), so there's
--- no case where the previous step isn't the one the user actually saw.
+-- wizard is a straight line (step 2's "Lock down default Elements!" and
+-- step 4's "Keep Blizzard Layout + ArtBar enabled" both finish immediately
+-- rather than skipping ahead), so there's no case where the previous step
+-- isn't the one the user actually saw.
 function ACABSetupWizardMixin:GoToPreviousStep()
 	self:ShowStep(self.currentStep - 1)
+end
+
+-- Deepest (lowest-on-screen) GetBottom() among `step`'s own direct child
+-- frames/regions that are currently shown - container frames (e.g. a
+-- preview bar) are measured as one unit via their own GetBottom(), not
+-- recursed into, since their own height already spans their children.
+local function MeasureStepBottom(step)
+	local deepest = nil
+	local widgets = { step:GetChildren() }
+	local regions = { step:GetRegions() }
+	local i
+
+	for i = 1, table.getn(regions) do
+		widgets[table.getn(widgets) + 1] = regions[i]
+	end
+
+	for i = 1, table.getn(widgets) do
+		local widget = widgets[i]
+
+		if widget:IsShown() then
+			local bottom = widget:GetBottom()
+
+			if bottom and (not deepest or bottom < deepest) then
+				deepest = bottom
+			end
+		end
+	end
+
+	return deepest
+end
+
+-- Resizes the wizard to fit step `n`'s actual current content instead of a
+-- guessed-at fixed height - GetBottom() on content just Show()'n/re-shown
+-- this same tick hasn't resolved on this client yet (confirmed live while
+-- fixing the step 1 editBox/Next button not appearing at all - see this
+-- branch's commit history), so the measurement is deferred one frame via
+-- ACAB:DeferFit. Guarded on currentStep still matching `n` in case the
+-- user already moved on by the time the deferred callback runs.
+function ACABSetupWizardMixin:FitHeightToStep(n)
+	local step = self.steps[n]
+
+	if not step then
+		return
+	end
+
+	local NAV_ROW_CLEARANCE = 50
+	local BOTTOM_PADDING = 20
+
+	ACAB:DeferFit(function()
+		local wizard = ACAB.setupWizard
+
+		if not wizard or wizard.currentStep ~= n then
+			return
+		end
+
+		local top = wizard:GetTop()
+		local bottom = MeasureStepBottom(step)
+
+		if not top or not bottom then
+			return
+		end
+
+		wizard:SetHeight((top - bottom) + NAV_ROW_CLEARANCE + BOTTOM_PADDING)
+	end)
 end
 
 -- Validates step 1's profile-name entry and advances to step 2 - reused by
@@ -621,12 +731,14 @@ function ACABSetupWizardMixin:AdvanceFromStep1()
 	if not name or name == "" then
 		step.errorText:SetText("Profile name cannot be empty.")
 		step.errorText:Show()
+		self:FitHeightToStep(1)
 		return
 	end
 
 	if ACAB:ProfileNameTaken(name) then
 		step.errorText:SetText("A profile named \"" .. name .. "\" already exists.")
 		step.errorText:Show()
+		self:FitHeightToStep(1)
 		return
 	end
 
@@ -636,8 +748,8 @@ function ACABSetupWizardMixin:AdvanceFromStep1()
 	self:ShowStep(2)
 end
 
-function ACABSetupWizardMixin:UpdateStep4SliderVisibility()
-	local step = self.steps[4]
+function ACABSetupWizardMixin:UpdateStep5SliderVisibility()
+	local step = self.steps[5]
 	local state = self.wizardState
 
 	step.spacingSlider:SetShown(state.globalSpacingEnabled and true or false)
@@ -646,15 +758,19 @@ function ACABSetupWizardMixin:UpdateStep4SliderVisibility()
 	step.sizeSlider:SetShown(state.globalButtonSizeEnabled and true or false)
 	step.sizeValueText:SetShown(state.globalButtonSizeEnabled and true or false)
 
-	self:ReflowStep4Preview()
+	self:ReflowStep5Preview()
+
+	if self.currentStep == 5 then
+		self:FitHeightToStep(5)
+	end
 end
 
--- Shows whichever of step 4's two preview bars matches step 3's choice
+-- Shows whichever of step 5's two preview bars matches step 3's choice
 -- (wizardState.modernBorderStyle) and hides the other - called from
--- ShowStep whenever step 4 becomes visible, so the bar shown here always
+-- ShowStep whenever step 5 becomes visible, so the bar shown here always
 -- matches what the user actually picked.
-function ACABSetupWizardMixin:UpdateStep4PreviewStyle()
-	local step = self.steps[4]
+function ACABSetupWizardMixin:UpdateStep5PreviewStyle()
+	local step = self.steps[5]
 	local isModern = self.wizardState.modernBorderStyle and true or false
 
 	step.vanillaBarContainer:SetShown(not isModern)
@@ -664,9 +780,9 @@ end
 -- Recomputes the single active preview bar's slot layout from the current
 -- spacing/size slider values (both aspects on the same bar, per whichever
 -- step 3 picked) - updates both style variants' slots so either is
--- already correct whenever UpdateStep4PreviewStyle switches which is shown.
-function ACABSetupWizardMixin:ReflowStep4Preview()
-	local step = self.steps[4]
+-- already correct whenever UpdateStep5PreviewStyle switches which is shown.
+function ACABSetupWizardMixin:ReflowStep5Preview()
+	local step = self.steps[5]
 	local state = self.wizardState
 
 	local buttonSize = (state.globalButtonSizeEnabled and state.globalButtonSizeValue) or ACAB.BUTTON_SIZE
@@ -682,8 +798,77 @@ function ACABSetupWizardMixin:ReflowStep4Preview()
 	step.modernBarContainer:SetWidth(width)
 end
 
--- Applies wizardState.useDefaultLayout/modernBorderStyle/global spacing+size
--- onto `data` - shared by FinishWizard's create and overwrite branches.
+-- Applies the "Modern Layout" preset (step 4's second choice) onto `data`
+-- - disables Blizzard's bar art, centers the Main Bar (default bar id 1),
+-- stacks Action Bar 1/2 (ids 2/3, enabling them) directly above it, and
+-- clusters Bag Bar/Micro Menu/Latency Bar in the bottom-right corner.
+--
+-- Every position is expressed relative to UIParent's own corners/center,
+-- the same coordinate space ACAB:CaptureNativeAnchor and
+-- ACAB:ApplyBarPosition/ApplyBagBarPosition/ApplyLatencyBarPosition
+-- already use (Database.lua/Bar.lua/NativeElements.lua) - UIParent's own
+-- dimensions are already resolution/UI-scale-corrected, so a CENTER or
+-- BOTTOMRIGHT anchor with a small fixed offset lands in the same relative
+-- spot on any screen/scale, with no GetScreenWidth()/uiScale math needed.
+--
+-- Bag Bar's own rendered width/height isn't known until after this
+-- profile's ReloadUI (it depends on the live client's actual bag count),
+-- so Micro Menu/Latency Bar's clearance from it is a fixed estimate sized
+-- for a full 5-slot bag bar at the chosen button size - close for the
+-- common case, but a live-client round of calibration (or the reference
+-- profile you offered) would tighten this up if it looks off.
+local function ApplyModernLayoutPreset(data)
+	data.disableBlizzardArt = true
+
+	local buttonSize = (data.globalButtonSizeEnabled and data.globalButtonSizeValue) or ACAB.BUTTON_SIZE
+	local rowGap = 6
+
+	data.defaultBars = data.defaultBars or {}
+
+	local mainBarCfg = data.defaultBars[1] or {}
+	mainBarCfg.point = "CENTER"
+	mainBarCfg.relativePoint = "CENTER"
+	mainBarCfg.x = 0
+	mainBarCfg.y = 0
+	data.defaultBars[1] = mainBarCfg
+
+	local actionBar1Cfg = data.defaultBars[2] or {}
+	actionBar1Cfg.enabled = true
+	actionBar1Cfg.point = "CENTER"
+	actionBar1Cfg.relativePoint = "CENTER"
+	actionBar1Cfg.x = 0
+	actionBar1Cfg.y = buttonSize + rowGap
+	data.defaultBars[2] = actionBar1Cfg
+
+	local actionBar2Cfg = data.defaultBars[3] or {}
+	actionBar2Cfg.enabled = true
+	actionBar2Cfg.point = "CENTER"
+	actionBar2Cfg.relativePoint = "CENTER"
+	actionBar2Cfg.x = 0
+	actionBar2Cfg.y = (buttonSize + rowGap) * 2
+	data.defaultBars[3] = actionBar2Cfg
+
+	local cornerMargin = 8
+	local bagBarWidthEstimate = 5 * (buttonSize + (data.globalSpacingEnabled and data.globalSpacingValue or 0))
+	local bagBarHeightEstimate = buttonSize
+
+	data.bagBarPosition = {
+		point = "BOTTOMRIGHT", relativePoint = "BOTTOMRIGHT",
+		x = -cornerMargin, y = cornerMargin,
+	}
+	data.microMenuPosition = {
+		point = "BOTTOMRIGHT", relativePoint = "BOTTOMRIGHT",
+		x = -cornerMargin, y = cornerMargin + bagBarHeightEstimate + rowGap,
+	}
+	data.latencyBarPosition = {
+		point = "BOTTOMRIGHT", relativePoint = "BOTTOMRIGHT",
+		x = -(cornerMargin + bagBarWidthEstimate + cornerMargin), y = cornerMargin,
+	}
+end
+
+-- Applies wizardState.useDefaultLayout/modernBorderStyle/general layout
+-- format/global spacing+size onto `data` - shared by FinishWizard's create
+-- and overwrite branches.
 local function ApplyWizardStateToProfileData(state, data)
 	data.useDefaultLayout = state.useDefaultLayout
 
@@ -699,6 +884,14 @@ local function ApplyWizardStateToProfileData(state, data)
 	if state.globalButtonSizeEnabled ~= nil then
 		data.globalButtonSizeEnabled = state.globalButtonSizeEnabled
 		data.globalButtonSizeValue = state.globalButtonSizeValue
+	end
+
+	-- "blizzard" (Keep Blizzard Layout + ArtBar enabled) is a deliberate
+	-- no-op here - the profile keeps whatever it already has (copied from
+	-- Default, or the active profile's own current layout in overwrite
+	-- mode) exactly as is.
+	if state.generalLayoutFormat == "modern" then
+		ApplyModernLayoutPreset(data)
 	end
 end
 
