@@ -1034,6 +1034,29 @@ local function MeasureStepBottom(step)
 	return deepest
 end
 
+-- Resizes the wizard to a new height while keeping its current on-screen
+-- top-left corner fixed, regardless of what anchor type it currently has.
+-- OnLoad's default TOP anchor alone kept the top edge fixed across a plain
+-- SetHeight - but dragging the wizard (self:StartMoving/StopMovingOrSizing,
+-- OnLoad's own drag handlers) overwrites that anchor with one the engine
+-- derives from the drop position, no longer guaranteed to be TOP-anchored,
+-- which broke that assumption (confirmed live: the step 6 height-never-
+-- shrinks bug came back after dragging the wizard mid-wizard). Capturing
+-- GetLeft()/GetTop() and re-anchoring TOPLEFT off UIParent's own BOTTOMLEFT
+-- at those exact coordinates makes the top-left corner invariant no matter
+-- how the frame got to its current spot, drag included.
+function ACABSetupWizardMixin:ResizeKeepingTop(newHeight)
+	local left = self:GetLeft()
+	local top = self:GetTop()
+
+	if left and top then
+		self:ClearAllPoints()
+		self:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
+	end
+
+	self:SetHeight(newHeight)
+end
+
 -- Resizes the wizard to fit step `n`'s actual current content instead of a
 -- guessed-at fixed height - GetBottom() on content just Show()'n/re-shown
 -- this same tick hasn't resolved on this client yet (confirmed live while
@@ -1065,7 +1088,7 @@ function ACABSetupWizardMixin:FitHeightToStep(n)
 			return
 		end
 
-		wizard:SetHeight((top - bottom) + NAV_ROW_CLEARANCE + BOTTOM_PADDING)
+		wizard:ResizeKeepingTop((top - bottom) + NAV_ROW_CLEARANCE + BOTTOM_PADDING)
 	end)
 end
 
@@ -1302,11 +1325,21 @@ local function ApplyModernLayoutPreset(state, data)
 
 	data.defaultBars = data.defaultBars or {}
 
+	-- buttonSize/spacing pinned explicitly onto all 3 stacked bars' own
+	-- cfg, not left at whatever CreateProfile's deep-copy of the Default
+	-- profile happened to carry (the real native-captured size, which
+	-- isn't ACAB.BUTTON_SIZE) - every width/height below assumes all 3
+	-- bars render at exactly `buttonSize`/`spacing`, so this makes that
+	-- true instead of just hoping it already is. Harmless even when the
+	-- global spacing/size toggle is also on, since it's the same value
+	-- that toggle would apply anyway.
 	local mainBarCfg = data.defaultBars[1] or {}
 	mainBarCfg.point = "BOTTOM"
 	mainBarCfg.relativePoint = "BOTTOM"
 	mainBarCfg.x = 0
 	mainBarCfg.y = bottomMargin + expBarClearance
+	mainBarCfg.buttonSize = buttonSize
+	mainBarCfg.spacing = spacing
 	data.defaultBars[1] = mainBarCfg
 
 	local actionBar1Cfg = data.defaultBars[2] or {}
@@ -1315,6 +1348,8 @@ local function ApplyModernLayoutPreset(state, data)
 	actionBar1Cfg.relativePoint = "BOTTOM"
 	actionBar1Cfg.x = 0
 	actionBar1Cfg.y = bottomMargin + expBarClearance + buttonSize + rowGap
+	actionBar1Cfg.buttonSize = buttonSize
+	actionBar1Cfg.spacing = spacing
 	data.defaultBars[2] = actionBar1Cfg
 
 	local actionBar2Y = bottomMargin + expBarClearance + ((buttonSize + rowGap) * 2)
@@ -1324,6 +1359,8 @@ local function ApplyModernLayoutPreset(state, data)
 	actionBar2Cfg.relativePoint = "BOTTOM"
 	actionBar2Cfg.x = 0
 	actionBar2Cfg.y = actionBar2Y
+	actionBar2Cfg.buttonSize = buttonSize
+	actionBar2Cfg.spacing = spacing
 	data.defaultBars[3] = actionBar2Cfg
 
 	-- Action Bar 2 is a 12-column, 1-row grid (Core.lua's DEFAULT_BAR_GRID),
@@ -1379,8 +1416,16 @@ local function ApplyModernLayoutPreset(state, data)
 	local microMenuHeight = (ACAB.microMenuContainer and ACAB.microMenuContainer:GetHeight()) or buttonSize
 	local microMenuTop = bagBarHeight + microMenuHeight
 
+	-- Latency Bar's real frame (MainMenuBarPerformanceBarFrame) is bigger
+	-- than its visible art - NativeElements.lua trims that down with its
+	-- own overlayInset when building the frame's hover/drag overlay
+	-- (EnsureContainerOverlay), so that overlay's own GetHeight() is the
+	-- true visual footprint, not the raw frame's.
 	local latencyBarFrame = getglobal(ACAB.LATENCY_BAR_FRAME_NAME)
-	local latencyBarHeight = (latencyBarFrame and latencyBarFrame:GetHeight()) or (buttonSize * 0.5)
+	local latencyBarOverlay = latencyBarFrame and latencyBarFrame.ACABOverlay
+	local latencyBarHeight = (latencyBarOverlay and latencyBarOverlay:GetHeight())
+		or (latencyBarFrame and latencyBarFrame:GetHeight())
+		or (buttonSize * 0.5)
 
 	-- Latency Bar: flush to Micro Menu's left, its own top aligned with
 	-- Micro Menu's top.
