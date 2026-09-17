@@ -48,7 +48,7 @@ local function PreviewIconForSlot(n)
 end
 
 -------------------------------------------------------------------------
--- Cosmetic (non-interactive) preview bars used by steps 3 and 5 - built
+-- Cosmetic (non-interactive) preview bars used by steps 3 and 6 - built
 -- per the vanilla/modern button skin recipe from Button.lua's Init.
 -------------------------------------------------------------------------
 
@@ -97,7 +97,7 @@ local function CreateWizardPreviewSlot(parent, isModern, iconTexture)
 end
 
 -- Resizes/repositions slots already created by CreateWizardPreviewBar in
--- place, without recreating any texture - used by step 5's live slider
+-- place, without recreating any texture - used by step 6's live slider
 -- updates. slots.container is the bar's own container frame.
 local function LayoutWizardPreviewSlots(slots, buttonSize, spacing)
 	local i
@@ -147,6 +147,85 @@ local function CreateWizardPreviewBar(parent, isModern, count, buttonSize, spaci
 end
 
 -------------------------------------------------------------------------
+-- Step 5's "Better Experience Bar" color pickers - a wizard-local copy of
+-- SettingsBars.lua's own CreateColorSwatchButton/SetColorSwatchColor/
+-- OpenExpBarColorPicker (all file-local there): same small swatch button
+-- and native ColorPickerFrame wiring, but anchored to the wizard frame
+-- instead of ACAB.settingsFrame (SettingsBars.lua's version hardcodes
+-- that anchor, which would be wrong - or simply absent - when opened from
+-- here), and writing into a caller-supplied setter instead of ACABDB
+-- directly, so this step can defer the actual write to FinishWizard like
+-- every other wizard control.
+-------------------------------------------------------------------------
+
+local function CreateWizardColorSwatch(parent, name)
+	local swatch = CreateFrame("Button", name, parent)
+
+	swatch:SetWidth(24)
+	swatch:SetHeight(24)
+
+	swatch:SetBackdrop({
+		bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+		edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+		tile = true,
+		tileSize = 8,
+		edgeSize = 8,
+		insets = { left = 1, right = 1, top = 1, bottom = 1 },
+	})
+	swatch:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+
+	local tex = swatch:CreateTexture(nil, "ARTWORK")
+
+	tex:SetTexture("Interface\\Buttons\\WHITE8X8")
+	tex:SetPoint("TOPLEFT", swatch, "TOPLEFT", 2, -2)
+	tex:SetPoint("BOTTOMRIGHT", swatch, "BOTTOMRIGHT", -2, 2)
+
+	swatch.colorTexture = tex
+
+	return swatch
+end
+
+local function SetWizardColorSwatchColor(swatch, color)
+	if not swatch or not swatch.colorTexture or not color then
+		return
+	end
+
+	swatch.colorTexture:SetVertexColor(color.r or 1, color.g or 1, color.b or 1)
+end
+
+-- getter/setter: getter() returns the current {r,g,b} (or nil), setter(r,g,b)
+-- stores a new one - same vanilla 1.12 ColorPickerFrame API (SetColorRGB/
+-- func/opacityFunc/cancelFunc/hasOpacity) SettingsBars.lua's own picker uses.
+local function OpenWizardColorPicker(swatch, getter, setter)
+	local current = getter() or { r = 1, g = 1, b = 1 }
+
+	ColorPickerFrame.func = function()
+		local r, g, b = ColorPickerFrame:GetColorRGB()
+
+		setter(r, g, b)
+		SetWizardColorSwatchColor(swatch, getter())
+	end
+
+	ColorPickerFrame.opacityFunc = function() end
+	ColorPickerFrame.hasOpacity = false
+
+	ColorPickerFrame.cancelFunc = function(previousValues)
+		if previousValues then
+			setter(previousValues.r, previousValues.g, previousValues.b)
+			SetWizardColorSwatchColor(swatch, getter())
+		end
+	end
+
+	ColorPickerFrame:SetColorRGB(current.r, current.g, current.b)
+
+	ColorPickerFrame:ClearAllPoints()
+	ColorPickerFrame:SetPoint("TOPLEFT", ACAB.setupWizard, "TOPRIGHT", 10, 0)
+	ColorPickerFrame:SetFrameStrata("FULLSCREEN_DIALOG")
+
+	ShowUIPanel(ColorPickerFrame)
+end
+
+-------------------------------------------------------------------------
 -- ACABSetupWizardMixin
 -------------------------------------------------------------------------
 
@@ -157,7 +236,8 @@ local STEP_TITLES = {
 	[2] = "Force Default Blizzard Layout",
 	[3] = "Button Style",
 	[4] = "General Layout",
-	[5] = "Spacing & Button Size",
+	[5] = "Experience Bar",
+	[6] = "Spacing & Button Size",
 }
 
 -- Starting height before the first real fit (FitHeightToStep) replaces
@@ -265,13 +345,14 @@ function ACABSetupWizardMixin:BuildStep3()
 	message:SetJustifyH("CENTER")
 	message:SetText("Choose a button style for your bars. You can change this later in Settings.")
 
-	-- Both bars are sized to the same APPARENT (outer) footprint, not the
-	-- same icon size: vanilla's border renders ACAB.BORDER_RATIO times
-	-- larger than the icon size fed into it (see CreateWizardPreviewSlot),
-	-- so its icon is shrunk by that same ratio to make its outer border
-	-- box match modern's flush icon+backdrop box.
+	-- Both bars use the same icon size - that's the real "footprint" a
+	-- vanilla button occupies on a grid (Button.lua's own icon is flush
+	-- to the full button frame; only the decorative border texture
+	-- overlays/overflows past it, same as this preview and real vanilla
+	-- action bars). Shrinking the icon to make the overflowing border's
+	-- outer edge match modern's flush footprint (a previous version of
+	-- this) made vanilla's icon look tiny next to modern's - wrong fix.
 	local previewApparentSize = 30
-	local vanillaIconSize = previewApparentSize / ACAB.BORDER_RATIO
 	local vanillaSpacing = 4
 	local modernSpacing = 0
 
@@ -279,7 +360,7 @@ function ACABSetupWizardMixin:BuildStep3()
 	vanillaLabel:SetPoint("TOP", message, "BOTTOM", -110, -26)
 	vanillaLabel:SetText("Vanilla Style")
 
-	local vanillaBar = CreateWizardPreviewBar(step, false, PREVIEW_SLOT_COUNT, vanillaIconSize, vanillaSpacing)
+	local vanillaBar = CreateWizardPreviewBar(step, false, PREVIEW_SLOT_COUNT, previewApparentSize, vanillaSpacing)
 	vanillaBar:SetPoint("TOP", vanillaLabel, "BOTTOM", 0, -10)
 
 	local selectVanilla = CreateFrame("Button", nil, step)
@@ -349,7 +430,182 @@ function ACABSetupWizardMixin:BuildStep4()
 	return step
 end
 
+-- Order mirrors ExperienceBar.lua/SettingsBars.lua's own Experience Bar
+-- settings page: Enabled, then (if enabled) a position choice, then
+-- "Better Experience Bar" and (if enabled) everything it unlocks there -
+-- 5 text-segment checkboxes, a font size slider, 3 color swatches, and a
+-- rested-glow pulse interval slider. Every control here writes into
+-- wizardState only; nothing is applied live or to ACABDB until
+-- FinishWizard (see ApplyExpBarWizardState).
 function ACABSetupWizardMixin:BuildStep5()
+	local step = CreateFrame("Frame", nil, self)
+
+	local message = step:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	message:SetPoint("TOP", step, "TOP", 0, 0)
+	message:SetWidth(WIZARD_CONTENT_WIDTH)
+	message:SetJustifyH("CENTER")
+	message:SetText("Set up your Experience Bar.")
+
+	local enabledCheckbox = ACAB:CreateLabeledCheckbox(step, "ACABSetupWizardExpBarEnabledCheckbox", {
+		anchor = { "TOP", message, "BOTTOM", -60, -18 },
+		label = "Enable Experience Bar",
+		onClick = function()
+			ACAB.setupWizard.wizardState.expBarEnabled = this:GetChecked() and true or false
+			ACAB.setupWizard:UpdateStep5Visibility()
+		end,
+	})
+
+	local positionLabel = step:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	positionLabel:SetPoint("TOP", enabledCheckbox, "BOTTOM", 60, -20)
+	positionLabel:SetText("Where should your experience bar be:")
+
+	local positionDropdown = ACAB:CreateInlineDropdown(step, 120, "ACABSetupWizardExpBarPositionDropdown")
+	positionDropdown:ClearAllPoints()
+	positionDropdown:SetPoint("LEFT", positionLabel, "RIGHT", 8, -2)
+	positionDropdown:SetOptions({ "Bottom", "Top" })
+	positionDropdown.onSelect = function(value)
+		ACAB.setupWizard.wizardState.expBarPositionChoice = value
+	end
+
+	local betterExpBarCheckbox = ACAB:CreateLabeledCheckbox(step, "ACABSetupWizardBetterExpBarCheckbox", {
+		anchor = { "TOP", positionLabel, "BOTTOM", -60, -24 },
+		label = "Enable Better Experience Bar",
+		onClick = function()
+			ACAB.setupWizard.wizardState.betterExpBarEnabled = this:GetChecked() and true or false
+			ACAB.setupWizard:UpdateStep5Visibility()
+		end,
+	})
+
+	-- 5 independently toggleable text segments - same dbKey names as the
+	-- real settings page, stacked in the same order.
+	local TEXT_TOGGLES = {
+		{ key = "expBarShowLevel", label = "Show Current Lvl" },
+		{ key = "expBarShowCurrentOverMax", label = "Show Current XP / Max" },
+		{ key = "expBarShowPercent", label = "Show Current % / Max" },
+		{ key = "expBarShowRestedPercent", label = "Show Current Rested XP %" },
+		{ key = "expBarShowRestedTotal", label = "Show Current Total Rested XP" },
+	}
+
+	local textToggleCheckboxes = {}
+	local anchorAbove = betterExpBarCheckbox
+	local i
+
+	for i = 1, table.getn(TEXT_TOGGLES) do
+		local toggle = TEXT_TOGGLES[i]
+
+		local checkbox = ACAB:CreateLabeledCheckbox(step, "ACABSetupWizardExpBar" .. toggle.key .. "Checkbox", {
+			anchor = { "TOP", anchorAbove, "BOTTOM", 0, -14 },
+			label = toggle.label,
+			onClick = function()
+				ACAB.setupWizard.wizardState[toggle.key] = this:GetChecked() and true or false
+			end,
+		})
+
+		textToggleCheckboxes[i] = checkbox
+		anchorAbove = checkbox
+	end
+
+	-- Font size slider - mirrors SettingsBars.lua's own range/step for
+	-- this same control.
+	local fontSizeSlider, fontSizeValueText = ACAB:CreateLabeledSlider(step, "ACABSetupWizardExpBarFontSizeSlider", {
+		anchor = { "TOP", anchorAbove, "BOTTOM", 0, -26 },
+		width = 180,
+		min = 6,
+		max = 24,
+		step = 1,
+		lowText = "6",
+		highText = "24",
+		round = function(value) return math.floor(value + 0.5) end,
+		format = tostring,
+		onChange = function(value, suppressApply)
+			if not suppressApply then
+				ACAB.setupWizard.wizardState.expBarFontSize = value
+			end
+		end,
+	})
+
+	-- 3 color swatches: Earned XP Bar Color, Rested XP Bar Color, Overlay
+	-- Text Color - same order/labels as the real settings page.
+	local function BuildColorRow(anchorFrame, labelText, name, wizardKey)
+		local label = step:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		label:SetPoint("TOP", anchorFrame, "BOTTOM", -70, -20)
+		label:SetText(labelText)
+
+		local swatch = CreateWizardColorSwatch(step, name)
+		swatch:SetPoint("LEFT", label, "RIGHT", 12, 0)
+		swatch:SetScript("OnClick", function()
+			OpenWizardColorPicker(
+				swatch,
+				function() return ACAB.setupWizard.wizardState[wizardKey] end,
+				function(r, g, b)
+					ACAB.setupWizard.wizardState[wizardKey] = { r = r, g = g, b = b }
+				end
+			)
+		end)
+
+		return label, swatch
+	end
+
+	local earnedColorLabel, earnedColorSwatch = BuildColorRow(
+		fontSizeSlider, "Earned XP Bar Color", "ACABSetupWizardExpBarEarnedColorSwatch", "expBarColorEarned"
+	)
+	local restedColorLabel, restedColorSwatch = BuildColorRow(
+		earnedColorLabel, "Rested XP Bar Color", "ACABSetupWizardExpBarRestedColorSwatch", "expBarColorRested"
+	)
+	local textColorLabel, textColorSwatch = BuildColorRow(
+		restedColorLabel, "Overlay Text Color", "ACABSetupWizardExpBarTextColorSwatch", "expBarTextColor"
+	)
+
+	-- Rested-glow pulse interval - mirrors SettingsBars.lua's own range.
+	local pulseIntervalSlider, pulseIntervalValueText = ACAB:CreateLabeledSlider(step, "ACABSetupWizardExpBarPulseIntervalSlider", {
+		anchor = { "TOP", textColorLabel, "BOTTOM", 70, -26 },
+		width = 180,
+		min = 0.5,
+		max = 3,
+		step = 0.1,
+		lowText = "0.5",
+		highText = "3.0",
+		round = function(value) return math.floor((value * 10) + 0.5) / 10 end,
+		format = function(value) return string.format("%.1f", value) end,
+		onChange = function(value, suppressApply)
+			if not suppressApply then
+				ACAB.setupWizard.wizardState.expBarGlowPulseInterval = value
+			end
+		end,
+	})
+
+	-- Bottom-right of the wizard, same row/style as every other step's
+	-- advance button.
+	local nextButton = CreateFrame("Button", nil, step)
+	nextButton:SetHeight(24)
+	ACAB:StyleModernButton(nextButton, 120, 120)
+	nextButton:SetText("Next")
+	nextButton:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", -20, 16)
+	ACAB:ApplyProminentButtonHighlight(nextButton)
+	nextButton:SetScript("OnClick", function()
+		ACAB.setupWizard:ShowStep(6)
+	end)
+
+	step.enabledCheckbox = enabledCheckbox
+	step.positionLabel = positionLabel
+	step.positionDropdown = positionDropdown
+	step.betterExpBarCheckbox = betterExpBarCheckbox
+	step.textToggleCheckboxes = textToggleCheckboxes
+	step.fontSizeSlider = fontSizeSlider
+	step.fontSizeValueText = fontSizeValueText
+	step.earnedColorLabel = earnedColorLabel
+	step.earnedColorSwatch = earnedColorSwatch
+	step.restedColorLabel = restedColorLabel
+	step.restedColorSwatch = restedColorSwatch
+	step.textColorLabel = textColorLabel
+	step.textColorSwatch = textColorSwatch
+	step.pulseIntervalSlider = pulseIntervalSlider
+	step.pulseIntervalValueText = pulseIntervalValueText
+
+	return step
+end
+
+function ACABSetupWizardMixin:BuildStep6()
 	local step = CreateFrame("Frame", nil, self)
 
 	local message = step:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -369,7 +625,7 @@ function ACABSetupWizardMixin:BuildStep5()
 
 	-- One preview bar per style, both anchored at the same spot - only the
 	-- one matching wizardState.modernBorderStyle (chosen on step 3) is
-	-- ever shown (UpdateStep5PreviewStyle), so the bar the user sees here
+	-- ever shown (UpdateStep6PreviewStyle), so the bar the user sees here
 	-- actually matches what they picked instead of always rendering
 	-- vanilla-styled regardless of that choice.
 	local vanillaBarContainer, vanillaBarSlots = CreateWizardPreviewBar(
@@ -400,7 +656,7 @@ function ACABSetupWizardMixin:BuildStep5()
 		label = "Enable global spacing",
 		onClick = function()
 			ACAB.setupWizard.wizardState.globalSpacingEnabled = this:GetChecked() and true or false
-			ACAB.setupWizard:UpdateStep5SliderVisibility()
+			ACAB.setupWizard:UpdateStep6SliderVisibility()
 		end,
 	})
 
@@ -420,7 +676,7 @@ function ACABSetupWizardMixin:BuildStep5()
 		onChange = function(value, suppressApply)
 			if not suppressApply then
 				ACAB.setupWizard.wizardState.globalSpacingValue = value
-				ACAB.setupWizard:ReflowStep5Preview()
+				ACAB.setupWizard:ReflowStep6Preview()
 			end
 		end,
 	})
@@ -432,7 +688,7 @@ function ACABSetupWizardMixin:BuildStep5()
 		label = "Enable global button size",
 		onClick = function()
 			ACAB.setupWizard.wizardState.globalButtonSizeEnabled = this:GetChecked() and true or false
-			ACAB.setupWizard:UpdateStep5SliderVisibility()
+			ACAB.setupWizard:UpdateStep6SliderVisibility()
 		end,
 	})
 
@@ -451,7 +707,7 @@ function ACABSetupWizardMixin:BuildStep5()
 		onChange = function(value, suppressApply)
 			if not suppressApply then
 				ACAB.setupWizard.wizardState.globalButtonSizeValue = value
-				ACAB.setupWizard:ReflowStep5Preview()
+				ACAB.setupWizard:ReflowStep6Preview()
 			end
 		end,
 	})
@@ -539,6 +795,7 @@ function ACABSetupWizardMixin:OnLoad()
 		self:BuildStep3(),
 		self:BuildStep4(),
 		self:BuildStep5(),
+		self:BuildStep6(),
 	}
 
 	local i
@@ -583,6 +840,19 @@ function ACABSetupWizardMixin:Reset(config)
 		useDefaultLayout = nil,
 		modernBorderStyle = nil,
 		generalLayoutFormat = nil,
+		expBarEnabled = true,
+		expBarPositionChoice = "Bottom",
+		betterExpBarEnabled = false,
+		expBarShowLevel = true,
+		expBarShowCurrentOverMax = true,
+		expBarShowPercent = true,
+		expBarShowRestedPercent = true,
+		expBarShowRestedTotal = true,
+		expBarFontSize = nil,
+		expBarColorEarned = nil,
+		expBarColorRested = nil,
+		expBarTextColor = nil,
+		expBarGlowPulseInterval = nil,
 		globalSpacingEnabled = false,
 		globalSpacingValue = 0,
 		globalButtonSizeEnabled = false,
@@ -596,18 +866,52 @@ function ACABSetupWizardMixin:Reset(config)
 	step1.errorText:Hide()
 
 	local step5 = self.steps[5]
-	step5.spacingCheckbox:SetChecked(false)
-	step5.sizeCheckbox:SetChecked(false)
+	local i
 
-	step5.spacingSlider.suppressApply = true
-	step5.spacingSlider:SetValue(0)
-	step5.spacingSlider.suppressApply = nil
+	step5.enabledCheckbox:SetChecked(true)
+	step5.positionDropdown:SetOptions({ "Bottom", "Top" })
+	step5.positionDropdown:SetSelected("Bottom")
+	step5.betterExpBarCheckbox:SetChecked(false)
 
-	step5.sizeSlider.suppressApply = true
-	step5.sizeSlider:SetValue(ACAB.BUTTON_SIZE)
-	step5.sizeSlider.suppressApply = nil
+	for i = 1, table.getn(step5.textToggleCheckboxes) do
+		step5.textToggleCheckboxes[i]:SetChecked(true)
+	end
 
-	self:UpdateStep5SliderVisibility()
+	-- Font size/pulse interval sliders show a real current-session default
+	-- (same lazy-nil idiom as the real settings page - ACAB.NATIVE_EXPBAR_FONT/
+	-- the 1.5s pulse default) purely for display; wizardState's own field
+	-- stays nil (no write at Finish) unless the user actually moves one.
+	ACAB:CaptureNativeExpBarFontIfNeeded()
+
+	local nativeFontSize = ACAB.NATIVE_EXPBAR_FONT and (ACAB.NATIVE_EXPBAR_FONT.size - 1)
+
+	step5.fontSizeSlider.suppressApply = true
+	step5.fontSizeSlider:SetValue(ACAB:ClampFontSize(ACABDB.expBarFontSize or nativeFontSize or 12))
+	step5.fontSizeSlider.suppressApply = nil
+
+	step5.pulseIntervalSlider.suppressApply = true
+	step5.pulseIntervalSlider:SetValue(ACABDB.expBarGlowPulseInterval or 1.5)
+	step5.pulseIntervalSlider.suppressApply = nil
+
+	SetWizardColorSwatchColor(step5.earnedColorSwatch, ACABDB.expBarColorEarned or { r = 0, g = 1, b = 0 })
+	SetWizardColorSwatchColor(step5.restedColorSwatch, ACABDB.expBarColorRested or { r = 0.6, g = 0.2, b = 1 })
+	SetWizardColorSwatchColor(step5.textColorSwatch, ACABDB.expBarTextColor or { r = 1, g = 0.82, b = 0 })
+
+	self:UpdateStep5Visibility()
+
+	local step6 = self.steps[6]
+	step6.spacingCheckbox:SetChecked(false)
+	step6.sizeCheckbox:SetChecked(false)
+
+	step6.spacingSlider.suppressApply = true
+	step6.spacingSlider:SetValue(0)
+	step6.spacingSlider.suppressApply = nil
+
+	step6.sizeSlider.suppressApply = true
+	step6.sizeSlider:SetValue(ACAB.BUTTON_SIZE)
+	step6.sizeSlider.suppressApply = nil
+
+	self:UpdateStep6SliderVisibility()
 end
 
 function ACABSetupWizardMixin:ShowStep(n)
@@ -620,14 +924,14 @@ function ACABSetupWizardMixin:ShowStep(n)
 	self.currentStep = n
 
 	-- Overwrite mode skips step 1 (name is fixed to the current profile),
-	-- so the displayed count is renumbered to "of 4" starting at 1 instead
+	-- so the displayed count is renumbered to "of 5" starting at 1 instead
 	-- of showing a step 1 the user never saw, and Back has nothing to go
 	-- back to until step 3. Total is the max reachable step regardless of
 	-- mode - choosing "Keep Blizzard Layout" on step 4 or "Lock down
-	-- default Elements!" on step 2 finishes without ever visiting step 5,
+	-- default Elements!" on step 2 finishes without ever visiting step 5/6,
 	-- same as this counter already not visiting every number in order.
 	local firstStep = self.wizardState.overwriteExisting and 2 or 1
-	local totalSteps = self.wizardState.overwriteExisting and 4 or 5
+	local totalSteps = self.wizardState.overwriteExisting and 5 or 6
 	local displayStep = self.wizardState.overwriteExisting and (n - 1) or n
 
 	self.stepText:SetText("Step " .. tostring(displayStep) .. " of " .. tostring(totalSteps) .. " - " .. (STEP_TITLES[n] or ""))
@@ -635,8 +939,8 @@ function ACABSetupWizardMixin:ShowStep(n)
 
 	local step = self.steps[n]
 
-	if n == 5 then
-		self:UpdateStep5PreviewStyle()
+	if n == 6 then
+		self:UpdateStep6PreviewStyle()
 	end
 
 	step:Show()
@@ -748,8 +1052,47 @@ function ACABSetupWizardMixin:AdvanceFromStep1()
 	self:ShowStep(2)
 end
 
-function ACABSetupWizardMixin:UpdateStep5SliderVisibility()
+-- Gates step 5's position dropdown/"Better Experience Bar" checkbox on
+-- Enable Experience Bar, and its 5 text toggles/font size/3 color swatches/
+-- pulse interval on Better Experience Bar itself - same two-level gating
+-- as the real settings page's ApplyBetterExpBarGating, but Show/Hide
+-- instead of dim, matching every other reveal-on-checkbox control already
+-- in this wizard (step 6's spacing/size sliders).
+function ACABSetupWizardMixin:UpdateStep5Visibility()
 	local step = self.steps[5]
+	local state = self.wizardState
+
+	local enabled = state.expBarEnabled and true or false
+	local betterShown = enabled and state.betterExpBarEnabled and true or false
+
+	step.positionLabel:SetShown(enabled)
+	step.positionDropdown:SetShown(enabled)
+	step.betterExpBarCheckbox:SetShown(enabled)
+
+	local i
+
+	for i = 1, table.getn(step.textToggleCheckboxes) do
+		step.textToggleCheckboxes[i]:SetShown(betterShown)
+	end
+
+	step.fontSizeSlider:SetShown(betterShown)
+	step.fontSizeValueText:SetShown(betterShown)
+	step.earnedColorLabel:SetShown(betterShown)
+	step.earnedColorSwatch:SetShown(betterShown)
+	step.restedColorLabel:SetShown(betterShown)
+	step.restedColorSwatch:SetShown(betterShown)
+	step.textColorLabel:SetShown(betterShown)
+	step.textColorSwatch:SetShown(betterShown)
+	step.pulseIntervalSlider:SetShown(betterShown)
+	step.pulseIntervalValueText:SetShown(betterShown)
+
+	if self.currentStep == 5 then
+		self:FitHeightToStep(5)
+	end
+end
+
+function ACABSetupWizardMixin:UpdateStep6SliderVisibility()
+	local step = self.steps[6]
 	local state = self.wizardState
 
 	step.spacingSlider:SetShown(state.globalSpacingEnabled and true or false)
@@ -758,19 +1101,19 @@ function ACABSetupWizardMixin:UpdateStep5SliderVisibility()
 	step.sizeSlider:SetShown(state.globalButtonSizeEnabled and true or false)
 	step.sizeValueText:SetShown(state.globalButtonSizeEnabled and true or false)
 
-	self:ReflowStep5Preview()
+	self:ReflowStep6Preview()
 
-	if self.currentStep == 5 then
-		self:FitHeightToStep(5)
+	if self.currentStep == 6 then
+		self:FitHeightToStep(6)
 	end
 end
 
--- Shows whichever of step 5's two preview bars matches step 3's choice
+-- Shows whichever of step 6's two preview bars matches step 3's choice
 -- (wizardState.modernBorderStyle) and hides the other - called from
--- ShowStep whenever step 5 becomes visible, so the bar shown here always
+-- ShowStep whenever step 6 becomes visible, so the bar shown here always
 -- matches what the user actually picked.
-function ACABSetupWizardMixin:UpdateStep5PreviewStyle()
-	local step = self.steps[5]
+function ACABSetupWizardMixin:UpdateStep6PreviewStyle()
+	local step = self.steps[6]
 	local isModern = self.wizardState.modernBorderStyle and true or false
 
 	step.vanillaBarContainer:SetShown(not isModern)
@@ -780,9 +1123,9 @@ end
 -- Recomputes the single active preview bar's slot layout from the current
 -- spacing/size slider values (both aspects on the same bar, per whichever
 -- step 3 picked) - updates both style variants' slots so either is
--- already correct whenever UpdateStep5PreviewStyle switches which is shown.
-function ACABSetupWizardMixin:ReflowStep5Preview()
-	local step = self.steps[5]
+-- already correct whenever UpdateStep6PreviewStyle switches which is shown.
+function ACABSetupWizardMixin:ReflowStep6Preview()
+	local step = self.steps[6]
 	local state = self.wizardState
 
 	local buttonSize = (state.globalButtonSizeEnabled and state.globalButtonSizeValue) or ACAB.BUTTON_SIZE
@@ -798,71 +1141,172 @@ function ACABSetupWizardMixin:ReflowStep5Preview()
 	step.modernBarContainer:SetWidth(width)
 end
 
+-- Applies step 5's Experience Bar choices onto `data`: Enabled, and (if
+-- enabled) position - centered at the bottom or top of the screen, via
+-- the exact same min/max Y the real Experience Bar settings page's own
+-- slider would allow (ACAB:GetSimpleElementCoordinateRange, called live
+-- against the real frame - safe to do before this profile's ReloadUI,
+-- since the range only depends on screen size/scale and the exp bar
+-- frame's own size, neither of which this wizard changes). "Better
+-- Experience Bar" and everything it unlocks on that same page (5 text
+-- toggles, font size, 3 colors, rested-glow pulse interval) is only
+-- written when enabled - untouched fields are left alone, so the profile
+-- just keeps whatever it already had for anything the user didn't touch.
+local function ApplyExpBarWizardState(state, data)
+	if state.expBarEnabled ~= nil then
+		data.expBarEnabled = state.expBarEnabled
+	end
+
+	if state.expBarEnabled and state.expBarPositionChoice then
+		local frame = getglobal(ACAB.EXP_BAR_FRAME_NAME)
+		local minX, maxX, minY, maxY = ACAB:GetSimpleElementCoordinateRange(frame, 2)
+
+		if minX and maxX and minY and maxY then
+			data.expBarPosition = {
+				point = "TOPLEFT", relativePoint = "BOTTOMLEFT",
+				x = (minX + maxX) / 2,
+				y = (state.expBarPositionChoice == "Top") and maxY or minY,
+			}
+		end
+	end
+
+	data.betterExpBarEnabled = state.betterExpBarEnabled and true or false
+
+	if state.betterExpBarEnabled then
+		data.expBarShowLevel = state.expBarShowLevel
+		data.expBarShowCurrentOverMax = state.expBarShowCurrentOverMax
+		data.expBarShowPercent = state.expBarShowPercent
+		data.expBarShowRestedPercent = state.expBarShowRestedPercent
+		data.expBarShowRestedTotal = state.expBarShowRestedTotal
+
+		if state.expBarFontSize then
+			data.expBarFontSize = state.expBarFontSize
+		end
+
+		if state.expBarColorEarned then
+			data.expBarColorEarned = state.expBarColorEarned
+		end
+
+		if state.expBarColorRested then
+			data.expBarColorRested = state.expBarColorRested
+		end
+
+		if state.expBarTextColor then
+			data.expBarTextColor = state.expBarTextColor
+		end
+
+		if state.expBarGlowPulseInterval then
+			data.expBarGlowPulseInterval = state.expBarGlowPulseInterval
+		end
+	end
+end
+
 -- Applies the "Modern Layout" preset (step 4's second choice) onto `data`
--- - disables Blizzard's bar art, centers the Main Bar (default bar id 1),
--- stacks Action Bar 1/2 (ids 2/3, enabling them) directly above it, and
--- clusters Bag Bar/Micro Menu/Latency Bar in the bottom-right corner.
+-- - disables Blizzard's bar art, stacks the Main Bar + Action Bar 1/2
+-- (default bar ids 1/2/3, enabling 2/3) centered at the bottom of the
+-- screen (shifted up to clear the Experience Bar if step 5 put it there
+-- too - state.expBarEnabled/expBarPositionChoice, decided before this
+-- runs), and clusters Bag Bar (flush in the corner)/Micro Menu (stacked
+-- on top of it)/Key Ring (to its left)/Latency Bar (to Micro Menu's left,
+-- top-aligned with it) in the bottom-right corner.
 --
--- Every position is expressed relative to UIParent's own corners/center,
--- the same coordinate space ACAB:CaptureNativeAnchor and
--- ACAB:ApplyBarPosition/ApplyBagBarPosition/ApplyLatencyBarPosition
--- already use (Database.lua/Bar.lua/NativeElements.lua) - UIParent's own
--- dimensions are already resolution/UI-scale-corrected, so a CENTER or
--- BOTTOMRIGHT anchor with a small fixed offset lands in the same relative
--- spot on any screen/scale, with no GetScreenWidth()/uiScale math needed.
+-- Every position is expressed relative to UIParent's own corners, the
+-- same coordinate space ACAB:CaptureNativeAnchor and
+-- ACAB:ApplyBarPosition/ApplyBagBarPosition/ApplyLatencyBarPosition/
+-- ApplyKeyRingPosition already use (Database.lua/Bar.lua/
+-- NativeElements.lua) - UIParent's own dimensions are already resolution/
+-- UI-scale-corrected, so a BOTTOM or BOTTOMRIGHT anchor with a small
+-- fixed offset lands in the same relative spot on any screen/scale, with
+-- no GetScreenWidth()/uiScale math needed.
 --
--- Bag Bar's own rendered width/height isn't known until after this
--- profile's ReloadUI (it depends on the live client's actual bag count),
--- so Micro Menu/Latency Bar's clearance from it is a fixed estimate sized
--- for a full 5-slot bag bar at the chosen button size - close for the
--- common case, but a live-client round of calibration (or the reference
--- profile you offered) would tighten this up if it looks off.
-local function ApplyModernLayoutPreset(data)
+-- Bag Bar/Micro Menu's own rendered width/height isn't known until after
+-- this profile's ReloadUI (it depends on the live client's actual bag
+-- count), so Micro Menu/Key Ring/Latency Bar's clearance from Bag Bar is
+-- a fixed estimate sized for a full 5-slot bag bar and an 8-button Micro
+-- Menu row (data.microMenuCols' own default) at the chosen button size
+-- - close for the common case, but a live-client round of calibration
+-- (or the reference profile you offered) would tighten this up if it
+-- looks off.
+local function ApplyModernLayoutPreset(state, data)
 	data.disableBlizzardArt = true
 
 	local buttonSize = (data.globalButtonSizeEnabled and data.globalButtonSizeValue) or ACAB.BUTTON_SIZE
+	local spacing = (data.globalSpacingEnabled and data.globalSpacingValue) or 0
 	local rowGap = 6
+	local bottomMargin = 4
+
+	local expBarClearance = 0
+
+	if state.expBarEnabled and state.expBarPositionChoice == "Bottom" then
+		local expBarFrame = getglobal(ACAB.EXP_BAR_FRAME_NAME)
+		local expBarHeight = (expBarFrame and expBarFrame:GetHeight()) or 20
+
+		expBarClearance = expBarHeight + rowGap
+	end
 
 	data.defaultBars = data.defaultBars or {}
 
 	local mainBarCfg = data.defaultBars[1] or {}
-	mainBarCfg.point = "CENTER"
-	mainBarCfg.relativePoint = "CENTER"
+	mainBarCfg.point = "BOTTOM"
+	mainBarCfg.relativePoint = "BOTTOM"
 	mainBarCfg.x = 0
-	mainBarCfg.y = 0
+	mainBarCfg.y = bottomMargin + expBarClearance
 	data.defaultBars[1] = mainBarCfg
 
 	local actionBar1Cfg = data.defaultBars[2] or {}
 	actionBar1Cfg.enabled = true
-	actionBar1Cfg.point = "CENTER"
-	actionBar1Cfg.relativePoint = "CENTER"
+	actionBar1Cfg.point = "BOTTOM"
+	actionBar1Cfg.relativePoint = "BOTTOM"
 	actionBar1Cfg.x = 0
-	actionBar1Cfg.y = buttonSize + rowGap
+	actionBar1Cfg.y = bottomMargin + expBarClearance + buttonSize + rowGap
 	data.defaultBars[2] = actionBar1Cfg
 
 	local actionBar2Cfg = data.defaultBars[3] or {}
 	actionBar2Cfg.enabled = true
-	actionBar2Cfg.point = "CENTER"
-	actionBar2Cfg.relativePoint = "CENTER"
+	actionBar2Cfg.point = "BOTTOM"
+	actionBar2Cfg.relativePoint = "BOTTOM"
 	actionBar2Cfg.x = 0
-	actionBar2Cfg.y = (buttonSize + rowGap) * 2
+	actionBar2Cfg.y = bottomMargin + expBarClearance + ((buttonSize + rowGap) * 2)
 	data.defaultBars[3] = actionBar2Cfg
 
-	local cornerMargin = 8
-	local bagBarWidthEstimate = 5 * (buttonSize + (data.globalSpacingEnabled and data.globalSpacingValue or 0))
-	local bagBarHeightEstimate = buttonSize
-
+	-- Bag Bar: flush against the screen's bottom-right corner - no
+	-- measurement needed, this is exact regardless of its real size.
 	data.bagBarPosition = {
 		point = "BOTTOMRIGHT", relativePoint = "BOTTOMRIGHT",
-		x = -cornerMargin, y = cornerMargin,
+		x = 0, y = 0,
 	}
+
+	local bagBarWidthEstimate = 5 * (buttonSize + spacing)
+	local bagBarHeightEstimate = buttonSize
+
+	-- Key Ring: directly to Bag Bar's left, same row.
+	data.keyRingPosition = {
+		point = "BOTTOMRIGHT", relativePoint = "BOTTOMRIGHT",
+		x = -(bagBarWidthEstimate + rowGap), y = 0,
+	}
+
+	-- Micro Menu: stacked directly on top of Bag Bar, same right edge.
+	local microMenuBottomY = bagBarHeightEstimate + rowGap
+
 	data.microMenuPosition = {
 		point = "BOTTOMRIGHT", relativePoint = "BOTTOMRIGHT",
-		x = -cornerMargin, y = cornerMargin + bagBarHeightEstimate + rowGap,
+		x = 0, y = microMenuBottomY,
 	}
+
+	local microMenuCols = data.microMenuCols or 8
+	local microMenuWidthEstimate = microMenuCols * (buttonSize + spacing)
+	local microMenuHeightEstimate = buttonSize
+	local microMenuTopY = microMenuBottomY + microMenuHeightEstimate
+
+	-- Latency Bar: to Micro Menu's left, its own top aligned with Micro
+	-- Menu's top (a small single-line frame, estimated at half a button
+	-- tall for this alignment).
+	local latencyBarHeightEstimate = buttonSize * 0.5
+
 	data.latencyBarPosition = {
 		point = "BOTTOMRIGHT", relativePoint = "BOTTOMRIGHT",
-		x = -(cornerMargin + bagBarWidthEstimate + cornerMargin), y = cornerMargin,
+		x = -(microMenuWidthEstimate + rowGap),
+		y = microMenuTopY - latencyBarHeightEstimate,
 	}
 end
 
@@ -889,9 +1333,11 @@ local function ApplyWizardStateToProfileData(state, data)
 	-- "blizzard" (Keep Blizzard Layout + ArtBar enabled) is a deliberate
 	-- no-op here - the profile keeps whatever it already has (copied from
 	-- Default, or the active profile's own current layout in overwrite
-	-- mode) exactly as is.
+	-- mode) exactly as is, and step 5 (Experience Bar) is never visited
+	-- on that path so there's nothing from it to apply either.
 	if state.generalLayoutFormat == "modern" then
-		ApplyModernLayoutPreset(data)
+		ApplyExpBarWizardState(state, data)
+		ApplyModernLayoutPreset(state, data)
 	end
 end
 
