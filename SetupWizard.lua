@@ -284,6 +284,7 @@ function ACABSetupWizardMixin:BuildStep1()
 	ACAB:StyleModernButton(nextButton, 120, 120)
 	nextButton:SetText("Next")
 	nextButton:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", -20, 16)
+	nextButton.ACABNavButton = true
 	ACAB:ApplyProminentButtonHighlight(nextButton)
 	nextButton:SetScript("OnClick", function()
 		ACAB.setupWizard:AdvanceFromStep1()
@@ -612,6 +613,7 @@ function ACABSetupWizardMixin:BuildStep5()
 	ACAB:StyleModernButton(nextButton, 120, 120)
 	nextButton:SetText("Next")
 	nextButton:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", -20, 16)
+	nextButton.ACABNavButton = true
 	ACAB:ApplyProminentButtonHighlight(nextButton)
 	nextButton:SetScript("OnClick", function()
 		ACAB.setupWizard:ShowStep(6)
@@ -777,6 +779,7 @@ function ACABSetupWizardMixin:BuildStep6()
 	ACAB:StyleModernButton(finishButton, 140, 140)
 	finishButton:SetText("Finish")
 	finishButton:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", -20, 16)
+	finishButton.ACABNavButton = true
 	ACAB:ApplyProminentButtonHighlight(finishButton)
 	finishButton:SetScript("OnClick", function()
 		ACAB.setupWizard:FinishWizard()
@@ -1028,6 +1031,14 @@ end
 -- frames/regions that are currently shown - container frames (e.g. a
 -- preview bar) are measured as one unit via their own GetBottom(), not
 -- recursed into, since their own height already spans their children.
+-- Skips any widget flagged .ACABNavButton (each step's own Next/Finish
+-- button) - that button is a child of `step` (so it shows/hides with it)
+-- but is anchored to the WIZARD frame itself, not to `step`, so its own
+-- position is a function of the wizard's current height. Counting it as
+-- step content created a feedback loop: a taller wizard pushes the button
+-- lower, which reads as "deeper" content, which computes an even taller
+-- wizard - confirmed live as the exact cause of step 6's height growing
+-- by a fixed amount on every single fit call.
 local function MeasureStepBottom(step)
 	local deepest = nil
 	local widgets = { step:GetChildren() }
@@ -1041,7 +1052,7 @@ local function MeasureStepBottom(step)
 	for i = 1, table.getn(widgets) do
 		local widget = widgets[i]
 
-		if widget:IsShown() then
+		if widget:IsShown() and not widget.ACABNavButton then
 			local bottom = widget:GetBottom()
 
 			if bottom and (not deepest or bottom < deepest) then
@@ -1111,35 +1122,6 @@ function ACABSetupWizardMixin:FitHeightToStep(n)
 
 		local top = wizard:GetTop()
 		local bottom = MeasureStepBottom(step)
-
-		-- Temporary /acab diag - step 6's fit height keeps growing across
-		-- repeated toggles despite two prior fix attempts; this prints the
-		-- exact top/bottom/height numbers each call instead of guessing a
-		-- third time. Remove once the real cause is confirmed.
-		if n == 6 then
-			print(string.format(
-				"|cff33ff33ACAB diag6|r top=%s bottom=%s curHeight=%s newHeight=%s",
-				tostring(top), tostring(bottom), tostring(wizard:GetHeight()),
-				tostring((top and bottom) and ((top - bottom) + NAV_ROW_CLEARANCE + BOTTOM_PADDING) or "nil")
-			))
-
-			local widgets = { step:GetChildren() }
-			local regions = { step:GetRegions() }
-			local wi
-
-			for wi = 1, table.getn(regions) do
-				widgets[table.getn(widgets) + 1] = regions[wi]
-			end
-
-			for wi = 1, table.getn(widgets) do
-				local w = widgets[wi]
-
-				print(string.format(
-					"  #%d shown=%s bottom=%s",
-					wi, tostring(w:IsShown()), tostring(w:GetBottom())
-				))
-			end
-		end
 
 		if not top or not bottom then
 			return
@@ -1499,15 +1481,29 @@ local function ApplyModernLayoutPreset(state, data)
 	-- with the screen corner (microMenuPosition's own x=0 above), but its
 	-- overlay's right edge is inset from that by its own fixed gap, and
 	-- the overlay itself is narrower than the container.
-	local microMenuOverlayWidth = (microMenuOverlay and microMenuOverlay:GetWidth()) or microMenuWidth
+	--
+	-- Width comes from GetRight()-GetLeft(), never GetWidth() - confirmed
+	-- live the overlay's own effective scale (inherited from the buttons
+	-- it wraps, via EnsureContainerOverlay's ScaleRatio conversion) isn't
+	-- always 1, so GetWidth() (the frame's raw, unscaled size) disagreed
+	-- with GetRight()/GetLeft() (already scale-corrected, the same units
+	-- microMenuRightGap and the x offset below are both in) by that scale
+	-- factor - exactly why this addon's own PixelSetPoint/ScaleRatio exist
+	-- elsewhere; this mixed them without going through either.
+	local microMenuOverlayWidth = microMenuWidth
 	local microMenuRightGap = 0
 
 	if ACAB.microMenuContainer and microMenuOverlay then
 		local containerRight = ACAB.microMenuContainer:GetRight()
 		local overlayRight = microMenuOverlay:GetRight()
+		local overlayLeft = microMenuOverlay:GetLeft()
 
 		if containerRight and overlayRight then
 			microMenuRightGap = containerRight - overlayRight
+		end
+
+		if overlayRight and overlayLeft then
+			microMenuOverlayWidth = overlayRight - overlayLeft
 		end
 	end
 
@@ -1519,17 +1515,14 @@ local function ApplyModernLayoutPreset(state, data)
 	-- Latency Bar's real frame (MainMenuBarPerformanceBarFrame) is bigger
 	-- than its visible art - NativeElements.lua trims that down with its
 	-- own overlayInset when building the frame's hover/drag overlay
-	-- (EnsureContainerOverlay), so that overlay's own GetHeight() is the
-	-- true visual footprint, not the raw frame's. Same reasoning as
-	-- microMenuOverlayTopGap above: the gap between the overlay's bottom
-	-- and the real frame's own bottom is a fixed pixel offset, read live
-	-- now and netted out of the frame position computed below (point/
-	-- relativePoint below anchor the real frame, not the overlay).
+	-- (EnsureContainerOverlay), so that overlay's own GetTop()-GetBottom()
+	-- is the true visual footprint, not the raw frame's. Uses Top/Bottom
+	-- rather than GetHeight() for the same reason microMenuOverlayWidth
+	-- does above - keeps every measurement in the same scale-corrected
+	-- units the gaps below are computed in.
 	local latencyBarFrame = getglobal(ACAB.LATENCY_BAR_FRAME_NAME)
 	local latencyBarOverlay = latencyBarFrame and latencyBarFrame.ACABOverlay
-	local latencyBarHeight = (latencyBarOverlay and latencyBarOverlay:GetHeight())
-		or (latencyBarFrame and latencyBarFrame:GetHeight())
-		or (buttonSize * 0.5)
+	local latencyBarHeight = (latencyBarFrame and latencyBarFrame:GetHeight()) or (buttonSize * 0.5)
 
 	local latencyBarOverlayBottomGap = 0
 	local latencyBarOverlayRightGap = 0
@@ -1537,9 +1530,14 @@ local function ApplyModernLayoutPreset(state, data)
 	if latencyBarFrame and latencyBarOverlay then
 		local frameBottom = latencyBarFrame:GetBottom()
 		local overlayBottom = latencyBarOverlay:GetBottom()
+		local overlayTop = latencyBarOverlay:GetTop()
 
 		if frameBottom and overlayBottom then
 			latencyBarOverlayBottomGap = overlayBottom - frameBottom
+		end
+
+		if overlayTop and overlayBottom then
+			latencyBarHeight = overlayTop - overlayBottom
 		end
 
 		local frameRight = latencyBarFrame:GetRight()
@@ -1549,31 +1547,6 @@ local function ApplyModernLayoutPreset(state, data)
 			latencyBarOverlayRightGap = frameRight - overlayRight
 		end
 	end
-
-	-- Temporary /acab diag - the x fix landed on the wrong side (overlaps
-	-- Micro Menu instead of sitting flush) despite reading the same kind
-	-- of overlay-vs-frame gap that fixed y correctly; printing the raw
-	-- numbers instead of guessing a sign fix a second time. Remove once
-	-- the real cause is confirmed.
-	print(string.format(
-		"|cff33ff33ACAB diag_lat|r microMenuContainer L=%s R=%s | microMenuOverlay L=%s R=%s | " ..
-		"microMenuRightGap=%s microMenuOverlayWidth=%s microMenuOverlayLeftOffset=%s",
-		tostring(ACAB.microMenuContainer and ACAB.microMenuContainer:GetLeft()),
-		tostring(ACAB.microMenuContainer and ACAB.microMenuContainer:GetRight()),
-		tostring(microMenuOverlay and microMenuOverlay:GetLeft()),
-		tostring(microMenuOverlay and microMenuOverlay:GetRight()),
-		tostring(microMenuRightGap), tostring(microMenuOverlayWidth), tostring(microMenuOverlayLeftOffset)
-	))
-	print(string.format(
-		"|cff33ff33ACAB diag_lat|r latencyBarFrame L=%s R=%s | latencyBarOverlay L=%s R=%s | " ..
-		"latencyBarOverlayRightGap=%s finalX=%s",
-		tostring(latencyBarFrame and latencyBarFrame:GetLeft()),
-		tostring(latencyBarFrame and latencyBarFrame:GetRight()),
-		tostring(latencyBarOverlay and latencyBarOverlay:GetLeft()),
-		tostring(latencyBarOverlay and latencyBarOverlay:GetRight()),
-		tostring(latencyBarOverlayRightGap),
-		tostring(microMenuOverlayLeftOffset + latencyBarOverlayRightGap)
-	))
 
 	-- Latency Bar: its own overlay hitbox flush against Micro Menu's
 	-- overlay hitbox on the left, top edges aligned (nudged down 5 units
