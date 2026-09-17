@@ -680,9 +680,14 @@ function ACABSetupWizardMixin:BuildStep6()
 
 	-- Fixed clearance below previewLabel (not anchored to either bar's own
 	-- BOTTOM) so the checkbox stack doesn't jump around as the button-size
-	-- slider grows the bar - BUTTON_SIZE_MAX plus the vanilla border's own
-	-- BORDER_RATIO overflow past the bar's nominal edges, plus a margin.
-	local PREVIEW_CLEARANCE = -(10 + (ACAB.BUTTON_SIZE_MAX * ACAB.BORDER_RATIO) + 20)
+	-- slider grows the bar - BUTTON_SIZE_MAX plus a margin. The vanilla
+	-- border texture visually overflows past the slot (see
+	-- CreateWizardPreviewSlot), but that's a texture on the SLOT, not the
+	-- CONTAINER MeasureStepBottom actually measures - the container's own
+	-- height is plain buttonSize (LayoutWizardPreviewSlots' own
+	-- container:SetHeight), so reserving BORDER_RATIO's overflow on top of
+	-- BUTTON_SIZE_MAX here was dead space this never needed.
+	local PREVIEW_CLEARANCE = -(10 + ACAB.BUTTON_SIZE_MAX + 14)
 
 	-- Every row below anchors directly to previewLabel (a fixed, always-
 	-- shown reference) at its own computed cursorY, never chained widget-
@@ -1426,6 +1431,25 @@ local function ApplyModernLayoutPreset(state, data)
 	petBarCfg.x = actionBar2Width / 2
 	petBarCfg.y = actionBar2Top + rowGap
 	data.defaultBars[ACAB.PET_BAR_ID] = petBarCfg
+
+	-- Temporary /acab diag - reported still misaligned even after pinning
+	-- Action Bar 2's own buttonSize/spacing (the previously-confirmed
+	-- cause of a different width mismatch). Printing the intended values
+	-- this preset computed, to compare against the real post-reload
+	-- positions instead of guessing at a second cause blind.
+	print(string.format(
+		"|cff33ff33ACAB diag_sp|r buttonSize=%s spacing=%s actionBar2Width=%s actionBar2Y=%s actionBar2Top=%s",
+		tostring(buttonSize), tostring(spacing), tostring(actionBar2Width), tostring(actionBar2Y), tostring(actionBar2Top)
+	))
+	print(string.format(
+		"|cff33ff33ACAB diag_sp|r stance point=%s rel=%s x=%s y=%s",
+		tostring(data.stanceBarPosition.point), tostring(data.stanceBarPosition.relativePoint),
+		tostring(data.stanceBarPosition.x), tostring(data.stanceBarPosition.y)
+	))
+	print(string.format(
+		"|cff33ff33ACAB diag_sp|r pet point=%s rel=%s x=%s y=%s",
+		tostring(petBarCfg.point), tostring(petBarCfg.relativePoint), tostring(petBarCfg.x), tostring(petBarCfg.y)
+	))
 
 	-- Bag Bar: flush against the screen's bottom-right corner - no
 	-- measurement needed, this is exact regardless of its real size.
