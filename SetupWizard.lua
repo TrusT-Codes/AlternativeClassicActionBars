@@ -1836,14 +1836,15 @@ local function ApplyModernLayoutPreset(state, data)
 
 	data.defaultBars = data.defaultBars or {}
 
-	-- buttonSize/spacing pinned explicitly onto all 3 stacked bars' own
-	-- cfg, not left at whatever CreateProfile's deep-copy of the Default
-	-- profile happened to carry (the real native-captured size, which
-	-- isn't ACAB.BUTTON_SIZE) - every width/height below assumes all 3
-	-- bars render at exactly `buttonSize`/`spacing`, so this makes that
-	-- true instead of just hoping it already is. Harmless even when the
-	-- global spacing/size toggle is also on, since it's the same value
-	-- that toggle would apply anyway.
+	-- buttonSize/spacing/cols/rows/buttonCount pinned explicitly onto all
+	-- 3 stacked bars' own cfg, not left at whatever CreateProfile's deep-
+	-- copy of the Default profile happened to carry (the real native-
+	-- captured size, and whatever grid shape that profile's own bars had
+	-- been resized/reshaped to) - every width/height below assumes all 3
+	-- bars render as a plain 12x1 grid at exactly `buttonSize`/`spacing`,
+	-- so this makes that true instead of just hoping it already is.
+	-- Harmless even when the global spacing/size toggle is also on, since
+	-- it's the same value that toggle would apply anyway.
 	local mainBarCfg = data.defaultBars[1] or {}
 	mainBarCfg.point = "BOTTOM"
 	mainBarCfg.relativePoint = "BOTTOM"
@@ -1851,6 +1852,9 @@ local function ApplyModernLayoutPreset(state, data)
 	mainBarCfg.y = bottomMargin + expBarClearance
 	mainBarCfg.buttonSize = buttonSize
 	mainBarCfg.spacing = spacing
+	mainBarCfg.cols = 12
+	mainBarCfg.rows = 1
+	mainBarCfg.buttonCount = 12
 	data.defaultBars[1] = mainBarCfg
 
 	local actionBar1Cfg = data.defaultBars[2] or {}
@@ -1861,6 +1865,9 @@ local function ApplyModernLayoutPreset(state, data)
 	actionBar1Cfg.y = bottomMargin + expBarClearance + buttonSize + rowGap
 	actionBar1Cfg.buttonSize = buttonSize
 	actionBar1Cfg.spacing = spacing
+	actionBar1Cfg.cols = 12
+	actionBar1Cfg.rows = 1
+	actionBar1Cfg.buttonCount = 12
 	data.defaultBars[2] = actionBar1Cfg
 
 	local actionBar2Y = bottomMargin + expBarClearance + ((buttonSize + rowGap) * 2)
@@ -1872,6 +1879,9 @@ local function ApplyModernLayoutPreset(state, data)
 	actionBar2Cfg.y = actionBar2Y
 	actionBar2Cfg.buttonSize = buttonSize
 	actionBar2Cfg.spacing = spacing
+	actionBar2Cfg.cols = 12
+	actionBar2Cfg.rows = 1
+	actionBar2Cfg.buttonCount = 12
 	data.defaultBars[3] = actionBar2Cfg
 
 	-- Action Bar 2 is a 12-column, 1-row grid (Core.lua's DEFAULT_BAR_GRID),
@@ -2084,6 +2094,25 @@ local function ApplyModernLayoutPreset(state, data)
 		x = microMenuOverlayLeftOffset + latencyBarOverlayRightGap,
 		y = ((microMenuOverlayTop - latencyBarHeight) - latencyBarOverlayBottomGap) - 5,
 	}
+
+	-- Extra Bars (6-9) are ACAB-only custom bars with no Blizzard-default
+	-- equivalent - disabled here so a fresh Modern Layout starts clean
+	-- instead of showing whatever the copied-from profile's Extra Bars
+	-- happened to have enabled, mirroring the locked-default layout's own
+	-- "hide every Extra Bar" cascade (ApplyUseDefaultLayoutChange,
+	-- SettingsBars.lua). data.bars is a plain array (not keyed by id), so
+	-- every entry is checked via IsExtraBarId rather than indexed directly.
+	if data.bars then
+		local i
+
+		for i = 1, table.getn(data.bars) do
+			local barCfg = data.bars[i]
+
+			if barCfg and ACAB:IsExtraBarId(barCfg.id) then
+				barCfg.enabled = false
+			end
+		end
+	end
 end
 
 -- Applies wizardState.useDefaultLayout/modernBorderStyle/general layout
