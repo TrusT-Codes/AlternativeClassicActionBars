@@ -1956,9 +1956,10 @@ function ACAB:FitSettingsWindowToBarPage(barId)
 	n = AppendCandidate(candidates, n, page.expBarGlowPulseIntervalSlider)
 	n = AppendCandidate(candidates, n, page.expBarGlowPulseIntervalValueText)
 
-	-- Stance/Page Bar Assignment rows - only ever present on bar 1's page.
-	-- Each individual row is included as its own candidate, same "walk the
-	-- rows, not their shared container" convention gridSwatches below uses.
+	-- Stance/Page Bar Assignment rows - present on any default bar's (1-5)
+	-- own page. Each individual row is included as its own candidate, same
+	-- "walk the rows, not their shared container" convention gridSwatches
+	-- below uses.
 	if page.assignmentRows then
 		local i
 
@@ -2050,8 +2051,9 @@ function ACAB:FitSettingsWindowToGeneralView()
 	n = AppendCandidate(candidates, n, panel.mainBarPaginationCheckbox)
 	n = AppendCandidate(candidates, n, panel.mainBarStanceSwapCheckbox)
 
-	-- Stance/Page Bar Assignment rows live on bar 1's own settings page -
-	-- see FitSettingsWindowToBarPage for their candidate handling.
+	-- Stance/Page Bar Assignment rows live on each default bar's (1-5) own
+	-- settings page - see FitSettingsWindowToBarPage for their candidate
+	-- handling.
 
 	n = AppendCandidate(candidates, n, panel.macroTextCheckbox)
 	n = AppendCandidate(candidates, n, panel.macroValueText)

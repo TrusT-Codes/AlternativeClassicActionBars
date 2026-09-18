@@ -163,7 +163,7 @@ function ACAB:GetOrCreateGeneralPanel()
 	panel.disableBlizzardArtCheckbox = disableBlizzardArtCheckbox
 
 	-------------------------------------------------------------------------
-	-- Main Bar pagination / stance-swap
+	-- Default bar (1-5) pagination / stance-swap
 	--
 	-- Both default true (Core.lua's EnsureDB), matching real vanilla bar
 	-- 1's own always-on behavior unless the user explicitly opts out here.
@@ -173,27 +173,27 @@ function ACAB:GetOrCreateGeneralPanel()
 
 	local mainBarPaginationCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABGeneralMainBarPaginationCheckbox", {
 		anchor = { "TOPLEFT", disableBlizzardArtCheckbox, "BOTTOMLEFT", 0, -14 },
-		label = "Main Bar: Shift/Ctrl Page Swapping",
+		label = "Enable Page Bar-Changes",
 		tooltip = {
-			title = "Main Bar: Shift/Ctrl Page Swapping",
+			title = "Enable Page Bar-Changes",
 			lines = {
-				"When enabled, shows new Options inside MainBar on Bars " ..
-				"Settings Page. You will be able to freely assign any Extra " ..
-				"Bar to your Pageing Function of Mainbar. Enabling it will " ..
-				"also enable the Paging UI Element.",
-				"When disabled, your MainBar will always stay the same and " ..
-				"the Paging UI Element is hidden.",
+				"When enabled, shows a Page 2 Content Source option on every " ..
+				"default bar's (1-5) own Bars Settings Page. You will be " ..
+				"able to freely assign any Extra Bar as that bar's content " ..
+				"while Shift/Ctrl page 2 is held. Enabling it will also " ..
+				"enable the Paging UI Element.",
+				"When disabled, every default bar will always stay the same " ..
+				"and the Paging UI Element is hidden.",
 			},
 		},
 		onClick = function()
 			local checked = this:GetChecked() and true or false
 
-			ACAB:SetMainBarPaginationEnabled(checked)
+			ACAB:SetDefaultBarPaginationEnabled(checked)
 
-			-- The Page Bar assignment row (only meaningful while pagination
-			-- is on) and bar 1's own Page Indicator Scale slider both
-			-- appear/disappear live the instant this checkbox is clicked.
-			ACAB:RebuildMainBarAssignmentRows()
+			-- Page Bar assignment row and Page Indicator Scale slider
+			-- appear/disappear live on every default bar's (1-5) page.
+			ACAB:RebuildAllDefaultBarAssignmentRows()
 			ACAB:RefreshMainBarPageIndicatorControlsVisibility()
 		end,
 	})
@@ -202,38 +202,33 @@ function ACAB:GetOrCreateGeneralPanel()
 
 	local mainBarStanceSwapCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABGeneralMainBarStanceSwapCheckbox", {
 		anchor = { "TOPLEFT", mainBarPaginationCheckbox, "BOTTOMLEFT", 0, -14 },
-		label = "Main Bar: Stance/Form/Stealth Swapping",
+		label = "Enable Stance/Form/Stealth Bar-Changes",
 		tooltip = {
-			title = "Main Bar: Stance/Form/Stealth Swapping",
+			title = "Enable Stance/Form/Stealth Bar-Changes",
 			lines = {
-				"When enabled, shows new Options inside MainBar on Bars " ..
-				"Settings Page. You will be able to freely assign any Extra " ..
-				"Bar to your different Shapes / Forms to swap the contents " ..
-				"of Mainbar with automatically.",
-				"When disabled, your MainBar will always stay the same.",
+				"When enabled, shows a stance-assignment option per active " ..
+				"form on every default bar's (1-5) own Bars Settings Page. " ..
+				"You will be able to freely assign any Extra Bar to any of " ..
+				"your different Shapes / Forms to swap that bar's contents " ..
+				"with automatically.",
+				"When disabled, every default bar will always stay the same.",
 			},
 		},
 		onClick = function()
 			local checked = this:GetChecked() and true or false
 
-			ACAB:SetMainBarStanceSwapEnabled(checked)
+			ACAB:SetDefaultBarStanceSwapEnabled(checked)
 
-			-- The per-stance assignment rows (bar 1's own settings page)
-			-- appear/disappear live the instant this checkbox is clicked,
-			-- exactly like the pagination checkbox above does for the Page
-			-- Bar row.
-			ACAB:RebuildMainBarAssignmentRows()
+			-- Per-stance assignment rows appear/disappear live on each
+			-- default bar's page, like the pagination checkbox above.
+			ACAB:RebuildAllDefaultBarAssignmentRows()
 		end,
 	})
 
 	panel.mainBarStanceSwapCheckbox = mainBarStanceSwapCheckbox
 
-	-- Stance / Page Bar Assignment rows live on bar 1's own settings page
-	-- (GetOrCreateBarPage/RebuildMainBarAssignmentRows) alongside that
-	-- page's Page Indicator Scale slider, since they're bar 1-specific
-	-- rather than general addon-wide settings. The two checkboxes above
-	-- still live on this General tab and drive those rows via
-	-- ACAB:RebuildMainBarAssignmentRows.
+	-- Stance / Page Bar Assignment rows live on each default bar's (1-5) own
+	-- settings page; these two checkboxes drive them via RebuildAllDefaultBarAssignmentRows.
 
 	-------------------------------------------------------------------------
 	-- Macro text toggle + font size (both bars, live)
@@ -1492,14 +1487,14 @@ function ACAB:RefreshGeneralPanel()
 	-- Both default true (Core.lua's EnsureDB) - only an explicit false
 	-- ever unchecks either.
 	panel.mainBarPaginationCheckbox:SetChecked(
-		ACABDB.mainBarPaginationEnabled ~= false
+		ACABDB.defaultBarPaginationEnabled ~= false
 	)
 
-	-- Stance/Page Bar Assignment rows themselves live on bar 1's own
-	-- settings page; refreshed from RefreshBarSettingsPage(1).
+	-- Stance/Page Bar Assignment rows themselves live on each default
+	-- bar's (1-5) own settings page; refreshed from RefreshBarSettingsPage.
 
 	panel.mainBarStanceSwapCheckbox:SetChecked(
-		ACABDB.mainBarStanceSwapEnabled ~= false
+		ACABDB.defaultBarStanceSwapEnabled ~= false
 	)
 
 	-------------------------------------------------------------------------

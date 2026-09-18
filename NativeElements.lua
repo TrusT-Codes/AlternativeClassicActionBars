@@ -1760,7 +1760,7 @@ function ACAB:ApplyPageIndicatorPosition()
 end
 
 -- Settings.lua's Main Bar page Scale slider (only shown while
--- mainBarPaginationEnabled is true) writes through this - mirrors
+-- defaultBarPaginationEnabled is true) writes through this - mirrors
 -- SetStanceBarScale's exact clamp/write/apply template.
 function ACAB:SetPageIndicatorScale(scale)
 	self:EnsureDB()
@@ -1803,7 +1803,7 @@ end
 
 -- No independent enable flag (unlike Bag Bar/Micro Menu/Stance Bar/
 -- Latency Bar/Key Ring) - this element's visibility is entirely DERIVED
--- from ACABDB.mainBarPaginationEnabled, per the feature's own spec
+-- from ACABDB.defaultBarPaginationEnabled, per the feature's own spec
 -- ("hidden entirely otherwise").
 function ACAB:ApplyPageIndicatorVisibility()
 	local container = self.pageIndicatorContainer
@@ -1812,7 +1812,7 @@ function ACAB:ApplyPageIndicatorVisibility()
 		return
 	end
 
-	if ACABDB.mainBarPaginationEnabled ~= false then
+	if ACABDB.defaultBarPaginationEnabled ~= false then
 		container:Show()
 	else
 		container:Hide()
