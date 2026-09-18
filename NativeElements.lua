@@ -1521,6 +1521,11 @@ ACAB.PAGE_INDICATOR_UP_NAME = "ActionBarUpButton"
 ACAB.PAGE_INDICATOR_DOWN_NAME = "ActionBarDownButton"
 ACAB.PAGE_INDICATOR_TEXT_NAME = "MainMenuBarPageNumber"
 
+-- ApplyPageIndicatorShape's own settle-retry (see its comment) - same
+-- interval/timeout scale as Core.lua's WaitForNativeBarSettle.
+local PAGE_INDICATOR_SHAPE_RETRY_INTERVAL = 0.1
+local PAGE_INDICATOR_SHAPE_RETRY_TIMEOUT = 3
+
 -- This container isn't a single row/column of same-size elements chained
 -- edge-to-edge - it's two stacked arrow buttons plus a text label sitting
 -- to their right, vertically centered. BuildChainAnchoredContainer/
@@ -1608,6 +1613,37 @@ function ACAB:CreatePageIndicatorContainer()
 	local container = CreateFrame("Frame", "ACABPageIndicatorContainer", UIParent)
 	container:SetFrameStrata("HIGH")
 
+	-- Container itself spans Up/Down/Text's real, untrimmed hit-rects (Up
+	-- pinned exactly to container's TOPLEFT below, 0 offset - moving the
+	-- real native buttons to match a trimmed visual box is not an option).
+	-- The edit-mode overlay is trimmed to the true visible art instead, via
+	-- the existing overlayInset mechanism (EnsureContainerOverlay,
+	-- DefaultBars.lua - same one Latency Bar already uses for its own
+	-- bigger-than-art native frame). Fixed topology per this container's own
+	-- header comment (Up top, Down bottom, both left-aligned, Text to their
+	-- right with no hit-rect inset of its own): Up's own insets define the
+	-- overlay's left/top trim, Down's own bottom inset defines the bottom
+	-- trim, and the right edge is never trimmed (Text has no inset and
+	-- always extends at least as far right as Up/Down's raw right edge).
+	local upInsetL, upInsetR, upInsetT, upInsetB = self:GetHitInsets(up)
+	local downInsetL, downInsetR, downInsetT, downInsetB = self:GetHitInsets(down)
+
+	container.overlayInset = {
+		left = upInsetL,
+		right = 0,
+		top = upInsetT,
+		bottom = downInsetB,
+	}
+
+	-- Placeholder size, immediately overwritten by ApplyPageIndicatorShape's
+	-- real measurement below - live-confirmed this client never resolves a
+	-- frame's GetLeft/Top/Right/Bottom (nil forever) until it has been given
+	-- an explicit SetWidth/SetHeight at least once, even with a valid
+	-- SetPoint already applied. Without this, container's own rect never
+	-- resolves, which cascades to Up/Down/Text (anchored to it) as well.
+	container:SetWidth(1)
+	container:SetHeight(1)
+
 	up:SetParent(container)
 	down:SetParent(container)
 	text:SetParent(container)
@@ -1635,8 +1671,12 @@ function ACAB:CreatePageIndicatorContainer()
 		}
 	end
 
-	self:ApplyPageIndicatorShape()
+	-- Position runs first so container has a resolved real screen point
+	-- before Shape reads its now-reparented children's rects - same
+	-- ancestor-before-descendant ordering as §5af (see the top-down resolve
+	-- comment inside ApplyPageIndicatorShape).
 	self:ApplyPageIndicatorPosition()
+	self:ApplyPageIndicatorShape()
 	self:ApplyPageIndicatorVisibility()
 end
 
@@ -1695,23 +1735,65 @@ function ACAB:ApplyPageIndicatorShape()
 	-- like Core.lua's CaptureNativeSpacing gap math - no cross-tree
 	-- GetEffectiveScale correction needed here), rather than a formula that
 	-- assumes any particular chain topology - correct regardless of which
-	-- branch above actually ran for Down/Text.
-	local left, top, right, bottom = up:GetLeft(), up:GetTop(), up:GetRight(), up:GetBottom()
-
-	local function Expand(l, t, r, b)
-		if l and t and r and b then
-			if l < left then left = l end
-			if t > top then top = t end
-			if r > right then right = r end
-			if b < bottom then bottom = b end
+	-- branch above actually ran for Down/Text. Untrimmed (Up's own hit-rect,
+	-- not just its visible art) - Up is pinned exactly to container's
+	-- TOPLEFT below with a 0 offset, so container's own rect has to match Up's
+	-- real full extent or that anchor and this box disagree about where Up's
+	-- corner is. The edit-mode hitbox is trimmed separately, via
+	-- container.overlayInset (set once in CreatePageIndicatorContainer).
+	local function RealRect(frame)
+		local l, t, r, b = frame:GetLeft(), frame:GetTop(), frame:GetRight(), frame:GetBottom()
+		if not (l and t and r and b) then
+			return nil
 		end
+		return l, t, r, b
 	end
 
-	Expand(down:GetLeft(), down:GetTop(), down:GetRight(), down:GetBottom())
-	Expand(text:GetLeft(), text:GetTop(), text:GetRight(), text:GetBottom())
+	local upL, upT, upR, upB = RealRect(up)
+	local downL, downT, downR, downB = RealRect(down)
+	local textL, textT, textR, textB = RealRect(text)
 
-	local width = (right or 0) - (left or 0)
-	local height = (top or 0) - (bottom or 0)
+	-- Up/Down/Text were just reparented and re-anchored above (SetParent in
+	-- CreatePageIndicatorContainer, SetPoint just now) - on this client a
+	-- frame's GetLeft/Top/Right/Bottom read back nil for a beat after that,
+	-- not merely stale. Retries on a short timer instead of baking in a
+	-- bogus zero/partial-sized box - same settle-and-retry idiom as
+	-- Core.lua's WaitForNativeBarSettle.
+	if not (upL and downL and textL) then
+		self.pageIndicatorShapeRetryElapsed = (self.pageIndicatorShapeRetryElapsed or 0)
+			+ PAGE_INDICATOR_SHAPE_RETRY_INTERVAL
+
+		if self.pageIndicatorShapeRetryElapsed >= PAGE_INDICATOR_SHAPE_RETRY_TIMEOUT then
+			self.pageIndicatorShapeRetryElapsed = nil
+			self:Print("WARNING: Page Indicator's real position did not resolve in time - its edit-mode hitbox may be misaligned this session.")
+			return
+		end
+
+		if C_Timer and C_Timer.After then
+			C_Timer.After(PAGE_INDICATOR_SHAPE_RETRY_INTERVAL, function()
+				ACAB:ApplyPageIndicatorShape()
+			end)
+		end
+
+		return
+	end
+
+	self.pageIndicatorShapeRetryElapsed = nil
+
+	local left, top, right, bottom = upL, upT, upR, upB
+
+	local function Expand(l, t, r, b)
+		if l < left then left = l end
+		if t > top then top = t end
+		if r > right then right = r end
+		if b < bottom then bottom = b end
+	end
+
+	Expand(downL, downT, downR, downB)
+	Expand(textL, textT, textR, textB)
+
+	local width = right - left
+	local height = top - bottom
 
 	if width <= 0 then
 		width = up:GetWidth() or 1

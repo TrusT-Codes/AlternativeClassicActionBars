@@ -2089,6 +2089,7 @@ function ACAB:FitSettingsWindowToProfilesView()
 	local n = 0
 
 	n = AppendCandidate(candidates, n, panel.profileDropdown)
+	n = AppendCandidate(candidates, n, panel.wizardButton)
 	n = AppendCandidate(candidates, n, panel.exportButton)
 	n = AppendCandidate(candidates, n, panel.copyButton)
 	n = AppendCandidate(candidates, n, panel.importButton)
