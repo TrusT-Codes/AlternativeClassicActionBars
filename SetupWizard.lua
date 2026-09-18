@@ -1905,20 +1905,49 @@ local function ApplyModernLayoutPreset(state, data)
 	-- shows (indicator anchored off the example bar's right edge). Main
 	-- Bar (id 1) shares Action Bar 2's exact grid (12 cols, same
 	-- buttonSize/spacing here), so actionBar2Width doubles as its width
-	-- too. Container height read live the same way Bag Bar/Micro Menu's
-	-- is - CreatePageIndicatorContainer's own overlay has no inset (unlike
-	-- Latency Bar's), so the container's own GetHeight already matches its
-	-- real hitbox with no gap correction needed.
+	-- too.
+	--
+	-- NativeElements.lua's container now spans Up/Down/Text's real
+	-- UNTRIMMED hit-rects (Up is pinned exactly to its own TOPLEFT, so the
+	-- box has to match that), same bigger-than-art situation as Latency
+	-- Bar - its own trimmed edit-mode overlay is the true visible-art
+	-- hitbox. point/relativePoint/x/y below anchor the CONTAINER (its real
+	-- native anchor point), not the overlay, so both the left and bottom
+	-- gaps between them are read live and netted out, same technique
+	-- already used for Latency Bar/Micro Menu.
 	if state.pageSwapEnabled then
 		local indicatorContainer = ACAB.pageIndicatorContainer
+		local indicatorOverlay = indicatorContainer and indicatorContainer.ACABOverlay
 		local indicatorHeight = (indicatorContainer and indicatorContainer:GetHeight()) or buttonSize
+		local indicatorLeftGap = 0
+		local indicatorBottomGap = 0
+
+		if indicatorContainer and indicatorOverlay then
+			local containerLeft = indicatorContainer:GetLeft()
+			local containerBottom = indicatorContainer:GetBottom()
+			local overlayLeft = indicatorOverlay:GetLeft()
+			local overlayTop = indicatorOverlay:GetTop()
+			local overlayBottom = indicatorOverlay:GetBottom()
+
+			if containerLeft and overlayLeft then
+				indicatorLeftGap = overlayLeft - containerLeft
+			end
+
+			if containerBottom and overlayBottom then
+				indicatorBottomGap = overlayBottom - containerBottom
+			end
+
+			if overlayTop and overlayBottom then
+				indicatorHeight = overlayTop - overlayBottom
+			end
+		end
 
 		local mainBarCenterY = mainBarCfg.y + (buttonSize / 2)
 
 		data.mainBarPageIndicatorPosition = {
 			point = "BOTTOMLEFT", relativePoint = "BOTTOM",
-			x = (actionBar2Width / 2) + rowGap,
-			y = mainBarCenterY - (indicatorHeight / 2),
+			x = ((actionBar2Width / 2) + rowGap) - indicatorLeftGap,
+			y = (mainBarCenterY - (indicatorHeight / 2)) - indicatorBottomGap,
 		}
 	end
 
