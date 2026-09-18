@@ -211,13 +211,11 @@ function ACABButtonMixin:Init(parent, actionSlot, slotIndex)
 	-- from the parent bar frame, which is unconfirmed on this client.
 	self:SetFrameStrata("HIGH")
 
-	-- Default bars (1-5) are already dispatched by a real native keybind
-	-- action name, so their hotkey text shows that name directly instead
-	-- of going through the custom-bar ACABBIND<n> dispatch table.
-	-- Bar 1's dynamic slot can land inside the 73-120 pool range while
-	-- stance-swapped onto page 7-9, so self.nativeBindingId is also used
-	-- below to keep it out of that table.
-	if parent.config and (parent.config.fixedActionSlots or parent.config.dynamicMainBar) and slotIndex then
+	-- Default bars (1-5) show their real native keybind action name as
+	-- hotkey text instead of going through the ACABBIND<n> dispatch table.
+	-- A default bar's dynamic slot can land inside the 73-120 pool range, so
+	-- self.nativeBindingId also excludes it from that table.
+	if parent.config and (parent.config.fixedActionSlots or parent.config.dynamicDefaultBar) and slotIndex then
 		local prefix = ACAB.DEFAULT_BAR_BINDING_PREFIXES and
 			ACAB.DEFAULT_BAR_BINDING_PREFIXES[parent.config.id]
 
@@ -657,11 +655,11 @@ end
 function ACABButtonMixin:UpdateGridVisibility()
 	local hasContent = self:IsSlotFilled() and true or false
 
-	-- Real vanilla's Main Bar never hides an empty button, unlike the multi
-	-- bars (2-5) - but only while "Use Default Blizzard Layout" is on. Once
-	-- the user turns that off, bar 1 follows the same toggle-based
-	-- condition as every other bar.
-	local isMainBar = self.parentBar and self.parentBar.config and self.parentBar.config.dynamicMainBar
+	-- Bar 1 never hides an empty button while "Force default Blizzard
+	-- layout mode" is on, unlike bars 2-5; otherwise it follows the same
+	-- toggle-based condition as every other bar.
+	-- Must check id == 1, not cfg.dynamicDefaultBar (true for bars 1-5 now).
+	local isMainBar = self.parentBar and self.parentBar.config and self.parentBar.config.id == 1
 		and ACABDB and ACABDB.useDefaultLayout ~= false
 
 	-- Real vanilla's own Pet Bar always shows all 10 slots, blank where
@@ -700,8 +698,8 @@ end
 function ACABButtonMixin:UpdateBackdropVisibility()
 	local hasContent = self:IsSlotFilled() and true or false
 
-	-- Same useDefaultLayout-gated Main Bar exemption as UpdateGridVisibility.
-	local isMainBar = self.parentBar and self.parentBar.config and self.parentBar.config.dynamicMainBar
+	-- Same Main Bar exemption as UpdateGridVisibility (checked by id, see that comment).
+	local isMainBar = self.parentBar and self.parentBar.config and self.parentBar.config.id == 1
 		and ACABDB and ACABDB.useDefaultLayout ~= false
 
 	local shown = self.slotVisible and (isMainBar or hasContent or IsAlwaysShowMultibars() or ACAB.isShowingActionGrid)

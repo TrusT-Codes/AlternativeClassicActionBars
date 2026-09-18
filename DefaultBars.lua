@@ -77,30 +77,28 @@ function ACAB:GetDefaultBarButtons(id)
 end
 
 -------------------------------------------------------------------------
--- Main Bar (bar 1) dynamic paging
+-- Default bars (1-5) dynamic content-source redirect
 --
--- Bar 1's 12 pool buttons resolve their action slot dynamically from the
--- currently effective page (GetMainBarEffectivePage below), instead of a
--- fixed cfg.fixedActionSlots array like bars 2-5. Native paging formula:
--- actionSlot = buttonID + (page-1)*12. GetBonusBarOffset() (1/2/3 for
--- stance/form/stealth) maps to page 6+offset (7/8/9).
+-- Each default bar's 12 pool buttons resolve their action slot from the
+-- effective page (GetDefaultBarEffectivePage); native paging formula:
+-- actionSlot = buttonID + (page-1)*12, GetBonusBarOffset() (1/2/3) maps to
+-- page 6+offset (7/8/9). Bars 2-5 redirect this same page/stance signal
+-- onto an assigned Extra Bar instead (see GetDefaultBarSlotForIndex).
 -------------------------------------------------------------------------
 
--- Page bar 1's buttons currently read from. Pagination toggle locks to
--- page 1 (Shift/Ctrl modifier keybinds become inert for this bar).
--- Stance-swap only applies on top of page 1, mirroring real vanilla's
--- own main bar, so a manually-paged-away bar is never overridden by a
--- stance change.
-function ACAB:GetMainBarEffectivePage()
+-- Page every default bar's buttons currently read from. Pagination toggle
+-- locks to page 1; stance-swap only applies on top of page 1, so a
+-- manually-paged-away bar is never overridden by a stance change.
+function ACAB:GetDefaultBarEffectivePage()
 	self:EnsureDB()
 
 	local page = 1
 
-	if ACABDB.mainBarPaginationEnabled ~= false then
+	if ACABDB.defaultBarPaginationEnabled ~= false then
 		page = CURRENT_ACTIONBAR_PAGE or 1
 	end
 
-	if ACABDB.mainBarStanceSwapEnabled ~= false and page == 1 then
+	if ACABDB.defaultBarStanceSwapEnabled ~= false and page == 1 then
 		local offset = GetBonusBarOffset and GetBonusBarOffset() or 0
 
 		if offset and offset > 0 then
@@ -136,86 +134,117 @@ function ACAB:GetActiveStanceIndex()
 	return nil
 end
 
--- Resolves the action slot for pool button `slotIndex` on the effective
--- page. If the user has assigned an Extra Bar as this state's content
--- source (Stance/Page Bar Assignment), reads that Extra Bar's live slot
--- instead of computing a native page slot:
---   page 7-9  -> try the stance-indexed assignment.
---   page ~= 1 -> try the page-bar assignment.
---   page == 1 -> native math only.
--- Falls through to native math if unassigned or unresolved.
-function ACAB:GetMainBarSlotForIndex(slotIndex)
-	local page = self:GetMainBarEffectivePage()
+-- Resolves the action slot for pool button `slotIndex` of default bar `id`
+-- (1-5) on the effective page. Per stance index (page 7-9) or page-bar
+-- (page ~= 1):
+--   nil (No Pageswap) -> static slot, never redirects.
+--   -1  (Default)     -> vanilla paging math (bar 1 only; same as static
+--                         for bars 2-5, which have none of their own).
+--   Extra Bar id      -> that bar's live slot, else static slot.
+-- page == 1 with no stance active always uses the static slot.
+function ACAB:GetDefaultBarSlotForIndex(id, slotIndex)
+	local page = self:GetDefaultBarEffectivePage()
+
+	local function StaticSlot()
+		if id == 1 then
+			return slotIndex
+		end
+
+		local cfg = ACABDB.defaultBars[id]
+
+		return cfg and cfg.fixedActionSlots and cfg.fixedActionSlots[slotIndex]
+	end
+
+	-- Bars 2-5 have no native page/stance-swap math - "Default" equals
+	-- "No Pageswap" for them.
+	local function VanillaDefaultSlot()
+		if id == 1 then
+			return slotIndex + ((page - 1) * 12)
+		end
+
+		return StaticSlot()
+	end
+
+	local assignedId
 
 	if page >= 7 and page <= 9 then
 		local stanceIndex = self:GetActiveStanceIndex()
 
-		local assignedId = stanceIndex
-			and ACABDB.mainBarStanceBarAssignment
-			and ACABDB.mainBarStanceBarAssignment[stanceIndex]
-
-		local slot = assignedId and self:GetExtraBarSlotForIndex(assignedId, slotIndex)
-
-		if slot then
-			return slot
-		end
+		assignedId = stanceIndex
+			and ACABDB.defaultBarStanceBarAssignment
+			and ACABDB.defaultBarStanceBarAssignment[id]
+			and ACABDB.defaultBarStanceBarAssignment[id][stanceIndex]
 	elseif page ~= 1 then
-		local assignedId = ACABDB.mainBarPageBarAssignment
-		local slot = assignedId and self:GetExtraBarSlotForIndex(assignedId, slotIndex)
-
-		if slot then
-			return slot
-		end
+		assignedId = ACABDB.defaultBarPageBarAssignment
+			and ACABDB.defaultBarPageBarAssignment[id]
+	else
+		return StaticSlot()
 	end
 
-	return slotIndex + ((page - 1) * 12)
+	if assignedId == nil then
+		return StaticSlot()
+	elseif assignedId == -1 then
+		return VanillaDefaultSlot()
+	end
+
+	local slot = self:GetExtraBarSlotForIndex(assignedId, slotIndex)
+
+	if slot then
+		return slot
+	end
+
+	return StaticSlot()
 end
 
--- Re-resolves all of bar 1's pool buttons' action slots from the current
--- page/bonus-bar state (via Bar.lua's ApplyBarShape, cfg.dynamicMainBar
--- branch). Called whenever CURRENT_ACTIONBAR_PAGE or GetBonusBarOffset()
--- changes, or either toggle is flipped from Settings.
-function ACAB:RefreshMainBarSlots()
-	local bar = self.bars and self.bars[1]
+-- Re-resolves every default bar's (1-5) pool button slots from the current
+-- page/bonus-bar state via Bar.lua's ApplyBarShape (cfg.dynamicDefaultBar).
+-- Called on CURRENT_ACTIONBAR_PAGE/GetBonusBarOffset() change or toggle flip.
+function ACAB:RefreshDefaultBarSlots()
+	local id
 
-	if bar then
-		self:ApplyBarShape(bar)
+	for id = 1, 5 do
+		local bar = self.bars and self.bars[id]
+
+		if bar then
+			self:ApplyBarShape(bar)
+		end
 	end
 end
 
 -- Settings.lua General tab checkboxes write through these. Neither toggle
--- changes bar 1's visibility, only which action slots its buttons read
--- from, so both reapply via RefreshMainBarSlots instead of Show()/Hide().
-function ACAB:SetMainBarPaginationEnabled(enabled)
+-- changes any default bar's visibility, only which action slots its
+-- buttons read from, so both reapply via RefreshDefaultBarSlots instead
+-- of Show()/Hide().
+function ACAB:SetDefaultBarPaginationEnabled(enabled)
 	self:EnsureDB()
 
-	ACABDB.mainBarPaginationEnabled = enabled and true or false
+	ACABDB.defaultBarPaginationEnabled = enabled and true or false
 
-	self:RefreshMainBarSlots()
+	self:RefreshDefaultBarSlots()
 
-	-- Page Indicator visibility is driven by this same toggle - it has no
-	-- independent enable flag of its own.
+	-- Page Indicator visibility derives from this toggle (no flag of its
+	-- own); it's a bar-1-only element.
 	if self.ApplyPageIndicatorVisibility then
 		self:ApplyPageIndicatorVisibility()
 	end
 end
 
-function ACAB:SetMainBarStanceSwapEnabled(enabled)
+function ACAB:SetDefaultBarStanceSwapEnabled(enabled)
 	self:EnsureDB()
 
-	ACABDB.mainBarStanceSwapEnabled = enabled and true or false
+	ACABDB.defaultBarStanceSwapEnabled = enabled and true or false
 
-	self:RefreshMainBarSlots()
+	self:RefreshDefaultBarSlots()
 end
 
 -- Runs after real vanilla's ChangeActionBarPage (fires on every Shift/Ctrl
 -- page swap and the page-arrow clicks) has updated CURRENT_ACTIONBAR_PAGE,
--- so RefreshMainBarSlots always reads the new value. Registered once at
+-- so RefreshDefaultBarSlots always reads the new value. Registered once at
 -- file load since FrameXML's ChangeActionBarPage is already defined by
 -- the time addon Lua files load.
 if hooksecurefunc and ChangeActionBarPage then
 	hooksecurefunc("ChangeActionBarPage", function()
-		ACAB:RefreshMainBarSlots()
+		ACAB:RefreshDefaultBarSlots()
 	end)
 end
 
@@ -224,7 +253,7 @@ end
 -- ActionButton1-12 that Blizzard shows as an overlay any time bonus/
 -- stance content becomes active - hiding ActionButton1-12 does nothing to
 -- suppress it. Hidden and Show()-neutered unconditionally here (not gated
--- on mainBarStanceSwapEnabled), since ACAB' own replica buttons are
+-- on defaultBarStanceSwapEnabled), since ACAB' own replica buttons are
 -- the sole visual representation of bar 1 regardless of that toggle.
 function ACAB:HideBonusActionBarFrame()
 	self:NeuterFrameShow(BonusActionBarFrame)
@@ -324,8 +353,8 @@ end
 -- Positions and grid-reflows default bar `id`'s 12 real Blizzard buttons
 -- per its saved config (point/relativePoint/x/y/cols/rows/buttonSize).
 -- Delegates to Bar.lua's own ApplyBarPosition/ApplyBarShape against this
--- bar's real Bar.lua bar object (self.bars[id]), including bar 1's own
--- dynamic per-button slot resolution (cfg.dynamicMainBar).
+-- bar's real Bar.lua bar object (self.bars[id]), including this bar's own
+-- dynamic per-button slot resolution (cfg.dynamicDefaultBar).
 function ACAB:ApplyDefaultBarShape(id)
 	self:EnsureDB()
 
@@ -826,7 +855,7 @@ function ACAB:CreateFixedSlotDefaultBars()
 		elseif id == self.STANCE_BAR_ID and cfg and self:IsStanceBarNativeModeEffective() then
 			-- Handled by CreateStanceBarContainer - the pre-existing native
 			-- machinery, entirely separate from this pool-button path.
-		elseif cfg and (cfg.fixedActionSlots or cfg.dynamicMainBar) and not self.bars[id] then
+		elseif cfg and (cfg.fixedActionSlots or cfg.dynamicDefaultBar) and not self.bars[id] then
 			local nativeButtons = self:GetDefaultBarButtons(id)
 
 			if nativeButtons then
@@ -2134,12 +2163,12 @@ function ACAB:ApplyDefaultLayoutEditVisual()
 	self:ApplyContainerOverlayVisual(getglobal(self.CAST_BAR_FRAME_NAME), true, showAlwaysEditable)
 
 	-- Page Indicator (Part 4) - same generic ApplyContainerOverlayVisual
-	-- treatment, gated on mainBarPaginationEnabled instead of an
+	-- treatment, gated on defaultBarPaginationEnabled instead of an
 	-- independent enable flag (this element has none of its own - see
 	-- ApplyPageIndicatorVisibility's comment).
 	self:ApplyContainerOverlayVisual(
 		self.pageIndicatorContainer,
-		ACABDB.mainBarPaginationEnabled,
+		ACABDB.defaultBarPaginationEnabled,
 		show
 	)
 

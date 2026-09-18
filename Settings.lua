@@ -1200,7 +1200,7 @@ function ACAB:CreateWideContentScrollFrame(name)
 end
 -------------------------------------------------------------------------
 -- Default-PROFILE lock, distinct from ApplyDefaultLayoutGating below
--- (which gates the unrelated "Use Default Blizzard Layout" checkbox -
+-- (which gates the unrelated "Force default Blizzard layout mode" checkbox -
 -- both gates are independent and can apply to the same controls at once).
 -- The Default PROFILE must never be edited: every settings page shows a
 -- red warning banner and locks its controls while it's active.
@@ -1211,16 +1211,48 @@ end
 -- once (the Default profile's own restriction is the broader one).
 local PROFILE_LOCK_MESSAGE_PROFILE =
 	"Editing Settings is prohibited while in default profile mode. " ..
-	"Go to Profile Settings and set up a profile if you wish to " ..
-	"change Settings or access Layout Edit Mode."
+	"Set up a profile if you wish to change Settings or access Layout " ..
+	"Edit Mode. |cffffd100Click to create one now.|r"
 
--- Text shown while "Use Default Blizzard Layout" (General tab) is on, on
--- pages that gate ONLY applies to (bar 1 and the simple/native-backed
+-- Text shown while "Force default Blizzard layout mode" (General tab) is
+-- on, on pages that gate ONLY applies to (bar 1 and the simple/native-backed
 -- pages - see ApplyDefaultLayoutGating's own header comment).
 local PROFILE_LOCK_MESSAGE_LAYOUT =
-	"Editing Settings is prohibited while using the Default Blizzard " ..
-	"Layout. Disable Default Blizzard Layout under General Settings " ..
-	"if you wish to change Settings or access Layout Edit Mode."
+	"Editing Settings is prohibited while Force default Blizzard layout " ..
+	"mode is enabled. Disable it under General Settings if you wish to " ..
+	"change Settings or access Layout Edit Mode. " ..
+	"|cffffd100Click to jump to General Settings.|r"
+
+-- Single entry point for "the user clicked something locked by the
+-- Default-profile/Force-default-layout gate, now what" - used by the lock
+-- banner's OnClick (below) and by any locked control that opts into the
+-- same behavior (CreateLabeledCheckbox's config.onLockedClick, UIWidgets.lua).
+-- Re-checks live state rather than trusting a cached reason, so priority
+-- always matches PROFILE_LOCK_MESSAGE_PROFILE's own priority (default
+-- profile wins when both are true). Default profile skips straight to the
+-- create-profile dialog (the only way off it), disabling layout-force on
+-- success since the confirm-reset dialog it would otherwise trigger
+-- doesn't apply to a fresh profile. Otherwise, if only layout-force is on,
+-- jump to the General tab and pulse the "Force default Blizzard layout
+-- mode" checkbox.
+function ACAB:HandleLockReasonClick()
+	if ACAB:IsDefaultProfileActive() then
+		ACAB:ShowCreateProfileDialog(function(ok)
+			if ok then
+				ACAB:ApplyUseDefaultLayoutChange(false)
+
+				local generalPanel = ACAB.settingsFrame and ACAB.settingsFrame.generalPanel
+
+				if generalPanel and generalPanel.useDefaultLayoutCheckbox then
+					generalPanel.useDefaultLayoutCheckbox:SetChecked(false)
+				end
+			end
+		end)
+	elseif ACABDB.useDefaultLayout == true then
+		ACAB:OpenSettingsPageByName("general")
+		ACAB:HighlightGeneralLayoutCheckbox()
+	end
+end
 
 -- One reusable warning banner per page - a solid strip anchored right
 -- below the page's title and right above its first content control
@@ -1230,7 +1262,10 @@ local PROFILE_LOCK_MESSAGE_LAYOUT =
 -- ApplyProfileLockGating below - text isn't fixed at creation time since
 -- which of the two messages above applies can change live.
 function ACAB:CreateProfileLockWarning(page)
-	local banner = CreateFrame("Frame", nil, page)
+	-- "Button", not "Frame" - a plain Frame has no "OnClick" script handler
+	-- in this client (only Button/CheckButton do), so the OnClick wired
+	-- below would throw on load otherwise.
+	local banner = CreateFrame("Button", nil, page)
 
 	-- PARENTED to `page` (so it hides/shows along with it) but ANCHORED to
 	-- contentPanel - `page` itself now slides DOWN by this banner's height
@@ -1251,7 +1286,10 @@ function ACAB:CreateProfileLockWarning(page)
 		insets = { left = 2, right = 2, top = 2, bottom = 2 },
 	})
 
-	banner:SetBackdropColor(0.35, 0, 0, 0.9)
+	banner.lockedBackdropColor = { 0.35, 0, 0, 0.9 }
+	banner.hoverBackdropColor = { 0.5, 0.08, 0.08, 0.9 }
+
+	banner:SetBackdropColor(unpack(banner.lockedBackdropColor))
 
 	local text = banner:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 
@@ -1262,6 +1300,23 @@ function ACAB:CreateProfileLockWarning(page)
 	text:SetTextColor(1, 0.15, 0.15)
 
 	banner.text = text
+
+	banner:EnableMouse(true)
+
+	banner:SetScript("OnEnter", function()
+		this:SetBackdropColor(unpack(this.hoverBackdropColor))
+	end)
+
+	banner:SetScript("OnLeave", function()
+		this:SetBackdropColor(unpack(this.lockedBackdropColor))
+	end)
+
+	-- Shared with every other locked control's click (CreateLabeledCheckbox's
+	-- ACABLocked branch, UIWidgets.lua) - one place owns "what does clicking
+	-- something locked by this reason do".
+	banner:SetScript("OnClick", function()
+		ACAB:HandleLockReasonClick()
+	end)
 
 	banner:Hide()
 
@@ -1398,6 +1453,9 @@ function ACAB:ApplyProfileLockGating(page, alsoCheckLayoutLock)
 		page.profileLockWarning:SetShown(locked)
 
 		if locked then
+			-- Profile lock takes priority - see PROFILE_LOCK_MESSAGE_PROFILE's
+			-- own comment above (the banner's OnClick re-derives this same
+			-- priority live instead of caching it here).
 			SetProfileLockBannerMessage(
 				page.profileLockWarning,
 				profileLocked and PROFILE_LOCK_MESSAGE_PROFILE or PROFILE_LOCK_MESSAGE_LAYOUT
@@ -1458,7 +1516,7 @@ function ACAB:ApplyProfileLockGating(page, alsoCheckLayoutLock)
 end
 
 -------------------------------------------------------------------------
--- Default-layout gating (General tab's "Use Default Blizzard Layout")
+-- Default-layout gating (General tab's "Force default Blizzard layout mode")
 --
 -- Uses EnableMouse(false) rather than Slider/Button Enable()/Disable():
 -- a universal Frame method that works on both sliders and the plain
@@ -1898,9 +1956,10 @@ function ACAB:FitSettingsWindowToBarPage(barId)
 	n = AppendCandidate(candidates, n, page.expBarGlowPulseIntervalSlider)
 	n = AppendCandidate(candidates, n, page.expBarGlowPulseIntervalValueText)
 
-	-- Stance/Page Bar Assignment rows - only ever present on bar 1's page.
-	-- Each individual row is included as its own candidate, same "walk the
-	-- rows, not their shared container" convention gridSwatches below uses.
+	-- Stance/Page Bar Assignment rows - present on any default bar's (1-5)
+	-- own page. Each individual row is included as its own candidate, same
+	-- "walk the rows, not their shared container" convention gridSwatches
+	-- below uses.
 	if page.assignmentRows then
 		local i
 
@@ -1992,8 +2051,9 @@ function ACAB:FitSettingsWindowToGeneralView()
 	n = AppendCandidate(candidates, n, panel.mainBarPaginationCheckbox)
 	n = AppendCandidate(candidates, n, panel.mainBarStanceSwapCheckbox)
 
-	-- Stance/Page Bar Assignment rows live on bar 1's own settings page -
-	-- see FitSettingsWindowToBarPage for their candidate handling.
+	-- Stance/Page Bar Assignment rows live on each default bar's (1-5) own
+	-- settings page - see FitSettingsWindowToBarPage for their candidate
+	-- handling.
 
 	n = AppendCandidate(candidates, n, panel.macroTextCheckbox)
 	n = AppendCandidate(candidates, n, panel.macroValueText)
