@@ -1899,6 +1899,29 @@ local function ApplyModernLayoutPreset(state, data)
 	petBarCfg.y = actionBar2Top + rowGap
 	data.defaultBars[ACAB.PET_BAR_ID] = petBarCfg
 
+	-- Page Swap Indicator: only positioned here when Page Bar-Changes is
+	-- actually on (step 4) - flush to Main Bar's own right edge, vertically
+	-- centered on it, same relationship the wizard's own step 4 preview
+	-- shows (indicator anchored off the example bar's right edge). Main
+	-- Bar (id 1) shares Action Bar 2's exact grid (12 cols, same
+	-- buttonSize/spacing here), so actionBar2Width doubles as its width
+	-- too. Container height read live the same way Bag Bar/Micro Menu's
+	-- is - CreatePageIndicatorContainer's own overlay has no inset (unlike
+	-- Latency Bar's), so the container's own GetHeight already matches its
+	-- real hitbox with no gap correction needed.
+	if state.pageSwapEnabled then
+		local indicatorContainer = ACAB.pageIndicatorContainer
+		local indicatorHeight = (indicatorContainer and indicatorContainer:GetHeight()) or buttonSize
+
+		local mainBarCenterY = mainBarCfg.y + (buttonSize / 2)
+
+		data.mainBarPageIndicatorPosition = {
+			point = "BOTTOMLEFT", relativePoint = "BOTTOM",
+			x = (actionBar2Width / 2) + rowGap,
+			y = mainBarCenterY - (indicatorHeight / 2),
+		}
+	end
+
 	-- Bag Bar: flush against the screen's bottom-right corner - no
 	-- measurement needed, this is exact regardless of its real size.
 	data.bagBarPosition = {
