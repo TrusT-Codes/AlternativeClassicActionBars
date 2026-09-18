@@ -817,10 +817,23 @@ function ACAB:GetOrCreateProfilesPanel()
 	wizardButton:SetHeight(22)
 	wizardButton:SetPoint("TOPLEFT", dropdown, "BOTTOMLEFT", 16, -14)
 	ACAB:StyleModernButton(wizardButton, 0, 0)
+	ACAB:ApplyProminentButtonHighlight(wizardButton)
 	wizardButton:SetText("Run Setup Wizard")
 	panel.wizardButton = wizardButton
 
+	-- Default is locked/uneditable - SaveActiveProfileData has no special
+	-- case for it, so the normal overwrite-confirm flow below would
+	-- permanently overwrite the shared template every new profile is
+	-- deep-copied from. While Default is active, this instead launches
+	-- the same "create a new profile" flow as the first-login "Set up a
+	-- new custom Profile" button - nothing to overwrite, so no confirm
+	-- dialog needed either.
 	wizardButton:SetScript("OnClick", function()
+		if ACABCharDB and ACABCharDB.activeProfile == ACAB.DEFAULT_PROFILE_NAME then
+			ACAB:ShowSetupWizard()
+			return
+		end
+
 		ACAB:ShowDialog({
 			title = "Run Setup Wizard",
 			message = "This walks you back through the initial setup choices " ..
@@ -1002,11 +1015,13 @@ function ACAB:GetOrCreateProfilesPanel()
 	return panel
 end
 
--- Refreshes the dropdown's option list/current selection and all 5
--- action buttons' visibility (only shown while a non-Default profile is
--- active, since Default is locked/uneditable) - called whenever the
--- Profiles view is (re)shown and after any profile CRUD action that
--- doesn't already trigger a ReloadUI.
+-- Refreshes the dropdown's option list/current selection and the action
+-- buttons' visibility - called whenever the Profiles view is (re)shown
+-- and after any profile CRUD action that doesn't already trigger a
+-- ReloadUI. wizardButton is always shown (its own OnClick branches to a
+-- non-destructive "create new profile" flow while Default is active,
+-- rather than overwriting the locked template); the other 4 stay
+-- Default-only since Export/Copy/Import/Delete never make sense there.
 function ACAB:RefreshProfilesPanel()
 	local panel = self:GetOrCreateProfilesPanel()
 
@@ -1025,14 +1040,14 @@ function ACAB:RefreshProfilesPanel()
 	panel.profileDropdown:SetOptions(dropdownOptions)
 	panel.profileDropdown:SetSelected(ACABCharDB.activeProfile)
 
+	panel.wizardButton:Show()
+
 	if ACABCharDB.activeProfile ~= self.DEFAULT_PROFILE_NAME then
-		panel.wizardButton:Show()
 		panel.exportButton:Show()
 		panel.copyButton:Show()
 		panel.importButton:Show()
 		panel.deleteButton:Show()
 	else
-		panel.wizardButton:Hide()
 		panel.exportButton:Hide()
 		panel.copyButton:Hide()
 		panel.importButton:Hide()
