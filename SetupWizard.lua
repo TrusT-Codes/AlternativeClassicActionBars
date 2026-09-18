@@ -2125,12 +2125,14 @@ local function ApplyWizardStateToProfileData(state, data)
 		data.globalButtonSizeValue = state.globalButtonSizeValue
 	end
 
-	-- "blizzard" (Keep Vanilla Layout + ArtBar enabled) is a deliberate
-	-- no-op here - the profile keeps whatever it already has (copied from
-	-- Default, or the active profile's own current layout in overwrite
-	-- mode) exactly as is, and steps 6-8 (Pet/Stance mode, Experience Bar,
-	-- Spacing/Button Size) are never visited on that path so there's
-	-- nothing from them to apply either.
+	-- "blizzard" (Keep Vanilla Layout + ArtBar enabled) writes nothing onto
+	-- `data` here - steps 6-8 (Pet/Stance mode, Experience Bar, Spacing/
+	-- Button Size) are never visited on that path so there's nothing from
+	-- them to apply. The actual reset to vanilla positions/settings
+	-- happens separately in FinishWizard below (ACAB:
+	-- ResetAllElementsToVanillaLayout), against the live ACABDB once it
+	-- points at the target profile - `data` here isn't always that yet
+	-- (the create-profile path passes a plain ACABProfilesDB entry).
 	if state.generalLayoutFormat == "modern" then
 		data.defaultBars = data.defaultBars or {}
 
@@ -2170,6 +2172,17 @@ function ACABSetupWizardMixin:FinishWizard()
 		-- for real right here, no profile switch needed first.
 		if state.generalLayoutFormat == "modern" then
 			ACAB:ApplyModernLayoutGeometry()
+		elseif state.generalLayoutFormat == "blizzard" then
+			-- "Keep Vanilla Layout" only reached this profile's OWN prior
+			-- data untouched (ApplyWizardStateToProfileData's own comment
+			-- on this branch) - in overwrite mode that prior data can
+			-- already be a Modern Layout profile from an earlier wizard
+			-- run, which would otherwise survive re-running the wizard and
+			-- picking Vanilla here. Same reset cascade
+			-- "Force Vanilla Layout Mode" (General tab) runs, so this
+			-- choice always lands on the real vanilla baseline regardless
+			-- of what the profile had before.
+			ACAB:ResetAllElementsToVanillaLayout()
 		end
 
 		ACAB:SaveActiveProfileData()
@@ -2232,6 +2245,14 @@ function ACABSetupWizardMixin:FinishWizard()
 
 	if state.generalLayoutFormat == "modern" then
 		ACAB:ApplyModernLayoutGeometry()
+	elseif state.generalLayoutFormat == "blizzard" then
+		-- Same reasoning as the overwrite branch above - a brand-new
+		-- profile can still have inherited Modern Layout data (CreateProfile
+		-- seeds from the Default profile, or the live ACABDB when Default
+		-- hasn't been persisted yet - Database.lua's own comment on that
+		-- fallback), so this choice always resets to the real vanilla
+		-- baseline rather than trusting whatever it copied.
+		ACAB:ResetAllElementsToVanillaLayout()
 	end
 
 	ACABCharDB = ACABCharDB or {}
