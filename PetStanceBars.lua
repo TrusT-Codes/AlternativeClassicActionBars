@@ -302,6 +302,106 @@ function ACAB:ResetPetBarNativeLayout()
 	self:ApplyPetBarNativeShape()
 end
 
+-- Settings.lua's Pet Bar page "Reset to Modern Layout Default" button -
+-- positions Pet Bar directly flush above Action Bar 2 (bar 3), zero gap,
+-- right edges aligned, reading bar 3's REAL rendered edge
+-- (ACAB:GetElementRealEdges) rather than a buttonSize*N formula, so it
+-- stays correct regardless of bar 3's own current buttonSize/border
+-- style. Branches on native vs styled mode (ACAB:IsPetBarNativeModeEffective) -
+-- native mode has no self.bars[PET_BAR_ID] pool bar to position, styled
+-- mode has no petBarNativeContainer.
+function ACAB:ResetPetBarLayoutToModernBase()
+	self:EnsureDB()
+
+	local bar3 = self.bars and self.bars[3]
+
+	if not bar3 then
+		return
+	end
+
+	local _, bar3Right, bar3Top = self:GetElementRealEdges(bar3)
+
+	if not bar3Right then
+		return
+	end
+
+	if self:IsPetBarNativeModeEffective() then
+		local cfg = ACABDB.defaultBars[self.PET_BAR_ID]
+
+		-- Built on demand - mirrors EnsureFixedSlotBarCreated's own reason:
+		-- a mode switch just made mid-session (e.g. via the Setup Wizard)
+		-- can want native when this session's boot built styled instead.
+		self:CreatePetBarNativeContainer()
+
+		local container = self.petBarNativeContainer
+
+		if not cfg or not container then
+			return
+		end
+
+		-- Layout first: PixelSetPoint reads the container's live
+		-- GetEffectiveScale to stay pixel-perfect, so applying position
+		-- while a stale scale is still live lands it at the wrong X/Y -
+		-- settle scale before repositioning (same ordering the Stance
+		-- Bar's own resetModern closure in SettingsBars.lua already uses).
+		cfg.scale = self:GetModernPetStanceScale()
+		self:ApplyPetBarNativeShape()
+
+		local containerLeft, containerRight = self:GetElementRealEdges(container)
+		local containerWidth = (containerLeft and containerRight and (containerRight - containerLeft)) or container:GetWidth() or 0
+		local _, _, _, insetBottom = self:GetElementVisualInset(container)
+
+		cfg.point = "BOTTOMLEFT"
+		cfg.relativePoint = "BOTTOMLEFT"
+		cfg.x = self:ConvertUIParentOffsetToOwnScale(container, bar3Right - containerWidth)
+		cfg.y = self:ConvertUIParentOffsetToOwnScale(container, bar3Top + insetBottom)
+
+		cfg.usesDefaultPosition = false
+
+		self:ApplyPetBarNativePosition()
+		return
+	end
+
+	-- Styled mode: a regular Bar.lua pool bar (self.bars[PET_BAR_ID]) -
+	-- styled buttons already respect cfg.buttonSize directly (unlike
+	-- native mode's fixed-size real buttons), so no scale-compensation
+	-- trick is needed here, only the shared Modern Layout buttonSize/spacing.
+	-- Built on demand - a fresh profile's first login always boots native
+	-- (IsPetBarNativeModeEffective forces it while useDefaultLayout is
+	-- still true), so the styled bar this mode switch now needs may not
+	-- exist yet this session.
+	self:EnsureFixedSlotBarCreated(self.PET_BAR_ID)
+
+	local petBar = self.bars[self.PET_BAR_ID]
+
+	if not petBar then
+		return
+	end
+
+	local buttonSize, spacing = self:GetModernLayoutSizing()
+	local cfg = petBar.config
+
+	cfg.buttonSize = buttonSize
+	cfg.spacing = spacing
+	cfg.cols = 10
+	cfg.rows = 1
+	cfg.buttonCount = 10
+
+	local barWidth = (buttonSize * 10) + (spacing * 9)
+	local _, insetRight, _, insetBottom = self:GetElementVisualInset(petBar)
+
+	cfg.point = "BOTTOMLEFT"
+	cfg.relativePoint = "BOTTOMLEFT"
+	cfg.x = bar3Right - insetRight - barWidth
+	cfg.y = bar3Top + insetBottom
+
+	self:ApplyBarPosition(petBar)
+	self:SetBarLayout(petBar, cfg.cols, cfg.rows)
+	self:SetBarButtonSize(petBar, buttonSize)
+	self:ApplyBarShape(petBar)
+	self:SetDefaultBarEnabled(self.PET_BAR_ID, true)
+end
+
 function ACAB:StartPetBarNativeDrag()
 	local cfg = ACABDB.defaultBars[self.PET_BAR_ID]
 
@@ -629,7 +729,7 @@ function ACAB:SetStanceBarPosition(x, y)
 	self:ApplyStanceBarPosition()
 end
 
--- Settings.lua's Stance Bar page "Reset to Blizzard Default" button.
+-- Settings.lua's Stance Bar page "Reset to Vanilla Layout" button.
 function ACAB:ResetStanceBarPosition()
 	local native = ACABDB.stanceBarNativeAnchor
 
@@ -657,6 +757,116 @@ function ACAB:ResetStanceBarPosition()
 	ACABDB.stanceBarUsesDefaultPosition = true
 
 	self:ApplyStanceBarPosition()
+end
+
+-- Settings.lua's Stance Bar page "Reset to Modern Layout Default" button.
+-- Native mode: positions Stance Bar directly above Action Bar 2 (bar 3),
+-- left edges aligned, reading bar 3's REAL rendered edge
+-- (ACAB:GetElementRealEdges) rather than a buttonSize*N formula, so it
+-- stays correct regardless of bar 3's own current buttonSize/border
+-- style. Styled mode (ACAB:IsStanceBarNativeModeEffective() false) is
+-- handled entirely differently, in ACAB:ResetStanceBarShapeToModernBase
+-- below - a vertical grid to the left of Main Bar, not above Action Bar 2.
+function ACAB:ResetStanceBarPositionToModernBase()
+	self:EnsureDB()
+
+	if not self:IsStanceBarNativeModeEffective() then
+		self:ResetStanceBarShapeToModernBase()
+		return
+	end
+
+	-- Built on demand - see ResetPetBarLayoutToModernBase's own comment;
+	-- same mode-switched-mid-session gap.
+	self:CreateStanceBarContainer()
+
+	local bar3 = self.bars and self.bars[3]
+	local container = self.stanceBarContainer
+
+	if not bar3 or not container then
+		return
+	end
+
+	-- Layout first, same reason as Pet Bar's own reset above - settle
+	-- scale before repositioning.
+	ACABDB.stanceBarScale = self:GetModernPetStanceScale()
+	self:ApplyStanceBarShape()
+
+	local bar3Left, _, bar3Top = self:GetElementRealEdges(bar3)
+
+	if not bar3Left then
+		return
+	end
+
+	ACABDB.stanceBarPosition = {
+		point = "BOTTOMLEFT",
+		relativePoint = "BOTTOMLEFT",
+		x = self:ConvertUIParentOffsetToOwnScale(container, bar3Left),
+		-- Same 6px row gap Pet Bar's own reset above keeps between Action
+		-- Bar 2 and the Stance/Pet Bar row.
+		y = self:ConvertUIParentOffsetToOwnScale(container, bar3Top + 6),
+	}
+
+	ACABDB.stanceBarUsesDefaultPosition = false
+
+	self:ApplyStanceBarPosition()
+end
+
+-- Styled-mode-only half of ACAB:ResetStanceBarPositionToModernBase above -
+-- Stance Bar becomes a vertical grid (1 col) immediately to Main Bar's
+-- left, zero gap, its own bottom edge matching Main Bar's bottom edge
+-- (not stacked above Action Bar 2 like native mode). Styled buttons
+-- already respect cfg.buttonSize directly (unlike native mode's fixed-
+-- size real buttons), so no scale-compensation trick is needed here,
+-- only the shared Modern Layout buttonSize/spacing.
+function ACAB:ResetStanceBarShapeToModernBase()
+	self:EnsureDB()
+
+	-- Built on demand - see ResetPetBarLayoutToModernBase's own comment on
+	-- EnsureFixedSlotBarCreated above; same first-login-boots-native gap.
+	self:EnsureFixedSlotBarCreated(self.STANCE_BAR_ID)
+
+	local mainBar = self.bars and self.bars[1]
+	local stanceBar = self.bars and self.bars[self.STANCE_BAR_ID]
+
+	if not mainBar or not stanceBar then
+		return
+	end
+
+	local mainBarLeft, _, _, mainBarBottom = self:GetElementRealEdges(mainBar)
+
+	if not mainBarLeft then
+		return
+	end
+
+	local buttonSize, spacing = self:GetModernLayoutSizing()
+	local cfg = stanceBar.config
+
+	-- Vertical grid - real Stance Bar shows one button per available
+	-- stance/form; falls back to whatever row count it already had (or 4)
+	-- if the live count can't be read (e.g. class with no forms at all).
+	local rows = (GetNumShapeshiftForms and GetNumShapeshiftForms()) or 0
+
+	if rows < 1 then
+		rows = cfg.rows or 4
+	end
+
+	cfg.buttonSize = buttonSize
+	cfg.spacing = spacing
+	cfg.cols = 1
+	cfg.rows = rows
+	cfg.buttonCount = rows
+
+	local _, insetRight, _, insetBottom = self:GetElementVisualInset(stanceBar)
+
+	cfg.point = "BOTTOMLEFT"
+	cfg.relativePoint = "BOTTOMLEFT"
+	cfg.x = mainBarLeft - insetRight - buttonSize
+	cfg.y = mainBarBottom + insetBottom
+
+	self:ApplyBarPosition(stanceBar)
+	self:SetBarLayout(stanceBar, cfg.cols, cfg.rows)
+	self:SetBarButtonSize(stanceBar, buttonSize)
+	self:ApplyBarShape(stanceBar)
 end
 
 -- Settings.lua's Stance Bar page enable checkbox. The container's own

@@ -162,10 +162,38 @@ end
 
 local barOverlays = {}
 
-local function EnsureBarOverlay(bar)
+-- Expands `overlay` past `bar`'s own frame bounds via GetElementVisualInset
+-- so the tint/hitbox reaches the visible native border's outer edge -
+-- insets are 0 for custom bars (id 6+) UNLESS vanilla border style is
+-- active (ACAB:GetElementVisualInset applies to any bar with a real
+-- border, not just id 1-5 despite this function's older comment). Callable
+-- repeatedly, not just at creation - insets depend on cfg.buttonSize/the
+-- account-wide border style, both of which can change after the overlay
+-- already exists, and the anchor being relative to `bar` only keeps the
+-- overlay's POSITION in sync automatically, never the inset AMOUNT.
+local function ApplyBarOverlayInsetAnchor(bar, overlay)
+	overlay:ClearAllPoints()
+
+	local insetLeft, insetRight, insetTop, insetBottom = ACAB:GetElementVisualInset(bar)
+
+	if insetLeft ~= 0 or insetRight ~= 0 or insetTop ~= 0 or insetBottom ~= 0 then
+		overlay:SetPoint("TOPLEFT", bar, "TOPLEFT", -insetLeft, insetTop)
+		overlay:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", insetRight, -insetBottom)
+	else
+		overlay:SetAllPoints(bar)
+	end
+end
+
+-- Public (not `local function`) so DefaultBars.lua's Modern Layout
+-- geometry can measure a bar's real, inset-expanded on-screen footprint
+-- via ACAB:GetElementRealEdges(overlay) - the overlay IS that footprint,
+-- always kept current (see ApplyBarOverlayInsetAnchor above), so this is
+-- the authoritative real size/edge source, not a re-derived formula.
+function ACAB:EnsureBarOverlay(bar)
 	local overlay = barOverlays[bar]
 
 	if overlay then
+		ApplyBarOverlayInsetAnchor(bar, overlay)
 		return overlay
 	end
 
@@ -181,18 +209,7 @@ local function EnsureBarOverlay(bar)
 	overlay:SetFrameStrata("HIGH")
 	overlay:SetFrameLevel(bar:GetFrameLevel())
 
-	-- Default bars (id 1-5) expand the overlay past the bar's own frame
-	-- bounds via GetElementVisualInset so the tint reaches the visible
-	-- native border's outer edge; custom bars (id 6+, all insets 0) just
-	-- SetAllPoints(bar).
-	local insetLeft, insetRight, insetTop, insetBottom = ACAB:GetElementVisualInset(bar)
-
-	if insetLeft ~= 0 or insetRight ~= 0 or insetTop ~= 0 or insetBottom ~= 0 then
-		overlay:SetPoint("TOPLEFT", bar, "TOPLEFT", -insetLeft, insetTop)
-		overlay:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", insetRight, -insetBottom)
-	else
-		overlay:SetAllPoints(bar)
-	end
+	ApplyBarOverlayInsetAnchor(bar, overlay)
 
 	local tex = overlay:CreateTexture(nil, "OVERLAY")
 	tex:SetTexture("Interface\\Buttons\\WHITE8X8")
@@ -317,7 +334,7 @@ function ACAB:ApplyEditModeVisual()
 		-- canEdit is true (mouse-enabled, elevated to TOOLTIP strata
 		-- above the bar/buttons' own HIGH), otherwise fully inert.
 		if bar then
-			local overlay = EnsureBarOverlay(bar)
+			local overlay = self:EnsureBarOverlay(bar)
 
 			overlay:EnableMouse(canEdit and true or false)
 
@@ -346,18 +363,12 @@ function ACAB:ApplyEditModeVisual()
 
 	self:ApplyLayoutGridVisual()
 
-	-- Keeps Core.lua's ESC-to-exit capture frame in sync with edit mode's
+	-- Keeps Core.lua's ESC-to-exit keybinding swap in sync with edit mode's
 	-- actual on/off state, regardless of which code path got here.
-	local captureFrame = self.editModeCaptureFrame
-
-	if captureFrame then
-		if editMode then
-			captureFrame:Show()
-			captureFrame:EnableKeyboard(true)
-		else
-			captureFrame:EnableKeyboard(false)
-			captureFrame:Hide()
-		end
+	if editMode then
+		self:EnableEditModeEscapeBinding()
+	else
+		self:DisableEditModeEscapeBinding()
 	end
 end
 
@@ -1132,10 +1143,10 @@ function ACAB:ApplyBarShape(bar)
 	self:LayoutButtons(bar)
 
 	-- Ensure this bar's overlay exists as soon as the bar itself does,
-	-- rather than lazily deferring to the first edit-mode toggle. The
-	-- overlay is anchored to `bar`, so no separate resize call is needed
-	-- here even though PixelSetSize just changed the bar's dimensions.
-	EnsureBarOverlay(bar)
+	-- rather than lazily deferring to the first edit-mode toggle - also
+	-- refreshes its inset anchors to the buttonSize/border style PixelSetSize
+	-- above just applied (ACAB:EnsureBarOverlay's own comment).
+	self:EnsureBarOverlay(bar)
 
 	-- cfg.hoverOnly/cfg.hoverDuration may be nil on a bar saved before this feature existed.
 	self:ApplyHoverOnlyState(bar, cfg.hoverOnly, function() return cfg.hoverDuration or 3 end)
@@ -1338,6 +1349,63 @@ function ACAB:ResetExtraBarLayout(barId)
 
 	if ACABDB.useDefaultLayout ~= false then
 		self:ReflowExtraBarDependants(barId)
+	end
+end
+
+-- Settings.lua's Extra Bar page "Reset to Modern Layout Default" button -
+-- each Extra Bar only touches its own slot, reading whichever real
+-- neighbor it stacks against live (DefaultBars.lua's
+-- ACAB:ApplyModernVerticalExtraBarSlot) rather than recomputing the whole
+-- 6-bar cluster (ACAB:ApplyModernVerticalBarClusterLayout is still what
+-- the Setup Wizard uses for the initial full stack) - so clicking one
+-- Extra Bar's button never drags Right Action Bar 1/2 or another Extra
+-- Bar along with it.
+function ACAB:ResetExtraBarLayoutToModernBase(barId)
+	if not self:IsExtraBarId(barId) then
+		return
+	end
+
+	self:EnsureDB()
+
+	local bar = self.bars and self.bars[barId]
+
+	if not bar then
+		return
+	end
+
+	local buttonSize, spacing = self:GetModernLayoutSizing()
+	local rowY = self:GetModernVerticalBarCenteredY(buttonSize, spacing)
+	local extraStart = self.EXTRA_BAR_ID_START
+
+	if barId == extraStart then
+		-- Extra Bar 1: immediate left of Right Action Bar 2 (id 5)'s
+		-- CURRENT real edge - never moves bar 5 (id 4 is the one flush
+		-- against the screen's right edge, id 5 sits to its left).
+		local bar5 = self.bars[5]
+
+		if not bar5 then
+			return
+		end
+
+		local bar5Left = self:GetElementRealEdges(bar5)
+
+		self:ApplyModernVerticalExtraBarSlot(bar, buttonSize, spacing, bar5Left or bar5.config.x, rowY, "left")
+	elseif barId == extraStart + 1 then
+		-- Extra Bar 2: outermost on the left, flush to the screen edge -
+		-- independent of everything else in the cluster.
+		self:ApplyModernVerticalExtraBarSlot(bar, buttonSize, spacing, 0, rowY, "right")
+	else
+		-- Extra Bar 3/4: immediate right of the previous Extra Bar's
+		-- CURRENT real edge - never moves it.
+		local prevBar = self.bars[barId - 1]
+
+		if not prevBar then
+			return
+		end
+
+		local _, prevRealRight = self:GetElementRealEdges(prevBar)
+
+		self:ApplyModernVerticalExtraBarSlot(bar, buttonSize, spacing, prevRealRight or prevBar.config.x, rowY, "right")
 	end
 end
 

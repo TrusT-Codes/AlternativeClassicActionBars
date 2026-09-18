@@ -51,11 +51,11 @@ function ACAB:GetOrCreateGeneralPanel()
 	-- local exists.
 	local checkbox = ACAB:CreateLabeledCheckbox(panel, "ACABGeneralUseDefaultLayoutCheckbox", {
 		anchor = { "TOPLEFT", panel, "TOPLEFT", ACAB.INDENT_SECTION, -52 },
-		label = "Force default Blizzard layout mode",
+		label = "Force Vanilla Layout Mode",
 		tooltip = {
-			title = "Force default Blizzard layout mode",
+			title = "Force Vanilla Layout Mode",
 			lines = {
-				"When enabled, default action bars keep Blizzard's native " ..
+				"When enabled, default action bars keep their native vanilla " ..
 				"position, size, and layout, and can only be shown/hidden - " ..
 				"dragging and resizing them is disabled.",
 				"Disable this to freely reposition, resize, and drag default " ..
@@ -70,7 +70,7 @@ function ACAB:GetOrCreateGeneralPanel()
 			local checked = this:GetChecked() and true or false
 			local wasDefault = ACABDB.useDefaultLayout == true
 
-			-- Turning ON resets every bar to Blizzard default - warn and
+			-- Turning ON resets every bar to Vanilla Layout default - warn and
 			-- confirm before that cascade runs. Revert the checkbox's own
 			-- visual state immediately so it stays unchecked while the
 			-- dialog is open; ApplyUseDefaultLayoutChange re-checks it
@@ -79,9 +79,9 @@ function ACAB:GetOrCreateGeneralPanel()
 				this:SetChecked(false)
 
 				ACAB:ShowDialog({
-					title = "Force default Blizzard layout mode",
+					title = "Force Vanilla Layout Mode",
 					message = "Enabling this will reset ALL bars to their " ..
-						"default Blizzard position.",
+						"default Vanilla Layout position.",
 					warningText = "This action cannot be undone.",
 					mode = "confirm",
 					buttons = {
@@ -505,7 +505,7 @@ function ACAB:GetOrCreateGeneralPanel()
 	-- border) or "vanilla" (native Blizzard border). Also shifts every
 	-- bar's button size (and spacing, opposite direction) to keep
 	-- default/extra bars aligned - see ACAB:ApplyGlobalButtonStyle
-	-- (Bar.lua). Locked to vanilla while "Force default Blizzard layout mode" is on.
+	-- (Bar.lua). Locked to vanilla while "Force Vanilla Layout Mode" is on.
 	-------------------------------------------------------------------------
 
 	-- Anchors off countTitle (a fixed-X FontString) with the exact offset
@@ -522,8 +522,8 @@ function ACAB:GetOrCreateGeneralPanel()
 				"Choose the button border style used by ALL bars. When " ..
 				"enabled use a slick and thin modern rectangular Border, " ..
 				"when disabled use the default vanilla UI border.",
-				"Locked to vanilla UI Border while 'Force default Blizzard " ..
-				"layout mode' is enabled",
+				"Locked to vanilla UI Border while 'Force Vanilla Layout " ..
+				"Mode' is enabled",
 			},
 		},
 		onClick = function()
@@ -837,7 +837,7 @@ function ACAB:GetOrCreateProfilesPanel()
 		ACAB:ShowDialog({
 			title = "Run Setup Wizard",
 			message = "This walks you back through the initial setup choices " ..
-				"(Force Default Blizzard Layout, button style, global spacing/size).",
+				"(Force Vanilla Layout Mode, button style, global spacing/size).",
 			warningText = "ATTENTION: Continuing will overwrite these settings " ..
 				"on your current profile and is not reversible.",
 			mode = "confirm",
@@ -1648,7 +1648,7 @@ function ACAB:ShowGeneralView()
 	ACAB:DeferFit(function() ACAB:FitSettingsWindowToGeneralView() end)
 end
 
--- Brief gold pulse behind the "Force default Blizzard layout mode"
+-- Brief gold pulse behind the "Force Vanilla Layout Mode"
 -- checkbox row - called after the layout-lock warning banner (Settings.lua's
 -- CreateProfileLockWarning) navigates here via /acab settings general, so
 -- the user's eye lands on the control to change rather than having to hunt

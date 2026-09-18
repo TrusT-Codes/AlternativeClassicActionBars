@@ -454,7 +454,7 @@ function ACAB:SetDefaultBarPosition(id, x, y)
 end
 
 -------------------------------------------------------------------------
--- Reset to Blizzard default layout (position, spacing, grid shape, size)
+-- Reset to Vanilla Layout (position, spacing, grid shape, size)
 --
 -- Restores position/spacing from cfg.nativeAnchor/cfg.nativeSpacing, the
 -- pristine snapshots Core.lua's seedDefaultBars captured once before
@@ -506,6 +506,470 @@ function ACAB:ResetDefaultBarLayout(id)
 	-- Guarantees the restored spacing is reflected even if SetBarLayout
 	-- above didn't run (e.g. grid is nil for this id).
 	self:ApplyBarShape(bar)
+end
+
+-------------------------------------------------------------------------
+-- Modern Layout geometry - live sequential measurement
+--
+-- Shared by the Setup Wizard's Modern Layout choice and every per-element
+-- "Reset to Modern Layout Default" button, so they can never drift apart.
+-- Every position below is read off the REAL rendered edge of whichever
+-- bar it stacks against (ACAB:GetElementRealEdges), by actually applying
+-- that bar for real first and measuring it back - never a buttonSize*N
+-- formula - so a real border-style visual footprint
+-- (ACAB:GetElementVisualInset) is always accounted for, and this stays
+-- correct even if the referenced bar's own buttonSize/border style
+-- differs from what a fixed constant would have assumed.
+-------------------------------------------------------------------------
+
+-- Effective button size/spacing the Modern Layout preset uses everywhere -
+-- the same globalButtonSizeEnabled/globalSpacingEnabled override every
+-- other per-bar control already respects (mirrors the wizard's own
+-- resolution of state.globalButtonSizeValue/globalSpacingValue).
+function ACAB:GetModernLayoutSizing()
+	self:EnsureDB()
+
+	local buttonSize = (ACABDB.globalButtonSizeEnabled and ACABDB.globalButtonSizeValue) or self.BUTTON_SIZE
+
+	-- Mirrors ACAB:ApplyGlobalSpacingToBar's real formula exactly (Bar.lua)
+	-- - vanilla border style's real button art always overhangs by
+	-- VANILLA_SPACING_FLOOR, ADDED on top of the global slider's own
+	-- displayed (never itself offset) value, not just a floor/clamp - a
+	-- slider left at its default 0 already means real spacing 4 in
+	-- vanilla style, same as every bar this override applies to elsewhere.
+	local floor = self:IsVanillaBorderStyle() and self.VANILLA_SPACING_FLOOR or 0
+	local spacing = floor + ((ACABDB.globalSpacingEnabled and ACABDB.globalSpacingValue) or 0)
+
+	return buttonSize, spacing
+end
+
+-- Pet Bar/Stance Bar's real buttons render at their own native size
+-- (~36px) regardless of the Modern Layout buttonSize above - below 36 the
+-- native buttons would visibly outsize Action Bar 2's own smaller
+-- buttons, so Modern Layout scales them down to 0.9 to compensate; at 36
+-- or above they stay at their native 1.0 scale.
+function ACAB:GetModernPetStanceScale()
+	local buttonSize = self:GetModernLayoutSizing()
+
+	if buttonSize < 36 then
+		return 0.9
+	end
+
+	return 1
+end
+
+-- Height to clear above the Experience Bar for Main Bar's own Y, when it
+-- sits at the screen's bottom - reads ACABDB.expBarEnabled/expBarPosition
+-- (the stored/intended position), NOT the live MainMenuExpBar frame's
+-- CURRENT on-screen spot. During the Setup Wizard's Modern Layout flow
+-- this runs before the live frame has actually been moved to match the
+-- profile being built (that only happens on the next real login) - but
+-- ACABDB.expBarPosition is already correct by the time this runs
+-- (SetupWizard.lua's ApplyExpBarWizardState writes it into the target
+-- profile before ApplyModernLayoutGeometry does), so reading the stored
+-- value works for both the wizard and the standalone "Reset to Modern
+-- Layout Default" buttons alike, where it's simply wherever the user last
+-- put it.
+function ACAB:GetModernBaseExpBarClearance()
+	self:EnsureDB()
+
+	if ACABDB.expBarEnabled == false then
+		return 0
+	end
+
+	local pos = ACABDB.expBarPosition
+
+	-- Same TOPLEFT/BOTTOMLEFT-of-UIParent convention as every other
+	-- captured anchor (ACAB:CaptureNativeAnchor) - y is the frame's own
+	-- top edge's height above the screen's bottom edge, so under 20px
+	-- means it's genuinely sitting at the bottom.
+	if not pos or not pos.y or pos.y >= 20 then
+		return 0
+	end
+
+	local frame = getglobal(self.EXP_BAR_FRAME_NAME)
+	local height = (frame and frame:GetHeight()) or 20
+
+	-- Same rowGap Modern Layout's own preset uses between stacked rows
+	-- (ACAB:ApplyModernMainActionBarsLayout below).
+	return height + 6
+end
+
+-- Stacks Main Bar (1) -> Action Bar 1 (2) -> Action Bar 2 (3) with zero
+-- gap - each bar's Y is read off the REAL rendered top edge of the bar
+-- directly below it (applied for real first, then measured back via
+-- ACAB:GetElementRealEdges), not a buttonSize*N formula. Shared by the
+-- Setup Wizard's Modern Layout choice and each of these 3 bars' own
+-- "Reset to Modern Layout Default" button - all 3 always resolve to the
+-- same result regardless of which one triggered it (matches the old
+-- formula-based behavior, which was self-consistent the same way).
+function ACAB:ApplyModernMainActionBarsLayout()
+	self:EnsureDB()
+
+	local bar1 = self.bars and self.bars[1]
+	local bar2 = self.bars and self.bars[2]
+	local bar3 = self.bars and self.bars[3]
+
+	if not bar1 or not bar2 or not bar3 then
+		return
+	end
+
+	local buttonSize, spacing = self:GetModernLayoutSizing()
+
+	local function PrepareShape(bar)
+		bar.config.buttonSize = buttonSize
+		bar.config.spacing = spacing
+		bar.config.cols = 12
+		bar.config.rows = 1
+		bar.config.buttonCount = 12
+	end
+
+	local function ApplyStackedPosition(bar, y)
+		bar.config.point = "BOTTOM"
+		bar.config.relativePoint = "BOTTOM"
+		bar.config.x = 0
+		bar.config.y = y
+
+		self:ApplyBarPosition(bar)
+		self:SetBarLayout(bar, bar.config.cols, bar.config.rows)
+		self:SetBarButtonSize(bar, bar.config.buttonSize)
+		self:ApplyBarShape(bar)
+	end
+
+	PrepareShape(bar1)
+	ApplyStackedPosition(bar1, 4 + self:GetModernBaseExpBarClearance())
+
+	local _, _, bar1RealTop = self:GetElementRealEdges(bar1)
+
+	PrepareShape(bar2)
+
+	local _, _, _, bar2InsetBottom = self:GetElementVisualInset(bar2)
+
+	ApplyStackedPosition(bar2, (bar1RealTop or 0) + bar2InsetBottom)
+	self:SetDefaultBarEnabled(2, true)
+
+	local _, _, bar2RealTop = self:GetElementRealEdges(bar2)
+
+	PrepareShape(bar3)
+
+	local _, _, _, bar3InsetBottom = self:GetElementVisualInset(bar3)
+
+	ApplyStackedPosition(bar3, (bar2RealTop or 0) + bar3InsetBottom)
+	self:SetDefaultBarEnabled(3, true)
+end
+
+-- The Y that vertically centers a 12-row, 1-col Modern Layout vertical bar
+-- of this buttonSize/spacing (ACAB:GetModernLayoutSizing - the SAME
+-- values every other Modern Layout bar uses, so the whole cluster stays
+-- visually consistent) on screen - shared by Right Action Bar 1/2 and
+-- Extra Bar 1-4, so the six-bar cluster centers as one row instead of
+-- sitting wherever Right Action Bar 2's real vanilla native anchor
+-- happened to be (near the top, by the minimap).
+function ACAB:GetModernVerticalBarCenteredY(buttonSize, spacing)
+	local screenHeight = UIParent:GetHeight() or 0
+	local clusterHeight = (buttonSize * 12) + (spacing * 11)
+
+	return (screenHeight - clusterHeight) / 2
+end
+
+-- Reshapes an Extra Bar to a 1-col/12-row vertical grid for Modern
+-- Layout's vertical clusters below (its own default/vanilla shape
+-- elsewhere in the addon is unaffected - this reshaping only applies
+-- here) and positions its real edge flush against `anchorRealEdge`
+-- (UIParent-relative units).
+-- anchorSide "left" means `bar` sits to the LEFT of anchorRealEdge (its
+-- own right edge touches it); "right" means `bar` sits to the RIGHT of it
+-- (its own left edge touches it). Both sides measure the resulting real
+-- edge straight off the bar frame itself right after positioning it -
+-- same pattern as Right Action Bar 1/2's own chain below, which never
+-- overlapped live. (A prior attempt measured via this bar's edit-mode
+-- overlay instead and re-shifted cfg.x from that reading - the overlay's
+-- own anchors were just re-cleared/re-set that same call, so its rect
+-- hadn't resolved yet on this client's lazy frame layout, and each bar
+-- chained off a stale reading of the one before it.)
+-- Returns bar's own resulting real right edge, so the next bar in the
+-- same cluster can chain off it.
+function ACAB:ApplyModernVerticalExtraBarSlot(bar, buttonSize, spacing, anchorRealEdge, y, anchorSide)
+	if not bar or not bar.config then
+		return anchorRealEdge
+	end
+
+	local cfg = bar.config
+
+	cfg.buttonSize = buttonSize
+	cfg.spacing = spacing
+
+	self:SetBarLayout(bar, 1, 12)
+	self:SetBarButtonCount(bar, 12)
+
+	local insetLeft, insetRight = self:GetElementVisualInset(bar)
+
+	cfg.point = "BOTTOMLEFT"
+	cfg.relativePoint = "BOTTOMLEFT"
+	cfg.y = y
+	cfg.usesDefaultPosition = false
+
+	if anchorSide == "right" then
+		cfg.x = anchorRealEdge + insetLeft
+	else
+		cfg.x = anchorRealEdge - insetRight - buttonSize
+	end
+
+	self:ApplyBarPosition(bar)
+	self:SetBarButtonSize(bar, buttonSize)
+	self:ApplyBarShape(bar)
+	self:SetExtraBarEnabled(cfg.id, true)
+
+	if anchorSide ~= "right" then
+		return anchorRealEdge
+	end
+
+	local _, realRight = self:GetElementRealEdges(bar)
+
+	return realRight or (cfg.x + buttonSize + insetRight)
+end
+
+-- Modern Layout's right/left vertical bar clusters: Right Action Bar 1/2
+-- (id 4/5) plus Extra Bar 1 (right cluster, flush against the screen's
+-- right edge), mirrored by Extra Bar 2/3/4 (left cluster, flush against
+-- the screen's left edge) - shared by the Setup Wizard and Right Action
+-- Bar 1/2's own "Reset to Modern Layout Default" buttons (id 4/5) as well
+-- as every Extra Bar's own one, so any of the six always recomputes the
+-- same coherent row. id 4 (outermost right) and Extra Bar 2 (outermost
+-- left) anchor straight off UIParent's own width; every other bar in
+-- each cluster chains zero-gap off the real rendered edge of whichever
+-- bar sits just outside it.
+function ACAB:ApplyModernVerticalBarClusterLayout()
+	self:EnsureDB()
+
+	local bar4 = self.bars and self.bars[4]
+	local bar5 = self.bars and self.bars[5]
+
+	if not bar4 or not bar5 then
+		return
+	end
+
+	local extraStart = self.EXTRA_BAR_ID_START
+	local extra1 = self.bars[extraStart]
+	local extra2 = self.bars[extraStart + 1]
+	local extra3 = self.bars[extraStart + 2]
+	local extra4 = self.bars[extraStart + 3]
+
+	local buttonSize, spacing = self:GetModernLayoutSizing()
+	local cfg5 = bar5.config
+	local cfg4 = bar4.config
+
+	cfg5.buttonSize = buttonSize
+	cfg5.spacing = spacing
+	cfg4.buttonSize = buttonSize
+	cfg4.spacing = spacing
+
+	-- Shared row Y for the whole six-bar cluster - vertically centers a
+	-- 12-row bar of this buttonSize/spacing on screen (ACAB:
+	-- GetModernVerticalBarCenteredY), not wherever Right Action Bar 2's
+	-- real vanilla native anchor happened to be.
+	local rowY = self:GetModernVerticalBarCenteredY(buttonSize, spacing)
+
+	local _, insetRight4 = self:GetElementVisualInset(bar4)
+
+	-- id 4: outermost, flush against the screen's right edge - anchored
+	-- via BOTTOMRIGHT/BOTTOMRIGHT (same as every other flush-corner
+	-- element in this file: Bag Bar/Key Ring/Micro Menu/Latency Bar), so
+	-- this is exact regardless of UIParent's own real width. A
+	-- screenWidth-minus-buttonSize formula (via UIParent:GetWidth()) was
+	-- landing this bar way too far inward.
+	cfg4.point = "BOTTOMRIGHT"
+	cfg4.relativePoint = "BOTTOMRIGHT"
+	cfg4.x = -insetRight4
+	cfg4.y = rowY
+
+	self:ApplyBarPosition(bar4)
+	self:SetBarButtonSize(bar4, buttonSize)
+	self:SetDefaultBarEnabled(4, true)
+
+	local bar4Left = self:GetElementRealEdges(bar4)
+	local _, insetRight5 = self:GetElementVisualInset(bar5)
+
+	-- id 5: immediate left of id 4, zero gap.
+	cfg5.point = "BOTTOMLEFT"
+	cfg5.relativePoint = "BOTTOMLEFT"
+	cfg5.x = (bar4Left or cfg4.x) - insetRight5 - buttonSize
+	cfg5.y = rowY
+
+	self:ApplyBarPosition(bar5)
+	self:SetBarButtonSize(bar5, buttonSize)
+	self:SetDefaultBarEnabled(5, true)
+
+	local bar5Left = self:GetElementRealEdges(bar5)
+
+	if extra1 then
+		self:ApplyModernVerticalExtraBarSlot(extra1, buttonSize, spacing, bar5Left or cfg5.x, rowY, "left")
+	end
+
+	if extra2 then
+		local extra2Right = self:ApplyModernVerticalExtraBarSlot(extra2, buttonSize, spacing, 0, rowY, "right")
+
+		if extra3 then
+			local extra3Right = self:ApplyModernVerticalExtraBarSlot(extra3, buttonSize, spacing, extra2Right, rowY, "right")
+
+			if extra4 then
+				self:ApplyModernVerticalExtraBarSlot(extra4, buttonSize, spacing, extra3Right, rowY, "right")
+			end
+		end
+	end
+end
+
+-- Applies bar 1's own modern position/shape only - independent of Action
+-- Bar 1/Action Bar 2, so resetting Main Bar alone never moves them.
+function ACAB:ApplyModernSingleMainBar()
+	self:EnsureDB()
+
+	local bar1 = self.bars and self.bars[1]
+
+	if not bar1 then
+		return
+	end
+
+	local buttonSize, spacing = self:GetModernLayoutSizing()
+
+	bar1.config.buttonSize = buttonSize
+	bar1.config.spacing = spacing
+	bar1.config.cols = 12
+	bar1.config.rows = 1
+	bar1.config.buttonCount = 12
+	bar1.config.point = "BOTTOM"
+	bar1.config.relativePoint = "BOTTOM"
+	bar1.config.x = 0
+	bar1.config.y = 4 + self:GetModernBaseExpBarClearance()
+
+	self:ApplyBarPosition(bar1)
+	self:SetBarLayout(bar1, 12, 1)
+	self:SetBarButtonSize(bar1, buttonSize)
+	self:ApplyBarShape(bar1)
+end
+
+-- Applies `bar`'s own modern position/shape only, stacked zero-gap above
+-- `belowBar`'s CURRENT real top edge - never touches belowBar itself, so
+-- resetting one bar in the 1-2-3 stack doesn't drag its neighbor along
+-- (ACAB:ApplyModernMainActionBarsLayout above is still what the Setup
+-- Wizard uses for the initial full stack).
+function ACAB:ApplyModernSingleStackedActionBar(bar, belowBar)
+	if not bar or not belowBar then
+		return
+	end
+
+	local buttonSize, spacing = self:GetModernLayoutSizing()
+
+	bar.config.buttonSize = buttonSize
+	bar.config.spacing = spacing
+	bar.config.cols = 12
+	bar.config.rows = 1
+	bar.config.buttonCount = 12
+
+	local _, _, belowRealTop = self:GetElementRealEdges(belowBar)
+	local _, _, _, insetBottom = self:GetElementVisualInset(bar)
+
+	bar.config.point = "BOTTOM"
+	bar.config.relativePoint = "BOTTOM"
+	bar.config.x = 0
+	bar.config.y = (belowRealTop or 0) + insetBottom
+
+	self:ApplyBarPosition(bar)
+	self:SetBarLayout(bar, 12, 1)
+	self:SetBarButtonSize(bar, buttonSize)
+	self:ApplyBarShape(bar)
+end
+
+-- Applies bar `id`'s (4 or 5) own modern position/shape only - never moves
+-- its neighbor. id 4 is independent (flush against the screen's right
+-- edge); id 5 reads id 4's CURRENT real left edge without moving it
+-- (ACAB:ApplyModernVerticalBarClusterLayout above is still what the Setup
+-- Wizard uses for the initial full cluster).
+function ACAB:ApplyModernSingleVerticalBar(id)
+	self:EnsureDB()
+
+	local bar = self.bars and self.bars[id]
+
+	if not bar then
+		return
+	end
+
+	local buttonSize, spacing = self:GetModernLayoutSizing()
+	local cfg = bar.config
+
+	cfg.buttonSize = buttonSize
+	cfg.spacing = spacing
+	cfg.y = self:GetModernVerticalBarCenteredY(buttonSize, spacing)
+
+	if id == 4 then
+		-- Flush against the screen's right edge - same BOTTOMRIGHT/
+		-- BOTTOMRIGHT anchor every other flush-corner element uses, exact
+		-- regardless of UIParent's own real width.
+		local _, insetRight = self:GetElementVisualInset(bar)
+
+		cfg.point = "BOTTOMRIGHT"
+		cfg.relativePoint = "BOTTOMRIGHT"
+		cfg.x = -insetRight
+	else
+		local bar4 = self.bars[4]
+
+		if not bar4 then
+			return
+		end
+
+		local bar4Left = self:GetElementRealEdges(bar4)
+		local _, insetRight = self:GetElementVisualInset(bar)
+
+		cfg.point = "BOTTOMLEFT"
+		cfg.relativePoint = "BOTTOMLEFT"
+		cfg.x = (bar4Left or cfg.x) - insetRight - buttonSize
+	end
+
+	self:ApplyBarPosition(bar)
+	self:SetBarButtonSize(bar, buttonSize)
+	self:SetDefaultBarEnabled(id, true)
+end
+
+-- Settings.lua's "Reset to Modern Layout Default" button for Main Bar/
+-- Action Bar 1/Action Bar 2 (id 1-3) and Right Action Bar 1/2 (id 4-5) -
+-- each id only ever touches its own bar (see the Apply*Single* functions
+-- above), never its neighbors, so bars only end up stacked together when
+-- each one is individually reset in order, not every time any one of them is.
+function ACAB:ResetBarLayoutToModernBase(id)
+	self:EnsureDB()
+
+	if id == 1 then
+		self:ApplyModernSingleMainBar()
+		return
+	end
+
+	if id == 2 then
+		local bar1 = self.bars and self.bars[1]
+		local bar2 = self.bars and self.bars[2]
+
+		if bar1 and bar2 then
+			self:ApplyModernSingleStackedActionBar(bar2, bar1)
+			self:SetDefaultBarEnabled(2, true)
+		end
+
+		return
+	end
+
+	if id == 3 then
+		local bar2 = self.bars and self.bars[2]
+		local bar3 = self.bars and self.bars[3]
+
+		if bar2 and bar3 then
+			self:ApplyModernSingleStackedActionBar(bar3, bar2)
+			self:SetDefaultBarEnabled(3, true)
+		end
+
+		return
+	end
+
+	if id == 4 or id == 5 then
+		self:ApplyModernSingleVerticalBar(id)
+	end
 end
 
 -------------------------------------------------------------------------
@@ -837,63 +1301,81 @@ end
 -- Each real button's Show method is permanently overridden to a no-op
 -- once hidden, so any later native call (e.g. ACTIONBAR_SHOWGRID's sweep)
 -- can't make it visible again.
+-- Creates default-bar `id`'s pool-button bar (self.bars[id]) if it isn't
+-- built yet - shared by CreateFixedSlotDefaultBars' login-time loop below
+-- and by ResetPetBarLayoutToModernBase/ResetStanceBarShapeToModernBase
+-- (PetStanceBars.lua), which need this bar to exist even when the mode
+-- effective at THIS session's login (always native on a first-ever login,
+-- since useDefaultLayout defaults true) no longer matches what the Setup
+-- Wizard just switched this profile to mid-session - without this, the
+-- reset function's self.bars[id] lookup finds nothing and silently no-ops.
+function ACAB:EnsureFixedSlotBarCreated(id)
+	self:EnsureDB()
+
+	local cfg = ACABDB.defaultBars[id]
+
+	-- Pet Bar in native mode skips the pool-button replica entirely -
+	-- CreatePetBarNativeContainer builds its own chain-anchored
+	-- container from the real PetActionButton1-10 frames instead, and
+	-- those must stay genuinely shown/clickable, not neutered below.
+	if id == self.PET_BAR_ID and cfg and self:IsPetBarNativeModeEffective() then
+		return
+	elseif id == self.STANCE_BAR_ID and cfg and self:IsStanceBarNativeModeEffective() then
+		-- Handled by CreateStanceBarContainer - the pre-existing native
+		-- machinery, entirely separate from this pool-button path.
+		return
+	end
+
+	if not (cfg and (cfg.fixedActionSlots or cfg.dynamicDefaultBar) and not self.bars[id]) then
+		return
+	end
+
+	local nativeButtons = self:GetDefaultBarButtons(id)
+
+	if nativeButtons then
+		local i
+
+		for i = 1, table.getn(nativeButtons) do
+			local btn = nativeButtons[i]
+
+			if btn then
+				btn:Hide()
+				btn.Show = function() end
+			end
+		end
+
+		if id == 2 then
+			ForceShowMultiBarBottomLeft(nativeButtons[1]:GetParent())
+
+			-- Forces an immediate recompute for a login that
+			-- already ran ShapeshiftBar_Update() against the
+			-- wrong (hidden) state above, before this fix ran.
+			-- Native code re-runs this itself on every later
+			-- UPDATE_SHAPESHIFT_FORMS regardless.
+			if ShapeshiftBar_Update then
+				ShapeshiftBar_Update()
+			end
+		end
+	end
+
+	self.bars[id] = self:CreateBarFromConfig(cfg)
+
+	-- Bar 1 has no cfg.enabled key (always nil), so it must be
+	-- shown explicitly here - nothing else ever calls :Show() on it.
+	if id == 1 or cfg.enabled then
+		self.bars[id]:Show()
+	else
+		self.bars[id]:Hide()
+	end
+end
+
 function ACAB:CreateFixedSlotDefaultBars()
 	self:EnsureDB()
 
 	local i
 
 	for i = 1, table.getn(self.DEFAULT_BAR_IDS) do
-		local id = self.DEFAULT_BAR_IDS[i]
-		local cfg = ACABDB.defaultBars[id]
-
-		-- Pet Bar in native mode skips the pool-button replica entirely -
-		-- CreatePetBarNativeContainer builds its own chain-anchored
-		-- container from the real PetActionButton1-10 frames instead, and
-		-- those must stay genuinely shown/clickable, not neutered below.
-		if id == self.PET_BAR_ID and cfg and self:IsPetBarNativeModeEffective() then
-			-- Handled by CreatePetBarNativeContainer.
-		elseif id == self.STANCE_BAR_ID and cfg and self:IsStanceBarNativeModeEffective() then
-			-- Handled by CreateStanceBarContainer - the pre-existing native
-			-- machinery, entirely separate from this pool-button path.
-		elseif cfg and (cfg.fixedActionSlots or cfg.dynamicDefaultBar) and not self.bars[id] then
-			local nativeButtons = self:GetDefaultBarButtons(id)
-
-			if nativeButtons then
-				local i
-
-				for i = 1, table.getn(nativeButtons) do
-					local btn = nativeButtons[i]
-
-					if btn then
-						btn:Hide()
-						btn.Show = function() end
-					end
-				end
-
-				if id == 2 then
-					ForceShowMultiBarBottomLeft(nativeButtons[1]:GetParent())
-
-					-- Forces an immediate recompute for a login that
-					-- already ran ShapeshiftBar_Update() against the
-					-- wrong (hidden) state above, before this fix ran.
-					-- Native code re-runs this itself on every later
-					-- UPDATE_SHAPESHIFT_FORMS regardless.
-					if ShapeshiftBar_Update then
-						ShapeshiftBar_Update()
-					end
-				end
-			end
-
-			self.bars[id] = self:CreateBarFromConfig(cfg)
-
-			-- Bar 1 has no cfg.enabled key (always nil), so it must be
-			-- shown explicitly here - nothing else ever calls :Show() on it.
-			if id == 1 or cfg.enabled then
-				self.bars[id]:Show()
-			else
-				self.bars[id]:Hide()
-			end
-		end
+		self:EnsureFixedSlotBarCreated(self.DEFAULT_BAR_IDS[i])
 	end
 end
 
@@ -1527,6 +2009,14 @@ function ACAB:ApplyChainAnchoredShape(container, spacing, orientation, scale, fo
 	local widths = container.chainWidths
 	local heights = container.chainHeights
 
+	-- Flag consumed by InstallReanchorGuard, when the caller installed one
+	-- on this container's own buttons (CreateBagBarAndMicroMenu's Bag Bar
+	-- branch) - lets our own ClearAllPoints/SetPoint calls below through
+	-- while swallowing anything else (native code re-anchoring a real
+	-- Blizzard button, e.g. MainMenuBarBackpackButton, back toward its own
+	-- default position) that touches these frames outside this function.
+	local guardFlag = container.reanchorGuardFlag
+
 	spacing = spacing or 0
 
 	local first
@@ -1562,8 +2052,10 @@ function ACAB:ApplyChainAnchoredShape(container, spacing, orientation, scale, fo
 	-- (BuildChainAnchoredContainer's nativeLeft/nativeTop), so trimming
 	-- here would shift every existing user's saved position. The overlay
 	-- below has no such dependency, so it gets full trimming on every side.
+	if guardFlag then first[guardFlag] = true end
 	first:ClearAllPoints()
 	self:PixelSetPoint(first, "TOPLEFT", container, "TOPLEFT", 0, 0)
+	if guardFlag then first[guardFlag] = nil end
 
 	-- Main-axis seed (width for horizontal, height for vertical) stays
 	-- `first`'s raw frame size, matching its untrimmed leading edge above.
@@ -1596,6 +2088,7 @@ function ACAB:ApplyChainAnchoredShape(container, spacing, orientation, scale, fo
 				local prevLeft, prevRight, prevTop, prevBottom = self:GetHitInsets(prevBtn)
 				local btnLeft, btnRight, btnTop, btnBottom = self:GetHitInsets(btn)
 
+				if guardFlag then btn[guardFlag] = true end
 				btn:ClearAllPoints()
 
 				if orientation then
@@ -1631,14 +2124,18 @@ function ACAB:ApplyChainAnchoredShape(container, spacing, orientation, scale, fo
 					end
 				end
 
+				if guardFlag then btn[guardFlag] = nil end
+
 				prevBtn = btn
 			else
 				-- Hidden - parked at the last visible button's own TOPLEFT
 				-- (harmless overlap, since a hidden frame renders/receives
 				-- no mouse events either way) rather than left dangling on
 				-- a stale anchor or consuming a chain slot.
+				if guardFlag then btn[guardFlag] = true end
 				btn:ClearAllPoints()
 				self:PixelSetPoint(btn, "TOPLEFT", prevBtn, "TOPLEFT", 0, 0)
+				if guardFlag then btn[guardFlag] = nil end
 			end
 		end
 	end

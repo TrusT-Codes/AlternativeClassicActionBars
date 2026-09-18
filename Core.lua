@@ -346,6 +346,52 @@ function ACAB:GetAllSnapTargetBoxes(excludeElement)
 	return boxes
 end
 
+-- Real visible left/right/top/bottom edges of `frame` (visual-inset-
+-- adjusted, per GetElementVisualInset above), converted into
+-- UIParent-relative SetPoint offset units - the same real-geometry-to-
+-- offset conversion ACAB:CaptureNativeAnchor uses for a native bar's own
+-- screenX/screenY, generalized to all four edges of any frame. Used by
+-- the Modern Layout preset (DefaultBars.lua/PetStanceBars.lua/
+-- NativeElements.lua) to chain each bar's position off the PREVIOUS bar's
+-- real rendered edge instead of a buttonSize*N formula. Returns nil if
+-- `frame` isn't a real positioned region.
+function ACAB:GetElementRealEdges(frame)
+	if not frame then
+		return nil
+	end
+
+	local insetLeft, insetRight, insetTop, insetBottom = self:GetElementVisualInset(frame)
+	local left, right, top, bottom = GetRealScreenBounds(frame, insetLeft, insetRight, insetTop, insetBottom)
+
+	if not left then
+		return nil
+	end
+
+	local uiParentScale = UIParent:GetEffectiveScale()
+
+	if not uiParentScale or uiParentScale == 0 then
+		return nil
+	end
+
+	return left / uiParentScale, right / uiParentScale, top / uiParentScale, bottom / uiParentScale
+end
+
+-- A frame's own SetPoint offset (cfg.x/cfg.y) is measured in ITS OWN
+-- scale, not UIParent's (the same fact ACAB:CompensateScaleKeepingCornerFixed
+-- relies on) - so a target edge already expressed in UIParent-relative
+-- units (ACAB:GetElementRealEdges) needs dividing by `container`'s own
+-- SetScale() before it's assigned to cfg.x/cfg.y, or a non-1 scale (Pet
+-- Bar/Stance Bar's Modern Layout scale rule) lands it in the wrong place.
+function ACAB:ConvertUIParentOffsetToOwnScale(container, uiParentOffset)
+	local scale = (container and container.GetScale and container:GetScale()) or 1
+
+	if not scale or scale == 0 then
+		scale = 1
+	end
+
+	return uiParentOffset / scale
+end
+
 -- Computes a snap-adjusted (proposedLeft, proposedTop) for a dragged
 -- element's top-left corner, checking screen edges/corners (same-side
 -- only) and every other visible element's edges (either side, to allow
@@ -769,20 +815,54 @@ end
 -- Edit mode ("Configure Layout")
 -------------------------------------------------------------------------
 
--- Escape-only keyboard capture so edit mode can never trap a player with
--- no way out. EnableKeyboard(true) blocks all other keyboard input while
--- active (same tradeoff HoverBind.lua's capture frame makes) - kept in
--- sync with edit mode's own on/off state from Bar.lua's ApplyEditModeVisual,
--- not just SetEditMode, since that function is also called on its own from
--- bar-creation/login code paths.
-ACAB.editModeCaptureFrame = CreateFrame("Frame", "ACABEditModeCaptureFrame", UIParent)
-ACAB.editModeCaptureFrame:EnableKeyboard(false)
-ACAB.editModeCaptureFrame:Hide()
-ACAB.editModeCaptureFrame:SetScript("OnKeyDown", function()
-	if arg1 == "ESCAPE" then
-		ACAB:SetEditMode(false)
+-- Escape-only exit, via a real keybinding action (bindings.xml's
+-- ACABEDITMODEESCAPE) swapped onto the ESCAPE key while edit mode is
+-- active, instead of an EnableKeyboard(true) capture frame - that blocks
+-- every other key on this client (confirmed live), which made movement/
+-- chat/etc. impossible while editing. SetBinding here is never followed
+-- by SaveBindings, so the swap is session-live only and self-reverts on
+-- reload/relog even if DisableEditModeEscapeBinding is ever skipped.
+-- Kept in sync with edit mode's own on/off state from Bar.lua's
+-- ApplyEditModeVisual, not just SetEditMode, since that function is also
+-- called on its own from bar-creation/login code paths.
+
+-- Must be a bare global function - bindings.xml's body can only invoke a
+-- plain global function name (same constraint as ACAB_HoverBindFire).
+function ACAB_EditModeEscapeFire()
+	ACAB:SetEditMode(false)
+end
+
+-- Guarded by editModeEscapeBindingActive so repeated calls while edit mode
+-- stays on (ApplyEditModeVisual can fire more than once per toggle) don't
+-- re-capture GetBindingAction("ESCAPE") after it's already been swapped to
+-- our own action, which would overwrite the real original action to restore.
+function ACAB:EnableEditModeEscapeBinding()
+	if self.editModeEscapeBindingActive then
+		return
 	end
-end)
+
+	local previousAction = GetBindingAction("ESCAPE")
+
+	self.editModeEscapePreviousAction = (previousAction ~= "" and previousAction) or nil
+	self.editModeEscapeBindingActive = true
+
+	SetBinding("ESCAPE", "ACABEDITMODEESCAPE")
+end
+
+function ACAB:DisableEditModeEscapeBinding()
+	if not self.editModeEscapeBindingActive then
+		return
+	end
+
+	if self.editModeEscapePreviousAction then
+		SetBinding("ESCAPE", self.editModeEscapePreviousAction)
+	else
+		SetBinding("ESCAPE")
+	end
+
+	self.editModeEscapePreviousAction = nil
+	self.editModeEscapeBindingActive = false
+end
 
 function ACAB:IsEditMode()
 	return ACABDB and ACABDB.editMode == true
