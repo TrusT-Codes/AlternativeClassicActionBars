@@ -1432,25 +1432,6 @@ local function ApplyModernLayoutPreset(state, data)
 	petBarCfg.y = actionBar2Top + rowGap
 	data.defaultBars[ACAB.PET_BAR_ID] = petBarCfg
 
-	-- Temporary /acab diag - reported still misaligned even after pinning
-	-- Action Bar 2's own buttonSize/spacing (the previously-confirmed
-	-- cause of a different width mismatch). Printing the intended values
-	-- this preset computed, to compare against the real post-reload
-	-- positions instead of guessing at a second cause blind.
-	print(string.format(
-		"|cff33ff33ACAB diag_sp|r buttonSize=%s spacing=%s actionBar2Width=%s actionBar2Y=%s actionBar2Top=%s",
-		tostring(buttonSize), tostring(spacing), tostring(actionBar2Width), tostring(actionBar2Y), tostring(actionBar2Top)
-	))
-	print(string.format(
-		"|cff33ff33ACAB diag_sp|r stance point=%s rel=%s x=%s y=%s",
-		tostring(data.stanceBarPosition.point), tostring(data.stanceBarPosition.relativePoint),
-		tostring(data.stanceBarPosition.x), tostring(data.stanceBarPosition.y)
-	))
-	print(string.format(
-		"|cff33ff33ACAB diag_sp|r pet point=%s rel=%s x=%s y=%s",
-		tostring(petBarCfg.point), tostring(petBarCfg.relativePoint), tostring(petBarCfg.x), tostring(petBarCfg.y)
-	))
-
 	-- Bag Bar: flush against the screen's bottom-right corner - no
 	-- measurement needed, this is exact regardless of its real size.
 	data.bagBarPosition = {
@@ -1594,6 +1575,21 @@ local function ApplyWizardStateToProfileData(state, data)
 
 	if state.modernBorderStyle ~= nil then
 		data.modernBorderStyle = state.modernBorderStyle
+
+		-- Bar.lua's ApplyGlobalButtonStyle compares ACABDB.lastAppliedVanillaStyle
+		-- against the CURRENT style every login, and silently shifts every
+		-- default bar's buttonSize (+/-MODERN_BUTTON_SIZE_DELTA), position
+		-- and spacing to compensate for a style switch - meant for a user
+		-- flipping the style on an already-live profile mid-session, not a
+		-- brand-new profile that never had a previous style. Left unset (or
+		-- copied from whatever profile this data came from), it doesn't
+		-- match the style this wizard just chose, so that compensation
+		-- fired on the very next login and perturbed Action Bar 2 (and
+		-- everything anchored off it below) by that same delta - confirmed
+		-- live as the actual cause of Stance/Pet Bar's alignment being off,
+		-- not the width/spacing math itself. Setting this to match now
+		-- tells it nothing changed.
+		data.lastAppliedVanillaStyle = not state.modernBorderStyle
 	end
 
 	if state.globalSpacingEnabled ~= nil then
