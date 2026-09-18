@@ -64,7 +64,7 @@ local mainBarBonusEventFrame = CreateFrame("Frame", "ACABMainBarBonusEventFrame"
 mainBarBonusEventFrame:RegisterEvent("UPDATE_BONUS_ACTIONBAR")
 mainBarBonusEventFrame:SetScript("OnEvent", function()
 	ACAB:HideBonusActionBarFrame()
-	ACAB:RefreshMainBarSlots()
+	ACAB:RefreshDefaultBarSlots()
 end)
 
 -------------------------------------------------------------------------
@@ -120,13 +120,10 @@ stanceFormEventFrame:SetScript("OnEvent", function()
 		end
 	end
 
-	-- Stance/Page Bar Assignment feature, Part 2: the General panel's
-	-- per-stance assignment rows are built from this same
-	-- GetNumShapeshiftForms() count - re-sync them too if the panel
-	-- already exists this session, so a mid-session talent respec that
-	-- changes the player's stance count doesn't leave stale rows behind.
-	if ACAB.RebuildMainBarAssignmentRows then
-		ACAB:RebuildMainBarAssignmentRows()
+	-- Re-syncs every default bar's (1-5) per-stance assignment rows against
+	-- the new live form count, for any bar whose settings page already exists.
+	if ACAB.RebuildAllDefaultBarAssignmentRows then
+		ACAB:RebuildAllDefaultBarAssignmentRows()
 	end
 end)
 

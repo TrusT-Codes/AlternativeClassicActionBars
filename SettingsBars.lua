@@ -4,9 +4,9 @@
 -- GetOrCreateSimpleBarPage/RefreshSimpleBarPage), the shared refresh/gating
 -- entry point (RefreshBarSettingsPage), the bar-list sidebar (CreateBarListRow/
 -- RefreshBarList), bar-page navigation (ShowBarPage/OpenBarSettings/
--- OpenDefaultBarSettings), and the Main Bar stance/page assignment rows
--- (RebuildMainBarAssignmentRows) and default-layout toggle
--- (ApplyUseDefaultLayoutChange).
+-- OpenDefaultBarSettings), and each default bar's (1-5) own stance/page
+-- assignment rows (RebuildDefaultBarAssignmentRows) and default-layout
+-- toggle (ApplyUseDefaultLayoutChange).
 --
 -- Engine-invoked script handlers (OnClick, OnEvent, OnEnter, OnLeave, ...)
 -- receive the frame via the global `this`, never as a `self` parameter.
@@ -1607,63 +1607,72 @@ function ACAB:GetOrCreateBarPage(barId)
 	-- (EnsureContainerOverlay, DefaultBars.lua); only Scale is exposed here,
 	-- reusing the button-count stepper's Y-offset formula (never present on
 	-- bar 1). Shown/hidden by ACAB:RefreshMainBarPageIndicatorControlsVisibility
-	-- (gated on ACABDB.mainBarPaginationEnabled).
+	-- (gated on ACABDB.defaultBarPaginationEnabled).
 	-------------------------------------------------------------------------
 
-	if barId == 1 then
-		local pageIndicatorTitleY = swatchY - SWATCH_SIZE - 14 - 14
-		local pageIndicatorSliderY = pageIndicatorTitleY - 28
+	-- Page Indicator + Stance/Page Bar Assignment: only on default bars (1-5).
+	if barId >= 1 and barId <= 5 then
+		-- Anchor for the Stance/Page Bar Assignment section below; bar 1
+		-- pushes it under its own Page Indicator Scale slider, bars 2-5
+		-- start right under the grid swatches.
+		local assignmentAnchorY = swatchY - SWATCH_SIZE - 14 - 14
 
-		local pageIndicatorTitle = page:CreateFontString(
-			nil,
-			"OVERLAY",
-			"GameFontNormal"
-		)
+		if barId == 1 then
+			local pageIndicatorTitleY = assignmentAnchorY
+			local pageIndicatorSliderY = pageIndicatorTitleY - 28
 
-		pageIndicatorTitle:SetPoint(
-			"TOPLEFT",
-			page,
-			"TOPLEFT",
-			ACAB.INDENT_SECTION,
-			pageIndicatorTitleY
-		)
+			local pageIndicatorTitle = page:CreateFontString(
+				nil,
+				"OVERLAY",
+				"GameFontNormal"
+			)
 
-		pageIndicatorTitle:SetText("Page Indicator Scale")
+			pageIndicatorTitle:SetPoint(
+				"TOPLEFT",
+				page,
+				"TOPLEFT",
+				ACAB.INDENT_SECTION,
+				pageIndicatorTitleY
+			)
 
-		self:AddHoverOnlyReflowRow(page, pageIndicatorTitle, ACAB.INDENT_SECTION, pageIndicatorTitleY)
+			pageIndicatorTitle:SetText("Page Indicator Scale")
 
-		local pageIndicatorSlider, pageIndicatorValueText = ACAB:CreateLabeledSlider(
-			page,
-			"ACABMainBarPageIndicatorScaleSlider",
-			{
-				anchor = { "TOPLEFT", page, "TOPLEFT", ACAB.INDENT_INPUT, pageIndicatorSliderY },
-				min = 0.5,
-				max = 2.0,
-				step = 0.1,
-				initialText = "1.0",
-				round = function(value) return math.floor((value * 10) + 0.5) / 10 end,
-				format = function(value) return string.format("%.1f", value) end,
-				onChange = function(value, suppressApply)
-					if not suppressApply then
-						ACAB:SetPageIndicatorScale(value)
-					end
-				end,
-			}
-		)
+			self:AddHoverOnlyReflowRow(page, pageIndicatorTitle, ACAB.INDENT_SECTION, pageIndicatorTitleY)
 
-		page.pageIndicatorTitle = pageIndicatorTitle
-		page.pageIndicatorSlider = pageIndicatorSlider
-		page.pageIndicatorValueText = pageIndicatorValueText
+			local pageIndicatorSlider, pageIndicatorValueText = ACAB:CreateLabeledSlider(
+				page,
+				"ACABMainBarPageIndicatorScaleSlider",
+				{
+					anchor = { "TOPLEFT", page, "TOPLEFT", ACAB.INDENT_INPUT, pageIndicatorSliderY },
+					min = 0.5,
+					max = 2.0,
+					step = 0.1,
+					initialText = "1.0",
+					round = function(value) return math.floor((value * 10) + 0.5) / 10 end,
+					format = function(value) return string.format("%.1f", value) end,
+					onChange = function(value, suppressApply)
+						if not suppressApply then
+							ACAB:SetPageIndicatorScale(value)
+						end
+					end,
+				}
+			)
 
-		self:AddHoverOnlyReflowRow(page, pageIndicatorSlider, ACAB.INDENT_INPUT, pageIndicatorSliderY)
+			page.pageIndicatorTitle = pageIndicatorTitle
+			page.pageIndicatorSlider = pageIndicatorSlider
+			page.pageIndicatorValueText = pageIndicatorValueText
+
+			self:AddHoverOnlyReflowRow(page, pageIndicatorSlider, ACAB.INDENT_INPUT, pageIndicatorSliderY)
+
+			assignmentAnchorY = pageIndicatorSliderY - 44
+		end
 
 		-------------------------------------------------------------------------
-		-- Stance / Page Bar Assignment (bar 1's pagination/stance-swap
-		-- settings; the two gating checkboxes live on the General tab).
-		-- Empty placeholder container - ACAB:RebuildMainBarAssignmentRows
-		-- populates the rows and collapses it to nothing when neither
-		-- feature is enabled; called from RefreshBarSettingsPage(1), both
-		-- checkboxes' OnClick, and DefaultBars.lua's UPDATE_SHAPESHIFT_FORMS.
+		-- Stance / Page Bar Assignment: each default bar (1-5) gets its own
+		-- independent assignment container; gating checkboxes live on the
+		-- General tab. Empty placeholder - RebuildDefaultBarAssignmentRows
+		-- populates/collapses it, called from RefreshBarSettingsPage(barId),
+		-- both checkboxes' OnClick, and UPDATE_SHAPESHIFT_FORMS.
 		-------------------------------------------------------------------------
 
 		local assignmentContainer = CreateFrame("Frame", nil, page)
@@ -1677,7 +1686,7 @@ function ACAB:GetOrCreateBarPage(barId)
 			page,
 			"TOPLEFT",
 			ACAB.INDENT_SECTION,
-			pageIndicatorSliderY - 44
+			assignmentAnchorY
 		)
 
 		assignmentContainer:SetWidth(500)
@@ -1686,8 +1695,8 @@ function ACAB:GetOrCreateBarPage(barId)
 		page.assignmentContainer = assignmentContainer
 		page.assignmentRows = {}
 
-		-- Rows RebuildMainBarAssignmentRows populates later anchor to assignmentContainer, so repositioning it carries all of them along.
-		self:AddHoverOnlyReflowRow(page, assignmentContainer, ACAB.INDENT_SECTION, pageIndicatorSliderY - 44)
+		-- Rows RebuildDefaultBarAssignmentRows populates later anchor to assignmentContainer, so repositioning it carries all of them along.
+		self:AddHoverOnlyReflowRow(page, assignmentContainer, ACAB.INDENT_SECTION, assignmentAnchorY)
 	end
 
 	-------------------------------------------------------------------------
@@ -3632,12 +3641,12 @@ function ACAB:RefreshBarSettingsPage(barId)
 		page.pageIndicatorSlider.suppressApply = nil
 
 		ACAB:RefreshMainBarPageIndicatorControlsVisibility()
+	end
 
-		-- Stance/Page Bar Assignment rows rebuild every time bar 1's page
-		-- is (re)shown, same as the Page Indicator controls just above, so
-		-- the rows always reflect the current stance count/pagination-and-
-		-- stance-swap toggle state.
-		ACAB:RebuildMainBarAssignmentRows()
+	-- Rebuilds assignment rows every time this bar's page is (re)shown, for
+	-- every default bar (1-5) - see GetOrCreateBarPage.
+	if page.assignmentContainer then
+		ACAB:RebuildDefaultBarAssignmentRows(barId)
 	end
 
 	-------------------------------------------------------------------------
@@ -3754,7 +3763,7 @@ function ACAB:RefreshAllBarPagesGlobalOverrideGating()
 end
 
 -- Shows/hides the Main Bar page's Page Indicator Scale slider per
--- ACABDB.mainBarPaginationEnabled - called both from
+-- ACABDB.defaultBarPaginationEnabled - called both from
 -- RefreshBarSettingsPage(1) above and from the General panel's own
 -- pagination checkbox handler (below), so toggling that checkbox
 -- immediately shows/hides this slider even while bar 1's page is already
@@ -3771,7 +3780,7 @@ function ACAB:RefreshMainBarPageIndicatorControlsVisibility()
 		return
 	end
 
-	local show = ACABDB.mainBarPaginationEnabled ~= false
+	local show = ACABDB.defaultBarPaginationEnabled ~= false
 
 	if show then
 		page.pageIndicatorTitle:Show()
@@ -3885,29 +3894,29 @@ end
 -------------------------------------------------------------------------
 -- Stance / Page Bar Assignment cyclic value
 --
--- 0 is the "Unassigned" sentinel - NOT a real table hole (a raw
--- `{nil, 6, 7, 8, 9}` constructor would put a nil at index 1, and
--- table.getn/# have undefined behavior on a table with a hole at the
--- start, per the Lua 5.0 manual) - translated to/from a real nil only at
--- the ACABDB read/write boundary in CreateExtraBarAssignmentRow's
--- own getFn/setFn callers below.
+-- 0 = "No Pageswap" sentinel, not a real nil - avoids a table hole at
+-- index 1 (undefined for table.getn/# in Lua 5.0); translated to/from nil
+-- only at CreateExtraBarAssignmentRow's getFn/setFn boundary below.
+-- -1 = "Default" sentinel - a real number, stored/read as-is, must never equal 0.
 -------------------------------------------------------------------------
 
-local EXTRA_BAR_ASSIGNMENT_CYCLE = { 0, 6, 7, 8, 9 }
+local EXTRA_BAR_ASSIGNMENT_CYCLE = { 0, -1, 6, 7, 8, 9 }
 
 local function ExtraBarAssignmentLabel(assignedId)
 	if not assignedId or assignedId == 0 then
-		return "Unassigned"
+		return "No Pageswap"
+	end
+
+	if assignedId == -1 then
+		return "Default"
 	end
 
 	return "Extra Bar " .. tostring(assignedId - ACAB.EXTRA_BAR_ID_START + 1)
 end
 
--- Same 5 choices (Unassigned + Extra Bar 1-4) for every assignment row, so
--- the option list itself only ever needs building once. { value = 0 }
--- represents EXTRA_BAR_ASSIGNMENT_CYCLE's own "Unassigned" sentinel -
--- translated to/from a real nil only at RefreshValue/onSelect's own
--- ACABDB read/write boundary below.
+-- Builds the 6 dropdown choices (No Pageswap, Default, Extra Bar 1-4) once.
+-- { value = 0 } translates to nil at RefreshValue/onSelect's ACABDB
+-- boundary below; { value = -1 } passes through unchanged.
 local function BuildExtraBarAssignmentDropdownOptions()
 	local options = {}
 	local i
@@ -3969,14 +3978,11 @@ local function CreateExtraBarAssignmentRow(parent, labelText, getFn, setFn, drop
 	return row
 end
 
--- Rebuilds bar 1's Stance/Page Bar Assignment rows from scratch: one row
--- per currently-active stance (if Stance/Form/Stealth Swapping is
--- enabled) plus one Page Bar row (if pagination is enabled). No-op if bar
--- 1's page hasn't been built yet. Called from RefreshBarSettingsPage(1),
--- the pagination/stance-swap checkboxes' OnClick, and DefaultBars.lua's
--- UPDATE_SHAPESHIFT_FORMS handler.
-function ACAB:RebuildMainBarAssignmentRows()
-	local page = ACAB.settingsFrame and ACAB.settingsFrame.pages[1]
+-- Rebuilds default bar `barId`'s (1-5) Stance/Page Bar Assignment rows from
+-- scratch: one row per active stance (if enabled) plus one Page Bar row (if
+-- pagination enabled). No-op if this bar's page isn't built yet.
+function ACAB:RebuildDefaultBarAssignmentRows(barId)
+	local page = ACAB.settingsFrame and ACAB.settingsFrame.pages[barId]
 
 	if not page or not page.assignmentContainer then
 		return
@@ -4013,9 +4019,9 @@ function ACAB:RebuildMainBarAssignmentRows()
 	local rowIndex = 0
 	local y = 0
 
-	-- Gated on mainBarStanceSwapEnabled, matching the Page Bar row's own
-	-- mainBarPaginationEnabled gate below.
-	local stanceSwapOn = ACABDB.mainBarStanceSwapEnabled ~= false
+	-- Gated on defaultBarStanceSwapEnabled, matching the Page Bar row's own
+	-- defaultBarPaginationEnabled gate below.
+	local stanceSwapOn = ACABDB.defaultBarStanceSwapEnabled ~= false
 	local count = stanceSwapOn and GetNumShapeshiftForms and GetNumShapeshiftForms() or 0
 
 	if count and count > 0 then
@@ -4029,22 +4035,25 @@ function ACAB:RebuildMainBarAssignmentRows()
 				container,
 				label .. ":",
 				function()
-					return ACABDB.mainBarStanceBarAssignment
-						and ACABDB.mainBarStanceBarAssignment[s]
+					return ACABDB.defaultBarStanceBarAssignment
+						and ACABDB.defaultBarStanceBarAssignment[barId]
+						and ACABDB.defaultBarStanceBarAssignment[barId][s]
 				end,
 				function(value)
-					if not ACABDB.mainBarStanceBarAssignment then
-						ACABDB.mainBarStanceBarAssignment = {}
+					if not ACABDB.defaultBarStanceBarAssignment then
+						ACABDB.defaultBarStanceBarAssignment = {}
 					end
 
-					ACABDB.mainBarStanceBarAssignment[s] = value
+					if not ACABDB.defaultBarStanceBarAssignment[barId] then
+						ACABDB.defaultBarStanceBarAssignment[barId] = {}
+					end
 
-					ACAB:RefreshMainBarSlots()
+					ACABDB.defaultBarStanceBarAssignment[barId][s] = value
+
+					ACAB:RefreshDefaultBarSlots()
 				end,
-				-- Named by stance index plus this rebuild's own generation
-				-- suffix (see the frame-identity note above), so no two
-				-- rebuilds ever share a dropdown name.
-				"ACABMainBarStanceAssignmentDropdown" .. tostring(s) .. generationSuffix
+				-- Name includes bar id + stance index + generation suffix - must stay unique or dropdown frame-identity corruption returns.
+				"ACABDefaultBarStanceAssignmentDropdown" .. tostring(barId) .. "_" .. tostring(s) .. generationSuffix
 			)
 
 			row:SetPoint("TOPLEFT", container, "TOPLEFT", 0, y)
@@ -4056,19 +4065,24 @@ function ACAB:RebuildMainBarAssignmentRows()
 		end
 	end
 
-	if ACABDB.mainBarPaginationEnabled ~= false then
+	if ACABDB.defaultBarPaginationEnabled ~= false then
 		local row = CreateExtraBarAssignmentRow(
 			container,
 			"Page 2 Content Source:",
 			function()
-				return ACABDB.mainBarPageBarAssignment
+				return ACABDB.defaultBarPageBarAssignment
+					and ACABDB.defaultBarPageBarAssignment[barId]
 			end,
 			function(value)
-				ACABDB.mainBarPageBarAssignment = value
+				if not ACABDB.defaultBarPageBarAssignment then
+					ACABDB.defaultBarPageBarAssignment = {}
+				end
 
-				ACAB:RefreshMainBarSlots()
+				ACABDB.defaultBarPageBarAssignment[barId] = value
+
+				ACAB:RefreshDefaultBarSlots()
 			end,
-			"ACABMainBarPageBarAssignmentDropdown" .. generationSuffix
+			"ACABDefaultBarPageBarAssignmentDropdown" .. tostring(barId) .. generationSuffix
 		)
 
 		row:SetPoint("TOPLEFT", container, "TOPLEFT", 0, y)
@@ -4090,6 +4104,21 @@ function ACAB:RebuildMainBarAssignmentRows()
 	end
 
 	container:SetHeight(height)
+end
+
+-- Rebuilds assignment rows for every default bar (1-5) whose settings page already exists this session.
+function ACAB:RebuildAllDefaultBarAssignmentRows()
+	if not ACAB.settingsFrame then
+		return
+	end
+
+	local id
+
+	for id = 1, 5 do
+		if ACAB.settingsFrame.pages[id] then
+			self:RebuildDefaultBarAssignmentRows(id)
+		end
+	end
 end
 
 -- Applies a "Force default Blizzard layout mode" checkbox change: persists the
@@ -4223,13 +4252,13 @@ function ACAB:ApplyUseDefaultLayoutChange(checked)
 			ACAB:ApplyBlizzardArtVisibility()
 		end
 
-		-- Main Bar paging/stance-swap ship on by default on native vanilla.
-		if ACAB.SetMainBarPaginationEnabled then
-			ACAB:SetMainBarPaginationEnabled(true)
+		-- Default bar paging/stance-swap ship on by default on native vanilla.
+		if ACAB.SetDefaultBarPaginationEnabled then
+			ACAB:SetDefaultBarPaginationEnabled(true)
 		end
 
-		if ACAB.SetMainBarStanceSwapEnabled then
-			ACAB:SetMainBarStanceSwapEnabled(true)
+		if ACAB.SetDefaultBarStanceSwapEnabled then
+			ACAB:SetDefaultBarStanceSwapEnabled(true)
 		end
 
 		-- Experience Bar: same reset treatment as every other
@@ -4428,7 +4457,7 @@ local function CreateBarListRow(barId, isDefault, cfg, generationSuffix)
 			-- Suffixed with this rebuild's own generation counter (see
 			-- RefreshBarList) so a stable, finite barId never causes two
 			-- rebuilds to create a same-named frame - same mitigation
-			-- RebuildMainBarAssignmentRows already establishes for its own
+			-- RebuildDefaultBarAssignmentRows already establishes for its own
 			-- dynamically created dropdowns.
 			"ACABBarList" .. tostring(barId) .. "Checkbox" .. generationSuffix,
 			ACAB.settingsFrame.listContent,
@@ -4543,7 +4572,7 @@ function ACAB:RefreshBarList()
 	ACAB.settingsFrame.barButtons = {}
 	ACAB.settingsFrame.barButtonsByBarId = {}
 
-	-- Same per-rebuild generation-counter mitigation RebuildMainBarAssignmentRows
+	-- Same per-rebuild generation-counter mitigation RebuildDefaultBarAssignmentRows
 	-- uses for its own dynamically created dropdowns - see CreateBarListRow's
 	-- checkbox naming.
 	ACAB.settingsFrame.barListRebuildGeneration = (ACAB.settingsFrame.barListRebuildGeneration or 0) + 1
