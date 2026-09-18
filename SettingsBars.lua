@@ -4298,157 +4298,20 @@ function ACAB:ApplyUseDefaultLayoutChange(checked)
 	-- ON is handled by the same reset cascade below as Bag Bar/
 	-- Micro Menu/Latency Bar/Key Ring.
 	if (not wasDefault) and checked then
-		-------------------------------------------------------------
-		-- Full reset-to-Vanilla-Layout cascade: ApplyAllDefaultBars/
-		-- ApplyDefaultLayoutEditVisual above only re-apply shape from
-		-- whatever cfg currently holds, they do not reset cfg back to
-		-- its native values - ResetDefaultBarLayout does that for
-		-- every default-bar-family id (1-5, Pet Bar), and each
-		-- single-native-frame element below gets its own reset call.
-		-------------------------------------------------------------
-
-		local i
-
-		for i = 1, table.getn(ACAB.DEFAULT_BAR_IDS) do
-			ACAB:ResetDefaultBarLayout(ACAB.DEFAULT_BAR_IDS[i])
-		end
-
-		-- Bars 2-5's enabled state now mirrors the real native "Show ...
-		-- Action Bar" checkboxes (session-live only, per
-		-- docs/01-Environment-Capability-Analysis.md §5m/§6) instead of
-		-- whatever ACAB had stored - same reconciliation
-		-- MultiActionBar_Update's own hook already performs reactively.
-		if ACAB.ReconcileDefaultBarEnabledFromNative then
-			ACAB:ReconcileDefaultBarEnabledFromNative()
-		end
-
-		-- Extra Bars (6-9) are ACAB-only content with no Blizzard-
-		-- default equivalent - hidden outright while the native layout
-		-- owns bars 1-5.
-		local extraId
-
-		for extraId = ACAB.EXTRA_BAR_ID_START, ACAB.EXTRA_BAR_ID_START + ACAB.EXTRA_BAR_COUNT - 1 do
-			ACAB:SetExtraBarEnabled(extraId, false)
-			ACAB:ResetExtraBarLayout(extraId)
-
-			if ACAB.settingsFrame and ACAB.settingsFrame.pages[extraId] then
-				ACAB:RefreshBarSettingsPage(extraId)
-			end
-		end
-
-		ACAB:RefreshBarList()
-
-		if ACAB.ResetBagBarPosition then
-			ACAB:ResetBagBarPosition()
-		end
-
-		if ACAB.ResetBagBarLayout then
-			ACAB:ResetBagBarLayout()
-		end
-
-		if ACAB.ResetMicroMenuPosition then
-			ACAB:ResetMicroMenuPosition()
-		end
-
-		if ACAB.ResetMicroMenuLayout then
-			ACAB:ResetMicroMenuLayout()
-		end
-
-		if ACAB.ResetStanceBarPosition then
-			ACAB:ResetStanceBarPosition()
-		end
-
-		if ACAB.ResetStanceBarLayout then
-			ACAB:ResetStanceBarLayout()
-		end
-
-		if ACAB.ResetLatencyBarLayout then
-			ACAB:ResetLatencyBarLayout()
-		end
-
-		-- Cast Bar: same single-native-frame reset treatment as Latency
-		-- Bar above - also resets castBarUsesDefaultPosition to true
-		-- (ResetCastBarLayout itself), re-enabling its own dynamic stacking.
-		if ACAB.ResetCastBarLayout then
-			ACAB:ResetCastBarLayout()
-		end
-
-		if ACAB.ResetKeyRingPosition then
-			ACAB:ResetKeyRingPosition()
-		end
-
-		-- Key Ring ships visible on native vanilla - re-enable it
-		-- regardless of whatever the user had it set to.
-		if ACAB.SetKeyRingEnabled then
-			ACAB:SetKeyRingEnabled(true)
-		end
-
-		-- Native layout always shows Blizzard's own bar art.
-		ACABDB.disableBlizzardArt = false
-
-		if ACAB.ApplyBlizzardArtVisibility then
-			ACAB:ApplyBlizzardArtVisibility()
-		end
-
-		-- Default bar paging/stance-swap ship on by default on native vanilla.
-		if ACAB.SetDefaultBarPaginationEnabled then
-			ACAB:SetDefaultBarPaginationEnabled(true)
-		end
-
-		if ACAB.SetDefaultBarStanceSwapEnabled then
-			ACAB:SetDefaultBarStanceSwapEnabled(true)
-		end
-
-		-- Experience Bar: same reset treatment as every other
-		-- single-native-frame element above.
-		if ACAB.ResetExpBarLayout then
-			ACAB:ResetExpBarLayout()
-		end
-
-		-- See ACAB:ResetPageIndicatorLayout's own comment (DefaultBars.lua).
-		if ACAB.ResetPageIndicatorLayout then
-			ACAB:ResetPageIndicatorLayout()
-		end
-
-		-- Pet Bar native mode only - ResetDefaultBarLayout above (the
-		-- custom-styled grid mode's own reset) has nothing to act on
-		-- while self.bars[PET_BAR_ID] doesn't exist. No-ops safely in
-		-- custom mode (self.petBarNativeContainer is nil then).
-		if ACAB.ResetPetBarNativeLayout then
-			ACAB:ResetPetBarNativeLayout()
-		end
-
-		-- Persists the enforced-effective values (ACAB:IsPetBarNativeModeEffective/
-		-- ShouldCondensePetBarSlots) into the stored cfg too, so they
-		-- don't silently diverge from what's actually applied.
-		do
-			local petCfg = ACABDB.defaultBars[ACAB.PET_BAR_ID]
-
-			if petCfg then
-				petCfg.useNativePetBar = true
-				petCfg.condenseEmptyPetSlots = false
-			end
-		end
-
-		-- Same treatment for the Stance Bar's own styled-mode-only
-		-- toggle - ACAB:IsStanceBarNativeModeEffective() already
-		-- forces this at runtime while useDefaultLayout is on, this
-		-- just persists it into the stored cfg too so it doesn't
-		-- silently diverge from what's actually applied.
-		do
-			local stanceCfg = ACABDB.defaultBars[ACAB.STANCE_BAR_ID]
-
-			if stanceCfg then
-				stanceCfg.useNativeStanceBar = true
-			end
-		end
+		ACAB:ResetAllElementsToVanillaLayout()
 
 		-- "Use Modern Button Style"/Global Spacing/Global ButtonSize only
 		-- take visual effect while useDefaultLayout is off
 		-- (ApplyGlobalSpacing/ApplyGlobalButtonSize/IsVanillaBorderStyle
 		-- all no-op/override while it's on) - clear the flags themselves
 		-- too, not just leave them cosmetically locked, so they don't
-		-- silently reapply the instant the user switches back off.
+		-- silently reapply the instant the user switches back off. Only
+		-- correct here, not inside ACAB:ResetAllElementsToVanillaLayout
+		-- itself - the Setup Wizard's own "Keep Vanilla Layout" choice
+		-- shares that same reset cascade but leaves useDefaultLayout
+		-- unlocked, where these are still live, independently-chosen
+		-- settings (e.g. an earlier wizard step's Modern Border Style
+		-- pick) that must survive a Vanilla LAYOUT choice untouched.
 		ACABDB.modernBorderStyle = false
 		ACABDB.globalSpacingEnabled = false
 		ACABDB.globalButtonSizeEnabled = false
@@ -4488,6 +4351,171 @@ function ACAB:ApplyUseDefaultLayoutChange(checked)
 	ACAB:RefreshGeneralPanel()
 
 	ACAB:RefreshAllBarPagesGlobalOverrideGating()
+end
+
+-- Full reset-to-Vanilla-Layout cascade: resets every default-bar-family id
+-- (1-5, Pet Bar, Stance Bar) and every single-native-frame element (Bag
+-- Bar/Key Ring/Micro Menu/Latency Bar/Cast Bar/Experience Bar/Page
+-- Indicator) back to its captured native anchor, and disables Extra Bars
+-- (no Blizzard-default equivalent) - shared by ApplyUseDefaultLayoutChange
+-- above (General tab's "Force Vanilla Layout Mode" checkbox) and the Setup
+-- Wizard's own "Keep Vanilla Layout" choice (SetupWizard.lua's
+-- FinishWizard), so neither path can leave stale Modern Layout positions
+-- behind. Deliberately does NOT touch modernBorderStyle/globalSpacingEnabled/
+-- globalButtonSizeEnabled - the Setup Wizard's Vanilla Layout choice is
+-- about POSITION only and leaves those independently-chosen settings
+-- alone; only ApplyUseDefaultLayoutChange's own true lockdown (which makes
+-- those controls inert) clears them, itself, right after calling this.
+function ACAB:ResetAllElementsToVanillaLayout()
+	local i
+
+	for i = 1, table.getn(ACAB.DEFAULT_BAR_IDS) do
+		ACAB:ResetDefaultBarLayout(ACAB.DEFAULT_BAR_IDS[i])
+	end
+
+	-- Bars 2-5's enabled state now mirrors the real native "Show ...
+	-- Action Bar" checkboxes (session-live only, per
+	-- docs/01-Environment-Capability-Analysis.md §5m/§6) instead of
+	-- whatever ACAB had stored - same reconciliation
+	-- MultiActionBar_Update's own hook already performs reactively.
+	if ACAB.ReconcileDefaultBarEnabledFromNative then
+		ACAB:ReconcileDefaultBarEnabledFromNative()
+	end
+
+	-- Extra Bars (6-9) are ACAB-only content with no Blizzard-
+	-- default equivalent - hidden outright while the native layout
+	-- owns bars 1-5.
+	local extraId
+
+	for extraId = ACAB.EXTRA_BAR_ID_START, ACAB.EXTRA_BAR_ID_START + ACAB.EXTRA_BAR_COUNT - 1 do
+		ACAB:SetExtraBarEnabled(extraId, false)
+		ACAB:ResetExtraBarLayout(extraId)
+
+		if ACAB.settingsFrame and ACAB.settingsFrame.pages[extraId] then
+			ACAB:RefreshBarSettingsPage(extraId)
+		end
+	end
+
+	ACAB:RefreshBarList()
+
+	if ACAB.ResetBagBarPosition then
+		ACAB:ResetBagBarPosition()
+	end
+
+	if ACAB.ResetBagBarLayout then
+		ACAB:ResetBagBarLayout()
+	end
+
+	if ACAB.ResetMicroMenuPosition then
+		ACAB:ResetMicroMenuPosition()
+	end
+
+	if ACAB.ResetMicroMenuLayout then
+		ACAB:ResetMicroMenuLayout()
+	end
+
+	-- Force native mode's stored flags BEFORE anything below reads them -
+	-- ACAB:IsPetBarNativeModeEffective/IsStanceBarNativeModeEffective only
+	-- treat native as forced while ACABDB.useDefaultLayout ~= false, which
+	-- isn't true for the Setup Wizard's own "Keep Vanilla Layout" choice
+	-- (stays unlocked/false) - without these set first, a profile that was
+	-- previously in styled Pet/Stance mode leaves CreatePetBarNativeContainer/
+	-- CreateStanceBarContainer below seeing native mode as NOT effective,
+	-- so the container never gets built and GetPetBarBaselineY/
+	-- GetStanceBarBaselineY fall back to the raw captured native anchor,
+	-- ignoring Action Bar 1/2's current enabled state and landing
+	-- overlapped by it.
+	do
+		local petCfg = ACABDB.defaultBars[ACAB.PET_BAR_ID]
+
+		if petCfg then
+			petCfg.useNativePetBar = true
+			petCfg.condenseEmptyPetSlots = false
+		end
+
+		local stanceCfg = ACABDB.defaultBars[ACAB.STANCE_BAR_ID]
+
+		if stanceCfg then
+			stanceCfg.useNativeStanceBar = true
+		end
+	end
+
+	-- Pet Bar/Stance Bar native containers may not exist yet this session
+	-- (a fresh/prior session can boot styled - see
+	-- ACAB:EnsureFixedSlotBarCreated's own comment, DefaultBars.lua, for
+	-- the same gap on the Modern Layout side) - build them on demand
+	-- before resetting so the reset below has something live to apply to.
+	if ACAB.CreatePetBarNativeContainer then
+		ACAB:CreatePetBarNativeContainer()
+	end
+
+	if ACAB.CreateStanceBarContainer then
+		ACAB:CreateStanceBarContainer()
+	end
+
+	if ACAB.ResetStanceBarPosition then
+		ACAB:ResetStanceBarPosition()
+	end
+
+	if ACAB.ResetStanceBarLayout then
+		ACAB:ResetStanceBarLayout()
+	end
+
+	if ACAB.ResetLatencyBarLayout then
+		ACAB:ResetLatencyBarLayout()
+	end
+
+	-- Cast Bar: same single-native-frame reset treatment as Latency
+	-- Bar above - also resets castBarUsesDefaultPosition to true
+	-- (ResetCastBarLayout itself), re-enabling its own dynamic stacking.
+	if ACAB.ResetCastBarLayout then
+		ACAB:ResetCastBarLayout()
+	end
+
+	if ACAB.ResetKeyRingPosition then
+		ACAB:ResetKeyRingPosition()
+	end
+
+	-- Key Ring ships visible on native vanilla - re-enable it
+	-- regardless of whatever the user had it set to.
+	if ACAB.SetKeyRingEnabled then
+		ACAB:SetKeyRingEnabled(true)
+	end
+
+	-- Native layout always shows Blizzard's own bar art.
+	ACABDB.disableBlizzardArt = false
+
+	if ACAB.ApplyBlizzardArtVisibility then
+		ACAB:ApplyBlizzardArtVisibility()
+	end
+
+	-- Default bar paging/stance-swap ship on by default on native vanilla.
+	if ACAB.SetDefaultBarPaginationEnabled then
+		ACAB:SetDefaultBarPaginationEnabled(true)
+	end
+
+	if ACAB.SetDefaultBarStanceSwapEnabled then
+		ACAB:SetDefaultBarStanceSwapEnabled(true)
+	end
+
+	-- Experience Bar: same reset treatment as every other
+	-- single-native-frame element above.
+	if ACAB.ResetExpBarLayout then
+		ACAB:ResetExpBarLayout()
+	end
+
+	-- See ACAB:ResetPageIndicatorLayout's own comment (DefaultBars.lua).
+	if ACAB.ResetPageIndicatorLayout then
+		ACAB:ResetPageIndicatorLayout()
+	end
+
+	-- Pet Bar native mode only - ResetDefaultBarLayout above (the
+	-- custom-styled grid mode's own reset) has nothing to act on
+	-- while self.bars[PET_BAR_ID] doesn't exist. No-ops safely in
+	-- custom mode (self.petBarNativeContainer is nil then).
+	if ACAB.ResetPetBarNativeLayout then
+		ACAB:ResetPetBarNativeLayout()
+	end
 
 	-- Stance Bar position must be re-verified dead last, after every other
 	-- reset/reapply above (bar 2's enabled state included) - its Y is
@@ -4497,7 +4525,7 @@ function ACAB:ApplyUseDefaultLayoutChange(checked)
 	-- not a fresh recompute. Without this, the Stance Bar can visually
 	-- land overlapping/behind Bar 1 until something else (e.g. manually
 	-- toggling bar 2 off then on) happens to trigger a reflow.
-	if (not wasDefault) and checked and ACAB.ReflowStanceBarForBar2Toggle then
+	if ACAB.ReflowStanceBarForBar2Toggle then
 		local bar2Cfg = ACABDB.defaultBars and ACABDB.defaultBars[2]
 
 		ACAB:ReflowStanceBarForBar2Toggle(bar2Cfg and bar2Cfg.enabled)
