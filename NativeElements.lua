@@ -59,7 +59,7 @@ function ACAB:SetBagBarPosition(x, y)
 	self:ApplyBagBarPosition()
 end
 
--- Settings.lua's Bag Bar page "Reset to Blizzard Default" button.
+-- Settings.lua's Bag Bar page "Reset to Vanilla Layout" button.
 function ACAB:ResetBagBarPosition()
 	local native = ACABDB.bagBarNativeAnchor
 
@@ -505,6 +505,25 @@ function ACAB:CreateBagBarAndMicroMenu()
 			self.bagBarContainer = container
 			self.bagBarButtons = buttons
 
+			-- Same external-re-anchor bug class as Micro Menu's own buttons
+			-- below (InstallReanchorGuard's own comment, DefaultBars.lua) -
+			-- MainMenuBarBackpackButton in particular is a real native
+			-- Blizzard frame native code can re-anchor toward its own
+			-- default corner at any time, which visibly snapped Bag Bar
+			-- back to the screen's right edge after it had been dragged
+			-- elsewhere. container.reanchorGuardFlag lets
+			-- ApplyChainAnchoredShape's own SetPoint calls through while
+			-- swallowing everything else.
+			do
+				local guardIndex
+
+				for guardIndex = 1, table.getn(buttons) do
+					self:InstallReanchorGuard(buttons[guardIndex], "ACABApplyingBagBarPosition")
+				end
+			end
+
+			container.reanchorGuardFlag = "ACABApplyingBagBarPosition"
+
 			-- Same TOPLEFT/BOTTOMLEFT-of-UIParent convention as
 			-- ACAB:CaptureNativeAnchor (Database.lua) - nativeLeft/nativeTop here are already
 			-- the real-screen-pixel-converted values
@@ -699,7 +718,7 @@ function ACAB:CaptureKeyRingPositionIfNeeded()
 
 	ACABDB.keyRingPosition = anchor
 
-	-- Permanent pristine snapshot (Reset to Blizzard Default) - stores the
+	-- Permanent pristine snapshot (Reset to Vanilla Layout) - stores the
 	-- frame's true native anchor via GetPoint(1) rather than an absolute
 	-- snapshot, since native code anchors this frame relative to another
 	-- real frame, not UIParent (see CaptureLatencyBarPositionIfNeeded's
@@ -934,7 +953,7 @@ function ACAB:CaptureLatencyBarPositionIfNeeded()
 		return
 	end
 
-	-- Permanent pristine snapshot (Reset to Blizzard Default) - stores the
+	-- Permanent pristine snapshot (Reset to Vanilla Layout) - stores the
 	-- frame's true native anchor via GetPoint(1) rather than an absolute
 	-- snapshot, since native code re-anchors this frame relative to
 	-- another real frame, not UIParent (confirmed: BOTTOMRIGHT of
@@ -1103,7 +1122,7 @@ function ACAB:SetLatencyBarHoverDuration(duration)
 	self:ApplyLatencyBarPosition()
 end
 
--- Settings.lua's Latency Bar page "Reset to Blizzard Default" button -
+-- Settings.lua's Latency Bar page "Reset to Vanilla Layout" button -
 -- restores position AND scale in one call (unlike the Stance Bar's own
 -- two separate Reset* calls), since Settings.lua's simple-bar-page
 -- config only ever wires one `reset` function per element.
@@ -1187,7 +1206,7 @@ function ACAB:CaptureCastBarPositionIfNeeded()
 		return
 	end
 
-	-- Permanent pristine snapshot (Reset to Blizzard Default) - stores
+	-- Permanent pristine snapshot (Reset to Vanilla Layout) - stores
 	-- the frame's TRUE native anchor via GetPoint(1) rather than an
 	-- absolute snapshot - see CaptureLatencyBarPositionIfNeeded's own
 	-- comment for why. Captured ONCE, never written to again by anything
@@ -1344,7 +1363,7 @@ end
 -------------------------------------------------------------------------
 -- Cast Bar dynamic stacking (Default Layout mode only)
 --
--- Cast Bar starts at its own default Blizzard layout position (the floor
+-- Cast Bar starts at its own default Vanilla Layout position (the floor
 -- below) and moves up by, independently: the buttonSize of Action Bar 1
 -- or 2 if either is active, the buttonSize of Extra Bar 1 or 2 if either
 -- is active, and Pet Bar's own size if it's active.
@@ -1372,7 +1391,7 @@ function ACAB:CaptureCastBarStackBaseYIfNeeded()
 	end
 end
 
--- baselineY = floor (default Blizzard layout position) + Action Bar
+-- baselineY = floor (default Vanilla Layout position) + Action Bar
 -- 1/2's buttonSize (whichever is active; max of the two if both are) +
 -- Extra Bar 1/2's buttonSize (same rule) + Pet Bar's own live height (if
 -- actually shown right now). Action Bar 1/2 and Extra Bar 1/2 each use
@@ -1883,6 +1902,206 @@ function ACAB:ResetPageIndicatorLayout()
 	self:SetPageIndicatorScale(1)
 end
 
+-- Settings.lua's Main Bar "Reset to Modern Layout Default" button - Page
+-- Indicator has no fixed target spot of its own (it depends on Main
+-- Bar's own just-reset REAL rendered right edge plus this container's
+-- real rendered size, not a buttonSize*N formula), so this reads Main
+-- Bar's real edge (ACAB:GetElementRealEdges) live instead - flush to Main
+-- Bar's right edge, vertically centered on it, mirroring
+-- ResetPageIndicatorLayout's own structure otherwise.
+function ACAB:ResetPageIndicatorToModernBase()
+	self:EnsureDB()
+
+	if ACABDB.defaultBarPaginationEnabled == false then
+		return
+	end
+
+	local bar1 = self.bars and self.bars[1]
+	local container = self.pageIndicatorContainer
+
+	if not bar1 or not container then
+		return
+	end
+
+	local _, mainBarRight, mainBarTop, mainBarBottom = self:GetElementRealEdges(bar1)
+
+	if not mainBarRight then
+		return
+	end
+
+	local overlay = container.ACABOverlay
+	local indicatorHeight = container:GetHeight() or ACAB.BUTTON_SIZE
+	local indicatorLeftGap = 0
+	local indicatorBottomGap = 0
+
+	if overlay then
+		local containerLeft = container:GetLeft()
+		local containerBottom = container:GetBottom()
+		local overlayLeft = overlay:GetLeft()
+		local overlayTop = overlay:GetTop()
+		local overlayBottom = overlay:GetBottom()
+
+		if containerLeft and overlayLeft then
+			indicatorLeftGap = overlayLeft - containerLeft
+		end
+
+		if containerBottom and overlayBottom then
+			indicatorBottomGap = overlayBottom - containerBottom
+		end
+
+		if overlayTop and overlayBottom then
+			indicatorHeight = overlayTop - overlayBottom
+		end
+	end
+
+	local mainBarCenterY = (mainBarTop + mainBarBottom) / 2
+
+	ACABDB.mainBarPageIndicatorPosition = {
+		point = "BOTTOMLEFT", relativePoint = "BOTTOMLEFT",
+		x = (mainBarRight + 6) - indicatorLeftGap,
+		y = (mainBarCenterY - (indicatorHeight / 2)) - indicatorBottomGap,
+	}
+
+	self:ApplyPageIndicatorPosition()
+	self:SetPageIndicatorScale(1)
+end
+
+-- Modern Layout's bottom-right corner cluster: Bag Bar flush in the
+-- corner, Micro Menu stacked on top of it, Key Ring to Bag Bar's left,
+-- Latency Bar to Micro Menu's left (top-aligned with it) - shared by the
+-- Setup Wizard's Modern Layout choice (SetupWizard.lua's
+-- ApplyModernLayoutPreset) and each of these 4 elements' own "Reset to
+-- Modern Layout Default" button, so any of them always recomputes the
+-- same coherent cluster. Every gap is flush (0), confirmed against a
+-- reference profile export of a live-built Modern Layout - ported
+-- verbatim from the wizard's own original math, which already reads each
+-- container's real live GetWidth()/GetHeight() rather than a formula.
+function ACAB:ApplyModernCornerClusterLayout()
+	self:EnsureDB()
+
+	local buttonSize, spacing = self:GetModernLayoutSizing()
+
+	-- Every measurement below reads each element's CURRENT container/
+	-- overlay - mirrors the original Setup Wizard implementation this was
+	-- extracted from, which measured width/height/overlay-gaps BEFORE
+	-- writing any new position, then only applied positions at the very
+	-- end. Measuring right after an ApplyXPosition() call (this
+	-- function's own earlier, buggy version) can read a just-recreated
+	-- overlay before its geometry has settled on this client - confirmed
+	-- as the cause of Latency Bar landing back at its old/native spot
+	-- instead of the computed Modern Layout one.
+
+	-- Bag Bar: flush against the screen's bottom-right corner - exact
+	-- regardless of its real size, no measurement needed.
+	local bagBarWidth = (self.bagBarContainer and self.bagBarContainer:GetWidth()) or (5 * (buttonSize + spacing))
+	local bagBarHeight = (self.bagBarContainer and self.bagBarContainer:GetHeight()) or buttonSize
+
+	local microMenuWidth = (self.microMenuContainer and self.microMenuContainer:GetWidth())
+		or ((ACABDB.microMenuCols or 8) * (buttonSize + spacing))
+	local microMenuHeight = (self.microMenuContainer and self.microMenuContainer:GetHeight()) or buttonSize
+
+	-- Micro Menu's own overlay hitbox sits inset from its container by a
+	-- fixed pixel gap (chain-anchored containers trim their overlay to the
+	-- real buttons' own hit-rects) - read live and netted out below.
+	local microMenuOverlayTopGap = 0
+	local microMenuOverlay = self.microMenuContainer and self.microMenuContainer.ACABOverlay
+
+	if self.microMenuContainer and microMenuOverlay then
+		local containerTop = self.microMenuContainer:GetTop()
+		local overlayTop = microMenuOverlay:GetTop()
+
+		if containerTop and overlayTop then
+			microMenuOverlayTopGap = containerTop - overlayTop
+		end
+	end
+
+	local microMenuOverlayTop = bagBarHeight + microMenuHeight - microMenuOverlayTopGap
+
+	local microMenuOverlayWidth = microMenuWidth
+	local microMenuRightGap = 0
+
+	if self.microMenuContainer and microMenuOverlay then
+		local containerRight = self.microMenuContainer:GetRight()
+		local overlayRight = microMenuOverlay:GetRight()
+		local overlayLeft = microMenuOverlay:GetLeft()
+
+		if containerRight and overlayRight then
+			microMenuRightGap = containerRight - overlayRight
+		end
+
+		if overlayRight and overlayLeft then
+			microMenuOverlayWidth = overlayRight - overlayLeft
+		end
+	end
+
+	-- Micro Menu's overlay left edge, expressed as an offset from the
+	-- screen's own right edge (same coordinate space latencyBarPosition.x
+	-- below is set in).
+	local microMenuOverlayLeftOffset = -(microMenuRightGap + microMenuOverlayWidth)
+
+	local latencyBarFrame = getglobal(self.LATENCY_BAR_FRAME_NAME)
+	local latencyBarOverlay = latencyBarFrame and latencyBarFrame.ACABOverlay
+	local latencyBarHeight = (latencyBarFrame and latencyBarFrame:GetHeight()) or (buttonSize * 0.5)
+
+	local latencyBarOverlayBottomGap = 0
+	local latencyBarOverlayRightGap = 0
+
+	if latencyBarFrame and latencyBarOverlay then
+		local frameBottom = latencyBarFrame:GetBottom()
+		local overlayBottom = latencyBarOverlay:GetBottom()
+		local overlayTop = latencyBarOverlay:GetTop()
+
+		if frameBottom and overlayBottom then
+			latencyBarOverlayBottomGap = overlayBottom - frameBottom
+		end
+
+		if overlayTop and overlayBottom then
+			latencyBarHeight = overlayTop - overlayBottom
+		end
+
+		local frameRight = latencyBarFrame:GetRight()
+		local overlayRight = latencyBarOverlay:GetRight()
+
+		if frameRight and overlayRight then
+			latencyBarOverlayRightGap = frameRight - overlayRight
+		end
+	end
+
+	-- All measurements taken - now write every target position and apply
+	-- them in one final pass, so nothing above ever reads a frame this
+	-- same call already repositioned.
+	ACABDB.bagBarPosition = {
+		point = "BOTTOMRIGHT", relativePoint = "BOTTOMRIGHT",
+		x = 0, y = 0,
+	}
+
+	-- Key Ring: directly to Bag Bar's left, same row, flush.
+	ACABDB.keyRingPosition = {
+		point = "BOTTOMRIGHT", relativePoint = "BOTTOMRIGHT",
+		x = -bagBarWidth, y = 0,
+	}
+
+	-- Micro Menu: stacked directly on top of Bag Bar, same right edge, flush.
+	ACABDB.microMenuPosition = {
+		point = "BOTTOMRIGHT", relativePoint = "BOTTOMRIGHT",
+		x = 0, y = bagBarHeight,
+	}
+
+	-- Latency Bar: its own overlay hitbox flush against Micro Menu's
+	-- overlay hitbox on the left, top edges aligned (nudged down 5 units
+	-- to read slightly better against Micro Menu's own icon row).
+	ACABDB.latencyBarPosition = {
+		point = "BOTTOMRIGHT", relativePoint = "BOTTOMRIGHT",
+		x = microMenuOverlayLeftOffset + latencyBarOverlayRightGap,
+		y = ((microMenuOverlayTop - latencyBarHeight) - latencyBarOverlayBottomGap) - 5,
+	}
+
+	self:ApplyBagBarPosition()
+	self:ApplyKeyRingPosition()
+	self:ApplyMicroMenuPosition()
+	self:ApplyLatencyBarPosition()
+end
+
 -- No independent enable flag (unlike Bag Bar/Micro Menu/Stance Bar/
 -- Latency Bar/Key Ring) - this element's visibility is entirely DERIVED
 -- from ACABDB.defaultBarPaginationEnabled, per the feature's own spec
@@ -2076,7 +2295,7 @@ function ACAB:SetTooltipEnabled(enabled)
 	self:ApplyDefaultLayoutEditVisual()
 end
 
--- Settings.lua's Tooltip page "Reset to Blizzard Default" button -
+-- Settings.lua's Tooltip page "Reset to Vanilla Layout" button -
 -- recomputes the same native-default conversion EnsureTooltipFrame's lazy
 -- seed uses (screen width may have changed since login), position+scale+
 -- anchor corner, same scope as every other Reset button.

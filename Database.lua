@@ -259,7 +259,7 @@ local function SeedOneDefaultBar(self, id)
 		spacing = spacing,
 		buttonCount = grid.cols * grid.rows,
 
-		-- Permanent pristine snapshot for "Reset to Blizzard Default".
+		-- Permanent pristine snapshot for "Reset to Vanilla Layout".
 		nativeAnchor = {
 			point = anchor.point,
 			relativePoint = anchor.relativePoint,
@@ -671,6 +671,14 @@ end
 
 ACAB.DEFAULT_PROFILE_NAME = "Default"
 
+-- Reserved profile name - never user-selectable, kept so no user profile
+-- can ever collide with it. "Reset to Modern Layout Default" no longer
+-- reads a cached snapshot under this name (ACAB:ApplyModernMainActionBarsLayout
+-- and friends compute it live, off real bar geometry, at click time
+-- instead) - this exclusion is kept in GetProfileNames/ProfileNameTaken
+-- purely as future-proofing for the name itself.
+ACAB.MODERN_BASE_PROFILE_NAME = "ModernBase"
+
 -- Plain recursive deep copy - ACABDB only ever holds plain data.
 function ACAB:DeepCopyTable(t)
 	if type(t) ~= "table" then
@@ -694,7 +702,7 @@ function ACAB:GetProfileNames()
 	local name
 
 	for name in pairs(ACABProfilesDB or {}) do
-		if name ~= self.DEFAULT_PROFILE_NAME then
+		if name ~= self.DEFAULT_PROFILE_NAME and name ~= self.MODERN_BASE_PROFILE_NAME then
 			n = n + 1
 			names[n] = name
 		end
@@ -766,6 +774,11 @@ function ACAB:ProfileNameTaken(name)
 	end
 
 	local lowerName = string.lower(name)
+
+	if lowerName == string.lower(self.MODERN_BASE_PROFILE_NAME) then
+		return true
+	end
+
 	local names = self:GetProfileNames()
 	local i
 
@@ -778,7 +791,18 @@ function ACAB:ProfileNameTaken(name)
 	return false
 end
 
--- Creates a new profile seeded from Default's current data.
+-- Creates a new profile seeded from Default's current data. On a
+-- brand-new SavedVariables file, ACABProfilesDB[Default] doesn't exist yet
+-- (it's only written by SaveActiveProfileData, on logout or an explicit
+-- profile switch) - falls back to the live ACABDB instead of an empty
+-- table, since RunLoginSequence's ACAB:EnsureDB() has already fully
+-- seeded it by the time any UI that could call this has loaded. An empty
+-- fallback here left new profiles with no defaultBars entries at all,
+-- which self-healed for bars 1-5 (SetupWizard.lua's FinishWizard leaves
+-- their bar.config pointed at the old, already-seeded table when no
+-- matching cfg exists to re-point to) but not for native-mode Pet/Stance
+-- Bar, whose reset functions read ACABDB.defaultBars[id] directly with no
+-- such fallback and silently no-op on a nil cfg.
 function ACAB:CreateProfile(name)
 	if not name or name == "" then
 		return false, "Profile name cannot be empty."
@@ -792,7 +816,12 @@ function ACAB:CreateProfile(name)
 
 	local defaultData = ACABProfilesDB[self.DEFAULT_PROFILE_NAME]
 
-	ACABProfilesDB[name] = defaultData and self:DeepCopyTable(defaultData) or {}
+	if not defaultData then
+		self:EnsureDB()
+		defaultData = ACABDB
+	end
+
+	ACABProfilesDB[name] = self:DeepCopyTable(defaultData)
 
 	return true
 end

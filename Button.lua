@@ -655,8 +655,8 @@ end
 function ACABButtonMixin:UpdateGridVisibility()
 	local hasContent = self:IsSlotFilled() and true or false
 
-	-- Bar 1 never hides an empty button while "Force default Blizzard
-	-- layout mode" is on, unlike bars 2-5; otherwise it follows the same
+	-- Bar 1 never hides an empty button while "Force Vanilla Layout
+	-- Mode" is on, unlike bars 2-5; otherwise it follows the same
 	-- toggle-based condition as every other bar.
 	-- Must check id == 1, not cfg.dynamicDefaultBar (true for bars 1-5 now).
 	local isMainBar = self.parentBar and self.parentBar.config and self.parentBar.config.id == 1

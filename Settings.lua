@@ -266,8 +266,21 @@ function ACAB:GetActionBarCoordinateRange(cfg)
 	local barWidth = (cols * buttonSize) + ((cols - 1) * spacing)
 	local barHeight = (rows * buttonSize) + ((rows - 1) * spacing)
 
-	local minX = 0
-	local maxX = screenWidthUnits - barWidth - borderSize
+	local minX, maxX
+
+	-- Modern Layout's Right Action Bar 1 (id 4) anchors BOTTOMRIGHT (flush
+	-- to the screen's right edge) instead of every other bar's BOTTOMLEFT -
+	-- mirror the range the same way GetSimpleElementCoordinateRange does
+	-- for the corner cluster, or this slider reads cfg.x's BOTTOMRIGHT
+	-- convention (0 at the right edge, negative moving left) as if it were
+	-- BOTTOMLEFT and clamps it up to 0.
+	if ACAB:IsRightAnchoredPoint(cfg and cfg.point) then
+		minX = -(screenWidthUnits - barWidth - borderSize)
+		maxX = 0
+	else
+		minX = 0
+		maxX = screenWidthUnits - barWidth - borderSize
+	end
 
 	local minY = barHeight + borderSize
 	local maxY = screenHeightUnits
@@ -345,9 +358,23 @@ end
 -- (GetPixelStep()) added before the scale division.
 -------------------------------------------------------------------------
 
+-- True for any point string anchored to the screen's right edge
+-- ("BOTTOMRIGHT"/"TOPRIGHT") - Modern Layout's corner cluster (Bag Bar/Key
+-- Ring/Micro Menu/Latency Bar) stores position this way, x=0 flush against
+-- the right edge and more negative moving left, the mirror image of the
+-- BOTTOMLEFT/TOPLEFT convention every X/Y position slider otherwise assumes.
+function ACAB:IsRightAnchoredPoint(point)
+	return point ~= nil and string.find(point, "RIGHT") ~= nil
+end
+
 -- A ACAB: method (not a file-local) since SettingsBars.lua's simple-page
 -- builder calls it too, not just this file's own RefreshSimplePositionSliderRange.
-function ACAB:GetSimpleElementCoordinateRange(frame, extraMaxYPixels)
+-- isRightAnchored (optional): mirrors minX/maxX for a RIGHT-anchored
+-- element's own x convention (0 at the screen's right edge, negative
+-- moving left) instead of the default LEFT-anchored one (0 at the left
+-- edge, positive moving right) - pass ACAB:IsRightAnchoredPoint(pos.point)
+-- for any element whose stored position might use either.
+function ACAB:GetSimpleElementCoordinateRange(frame, extraMaxYPixels, isRightAnchored)
 	local screenWidthUnits = GetScreenWidth()
 	local screenHeightUnits = GetScreenHeight()
 
@@ -430,8 +457,19 @@ function ACAB:GetSimpleElementCoordinateRange(frame, extraMaxYPixels)
 	local frameWidth = (frame and frame:GetWidth()) or 0
 	local frameHeight = (frame and frame:GetHeight()) or 0
 
-	local minX = 0
-	local maxX = (screenWidthUnits + rightInset) / scale - frameWidth
+	local minX, maxX
+
+	if isRightAnchored then
+		-- Mirror image of the LEFT-anchored formula below: 0 flush at the
+		-- right edge, negative moving left toward the opposite edge -
+		-- leftInset/rightInset swap roles since "distance from the right
+		-- edge" reads the frame's insets from the opposite side.
+		minX = -((screenWidthUnits + leftInset) / scale - frameWidth)
+		maxX = 0
+	else
+		minX = 0
+		maxX = (screenWidthUnits + rightInset) / scale - frameWidth
+	end
 
 	local minY = frameHeight - bottomInset / scale
 	local maxY = (screenHeightUnits + extraY + topInset) / scale
@@ -475,7 +513,9 @@ function ACAB:RefreshSimplePositionSliderRange(page, key)
 		return
 	end
 
-	local minX, maxX, minY, maxY = ACAB:GetSimpleElementCoordinateRange(frame, config.extraMaxYPixels)
+	local pos = config.getPosition and config.getPosition()
+	local isRightAnchored = ACAB:IsRightAnchoredPoint(pos and pos.point)
+	local minX, maxX, minY, maxY = ACAB:GetSimpleElementCoordinateRange(frame, config.extraMaxYPixels, isRightAnchored)
 
 	page.xSlider:SetMinMaxValues(minX, maxX)
 	page.ySlider:SetMinMaxValues(minY, maxY)
@@ -1200,7 +1240,7 @@ function ACAB:CreateWideContentScrollFrame(name)
 end
 -------------------------------------------------------------------------
 -- Default-PROFILE lock, distinct from ApplyDefaultLayoutGating below
--- (which gates the unrelated "Force default Blizzard layout mode" checkbox -
+-- (which gates the unrelated "Force Vanilla Layout Mode" checkbox -
 -- both gates are independent and can apply to the same controls at once).
 -- The Default PROFILE must never be edited: every settings page shows a
 -- red warning banner and locks its controls while it's active.
@@ -1214,12 +1254,12 @@ local PROFILE_LOCK_MESSAGE_PROFILE =
 	"Set up a profile if you wish to change Settings or access Layout " ..
 	"Edit Mode. |cffffd100Click to create one now.|r"
 
--- Text shown while "Force default Blizzard layout mode" (General tab) is
--- on, on pages that gate ONLY applies to (bar 1 and the simple/native-backed
+-- Text shown while "Force Vanilla Layout Mode" (General tab) is on, on
+-- pages that gate ONLY applies to (bar 1 and the simple/native-backed
 -- pages - see ApplyDefaultLayoutGating's own header comment).
 local PROFILE_LOCK_MESSAGE_LAYOUT =
-	"Editing Settings is prohibited while Force default Blizzard layout " ..
-	"mode is enabled. Disable it under General Settings if you wish to " ..
+	"Editing Settings is prohibited while Force Vanilla Layout Mode " ..
+	"is enabled. Disable it under General Settings if you wish to " ..
 	"change Settings or access Layout Edit Mode. " ..
 	"|cffffd100Click to jump to General Settings.|r"
 
@@ -1233,8 +1273,8 @@ local PROFILE_LOCK_MESSAGE_LAYOUT =
 -- create-profile dialog (the only way off it), disabling layout-force on
 -- success since the confirm-reset dialog it would otherwise trigger
 -- doesn't apply to a fresh profile. Otherwise, if only layout-force is on,
--- jump to the General tab and pulse the "Force default Blizzard layout
--- mode" checkbox.
+-- jump to the General tab and pulse the "Force Vanilla Layout Mode"
+-- checkbox.
 function ACAB:HandleLockReasonClick()
 	if ACAB:IsDefaultProfileActive() then
 		ACAB:ShowCreateProfileDialog(function(ok)
@@ -1424,7 +1464,7 @@ local PROFILE_LOCK_CONTROL_NAMES = {
 	"xSlider", "ySlider", "xStepperBigMinus", "xStepperMinus", "xStepperPlus", "xStepperBigPlus",
 	"yStepperBigMinus", "yStepperMinus", "yStepperPlus", "yStepperBigPlus", "xValueClick", "yValueClick",
 	"buttonSizeSlider", "spacingSlider",
-	"scaleSlider", "resetPositionButton", "enableCheckbox",
+	"scaleSlider", "resetPositionButton", "resetModernButton", "enableCheckbox",
 	"buttonCountMinus", "buttonCountPlus", "pageIndicatorSlider",
 	"orientationCheckbox", "keyRingCheckbox", "keyRingScaleSlider",
 	"betterExpBarCheckbox", "expBarShowLevelCheckbox",
@@ -1516,7 +1556,7 @@ function ACAB:ApplyProfileLockGating(page, alsoCheckLayoutLock)
 end
 
 -------------------------------------------------------------------------
--- Default-layout gating (General tab's "Force default Blizzard layout mode")
+-- Default-layout gating (General tab's "Force Vanilla Layout Mode")
 --
 -- Uses EnableMouse(false) rather than Slider/Button Enable()/Disable():
 -- a universal Frame method that works on both sliders and the plain
@@ -1916,6 +1956,7 @@ function ACAB:FitSettingsWindowToBarPage(barId)
 	n = AppendCandidate(candidates, n, page.spacingValueText)
 	n = AppendCandidate(candidates, n, page.buttonSizeValueText)
 	n = AppendCandidate(candidates, n, page.resetPositionButton)
+	n = AppendCandidate(candidates, n, page.resetModernButton)
 	n = AppendCandidate(candidates, n, page.buttonCountMinus)
 	n = AppendCandidate(candidates, n, page.buttonCountPlus)
 	n = AppendCandidate(candidates, n, page.buttonCountValueText)

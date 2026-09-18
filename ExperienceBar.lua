@@ -129,7 +129,7 @@ function ACAB:CaptureExpBarPositionIfNeeded()
 
 	ACABDB.expBarPosition = anchor
 
-	-- Permanent pristine snapshot (Reset to Blizzard Default) - stores
+	-- Permanent pristine snapshot (Reset to Vanilla Layout) - stores
 	-- the frame's TRUE native anchor via GetPoint(1) rather than the
 	-- absolute snapshot above - see CaptureLatencyBarPositionIfNeeded's
 	-- own comment for why. ResetExpBarLayout applies this once (via
@@ -359,7 +359,7 @@ function ACAB:SetExpBarHoverDuration(duration)
 	self:ApplyExpBarPosition()
 end
 
--- Settings.lua's Experience Bar page "Reset to Blizzard Default" button -
+-- Settings.lua's Experience Bar page "Reset to Vanilla Layout" button -
 -- restores position AND scale in one call, mirroring
 -- ACAB:ResetLatencyBarLayout exactly.
 function ACAB:ResetExpBarLayout()

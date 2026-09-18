@@ -199,7 +199,7 @@ local VANILLA_MODE_LOCKED_TEXT_PROFILE =
 	"|cffffd100Click to create one now.|r"
 
 local VANILLA_MODE_LOCKED_TEXT_LAYOUT =
-	"Can't change while Force default Blizzard layout mode is enabled. " ..
+	"Can't change while Force Vanilla Layout Mode is enabled. " ..
 	"Disable it in General Settings to enable this Setting. " ..
 	"|cffffd100Click to jump to General Settings.|r"
 
@@ -1079,7 +1079,7 @@ function ACAB:GetOrCreateBarPage(barId)
 		onApply = function() ACAB:ApplyLiveBarPosition(page) end,
 	})
 
-	-- Reset to Blizzard Default (default bars only) is created further
+	-- Reset to Vanilla Layout (default bars only) is created further
 	-- down, below the Spacing slider and above Grid Layout.
 
 	-------------------------------------------------------------------------
@@ -1320,8 +1320,8 @@ function ACAB:GetOrCreateBarPage(barId)
 
 		if isDefault then
 			-------------------------------------------------------------------------
-			-- Reset to Blizzard default position (default bars only - custom
-			-- bars have no native Blizzard anchor to reset to).
+			-- Reset to native/vanilla default position (default bars only -
+			-- custom bars have no native anchor to reset to).
 			-------------------------------------------------------------------------
 
 			local resetButtonY = spacingSliderY - 36
@@ -1330,11 +1330,18 @@ function ACAB:GetOrCreateBarPage(barId)
 				anchor = { "TOPLEFT", page, "TOPLEFT", ACAB.INDENT_INPUT, resetButtonY },
 				minWidth = 200,
 				maxWidth = 200,
-				text = "Reset to Blizzard Default",
+				text = "Reset to Vanilla Layout",
 				onClick = function()
 					-- Restores position/spacing/cols/rows/buttonSize to
 					-- their native defaults.
 					ACAB:ResetDefaultBarLayout(page.barId)
+
+					-- Page Indicator visually anchors off Main Bar's own
+					-- position - reset it alongside Main Bar, or it's left
+					-- wherever it was before this reset.
+					if page.barId == 1 and ACAB.ResetPageIndicatorLayout then
+						ACAB:ResetPageIndicatorLayout()
+					end
 
 					-- Re-syncs every control's displayed value (X/Y sliders,
 					-- Button Size, grid-swatch selection) from the saved
@@ -1347,9 +1354,43 @@ function ACAB:GetOrCreateBarPage(barId)
 
 			self:AddHoverOnlyReflowRow(page, resetPositionButton, ACAB.INDENT_INPUT, resetButtonY)
 
+			-- Bars 1-5: Main Bar/Action Bar 1/Action Bar 2 stack (1-3) and
+			-- the right vertical bar cluster (4-5, ACAB:ResetBarLayoutToModernBase
+			-- dispatches each id to the right shared function).
+			local nextY = resetButtonY
+
+			if barId >= 1 and barId <= 5 then
+				local resetModernY = resetButtonY - 30
+
+				local resetModernButton = ACAB:CreateResetButton(page, {
+					anchor = { "TOPLEFT", page, "TOPLEFT", ACAB.INDENT_INPUT, resetModernY },
+					minWidth = 200,
+					maxWidth = 200,
+					text = "Reset to Modern Layout Default",
+					onClick = function()
+						ACAB:ResetBarLayoutToModernBase(page.barId)
+
+						-- Page Indicator visually anchors off Main Bar's own
+						-- position - reset it alongside Main Bar, or it's
+						-- left wherever it was before this reset.
+						if page.barId == 1 and ACAB.ResetPageIndicatorToModernBase then
+							ACAB:ResetPageIndicatorToModernBase()
+						end
+
+						ACAB:RefreshBarSettingsPage(page.barId)
+					end,
+				})
+
+				page.resetModernButton = resetModernButton
+
+				self:AddHoverOnlyReflowRow(page, resetModernButton, ACAB.INDENT_INPUT, resetModernY)
+
+				nextY = resetModernY
+			end
+
 			-- Grid Layout shifts down to make room for the Spacing section
-			-- plus the Reset button above it.
-			gridTitleY = resetButtonY - 34
+			-- plus the Reset button(s) above it.
+			gridTitleY = nextY - 34
 			swatchY = gridTitleY - 26
 		elseif ACAB:IsExtraBarId(barId) then
 			-------------------------------------------------------------------------
@@ -1376,7 +1417,30 @@ function ACAB:GetOrCreateBarPage(barId)
 
 			self:AddHoverOnlyReflowRow(page, resetPositionButton, ACAB.INDENT_INPUT, resetButtonY)
 
-			gridTitleY = resetButtonY - 34
+			-------------------------------------------------------------------------
+			-- Reset to Modern Layout Default - Extra Bar 1-4 are part of
+			-- Modern Layout's vertical bar clusters (ACAB:ResetExtraBarLayoutToModernBase,
+			-- Bar.lua).
+			-------------------------------------------------------------------------
+
+			local resetModernY = resetButtonY - 30
+
+			local resetModernButton = ACAB:CreateResetButton(page, {
+				anchor = { "TOPLEFT", page, "TOPLEFT", ACAB.INDENT_INPUT, resetModernY },
+				minWidth = 200,
+				maxWidth = 200,
+				text = "Reset to Modern Layout Default",
+				onClick = function()
+					ACAB:ResetExtraBarLayoutToModernBase(page.barId)
+					ACAB:RefreshBarSettingsPage(page.barId)
+				end,
+			})
+
+			page.resetModernButton = resetModernButton
+
+			self:AddHoverOnlyReflowRow(page, resetModernButton, ACAB.INDENT_INPUT, resetModernY)
+
+			gridTitleY = resetModernY - 34
 			swatchY = gridTitleY - 26
 		else
 			-- Any other custom bar has no Reset concept.
@@ -1917,7 +1981,7 @@ end
 -- parameterized via ACAB.simpleBarPageConfigs, instead of three near-
 -- identical page builders. Position (X/Y, live) + optional Enable
 -- checkbox (Bag Bar/Micro Menu only - Stance Bar's shape is native/class-
--- driven) + "Reset to Blizzard Default". No grid/spacing/button-size/
+-- driven) + "Reset to Vanilla Layout". No grid/spacing/button-size/
 -- buttonCount/Delete controls - none of these is a ACAB-owned
 -- button grid.
 -------------------------------------------------------------------------
@@ -2077,7 +2141,9 @@ local function CreateSimpleBarPage(key)
 	local minX, maxX, minY, maxY
 
 	if config.getElementFrame then
-		minX, maxX, minY, maxY = ACAB:GetSimpleElementCoordinateRange(config.getElementFrame(), config.extraMaxYPixels)
+		local initialPos = config.getPosition and config.getPosition()
+		local initialIsRightAnchored = ACAB:IsRightAnchoredPoint(initialPos and initialPos.point)
+		minX, maxX, minY, maxY = ACAB:GetSimpleElementCoordinateRange(config.getElementFrame(), config.extraMaxYPixels, initialIsRightAnchored)
 	else
 		minX, maxX, minY, maxY = ACAB:GetScreenCoordinateRange()
 	end
@@ -2687,14 +2753,14 @@ local function CreateSimpleBarPage(key)
 	local resetY = cursorY
 
 	-------------------------------------------------------------------------
-	-- Reset to Blizzard Default
+	-- Reset to Vanilla Layout
 	-------------------------------------------------------------------------
 
 	local resetButton = ACAB:CreateResetButton(page, {
 		anchor = { "TOPLEFT", page, "TOPLEFT", ACAB.INDENT_INPUT, resetY },
 		minWidth = 200,
 		maxWidth = 200,
-		text = "Reset to Blizzard Default",
+		text = "Reset to Vanilla Layout",
 		onClick = function()
 			config.reset()
 
@@ -2717,6 +2783,39 @@ local function CreateSimpleBarPage(key)
 	ACAB:AddHoverOnlyReflowRow(page, resetButton, ACAB.INDENT_INPUT, resetY)
 
 	page.resetPositionButton = resetButton
+
+	-------------------------------------------------------------------------
+	-- Reset to Modern Layout Default (Pet Bar/Stance Bar only)
+	-------------------------------------------------------------------------
+
+	if config.resetModern then
+		local resetModernY = resetY - 30
+
+		local resetModernButton = ACAB:CreateResetButton(page, {
+			anchor = { "TOPLEFT", page, "TOPLEFT", ACAB.INDENT_INPUT, resetModernY },
+			minWidth = 200,
+			maxWidth = 200,
+			text = "Reset to Modern Layout Default",
+			onClick = function()
+				config.resetModern()
+
+				-- Same next-frame defer as the Vanilla Layout reset button above -
+				-- GetSimpleElementCoordinateRange needs the settled post-reset
+				-- size, not the stale pre-reset one.
+				if C_Timer and C_Timer.After then
+					C_Timer.After(0, function()
+						ACAB:RefreshBarSettingsPage(key)
+					end)
+				else
+					ACAB:RefreshBarSettingsPage(key)
+				end
+			end,
+		})
+
+		ACAB:AddHoverOnlyReflowRow(page, resetModernButton, ACAB.INDENT_INPUT, resetModernY)
+
+		page.resetModernButton = resetModernButton
+	end
 
 	page:Hide()
 
@@ -2762,13 +2861,15 @@ function ACAB:RefreshSimpleBarPage(key)
 
 	-- X/Y clamp range - recomputed from this element's CURRENT rendered
 	-- size before syncing the value below, so scale/spacing changes,
-	-- grid-preset picks, and "Reset to Blizzard Default" (all of which
+	-- grid-preset picks, and "Reset to Vanilla Layout" (all of which
 	-- route here) always re-clamp against the up to date footprint.
 	if config.getElementFrame then
 		local frame = config.getElementFrame()
 
 		if frame then
-			local minX, maxX, minY, maxY = ACAB:GetSimpleElementCoordinateRange(frame, config.extraMaxYPixels)
+			local rawPos = config.getPosition()
+			local isRightAnchored = ACAB:IsRightAnchoredPoint(rawPos and rawPos.point)
+			local minX, maxX, minY, maxY = ACAB:GetSimpleElementCoordinateRange(frame, config.extraMaxYPixels, isRightAnchored)
 
 			page.xSlider:SetMinMaxValues(minX, maxX)
 			page.ySlider:SetMinMaxValues(minY, maxY)
@@ -2779,8 +2880,6 @@ function ACAB:RefreshSimpleBarPage(key)
 			-- clamp and persist here (not just SetMinMaxValues, which only
 			-- clamps the slider's DISPLAYED value, not the saved position)
 			-- so the stored position never silently drifts off-screen.
-			local rawPos = config.getPosition()
-
 			if rawPos and config.setPosition then
 				local clampedX = rawPos.x or 0
 				local clampedY = rawPos.y or 0
@@ -3107,6 +3206,14 @@ ACAB.simpleBarPageConfigs[ACAB.STANCE_BAR_ID] = {
 		ACAB:ResetStanceBarLayout()
 		ACAB:ResetStanceBarPosition()
 	end,
+	resetModern = function()
+		-- Layout first, same reason as `reset` above: PixelSetPoint reads
+		-- the container's live GetEffectiveScale to stay pixel-perfect, so
+		-- applying position while a stale non-1 scale is still live lands
+		-- it at the wrong X/Y - settle scale back to 1 before repositioning.
+		ACAB:ResetStanceBarLayout()
+		ACAB:ResetStanceBarPositionToModernBase()
+	end,
 	getEnabled = function() return ACABDB.stanceBarEnabled end,
 	setEnabled = function(v) ACAB:SetStanceBarEnabled(v) end,
 	hasSpacing = true,
@@ -3151,7 +3258,7 @@ ACAB.simpleBarPageConfigs["bagbar"] = {
 		-- Key Ring lives on this same page (see CreateSimpleBarPage's
 		-- `if key == "bagbar"` block), so its position resets here too
 		-- rather than leaving it untouched by the Bag Bar's own Reset
-		-- button - mirrors the "Force default Blizzard layout mode" re-enable
+		-- button - mirrors the "Force Vanilla Layout Mode" re-enable
 		-- flow, which calls ACAB:ResetKeyRingPosition() independently
 		-- (Settings.lua's General tab handler). Key Ring's native anchor is
 		-- relative to the Bag Bar container ResetBagBarPosition just moved
@@ -3169,6 +3276,12 @@ ACAB.simpleBarPageConfigs["bagbar"] = {
 			end
 		end
 	end,
+	-- Bag Bar/Key Ring/Micro Menu/Latency Bar all move together as one
+	-- coherent corner cluster (ACAB:ApplyModernCornerClusterLayout,
+	-- NativeElements.lua) - same shared function the Setup Wizard's
+	-- Modern Layout choice calls, so any of their 4 buttons always
+	-- recomputes the same result.
+	resetModern = function() ACAB:ApplyModernCornerClusterLayout() end,
 	getEnabled = function() return ACABDB.bagBarEnabled end,
 	setEnabled = function(v) ACAB:SetBagBarEnabled(v) end,
 	hasSpacing = true,
@@ -3197,6 +3310,7 @@ ACAB.simpleBarPageConfigs[ACAB.PET_BAR_ID] = {
 	setPosition = function(x, y) ACAB:SetPetBarNativePosition(x, y) end,
 	getElementFrame = function() return ACAB.petBarNativeContainer end,
 	reset = function() ACAB:ResetPetBarNativeLayout() end,
+	resetModern = function() ACAB:ResetPetBarLayoutToModernBase() end,
 	getEnabled = function()
 		local cfg = ACABDB.defaultBars[ACAB.PET_BAR_ID]
 		return cfg and cfg.enabled
@@ -3241,6 +3355,8 @@ ACAB.simpleBarPageConfigs["latencybar"] = {
 	reset = function()
 		ACAB:ResetLatencyBarLayout()
 	end,
+	-- Same shared corner-cluster function Bag Bar's own resetModern above uses.
+	resetModern = function() ACAB:ApplyModernCornerClusterLayout() end,
 	getEnabled = function() return ACABDB.latencyBarEnabled end,
 	setEnabled = function(v) ACAB:SetLatencyBarEnabled(v) end,
 	hasScale = true,
@@ -3279,6 +3395,14 @@ ACAB.simpleBarPageConfigs["expbar"] = {
 	reset = function()
 		ACAB:ResetExpBarLayout()
 	end,
+	-- No distinct Modern Layout position of its own (the wizard only
+	-- shifts Main Bar/Action Bar 1/2 UP to clear whatever position the
+	-- Experience Bar is already at, per ACAB:GetModernBaseExpBarClearance -
+	-- it never repositions the Experience Bar itself) - same as "Reset to
+	-- Vanilla Layout" so the button is present/consistent either way.
+	resetModern = function()
+		ACAB:ResetExpBarLayout()
+	end,
 	getEnabled = function() return ACABDB.expBarEnabled end,
 	setEnabled = function(v) ACAB:SetExpBarEnabled(v) end,
 	hasScale = true,
@@ -3300,6 +3424,12 @@ ACAB.simpleBarPageConfigs["castbar"] = {
 	reset = function()
 		ACAB:ResetCastBarLayout()
 	end,
+	-- No distinct Modern Layout position of its own - Cast Bar already
+	-- dynamically stacks off the default bars regardless of layout mode,
+	-- so this is the same as "Reset to Vanilla Layout".
+	resetModern = function()
+		ACAB:ResetCastBarLayout()
+	end,
 	hasScale = true,
 	getScale = function() return ACABDB.castBarScale end,
 	setScale = function(v) ACAB:SetCastBarScale(v) end,
@@ -3315,6 +3445,11 @@ ACAB.simpleBarPageConfigs["tooltip"] = {
 	setPosition = function(x, y) ACAB:SetTooltipPosition(x, y) end,
 	getElementFrame = function() return ACAB.tooltipFrame end,
 	reset = function()
+		ACAB:ResetTooltipLayout()
+	end,
+	-- No distinct Modern Layout position of its own - same as "Reset to
+	-- Vanilla Layout" so the button is present/consistent either way.
+	resetModern = function()
 		ACAB:ResetTooltipLayout()
 	end,
 	getEnabled = function() return ACABDB.tooltipEnabled end,
@@ -3338,6 +3473,8 @@ ACAB.simpleBarPageConfigs["micromenu"] = {
 		ACAB:ResetMicroMenuLayout()
 		ACAB:ResetMicroMenuPosition()
 	end,
+	-- Same shared corner-cluster function Bag Bar's own resetModern above uses.
+	resetModern = function() ACAB:ApplyModernCornerClusterLayout() end,
 	getEnabled = function() return ACABDB.microMenuEnabled end,
 	setEnabled = function(v) ACAB:SetMicroMenuEnabled(v) end,
 	hasSpacing = true,
@@ -3417,7 +3554,7 @@ function ACAB:RefreshBarSettingsPage(barId)
 	-------------------------------------------------------------------------
 	-- X/Y clamp range - recomputed from this bar's CURRENT
 	-- buttonSize/buttonCount/cols/rows before syncing the value below, so
-	-- a grid-preset pick or "Reset to Blizzard Default" (both of which
+	-- a grid-preset pick or "Reset to Vanilla Layout" (both of which
 	-- route here) always re-clamps against the up to date range. Just
 	-- SetMinMaxValues, not the full RefreshPositionSliderRange (which also
 	-- re-clamps the CURRENT value) - SetValue(x) right below already
@@ -3651,7 +3788,7 @@ function ACAB:RefreshBarSettingsPage(barId)
 
 	-------------------------------------------------------------------------
 	-- Default-layout lock, numbered default bars (1-5) - while "Force
-	-- default Blizzard layout mode" is on, every one of these bars' controls
+	-- Vanilla Layout Mode" is on, every one of these bars' controls
 	-- locks except enable/disable, exactly like the Default-profile lock.
 	-- Both share the same combined lock and control list
 	-- (ACAB:ApplyProfileLockGating below).
@@ -4121,9 +4258,9 @@ function ACAB:RebuildAllDefaultBarAssignmentRows()
 	end
 end
 
--- Applies a "Force default Blizzard layout mode" checkbox change: persists the
+-- Applies a "Force Vanilla Layout Mode" checkbox change: persists the
 -- value, re-gates every affected page, and (only when switching ON from
--- OFF) runs the full reset-to-Blizzard-default cascade. Split out from the
+-- OFF) runs the full reset-to-Vanilla-Layout cascade. Split out from the
 -- checkbox's OnClick so the confirm dialog below can defer this call until
 -- the user accepts the reset warning.
 function ACAB:ApplyUseDefaultLayoutChange(checked)
@@ -4162,7 +4299,7 @@ function ACAB:ApplyUseDefaultLayoutChange(checked)
 	-- Micro Menu/Latency Bar/Key Ring.
 	if (not wasDefault) and checked then
 		-------------------------------------------------------------
-		-- Full reset-to-Blizzard-default cascade: ApplyAllDefaultBars/
+		-- Full reset-to-Vanilla-Layout cascade: ApplyAllDefaultBars/
 		-- ApplyDefaultLayoutEditVisual above only re-apply shape from
 		-- whatever cfg currently holds, they do not reset cfg back to
 		-- its native values - ResetDefaultBarLayout does that for
@@ -4192,6 +4329,7 @@ function ACAB:ApplyUseDefaultLayoutChange(checked)
 
 		for extraId = ACAB.EXTRA_BAR_ID_START, ACAB.EXTRA_BAR_ID_START + ACAB.EXTRA_BAR_COUNT - 1 do
 			ACAB:SetExtraBarEnabled(extraId, false)
+			ACAB:ResetExtraBarLayout(extraId)
 
 			if ACAB.settingsFrame and ACAB.settingsFrame.pages[extraId] then
 				ACAB:RefreshBarSettingsPage(extraId)
