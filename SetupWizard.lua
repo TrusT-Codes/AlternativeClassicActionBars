@@ -156,9 +156,15 @@ end
 -- reason (see BuildStep4's own comment on that).
 -------------------------------------------------------------------------
 
+-- stanceIcon is the stance BUTTON's own fixed icon (never changes, even
+-- when its dropdown remaps which stance's abilities it previews) - icons
+-- is that stance's own example ability bar. Kept as two separate fields
+-- since they aren't always the same art (Defensive/Berserker's own
+-- stance icon isn't either stance's first ability icon).
 local STEP4_STANCE_ABILITIES = {
 	{
 		name = "Battle Stance",
+		stanceIcon = "Interface\\Icons\\Ability_Warrior_Charge",
 		icons = {
 			"Interface\\Icons\\Ability_Warrior_Charge",
 			"Interface\\Icons\\Ability_Rogue_Ambush",
@@ -168,15 +174,17 @@ local STEP4_STANCE_ABILITIES = {
 	},
 	{
 		name = "Defensive Stance",
+		stanceIcon = "Interface\\Icons\\Ability_Warrior_DefensiveStance",
 		icons = {
 			"Interface\\Icons\\Ability_Warrior_Charge",
 			"Interface\\Icons\\Ability_Rogue_Ambush",
 			"Interface\\Icons\\Ability_Warrior_Sunder",
-			"Interface\\Icons\\Ability_Physical_Taunt",
+			"Interface\\Icons\\Spell_Nature_Reincarnation",
 		},
 	},
 	{
 		name = "Berserker Stance",
+		stanceIcon = "Interface\\Icons\\Ability_Racial_Avatar",
 		icons = {
 			"Interface\\Icons\\Ability_Rogue_Sprint",
 			"Interface\\Icons\\Ability_Rogue_Ambush",
@@ -237,7 +245,7 @@ local function BuildStep4StanceRow(parent, isModern, onStanceClick)
 		local stanceIndex = s
 
 		slots[s] = CreateWizardStanceSlot(
-			container, isModern, STEP4_STANCE_ABILITIES[s].icons[1],
+			container, isModern, STEP4_STANCE_ABILITIES[s].stanceIcon,
 			function() onStanceClick(stanceIndex) end
 		)
 	end
@@ -297,8 +305,10 @@ end
 
 local STEP4_ASSIGNMENT_DROPDOWN_OPTIONS = BuildStep4AssignmentDropdownOptions()
 
--- One "<label>: <dropdown>" row, cosmetic only (see BuildStep4's own
--- comment on why these aren't wired to real ACABDB assignment data).
+-- One "<label>: <dropdown>" row for step 4's Page 2 row only - cosmetic,
+-- same No Pageswap/Default/Extra Bar 1-4 choices the real per-bar Bars
+-- Settings page shows (see BuildStep4's own comment on why this one
+-- isn't wired to real ACABDB assignment data).
 local function CreateStep4AssignmentRow(parent, labelText, dropdownName)
 	local row = CreateFrame("Frame", nil, parent)
 	row:SetWidth(320)
@@ -314,6 +324,39 @@ local function CreateStep4AssignmentRow(parent, labelText, dropdownName)
 	dropdown:SetPoint("LEFT", label, "RIGHT", -8, -2)
 	dropdown:SetOptions(STEP4_ASSIGNMENT_DROPDOWN_OPTIONS)
 	dropdown:SetSelected(-1, "Default")
+
+	row.dropdown = dropdown
+
+	return row
+end
+
+-- The 3 stance rows' own dropdown choices - picks which of the 3 example
+-- stances' ability set that ROW's stance button previews when clicked,
+-- so this actually demonstrates re-assigning a stance's bar content
+-- (the real feature this step explains) instead of just mirroring the
+-- real settings page's option labels.
+local STEP4_STANCE_PREVIEW_OPTIONS = {
+	{ text = "Preview Battle Stance", value = 1 },
+	{ text = "Preview Defensive Stance", value = 2 },
+	{ text = "Preview Berserker Stance", value = 3 },
+}
+
+local function CreateStep4StancePreviewRow(parent, labelText, dropdownName, defaultValue, onSelect)
+	local row = CreateFrame("Frame", nil, parent)
+	row:SetWidth(360)
+	row:SetHeight(28)
+
+	local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	label:SetPoint("LEFT", row, "LEFT", 0, 0)
+	label:SetWidth(140)
+	label:SetJustifyH("LEFT")
+	label:SetText(labelText)
+
+	local dropdown = ACAB:CreateInlineDropdown(row, 170, dropdownName)
+	dropdown:SetPoint("LEFT", label, "RIGHT", -8, -2)
+	dropdown:SetOptions(STEP4_STANCE_PREVIEW_OPTIONS)
+	dropdown:SetSelected(defaultValue, STEP4_STANCE_PREVIEW_OPTIONS[defaultValue].text)
+	dropdown.onSelect = onSelect
 
 	row.dropdown = dropdown
 
@@ -631,7 +674,22 @@ function ACABSetupWizardMixin:BuildStep4()
 	local previewLabel = step:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	previewLabel:SetPoint("TOP", step, "TOP", 0, cursorY)
 	previewLabel:SetText("Preview - click a stance or the page arrows")
-	cursorY = cursorY - 16 - 10
+	cursorY = cursorY - 16 - 4
+
+	local disclaimer = step:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+	disclaimer:SetPoint("TOP", step, "TOP", 0, cursorY)
+	disclaimer:SetWidth(WIZARD_CONTENT_WIDTH)
+	disclaimer:SetJustifyH("CENTER")
+	disclaimer:SetText(
+		"This is only a preview of the behavior. Once this setting is " ..
+		"enabled, set up the real bar assignments on each default bar's " ..
+		"own Settings page - or enable it later from the General tab."
+	)
+	-- No explicit SetHeight - wraps to however many lines it needs at
+	-- WIZARD_CONTENT_WIDTH, so this clearance is generous (up to 3 lines)
+	-- rather than measured, unlike every other fixed cursorY step in this
+	-- wizard.
+	cursorY = cursorY - 40 - 10
 
 	-- Vanilla/modern variants of both the example stance row and action
 	-- bar, built upfront - only the pair matching step 3's choice is ever
@@ -666,25 +724,33 @@ function ACABSetupWizardMixin:BuildStep4()
 
 	cursorY = cursorY - ACAB.BUTTON_SIZE - 16
 
-	-- 3 stance assignment rows + 1 page assignment row, gated on the two
-	-- checkboxes above (UpdateStep4Visibility) - cosmetic only, same
-	-- dropdown choices (No Pageswap/Default/Extra Bar 1-4) the real Bars
-	-- Settings page shows, but not written to the profile: these 3
-	-- example stances are illustrative only and don't correspond to any
-	-- particular class's real stance/form indices (a Rogue's stance 1
-	-- isn't "Battle Stance"), so mapping them onto
-	-- ACABDB.defaultBarStanceBarAssignment here would write wrong data
-	-- for anyone but a Warrior. The real per-class assignment rows on
-	-- each default bar's own Bars Settings page are where this actually
-	-- gets configured, after the wizard finishes.
+	-- 3 stance-preview rows (each picks which of the 3 example stances'
+	-- ability set that row's own stance button shows when clicked - see
+	-- STEP4_STANCE_PREVIEW_OPTIONS) + 1 Page 2 content-source row, all
+	-- gated on the two checkboxes above (UpdateStep4Visibility). The page
+	-- row is cosmetic (see CreateStep4AssignmentRow's own comment); the
+	-- stance rows are functional, driving UpdateStep4Preview directly -
+	-- neither is written to ACABDB, since these 3 example stances are
+	-- illustrative only and don't correspond to any particular class's
+	-- real stance/form indices (a Rogue's stance 1 isn't "Battle
+	-- Stance"). The real per-class assignment rows on each default bar's
+	-- own Bars Settings page are where this actually gets configured,
+	-- after the wizard finishes (see the disclaimer text above).
 	local stanceDropdownRows = {}
 	local stanceDropdowns = {}
 	local s
 
 	for s = 1, table.getn(STEP4_STANCE_ABILITIES) do
-		local row = CreateStep4AssignmentRow(
+		local stanceIndex = s
+
+		local row = CreateStep4StancePreviewRow(
 			step, STEP4_STANCE_ABILITIES[s].name .. ":",
-			"ACABSetupWizardStanceAssignmentDropdown" .. tostring(s)
+			"ACABSetupWizardStanceAssignmentDropdown" .. tostring(s),
+			s,
+			function(value)
+				ACAB.setupWizard.wizardState.stancePreviewAssignment[stanceIndex] = value
+				ACAB.setupWizard:UpdateStep4Preview()
+			end
 		)
 		row:SetPoint("TOP", step, "TOP", 0, cursorY)
 
@@ -1250,6 +1316,7 @@ function ACABSetupWizardMixin:Reset(config)
 		pageSwapEnabled = true,
 		stanceSwapEnabled = true,
 		stancePreviewActive = 1,
+		stancePreviewAssignment = { 1, 2, 3 },
 		pagePreviewActive = false,
 		generalLayoutFormat = nil,
 		expBarEnabled = true,
@@ -1284,7 +1351,7 @@ function ACABSetupWizardMixin:Reset(config)
 	step4.stanceSwapCheckbox:SetChecked(true)
 
 	for i = 1, table.getn(step4.stanceDropdowns) do
-		step4.stanceDropdowns[i]:SetSelected(-1, "Default")
+		step4.stanceDropdowns[i]:SetSelected(i, STEP4_STANCE_PREVIEW_OPTIONS[i].text)
 	end
 
 	step4.pageDropdown:SetSelected(-1, "Default")
@@ -1560,24 +1627,37 @@ function ACABSetupWizardMixin:UpdateStep4PreviewStyle()
 	step.modernActionBarContainer:SetShown(isModern)
 end
 
--- Refreshes the example action bar's 4 icons and which stance button (if
--- any) glows, from the current stance/page selection - Page 2 (if enabled
--- and toggled active) always wins over whichever stance is selected,
--- matching how a real Shift/Ctrl page-hold overlays on top of the
--- currently active stance's own content. Both style variants' slots are
--- updated regardless of which is currently shown (see
--- UpdateStep4PreviewStyle), so either is already correct the moment the
--- user switches which one that shows.
+-- Refreshes the example action bar's 4 icons and which stance button
+-- glows, from the current stance/page selection. The 3 stance buttons
+-- are always clickable and always update which one glows, regardless of
+-- the Stance/Form checkbox - that checkbox only gates whether the ACTION
+-- BAR actually reacts to the click (off: always shows Battle Stance's
+-- own content, same as a real bar that never swaps), matching what the
+-- checkbox actually controls instead of disabling the buttons outright.
+-- Toggling Page 2 doesn't block stance selection either - clicking a
+-- stance still moves the glow and updates stancePreviewAssignment's
+-- target, it just doesn't change the bar while Page 2's own content is
+-- what's showing (same content-priority a real Shift/Ctrl page hold has
+-- over the active stance). Both style variants' slots are updated
+-- regardless of which is currently shown (see UpdateStep4PreviewStyle),
+-- so either is already correct the moment the user switches which one
+-- that shows.
 function ACABSetupWizardMixin:UpdateStep4Preview()
 	local step = self.steps[4]
 	local state = self.wizardState
 
-	local activeStance = (state.stanceSwapEnabled and state.stancePreviewActive) or 1
+	local activeStance = state.stancePreviewActive
 	local showPage2 = (state.pageSwapEnabled and state.pagePreviewActive) and true or false
 
 	step.pageIndicator.pageText:SetText(showPage2 and "2" or "1")
 
-	local icons = showPage2 and STEP4_PAGE2_ICONS or STEP4_STANCE_ABILITIES[activeStance].icons
+	local barStance = 1
+
+	if state.stanceSwapEnabled then
+		barStance = state.stancePreviewAssignment[activeStance] or activeStance
+	end
+
+	local icons = showPage2 and STEP4_PAGE2_ICONS or STEP4_STANCE_ABILITIES[barStance].icons
 	local i
 
 	for i = 1, STEP4_BAR_SLOT_COUNT do
@@ -1586,7 +1666,7 @@ function ACABSetupWizardMixin:UpdateStep4Preview()
 	end
 
 	for i = 1, table.getn(step.vanillaStanceSlots) do
-		local active = (not showPage2) and i == activeStance
+		local active = i == activeStance
 
 		step.vanillaStanceSlots[i].glow:SetShown(active)
 		step.modernStanceSlots[i].glow:SetShown(active)
