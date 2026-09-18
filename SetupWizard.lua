@@ -1,5 +1,5 @@
 -- SetupWizard.lua
--- 4-step first-custom-profile setup wizard (ACAB:ShowSetupWizard), launched
+-- Multi-step first-custom-profile setup wizard (ACAB:ShowSetupWizard), launched
 -- from Database.lua's ShowFirstLoginDialog "Set up a new custom Profile"
 -- button, or - in overwrite mode - from the Profiles settings page's "Run
 -- Setup Wizard" button (SettingsGeneral.lua), which reconfigures the
@@ -97,7 +97,7 @@ local function CreateWizardPreviewSlot(parent, isModern, iconTexture)
 end
 
 -- Resizes/repositions slots already created by CreateWizardPreviewBar in
--- place, without recreating any texture - used by step 6's live slider
+-- place, without recreating any texture - used by step 7's live slider
 -- updates. slots.container is the bar's own container frame.
 local function LayoutWizardPreviewSlots(slots, buttonSize, spacing)
 	local i
@@ -147,7 +147,181 @@ local function CreateWizardPreviewBar(parent, isModern, count, buttonSize, spaci
 end
 
 -------------------------------------------------------------------------
--- Step 5's "Better Experience Bar" color pickers - a wizard-local copy of
+-- Step 4's example Stance Bar/Page Swap Indicator - a purely cosmetic,
+-- wizard-local live demo, not the real Blizzard/ACAB frames (those are
+-- process-wide singletons already positioned elsewhere on screen, so a
+-- second preview instance can't wrap them). "Battle/Defensive/Berserker
+-- Stance" are illustrative examples, not read from the player's real
+-- spellbook/class - this step's dropdowns are cosmetic for the same
+-- reason (see BuildStep4's own comment on that).
+-------------------------------------------------------------------------
+
+local STEP4_STANCE_ABILITIES = {
+	{
+		name = "Battle Stance",
+		icons = {
+			"Interface\\Icons\\Ability_Warrior_Charge",
+			"Interface\\Icons\\Ability_Rogue_Ambush",
+			"Interface\\Icons\\Ability_Shockwave",
+			"Interface\\Icons\\Ability_Warrior_Cleave",
+		},
+	},
+	{
+		name = "Defensive Stance",
+		icons = {
+			"Interface\\Icons\\Ability_Warrior_Charge",
+			"Interface\\Icons\\Ability_Rogue_Ambush",
+			"Interface\\Icons\\Ability_Warrior_Sunder",
+			"Interface\\Icons\\Ability_Physical_Taunt",
+		},
+	},
+	{
+		name = "Berserker Stance",
+		icons = {
+			"Interface\\Icons\\Ability_Rogue_Sprint",
+			"Interface\\Icons\\Ability_Rogue_Ambush",
+			"Interface\\Icons\\Ability_Whirlwind",
+			"Interface\\Icons\\Ability_Warrior_Cleave",
+		},
+	},
+}
+
+local STEP4_PAGE2_ICONS = {
+	"Interface\\Icons\\Ability_Rogue_Ambush",
+	"Interface\\Icons\\Ability_Rogue_Ambush",
+	"Interface\\Icons\\Ability_Rogue_Ambush",
+	"Interface\\Icons\\Ability_Rogue_Ambush",
+}
+
+local STEP4_BAR_SLOT_COUNT = 4
+
+-- Same visual recipe as CreateWizardPreviewSlot, but clickable (an
+-- overlaid Button, not a plain Frame) with a togglable selection glow -
+-- used for step 4's 3 example stance buttons.
+local function CreateWizardStanceSlot(parent, isModern, iconTexture, onClick)
+	local slot = CreateWizardPreviewSlot(parent, isModern, iconTexture)
+
+	local hitArea = CreateFrame("Button", nil, slot)
+	hitArea:SetAllPoints(slot)
+	hitArea:SetScript("OnClick", onClick)
+
+	local glow = slot:CreateTexture(nil, "OVERLAY")
+	glow:SetTexture("Interface\\Buttons\\CheckButtonHilight")
+	glow:SetBlendMode("ADD")
+	glow:SetAllPoints(slot)
+	glow:Hide()
+
+	slot.glow = glow
+
+	return slot
+end
+
+-- One vanilla/modern-skinned row of the 3 example stance buttons -
+-- returns the container (caller anchors it) and the slots array, same
+-- shape as CreateWizardPreviewBar's own return.
+local function BuildStep4StanceRow(parent, isModern, onStanceClick)
+	local stanceSize = 28
+	local stanceSpacing = 4
+	local count = table.getn(STEP4_STANCE_ABILITIES)
+
+	local container = CreateFrame("Frame", nil, parent)
+	container:SetHeight(stanceSize)
+	container:SetWidth(ComputePreviewBarWidth(stanceSize, stanceSpacing, count))
+
+	local slots = {}
+	slots.container = container
+
+	local s
+
+	for s = 1, count do
+		local stanceIndex = s
+
+		slots[s] = CreateWizardStanceSlot(
+			container, isModern, STEP4_STANCE_ABILITIES[s].icons[1],
+			function() onStanceClick(stanceIndex) end
+		)
+	end
+
+	LayoutWizardPreviewSlots(slots, stanceSize, stanceSpacing)
+
+	return container, slots
+end
+
+-- Small cosmetic replica of the real Page Indicator (ActionBarUpButton/
+-- ActionBarDownButton/MainMenuBarPageNumber, NativeElements.lua) - those
+-- are real, process-wide singleton frames already positioned elsewhere on
+-- screen, not something a second preview instance can wrap, so this is a
+-- standalone lookalike built from the same standard scroll-arrow
+-- templates instead. Clicking either arrow toggles the wizard's own
+-- simulated page (there are only ever 2: Page 1/Page 2).
+local function CreateWizardPageIndicator(parent, onToggle)
+	local container = CreateFrame("Frame", nil, parent)
+	container:SetWidth(24)
+	container:SetHeight(56)
+
+	local upButton = CreateFrame("Button", nil, container, "UIPanelScrollUpButtonTemplate")
+	upButton:SetPoint("TOP", container, "TOP", 0, 0)
+	upButton:SetScript("OnClick", onToggle)
+
+	local pageText = container:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	pageText:SetPoint("TOP", upButton, "BOTTOM", 0, -4)
+
+	local downButton = CreateFrame("Button", nil, container, "UIPanelScrollDownButtonTemplate")
+	downButton:SetPoint("TOP", pageText, "BOTTOM", 0, -4)
+	downButton:SetScript("OnClick", onToggle)
+
+	container.pageText = pageText
+
+	return container
+end
+
+-- Same dropdown choices SettingsBars.lua's own per-stance/page Extra Bar
+-- assignment rows show (No Pageswap/Default/Extra Bar 1-4) - a wizard-
+-- local copy since that file's own list is file-local there too.
+local function BuildStep4AssignmentDropdownOptions()
+	local cycle = {
+		0, -1,
+		ACAB.EXTRA_BAR_ID_START, ACAB.EXTRA_BAR_ID_START + 1,
+		ACAB.EXTRA_BAR_ID_START + 2, ACAB.EXTRA_BAR_ID_START + 3,
+	}
+	local labels = { "No Pageswap", "Default", "Extra Bar 1", "Extra Bar 2", "Extra Bar 3", "Extra Bar 4" }
+	local options = {}
+	local i
+
+	for i = 1, table.getn(cycle) do
+		options[i] = { text = labels[i], value = cycle[i] }
+	end
+
+	return options
+end
+
+local STEP4_ASSIGNMENT_DROPDOWN_OPTIONS = BuildStep4AssignmentDropdownOptions()
+
+-- One "<label>: <dropdown>" row, cosmetic only (see BuildStep4's own
+-- comment on why these aren't wired to real ACABDB assignment data).
+local function CreateStep4AssignmentRow(parent, labelText, dropdownName)
+	local row = CreateFrame("Frame", nil, parent)
+	row:SetWidth(320)
+	row:SetHeight(28)
+
+	local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	label:SetPoint("LEFT", row, "LEFT", 0, 0)
+	label:SetWidth(170)
+	label:SetJustifyH("LEFT")
+	label:SetText(labelText)
+
+	local dropdown = ACAB:CreateInlineDropdown(row, 130, dropdownName)
+	dropdown:SetPoint("LEFT", label, "RIGHT", -8, -2)
+	dropdown:SetOptions(STEP4_ASSIGNMENT_DROPDOWN_OPTIONS)
+	dropdown:SetSelected(-1, "Default")
+
+	row.dropdown = dropdown
+
+	return row
+end
+
+-------------------------------------------------------------------------
+-- Step 6's "Better Experience Bar" color pickers - a wizard-local copy of
 -- SettingsBars.lua's own CreateColorSwatchButton/SetColorSwatchColor/
 -- OpenExpBarColorPicker (all file-local there): same small swatch button
 -- and native ColorPickerFrame wiring, but anchored to the wizard frame
@@ -235,9 +409,10 @@ local STEP_TITLES = {
 	[1] = "Name Your Profile",
 	[2] = "Force Default Blizzard Layout",
 	[3] = "Button Style",
-	[4] = "General Layout",
-	[5] = "Experience Bar",
-	[6] = "Spacing & Button Size",
+	[4] = "Stance / Page Swapping",
+	[5] = "General Layout",
+	[6] = "Experience Bar",
+	[7] = "Spacing & Button Size",
 }
 
 -- Starting height before the first real fit (FitHeightToStep) replaces
@@ -394,7 +569,169 @@ function ACABSetupWizardMixin:BuildStep3()
 	return step
 end
 
+-- Order mirrors SettingsGeneral.lua's General tab: pagination checkbox
+-- first, then stance-swap. The example bar/stance row/Page Swap Indicator
+-- react live to both checkboxes and to clicking a stance/the page arrows
+-- (UpdateStep4Preview) so the effect of each control is actually visible
+-- before the user ever opens the real Bars Settings pages.
 function ACABSetupWizardMixin:BuildStep4()
+	local step = CreateFrame("Frame", nil, self)
+
+	local message = step:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	message:SetPoint("TOP", step, "TOP", 0, 0)
+	message:SetWidth(WIZARD_CONTENT_WIDTH)
+	message:SetHeight(30)
+	message:SetJustifyH("CENTER")
+	message:SetText(
+		"Let each default bar (1-5) swap its own content per stance or " ..
+		"Shift/Ctrl page. Try the example bar below."
+	)
+
+	local cursorY = -34
+
+	local function OnStanceClick(stanceIndex)
+		ACAB.setupWizard.wizardState.stancePreviewActive = stanceIndex
+		ACAB.setupWizard:UpdateStep4Preview()
+	end
+
+	local pageSwapCheckbox = ACAB:CreateLabeledCheckbox(step, "ACABSetupWizardPageSwapCheckbox", {
+		anchor = { "TOP", step, "TOP", -110, cursorY },
+		label = "Enable Page Bar-Changes",
+		tooltip = {
+			title = "Enable Page Bar-Changes",
+			lines = {
+				"Lets every default bar (1-5) show different content while " ..
+				"Shift/Ctrl page 2 is held, and shows the Page Swap Indicator.",
+			},
+		},
+		onClick = function()
+			ACAB.setupWizard.wizardState.pageSwapEnabled = this:GetChecked() and true or false
+			ACAB.setupWizard:UpdateStep4Visibility()
+		end,
+	})
+	cursorY = cursorY - 24 - 6
+
+	local stanceSwapCheckbox = ACAB:CreateLabeledCheckbox(step, "ACABSetupWizardStanceSwapCheckbox", {
+		anchor = { "TOP", step, "TOP", -130, cursorY },
+		label = "Enable Stance/Form/Stealth Bar-Changes",
+		tooltip = {
+			title = "Enable Stance/Form/Stealth Bar-Changes",
+			lines = {
+				"Lets every default bar (1-5) show different content per " ..
+				"active stance/form/stealth.",
+			},
+		},
+		onClick = function()
+			ACAB.setupWizard.wizardState.stanceSwapEnabled = this:GetChecked() and true or false
+			ACAB.setupWizard:UpdateStep4Visibility()
+		end,
+	})
+	cursorY = cursorY - 24 - 16
+
+	local previewLabel = step:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	previewLabel:SetPoint("TOP", step, "TOP", 0, cursorY)
+	previewLabel:SetText("Preview - click a stance or the page arrows")
+	cursorY = cursorY - 16 - 10
+
+	-- Vanilla/modern variants of both the example stance row and action
+	-- bar, built upfront - only the pair matching step 3's choice is ever
+	-- shown (UpdateStep4PreviewStyle), same technique step 7's own
+	-- preview bar already uses.
+	local vanillaStanceContainer, vanillaStanceSlots = BuildStep4StanceRow(step, false, OnStanceClick)
+	vanillaStanceContainer:SetPoint("TOP", step, "TOP", 0, cursorY)
+
+	local modernStanceContainer, modernStanceSlots = BuildStep4StanceRow(step, true, OnStanceClick)
+	modernStanceContainer:SetPoint("TOP", step, "TOP", 0, cursorY)
+
+	cursorY = cursorY - 28 - 6
+
+	local vanillaActionBarContainer, vanillaActionBarSlots = CreateWizardPreviewBar(
+		step, false, STEP4_BAR_SLOT_COUNT, ACAB.BUTTON_SIZE, 0
+	)
+	vanillaActionBarContainer:SetPoint("TOP", step, "TOP", 0, cursorY)
+
+	local modernActionBarContainer, modernActionBarSlots = CreateWizardPreviewBar(
+		step, true, STEP4_BAR_SLOT_COUNT, ACAB.BUTTON_SIZE, 0
+	)
+	modernActionBarContainer:SetPoint("TOP", step, "TOP", 0, cursorY)
+
+	-- Page Swap Indicator lookalike (CreateWizardPageIndicator) - anchored
+	-- off the vanilla bar's own right edge; both bar variants share the
+	-- same width/position so this stays correct either way.
+	local pageIndicator = CreateWizardPageIndicator(step, function()
+		ACAB.setupWizard.wizardState.pagePreviewActive = not ACAB.setupWizard.wizardState.pagePreviewActive
+		ACAB.setupWizard:UpdateStep4Preview()
+	end)
+	pageIndicator:SetPoint("LEFT", vanillaActionBarContainer, "RIGHT", 14, 0)
+
+	cursorY = cursorY - ACAB.BUTTON_SIZE - 16
+
+	-- 3 stance assignment rows + 1 page assignment row, gated on the two
+	-- checkboxes above (UpdateStep4Visibility) - cosmetic only, same
+	-- dropdown choices (No Pageswap/Default/Extra Bar 1-4) the real Bars
+	-- Settings page shows, but not written to the profile: these 3
+	-- example stances are illustrative only and don't correspond to any
+	-- particular class's real stance/form indices (a Rogue's stance 1
+	-- isn't "Battle Stance"), so mapping them onto
+	-- ACABDB.defaultBarStanceBarAssignment here would write wrong data
+	-- for anyone but a Warrior. The real per-class assignment rows on
+	-- each default bar's own Bars Settings page are where this actually
+	-- gets configured, after the wizard finishes.
+	local stanceDropdownRows = {}
+	local stanceDropdowns = {}
+	local s
+
+	for s = 1, table.getn(STEP4_STANCE_ABILITIES) do
+		local row = CreateStep4AssignmentRow(
+			step, STEP4_STANCE_ABILITIES[s].name .. ":",
+			"ACABSetupWizardStanceAssignmentDropdown" .. tostring(s)
+		)
+		row:SetPoint("TOP", step, "TOP", 0, cursorY)
+
+		stanceDropdownRows[s] = row
+		stanceDropdowns[s] = row.dropdown
+
+		cursorY = cursorY - 28 - 6
+	end
+
+	local pageDropdownRow = CreateStep4AssignmentRow(
+		step, "Page 2 Content Source:", "ACABSetupWizardPageAssignmentDropdown"
+	)
+	pageDropdownRow:SetPoint("TOP", step, "TOP", 0, cursorY)
+
+	-- Bottom-right of the wizard, same row/style as every other step's
+	-- advance button.
+	local nextButton = CreateFrame("Button", nil, step)
+	nextButton:SetHeight(24)
+	ACAB:StyleModernButton(nextButton, 120, 120)
+	nextButton:SetText("Next")
+	nextButton:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", -20, 16)
+	nextButton.ACABNavButton = true
+	ACAB:ApplyProminentButtonHighlight(nextButton)
+	nextButton:SetScript("OnClick", function()
+		ACAB.setupWizard:ShowStep(5)
+	end)
+
+	step.pageSwapCheckbox = pageSwapCheckbox
+	step.stanceSwapCheckbox = stanceSwapCheckbox
+	step.vanillaStanceContainer = vanillaStanceContainer
+	step.vanillaStanceSlots = vanillaStanceSlots
+	step.modernStanceContainer = modernStanceContainer
+	step.modernStanceSlots = modernStanceSlots
+	step.vanillaActionBarContainer = vanillaActionBarContainer
+	step.vanillaActionBarSlots = vanillaActionBarSlots
+	step.modernActionBarContainer = modernActionBarContainer
+	step.modernActionBarSlots = modernActionBarSlots
+	step.pageIndicator = pageIndicator
+	step.stanceDropdownRows = stanceDropdownRows
+	step.stanceDropdowns = stanceDropdowns
+	step.pageDropdownRow = pageDropdownRow
+	step.pageDropdown = pageDropdownRow.dropdown
+
+	return step
+end
+
+function ACABSetupWizardMixin:BuildStep5()
 	local step = CreateFrame("Frame", nil, self)
 
 	local message = step:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -425,7 +762,7 @@ function ACABSetupWizardMixin:BuildStep4()
 	ACAB:ApplyProminentButtonHighlight(modernButton)
 	modernButton:SetScript("OnClick", function()
 		ACAB.setupWizard.wizardState.generalLayoutFormat = "modern"
-		ACAB.setupWizard:ShowStep(5)
+		ACAB.setupWizard:ShowStep(6)
 	end)
 
 	return step
@@ -438,7 +775,7 @@ end
 -- rested-glow pulse interval slider. Every control here writes into
 -- wizardState only; nothing is applied live or to ACABDB until
 -- FinishWizard (see ApplyExpBarWizardState).
-function ACABSetupWizardMixin:BuildStep5()
+function ACABSetupWizardMixin:BuildStep6()
 	local step = CreateFrame("Frame", nil, self)
 
 	local message = step:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -461,7 +798,7 @@ function ACABSetupWizardMixin:BuildStep5()
 		label = "Enable Experience Bar",
 		onClick = function()
 			ACAB.setupWizard.wizardState.expBarEnabled = this:GetChecked() and true or false
-			ACAB.setupWizard:UpdateStep5Visibility()
+			ACAB.setupWizard:UpdateStep6Visibility()
 		end,
 	})
 	cursorY = cursorY - 24 - 22
@@ -487,7 +824,7 @@ function ACABSetupWizardMixin:BuildStep5()
 		label = "Enable Better Experience Bar",
 		onClick = function()
 			ACAB.setupWizard.wizardState.betterExpBarEnabled = this:GetChecked() and true or false
-			ACAB.setupWizard:UpdateStep5Visibility()
+			ACAB.setupWizard:UpdateStep6Visibility()
 		end,
 	})
 	cursorY = cursorY - 24 - 20
@@ -616,7 +953,7 @@ function ACABSetupWizardMixin:BuildStep5()
 	nextButton.ACABNavButton = true
 	ACAB:ApplyProminentButtonHighlight(nextButton)
 	nextButton:SetScript("OnClick", function()
-		ACAB.setupWizard:ShowStep(6)
+		ACAB.setupWizard:ShowStep(7)
 	end)
 
 	step.enabledCheckbox = enabledCheckbox
@@ -640,7 +977,7 @@ function ACABSetupWizardMixin:BuildStep5()
 	return step
 end
 
-function ACABSetupWizardMixin:BuildStep6()
+function ACABSetupWizardMixin:BuildStep7()
 	local step = CreateFrame("Frame", nil, self)
 
 	local message = step:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -660,7 +997,7 @@ function ACABSetupWizardMixin:BuildStep6()
 
 	-- One preview bar per style, both anchored at the same spot - only the
 	-- one matching wizardState.modernBorderStyle (chosen on step 3) is
-	-- ever shown (UpdateStep6PreviewStyle), so the bar the user sees here
+	-- ever shown (UpdateStep7PreviewStyle), so the bar the user sees here
 	-- actually matches what they picked instead of always rendering
 	-- vanilla-styled regardless of that choice.
 	local vanillaBarContainer, vanillaBarSlots = CreateWizardPreviewBar(
@@ -694,7 +1031,7 @@ function ACABSetupWizardMixin:BuildStep6()
 	-- to-widget like this step used to - chaining sizeCheckbox off
 	-- spacingSlider's BOTTOM (spacingSlider starts Hide()'n) fed a hidden
 	-- sibling's own not-yet-resolved rect into the next row's anchor,
-	-- growing further off on every show/hide toggle. Mirrors step 5's own
+	-- growing further off on every show/hide toggle. Mirrors step 6's own
 	-- cursorY-anchored-to-step fix for the identical bug there.
 	-- CHECKBOX_HEIGHT/SLIDER_HEIGHT match CreateLabeledCheckbox/
 	-- CreateSettingSlider's own fixed sizes.
@@ -709,7 +1046,7 @@ function ACABSetupWizardMixin:BuildStep6()
 		label = "Enable global spacing",
 		onClick = function()
 			ACAB.setupWizard.wizardState.globalSpacingEnabled = this:GetChecked() and true or false
-			ACAB.setupWizard:UpdateStep6SliderVisibility()
+			ACAB.setupWizard:UpdateStep7SliderVisibility()
 		end,
 	})
 	cursorY = cursorY - CHECKBOX_HEIGHT - 14
@@ -730,7 +1067,7 @@ function ACABSetupWizardMixin:BuildStep6()
 		onChange = function(value, suppressApply)
 			if not suppressApply then
 				ACAB.setupWizard.wizardState.globalSpacingValue = value
-				ACAB.setupWizard:ReflowStep6Preview()
+				ACAB.setupWizard:ReflowStep7Preview()
 			end
 		end,
 	})
@@ -743,7 +1080,7 @@ function ACABSetupWizardMixin:BuildStep6()
 		label = "Enable global button size",
 		onClick = function()
 			ACAB.setupWizard.wizardState.globalButtonSizeEnabled = this:GetChecked() and true or false
-			ACAB.setupWizard:UpdateStep6SliderVisibility()
+			ACAB.setupWizard:UpdateStep7SliderVisibility()
 		end,
 	})
 	cursorY = cursorY - CHECKBOX_HEIGHT - 14
@@ -763,7 +1100,7 @@ function ACABSetupWizardMixin:BuildStep6()
 		onChange = function(value, suppressApply)
 			if not suppressApply then
 				ACAB.setupWizard.wizardState.globalButtonSizeValue = value
-				ACAB.setupWizard:ReflowStep6Preview()
+				ACAB.setupWizard:ReflowStep7Preview()
 			end
 		end,
 	})
@@ -866,6 +1203,7 @@ function ACABSetupWizardMixin:OnLoad()
 		self:BuildStep4(),
 		self:BuildStep5(),
 		self:BuildStep6(),
+		self:BuildStep7(),
 	}
 
 	local i
@@ -909,6 +1247,10 @@ function ACABSetupWizardMixin:Reset(config)
 		profileName = profileName,
 		useDefaultLayout = nil,
 		modernBorderStyle = nil,
+		pageSwapEnabled = true,
+		stanceSwapEnabled = true,
+		stancePreviewActive = 1,
+		pagePreviewActive = false,
 		generalLayoutFormat = nil,
 		expBarEnabled = true,
 		expBarPositionChoice = "Bottom",
@@ -935,16 +1277,29 @@ function ACABSetupWizardMixin:Reset(config)
 	step1.editBox:SetText(self.wizardState.profileName)
 	step1.errorText:Hide()
 
-	local step5 = self.steps[5]
+	local step4 = self.steps[4]
 	local i
 
-	step5.enabledCheckbox:SetChecked(true)
-	step5.positionDropdown:SetOptions({ "Bottom", "Top" })
-	step5.positionDropdown:SetSelected("Bottom")
-	step5.betterExpBarCheckbox:SetChecked(false)
+	step4.pageSwapCheckbox:SetChecked(true)
+	step4.stanceSwapCheckbox:SetChecked(true)
 
-	for i = 1, table.getn(step5.textToggleCheckboxes) do
-		step5.textToggleCheckboxes[i]:SetChecked(true)
+	for i = 1, table.getn(step4.stanceDropdowns) do
+		step4.stanceDropdowns[i]:SetSelected(-1, "Default")
+	end
+
+	step4.pageDropdown:SetSelected(-1, "Default")
+
+	self:UpdateStep4Visibility()
+
+	local step6 = self.steps[6]
+
+	step6.enabledCheckbox:SetChecked(true)
+	step6.positionDropdown:SetOptions({ "Bottom", "Top" })
+	step6.positionDropdown:SetSelected("Bottom")
+	step6.betterExpBarCheckbox:SetChecked(false)
+
+	for i = 1, table.getn(step6.textToggleCheckboxes) do
+		step6.textToggleCheckboxes[i]:SetChecked(true)
 	end
 
 	-- Font size/pulse interval sliders show a real current-session default
@@ -955,33 +1310,33 @@ function ACABSetupWizardMixin:Reset(config)
 
 	local nativeFontSize = ACAB.NATIVE_EXPBAR_FONT and (ACAB.NATIVE_EXPBAR_FONT.size - 1)
 
-	step5.fontSizeSlider.suppressApply = true
-	step5.fontSizeSlider:SetValue(ACAB:ClampFontSize(ACABDB.expBarFontSize or nativeFontSize or 12))
-	step5.fontSizeSlider.suppressApply = nil
+	step6.fontSizeSlider.suppressApply = true
+	step6.fontSizeSlider:SetValue(ACAB:ClampFontSize(ACABDB.expBarFontSize or nativeFontSize or 12))
+	step6.fontSizeSlider.suppressApply = nil
 
-	step5.pulseIntervalSlider.suppressApply = true
-	step5.pulseIntervalSlider:SetValue(ACABDB.expBarGlowPulseInterval or 1.5)
-	step5.pulseIntervalSlider.suppressApply = nil
+	step6.pulseIntervalSlider.suppressApply = true
+	step6.pulseIntervalSlider:SetValue(ACABDB.expBarGlowPulseInterval or 1.5)
+	step6.pulseIntervalSlider.suppressApply = nil
 
-	SetWizardColorSwatchColor(step5.earnedColorSwatch, ACABDB.expBarColorEarned or { r = 0, g = 1, b = 0 })
-	SetWizardColorSwatchColor(step5.restedColorSwatch, ACABDB.expBarColorRested or { r = 0.6, g = 0.2, b = 1 })
-	SetWizardColorSwatchColor(step5.textColorSwatch, ACABDB.expBarTextColor or { r = 1, g = 0.82, b = 0 })
+	SetWizardColorSwatchColor(step6.earnedColorSwatch, ACABDB.expBarColorEarned or { r = 0, g = 1, b = 0 })
+	SetWizardColorSwatchColor(step6.restedColorSwatch, ACABDB.expBarColorRested or { r = 0.6, g = 0.2, b = 1 })
+	SetWizardColorSwatchColor(step6.textColorSwatch, ACABDB.expBarTextColor or { r = 1, g = 0.82, b = 0 })
 
-	self:UpdateStep5Visibility()
+	self:UpdateStep6Visibility()
 
-	local step6 = self.steps[6]
-	step6.spacingCheckbox:SetChecked(false)
-	step6.sizeCheckbox:SetChecked(false)
+	local step7 = self.steps[7]
+	step7.spacingCheckbox:SetChecked(false)
+	step7.sizeCheckbox:SetChecked(false)
 
-	step6.spacingSlider.suppressApply = true
-	step6.spacingSlider:SetValue(0)
-	step6.spacingSlider.suppressApply = nil
+	step7.spacingSlider.suppressApply = true
+	step7.spacingSlider:SetValue(0)
+	step7.spacingSlider.suppressApply = nil
 
-	step6.sizeSlider.suppressApply = true
-	step6.sizeSlider:SetValue(ACAB.BUTTON_SIZE)
-	step6.sizeSlider.suppressApply = nil
+	step7.sizeSlider.suppressApply = true
+	step7.sizeSlider:SetValue(ACAB.BUTTON_SIZE)
+	step7.sizeSlider.suppressApply = nil
 
-	self:UpdateStep6SliderVisibility()
+	self:UpdateStep7SliderVisibility()
 end
 
 function ACABSetupWizardMixin:ShowStep(n)
@@ -994,14 +1349,14 @@ function ACABSetupWizardMixin:ShowStep(n)
 	self.currentStep = n
 
 	-- Overwrite mode skips step 1 (name is fixed to the current profile),
-	-- so the displayed count is renumbered to "of 5" starting at 1 instead
+	-- so the displayed count is renumbered to "of 6" starting at 1 instead
 	-- of showing a step 1 the user never saw, and Back has nothing to go
 	-- back to until step 3. Total is the max reachable step regardless of
-	-- mode - choosing "Keep Blizzard Layout" on step 4 or "Lock down
-	-- default Elements!" on step 2 finishes without ever visiting step 5/6,
+	-- mode - choosing "Keep Blizzard Layout" on step 5 or "Lock down
+	-- default Elements!" on step 2 finishes without ever visiting step 6/7,
 	-- same as this counter already not visiting every number in order.
 	local firstStep = self.wizardState.overwriteExisting and 2 or 1
-	local totalSteps = self.wizardState.overwriteExisting and 5 or 6
+	local totalSteps = self.wizardState.overwriteExisting and 6 or 7
 	local displayStep = self.wizardState.overwriteExisting and (n - 1) or n
 
 	self.stepText:SetText("Step " .. tostring(displayStep) .. " of " .. tostring(totalSteps) .. " - " .. (STEP_TITLES[n] or ""))
@@ -1009,8 +1364,13 @@ function ACABSetupWizardMixin:ShowStep(n)
 
 	local step = self.steps[n]
 
-	if n == 6 then
-		self:UpdateStep6PreviewStyle()
+	if n == 4 then
+		self:UpdateStep4PreviewStyle()
+		self:UpdateStep4Preview()
+	end
+
+	if n == 7 then
+		self:UpdateStep7PreviewStyle()
 	end
 
 	step:Show()
@@ -1042,7 +1402,7 @@ end
 -- position is a function of the wizard's current height. Counting it as
 -- step content created a feedback loop: a taller wizard pushes the button
 -- lower, which reads as "deeper" content, which computes an even taller
--- wizard - confirmed live as the exact cause of step 6's height growing
+-- wizard - confirmed live as the exact cause of step 7's height growing
 -- by a fixed amount on every single fit call.
 local function MeasureStepBottom(step)
 	local deepest = nil
@@ -1075,11 +1435,11 @@ end
 -- the top edge fixed across a plain SetHeight - but dragging the wizard
 -- (StartMoving/StopMovingOrSizing) overwrites that anchor with one the
 -- engine derives from the drop position, no longer guaranteed to be TOP-
--- anchored, which broke that assumption (confirmed live: the step 6
+-- anchored, which broke that assumption (confirmed live: the step 7
 -- height-never-shrinks bug came back after dragging the wizard mid-
 -- wizard). An earlier version of this fix re-ran this same capture-and-
 -- reanchor on every single FitHeightToStep call instead of just once per
--- drag - confirmed live to itself be the cause of step 6's height
+-- drag - confirmed live to itself be the cause of step 7's height
 -- compounding larger on every checkbox toggle: GetTop() read right after a
 -- ClearAllPoints/SetPoint pair doesn't reliably reflect the new anchor
 -- yet on this client (the same "rects resolve lazily" quirk FitHeightToStep
@@ -1162,14 +1522,85 @@ function ACABSetupWizardMixin:AdvanceFromStep1()
 	self:ShowStep(2)
 end
 
--- Gates step 5's position dropdown/"Better Experience Bar" checkbox on
+-- Gates step 4's 3 stance-assignment rows/Page Swap Indicator/page-
+-- assignment row on the Stance/Page checkboxes, same Show/Hide-on-
+-- checkbox pattern as every other reveal-on-checkbox control in this
+-- wizard - then refreshes the preview, since toggling either checkbox
+-- also changes what the example bar should be showing.
+function ACABSetupWizardMixin:UpdateStep4Visibility()
+	local step = self.steps[4]
+	local state = self.wizardState
+	local i
+
+	for i = 1, table.getn(step.stanceDropdownRows) do
+		step.stanceDropdownRows[i]:SetShown(state.stanceSwapEnabled and true or false)
+	end
+
+	step.pageDropdownRow:SetShown(state.pageSwapEnabled and true or false)
+	step.pageIndicator:SetShown(state.pageSwapEnabled and true or false)
+
+	self:UpdateStep4Preview()
+
+	if self.currentStep == 4 then
+		self:FitHeightToStep(4)
+	end
+end
+
+-- Shows whichever of step 4's vanilla/modern stance row + action bar
+-- pairs matches step 3's choice (wizardState.modernBorderStyle) and hides
+-- the other - called from ShowStep whenever step 4 becomes visible, same
+-- technique as step 7's own UpdateStep7PreviewStyle.
+function ACABSetupWizardMixin:UpdateStep4PreviewStyle()
+	local step = self.steps[4]
+	local isModern = self.wizardState.modernBorderStyle and true or false
+
+	step.vanillaStanceContainer:SetShown(not isModern)
+	step.modernStanceContainer:SetShown(isModern)
+	step.vanillaActionBarContainer:SetShown(not isModern)
+	step.modernActionBarContainer:SetShown(isModern)
+end
+
+-- Refreshes the example action bar's 4 icons and which stance button (if
+-- any) glows, from the current stance/page selection - Page 2 (if enabled
+-- and toggled active) always wins over whichever stance is selected,
+-- matching how a real Shift/Ctrl page-hold overlays on top of the
+-- currently active stance's own content. Both style variants' slots are
+-- updated regardless of which is currently shown (see
+-- UpdateStep4PreviewStyle), so either is already correct the moment the
+-- user switches which one that shows.
+function ACABSetupWizardMixin:UpdateStep4Preview()
+	local step = self.steps[4]
+	local state = self.wizardState
+
+	local activeStance = (state.stanceSwapEnabled and state.stancePreviewActive) or 1
+	local showPage2 = (state.pageSwapEnabled and state.pagePreviewActive) and true or false
+
+	step.pageIndicator.pageText:SetText(showPage2 and "2" or "1")
+
+	local icons = showPage2 and STEP4_PAGE2_ICONS or STEP4_STANCE_ABILITIES[activeStance].icons
+	local i
+
+	for i = 1, STEP4_BAR_SLOT_COUNT do
+		step.vanillaActionBarSlots[i].icon:SetTexture(icons[i])
+		step.modernActionBarSlots[i].icon:SetTexture(icons[i])
+	end
+
+	for i = 1, table.getn(step.vanillaStanceSlots) do
+		local active = (not showPage2) and i == activeStance
+
+		step.vanillaStanceSlots[i].glow:SetShown(active)
+		step.modernStanceSlots[i].glow:SetShown(active)
+	end
+end
+
+-- Gates step 6's position dropdown/"Better Experience Bar" checkbox on
 -- Enable Experience Bar, and its 5 text toggles/font size/3 color swatches/
 -- pulse interval on Better Experience Bar itself - same two-level gating
 -- as the real settings page's ApplyBetterExpBarGating, but Show/Hide
 -- instead of dim, matching every other reveal-on-checkbox control already
--- in this wizard (step 6's spacing/size sliders).
-function ACABSetupWizardMixin:UpdateStep5Visibility()
-	local step = self.steps[5]
+-- in this wizard (step 7's spacing/size sliders).
+function ACABSetupWizardMixin:UpdateStep6Visibility()
+	local step = self.steps[6]
 	local state = self.wizardState
 
 	local enabled = state.expBarEnabled and true or false
@@ -1198,13 +1629,13 @@ function ACABSetupWizardMixin:UpdateStep5Visibility()
 	step.pulseIntervalSlider:SetShown(betterShown)
 	step.pulseIntervalValueText:SetShown(betterShown)
 
-	if self.currentStep == 5 then
-		self:FitHeightToStep(5)
+	if self.currentStep == 6 then
+		self:FitHeightToStep(6)
 	end
 end
 
-function ACABSetupWizardMixin:UpdateStep6SliderVisibility()
-	local step = self.steps[6]
+function ACABSetupWizardMixin:UpdateStep7SliderVisibility()
+	local step = self.steps[7]
 	local state = self.wizardState
 
 	step.spacingSlider:SetShown(state.globalSpacingEnabled and true or false)
@@ -1213,19 +1644,19 @@ function ACABSetupWizardMixin:UpdateStep6SliderVisibility()
 	step.sizeSlider:SetShown(state.globalButtonSizeEnabled and true or false)
 	step.sizeValueText:SetShown(state.globalButtonSizeEnabled and true or false)
 
-	self:ReflowStep6Preview()
+	self:ReflowStep7Preview()
 
-	if self.currentStep == 6 then
-		self:FitHeightToStep(6)
+	if self.currentStep == 7 then
+		self:FitHeightToStep(7)
 	end
 end
 
--- Shows whichever of step 6's two preview bars matches step 3's choice
+-- Shows whichever of step 7's two preview bars matches step 3's choice
 -- (wizardState.modernBorderStyle) and hides the other - called from
--- ShowStep whenever step 6 becomes visible, so the bar shown here always
+-- ShowStep whenever step 7 becomes visible, so the bar shown here always
 -- matches what the user actually picked.
-function ACABSetupWizardMixin:UpdateStep6PreviewStyle()
-	local step = self.steps[6]
+function ACABSetupWizardMixin:UpdateStep7PreviewStyle()
+	local step = self.steps[7]
 	local isModern = self.wizardState.modernBorderStyle and true or false
 
 	step.vanillaBarContainer:SetShown(not isModern)
@@ -1235,9 +1666,9 @@ end
 -- Recomputes the single active preview bar's slot layout from the current
 -- spacing/size slider values (both aspects on the same bar, per whichever
 -- step 3 picked) - updates both style variants' slots so either is
--- already correct whenever UpdateStep6PreviewStyle switches which is shown.
-function ACABSetupWizardMixin:ReflowStep6Preview()
-	local step = self.steps[6]
+-- already correct whenever UpdateStep7PreviewStyle switches which is shown.
+function ACABSetupWizardMixin:ReflowStep7Preview()
+	local step = self.steps[7]
 	local state = self.wizardState
 
 	local buttonSize = (state.globalButtonSizeEnabled and state.globalButtonSizeValue) or ACAB.BUTTON_SIZE
@@ -1253,7 +1684,7 @@ function ACABSetupWizardMixin:ReflowStep6Preview()
 	step.modernBarContainer:SetWidth(width)
 end
 
--- Applies step 5's Experience Bar choices onto `data`: Enabled, and (if
+-- Applies step 6's Experience Bar choices onto `data`: Enabled, and (if
 -- enabled) position - centered at the bottom or top of the screen, via
 -- the exact same min/max Y the real Experience Bar settings page's own
 -- slider would allow (ACAB:GetSimpleElementCoordinateRange, called live
@@ -1316,7 +1747,7 @@ end
 -- Applies the "Modern Layout" preset (step 4's second choice) onto `data`
 -- - disables Blizzard's bar art, stacks the Main Bar + Action Bar 1/2
 -- (default bar ids 1/2/3, enabling 2/3) centered at the bottom of the
--- screen (shifted up to clear the Experience Bar if step 5 put it there
+-- screen (shifted up to clear the Experience Bar if step 6 put it there
 -- too - state.expBarEnabled/expBarPositionChoice, decided before this
 -- runs), aligns the Stance Bar/Pet Bar directly above Action Bar 2 (left/
 -- right edges respectively), and clusters Bag Bar (flush in the corner)/
@@ -1592,6 +2023,18 @@ local function ApplyWizardStateToProfileData(state, data)
 		data.lastAppliedVanillaStyle = not state.modernBorderStyle
 	end
 
+	-- Step 4 (Stance/Page Swapping) is only ever reached via step 2's
+	-- "unlocked" path (useDefaultLayout false) - the locked-default path
+	-- finishes immediately from step 2, so these checkboxes were never
+	-- shown/confirmed there and the profile keeps whatever it already
+	-- had, same deliberate no-op as generalLayoutFormat below. The 3
+	-- stance dropdowns/1 page dropdown on that step are cosmetic-only
+	-- (see BuildStep4's own comment) and never written here.
+	if state.useDefaultLayout == false then
+		data.defaultBarPaginationEnabled = state.pageSwapEnabled
+		data.defaultBarStanceSwapEnabled = state.stanceSwapEnabled
+	end
+
 	if state.globalSpacingEnabled ~= nil then
 		data.globalSpacingEnabled = state.globalSpacingEnabled
 		data.globalSpacingValue = state.globalSpacingValue
@@ -1605,7 +2048,7 @@ local function ApplyWizardStateToProfileData(state, data)
 	-- "blizzard" (Keep Blizzard Layout + ArtBar enabled) is a deliberate
 	-- no-op here - the profile keeps whatever it already has (copied from
 	-- Default, or the active profile's own current layout in overwrite
-	-- mode) exactly as is, and step 5 (Experience Bar) is never visited
+	-- mode) exactly as is, and step 6 (Experience Bar) is never visited
 	-- on that path so there's nothing from it to apply either.
 	if state.generalLayoutFormat == "modern" then
 		ApplyExpBarWizardState(state, data)
