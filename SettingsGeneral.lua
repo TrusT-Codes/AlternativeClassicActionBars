@@ -51,9 +51,9 @@ function ACAB:GetOrCreateGeneralPanel()
 	-- local exists.
 	local checkbox = ACAB:CreateLabeledCheckbox(panel, "ACABGeneralUseDefaultLayoutCheckbox", {
 		anchor = { "TOPLEFT", panel, "TOPLEFT", ACAB.INDENT_SECTION, -52 },
-		label = "Use Default Blizzard Layout",
+		label = "Force default Blizzard layout mode",
 		tooltip = {
-			title = "Use Default Blizzard Layout",
+			title = "Force default Blizzard layout mode",
 			lines = {
 				"When enabled, default action bars keep Blizzard's native " ..
 				"position, size, and layout, and can only be shown/hidden - " ..
@@ -79,7 +79,7 @@ function ACAB:GetOrCreateGeneralPanel()
 				this:SetChecked(false)
 
 				ACAB:ShowDialog({
-					title = "Use Default Blizzard Layout",
+					title = "Force default Blizzard layout mode",
 					message = "Enabling this will reset ALL bars to their " ..
 						"default Blizzard position.",
 					warningText = "This action cannot be undone.",
@@ -163,7 +163,7 @@ function ACAB:GetOrCreateGeneralPanel()
 	panel.disableBlizzardArtCheckbox = disableBlizzardArtCheckbox
 
 	-------------------------------------------------------------------------
-	-- Main Bar pagination / stance-swap
+	-- Default bar (1-5) pagination / stance-swap
 	--
 	-- Both default true (Core.lua's EnsureDB), matching real vanilla bar
 	-- 1's own always-on behavior unless the user explicitly opts out here.
@@ -173,27 +173,27 @@ function ACAB:GetOrCreateGeneralPanel()
 
 	local mainBarPaginationCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABGeneralMainBarPaginationCheckbox", {
 		anchor = { "TOPLEFT", disableBlizzardArtCheckbox, "BOTTOMLEFT", 0, -14 },
-		label = "Main Bar: Shift/Ctrl Page Swapping",
+		label = "Enable Page Bar-Changes",
 		tooltip = {
-			title = "Main Bar: Shift/Ctrl Page Swapping",
+			title = "Enable Page Bar-Changes",
 			lines = {
-				"When enabled, shows new Options inside MainBar on Bars " ..
-				"Settings Page. You will be able to freely assign any Extra " ..
-				"Bar to your Pageing Function of Mainbar. Enabling it will " ..
-				"also enable the Paging UI Element.",
-				"When disabled, your MainBar will always stay the same and " ..
-				"the Paging UI Element is hidden.",
+				"When enabled, shows a Page 2 Content Source option on every " ..
+				"default bar's (1-5) own Bars Settings Page. You will be " ..
+				"able to freely assign any Extra Bar as that bar's content " ..
+				"while Shift/Ctrl page 2 is held. Enabling it will also " ..
+				"enable the Paging UI Element.",
+				"When disabled, every default bar will always stay the same " ..
+				"and the Paging UI Element is hidden.",
 			},
 		},
 		onClick = function()
 			local checked = this:GetChecked() and true or false
 
-			ACAB:SetMainBarPaginationEnabled(checked)
+			ACAB:SetDefaultBarPaginationEnabled(checked)
 
-			-- The Page Bar assignment row (only meaningful while pagination
-			-- is on) and bar 1's own Page Indicator Scale slider both
-			-- appear/disappear live the instant this checkbox is clicked.
-			ACAB:RebuildMainBarAssignmentRows()
+			-- Page Bar assignment row and Page Indicator Scale slider
+			-- appear/disappear live on every default bar's (1-5) page.
+			ACAB:RebuildAllDefaultBarAssignmentRows()
 			ACAB:RefreshMainBarPageIndicatorControlsVisibility()
 		end,
 	})
@@ -202,38 +202,33 @@ function ACAB:GetOrCreateGeneralPanel()
 
 	local mainBarStanceSwapCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABGeneralMainBarStanceSwapCheckbox", {
 		anchor = { "TOPLEFT", mainBarPaginationCheckbox, "BOTTOMLEFT", 0, -14 },
-		label = "Main Bar: Stance/Form/Stealth Swapping",
+		label = "Enable Stance/Form/Stealth Bar-Changes",
 		tooltip = {
-			title = "Main Bar: Stance/Form/Stealth Swapping",
+			title = "Enable Stance/Form/Stealth Bar-Changes",
 			lines = {
-				"When enabled, shows new Options inside MainBar on Bars " ..
-				"Settings Page. You will be able to freely assign any Extra " ..
-				"Bar to your different Shapes / Forms to swap the contents " ..
-				"of Mainbar with automatically.",
-				"When disabled, your MainBar will always stay the same.",
+				"When enabled, shows a stance-assignment option per active " ..
+				"form on every default bar's (1-5) own Bars Settings Page. " ..
+				"You will be able to freely assign any Extra Bar to any of " ..
+				"your different Shapes / Forms to swap that bar's contents " ..
+				"with automatically.",
+				"When disabled, every default bar will always stay the same.",
 			},
 		},
 		onClick = function()
 			local checked = this:GetChecked() and true or false
 
-			ACAB:SetMainBarStanceSwapEnabled(checked)
+			ACAB:SetDefaultBarStanceSwapEnabled(checked)
 
-			-- The per-stance assignment rows (bar 1's own settings page)
-			-- appear/disappear live the instant this checkbox is clicked,
-			-- exactly like the pagination checkbox above does for the Page
-			-- Bar row.
-			ACAB:RebuildMainBarAssignmentRows()
+			-- Per-stance assignment rows appear/disappear live on each
+			-- default bar's page, like the pagination checkbox above.
+			ACAB:RebuildAllDefaultBarAssignmentRows()
 		end,
 	})
 
 	panel.mainBarStanceSwapCheckbox = mainBarStanceSwapCheckbox
 
-	-- Stance / Page Bar Assignment rows live on bar 1's own settings page
-	-- (GetOrCreateBarPage/RebuildMainBarAssignmentRows) alongside that
-	-- page's Page Indicator Scale slider, since they're bar 1-specific
-	-- rather than general addon-wide settings. The two checkboxes above
-	-- still live on this General tab and drive those rows via
-	-- ACAB:RebuildMainBarAssignmentRows.
+	-- Stance / Page Bar Assignment rows live on each default bar's (1-5) own
+	-- settings page; these two checkboxes drive them via RebuildAllDefaultBarAssignmentRows.
 
 	-------------------------------------------------------------------------
 	-- Macro text toggle + font size (both bars, live)
@@ -510,7 +505,7 @@ function ACAB:GetOrCreateGeneralPanel()
 	-- border) or "vanilla" (native Blizzard border). Also shifts every
 	-- bar's button size (and spacing, opposite direction) to keep
 	-- default/extra bars aligned - see ACAB:ApplyGlobalButtonStyle
-	-- (Bar.lua). Locked to vanilla while "Use Default Blizzard Layout" is on.
+	-- (Bar.lua). Locked to vanilla while "Force default Blizzard layout mode" is on.
 	-------------------------------------------------------------------------
 
 	-- Anchors off countTitle (a fixed-X FontString) with the exact offset
@@ -527,8 +522,8 @@ function ACAB:GetOrCreateGeneralPanel()
 				"Choose the button border style used by ALL bars. When " ..
 				"enabled use a slick and thin modern rectangular Border, " ..
 				"when disabled use the default vanilla UI border.",
-				"Locked to vanilla UI Border while 'Use Default Blizzard " ..
-				"Layout' is enabled",
+				"Locked to vanilla UI Border while 'Force default Blizzard " ..
+				"layout mode' is enabled",
 			},
 		},
 		onClick = function()
@@ -818,9 +813,39 @@ function ACAB:GetOrCreateProfilesPanel()
 
 	local PROFILE_BUTTON_GAP_X = 12
 
+	local wizardButton = CreateFrame("Button", nil, panel)
+	wizardButton:SetHeight(22)
+	wizardButton:SetPoint("TOPLEFT", dropdown, "BOTTOMLEFT", 16, -14)
+	ACAB:StyleModernButton(wizardButton, 0, 0)
+	wizardButton:SetText("Run Setup Wizard")
+	panel.wizardButton = wizardButton
+
+	wizardButton:SetScript("OnClick", function()
+		ACAB:ShowDialog({
+			title = "Run Setup Wizard",
+			message = "This walks you back through the initial setup choices " ..
+				"(Force Default Blizzard Layout, button style, global spacing/size).",
+			warningText = "ATTENTION: Continuing will overwrite these settings " ..
+				"on your current profile and is not reversible.",
+			mode = "confirm",
+			buttons = {
+				{
+					text = "Continue",
+					onClick = function()
+						ACAB:ShowSetupWizard({
+							overwriteExisting = true,
+							profileName = ACABCharDB.activeProfile,
+						})
+					end,
+				},
+				{ text = "Cancel", onClick = function() end },
+			},
+		})
+	end)
+
 	local exportButton = CreateFrame("Button", nil, panel)
 	exportButton:SetHeight(22)
-	exportButton:SetPoint("TOPLEFT", dropdown, "BOTTOMLEFT", 16, -14)
+	exportButton:SetPoint("TOPLEFT", wizardButton, "TOPRIGHT", PROFILE_BUTTON_GAP_X, 0)
 	ACAB:StyleModernButton(exportButton, 0, 0)
 	exportButton:SetText("Export Profile")
 	panel.exportButton = exportButton
@@ -935,19 +960,19 @@ function ACAB:GetOrCreateProfilesPanel()
 	ACAB:ApplyDangerButtonHighlight(deleteButton)
 	panel.deleteButton = deleteButton
 
-	-- Centers the whole 4-button row under the Active Profile row instead
-	-- of left-anchoring it under the dropdown - only exportButton's own
-	-- anchor needs resetting, since copy/import/delete are already chained
-	-- off their left neighbor's TOPRIGHT and follow automatically. Widths
-	-- are only known now that every button's SetText above has run.
+	-- Centers the whole 5-button row under the Active Profile row instead
+	-- of left-anchoring it under the dropdown - only wizardButton's own
+	-- anchor needs resetting, since export/copy/import/delete are already
+	-- chained off their left neighbor's TOPRIGHT and follow automatically.
+	-- Widths are only known now that every button's SetText above has run.
 	local buttonRowY = labelRowTopY - math.max(label:GetHeight(), dropdown:GetHeight()) - 14
-	local totalRowWidth = exportButton:GetWidth() + copyButton:GetWidth()
-		+ importButton:GetWidth() + deleteButton:GetWidth() + (PROFILE_BUTTON_GAP_X * 3)
+	local totalRowWidth = wizardButton:GetWidth() + exportButton:GetWidth() + copyButton:GetWidth()
+		+ importButton:GetWidth() + deleteButton:GetWidth() + (PROFILE_BUTTON_GAP_X * 4)
 
-	exportButton:ClearAllPoints()
-	exportButton:SetPoint(
+	wizardButton:ClearAllPoints()
+	wizardButton:SetPoint(
 		"TOP", panel, "TOP",
-		-(totalRowWidth / 2) + (exportButton:GetWidth() / 2),
+		-(totalRowWidth / 2) + (wizardButton:GetWidth() / 2),
 		buttonRowY
 	)
 
@@ -977,7 +1002,7 @@ function ACAB:GetOrCreateProfilesPanel()
 	return panel
 end
 
--- Refreshes the dropdown's option list/current selection and all 4
+-- Refreshes the dropdown's option list/current selection and all 5
 -- action buttons' visibility (only shown while a non-Default profile is
 -- active, since Default is locked/uneditable) - called whenever the
 -- Profiles view is (re)shown and after any profile CRUD action that
@@ -1001,11 +1026,13 @@ function ACAB:RefreshProfilesPanel()
 	panel.profileDropdown:SetSelected(ACABCharDB.activeProfile)
 
 	if ACABCharDB.activeProfile ~= self.DEFAULT_PROFILE_NAME then
+		panel.wizardButton:Show()
 		panel.exportButton:Show()
 		panel.copyButton:Show()
 		panel.importButton:Show()
 		panel.deleteButton:Show()
 	else
+		panel.wizardButton:Hide()
 		panel.exportButton:Hide()
 		panel.copyButton:Hide()
 		panel.importButton:Hide()
@@ -1460,14 +1487,14 @@ function ACAB:RefreshGeneralPanel()
 	-- Both default true (Core.lua's EnsureDB) - only an explicit false
 	-- ever unchecks either.
 	panel.mainBarPaginationCheckbox:SetChecked(
-		ACABDB.mainBarPaginationEnabled ~= false
+		ACABDB.defaultBarPaginationEnabled ~= false
 	)
 
-	-- Stance/Page Bar Assignment rows themselves live on bar 1's own
-	-- settings page; refreshed from RefreshBarSettingsPage(1).
+	-- Stance/Page Bar Assignment rows themselves live on each default
+	-- bar's (1-5) own settings page; refreshed from RefreshBarSettingsPage.
 
 	panel.mainBarStanceSwapCheckbox:SetChecked(
-		ACABDB.mainBarStanceSwapEnabled ~= false
+		ACABDB.defaultBarStanceSwapEnabled ~= false
 	)
 
 	-------------------------------------------------------------------------
@@ -1604,6 +1631,47 @@ function ACAB:ShowGeneralView()
 	-- (DeferFit) so its own candidates' positions have settled before
 	-- anything measures them.
 	ACAB:DeferFit(function() ACAB:FitSettingsWindowToGeneralView() end)
+end
+
+-- Brief gold pulse behind the "Force default Blizzard layout mode"
+-- checkbox row - called after the layout-lock warning banner (Settings.lua's
+-- CreateProfileLockWarning) navigates here via /acab settings general, so
+-- the user's eye lands on the control to change rather than having to hunt
+-- for it again.
+function ACAB:HighlightGeneralLayoutCheckbox()
+	local panel = ACAB.settingsFrame and ACAB.settingsFrame.generalPanel
+	local checkbox = panel and panel.useDefaultLayoutCheckbox
+
+	if not checkbox then
+		return
+	end
+
+	if not checkbox.acabHighlightStrip then
+		local label = getglobal(checkbox:GetName() .. "Text")
+		local labelWidth = (label and label:GetStringWidth()) or 200
+		local strip = ACAB:CreateFadeStrip(panel, checkbox:GetWidth() + labelWidth + 16, checkbox:GetHeight() + 10, { edgeFraction = 0.15 })
+
+		strip:SetPoint("LEFT", checkbox, "LEFT", -8, 0)
+		strip:SetFadeColor(ACAB.UI_ACCENT_COLOR[1], ACAB.UI_ACCENT_COLOR[2], ACAB.UI_ACCENT_COLOR[3])
+		strip:SetPeakAlpha(0.55)
+		strip:Hide()
+
+		checkbox.acabHighlightStrip = strip
+	end
+
+	local strip = checkbox.acabHighlightStrip
+
+	strip:Show()
+
+	-- Three pulses via C_Timer.After rather than a hand-rolled OnUpdate
+	-- ticker (CLAUDE.md: "Scheduling" - reuse ClassicAPI's C_Timer instead).
+	if C_Timer then
+		C_Timer.After(0.45, function() strip:Hide() end)
+		C_Timer.After(0.75, function() strip:Show() end)
+		C_Timer.After(1.2, function() strip:Hide() end)
+		C_Timer.After(1.5, function() strip:Show() end)
+		C_Timer.After(1.95, function() strip:Hide() end)
+	end
 end
 
 function ACAB:ShowProfilesView()

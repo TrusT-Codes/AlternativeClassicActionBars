@@ -269,8 +269,9 @@ local function SeedOneDefaultBar(self, id)
 		nativeSpacing = spacing,
 	}
 
-	if id == 1 then
-		cfg.dynamicMainBar = true
+	-- Bars 1-5 resolve action slots dynamically via GetDefaultBarSlotForIndex.
+	if id >= 1 and id <= 5 then
+		cfg.dynamicDefaultBar = true
 	end
 
 	if id >= 2 and id <= 5 then
@@ -757,6 +758,26 @@ function ACAB:SaveActiveProfileData()
 	ACABProfilesDB[self.activeProfileName] = self:DeepCopyTable(ACABDB)
 end
 
+-- Case-insensitive check against every existing profile name (including
+-- Default), so "MyProfile" and "myprofile" can't coexist as two profiles.
+function ACAB:ProfileNameTaken(name)
+	if not name or name == "" then
+		return false
+	end
+
+	local lowerName = string.lower(name)
+	local names = self:GetProfileNames()
+	local i
+
+	for i = 1, table.getn(names) do
+		if string.lower(names[i]) == lowerName then
+			return true
+		end
+	end
+
+	return false
+end
+
 -- Creates a new profile seeded from Default's current data.
 function ACAB:CreateProfile(name)
 	if not name or name == "" then
@@ -765,7 +786,7 @@ function ACAB:CreateProfile(name)
 
 	ACABProfilesDB = ACABProfilesDB or {}
 
-	if ACABProfilesDB[name] then
+	if self:ProfileNameTaken(name) then
 		return false, "A profile named \"" .. name .. "\" already exists."
 	end
 
@@ -1171,37 +1192,18 @@ function ACAB:ShowCreateProfileDialog(onCreated)
 	})
 end
 
--- First-ever-login-with-profiles dialog for this character.
+-- First-ever-login-with-profiles dialog for this character. Trimmed to the
+-- setup wizard entry point plus the "stay on default" escape hatches - the
+-- old inline "named profile"/"character profile" flows now live inside the
+-- wizard itself (ACAB:ShowSetupWizard, SetupWizard.lua).
 function ACAB:ShowFirstLoginDialog()
 	local buttons = {
 		{
-			text = "I know what im doing, use default profile",
+			text = "Set up a new custom Profile",
 			isDefault = true,
+			variant = "prominent",
 			onClick = function()
-				ACABCharDB = ACABCharDB or {}
-				ACABCharDB.hasSelectedProfileBefore = true
-			end,
-		},
-		{
-			text = "Create a named profile",
-			onClick = function()
-				ACAB:ShowCreateProfileDialog()
-			end,
-		},
-		{
-			text = "Create a profile for this character",
-			onClick = function()
-				local charName = UnitName("player") or "Unknown"
-				local realmName = GetRealmName() or "Unknown"
-				local charProfileName = charName .. " - " .. realmName
-
-				local ok, reason = ACAB:CreateProfile(charProfileName)
-
-				if ok then
-					ACAB:SwitchProfile(charProfileName)
-				elseif reason then
-					ACAB:Print(reason)
-				end
+				ACAB:ShowSetupWizard()
 			end,
 		},
 	}
@@ -1232,11 +1234,21 @@ function ACAB:ShowFirstLoginDialog()
 		})
 	end
 
+	table.insert(buttons, {
+		text = "Stay on this uneditable default profile!",
+		danger = true,
+		variant = "minor",
+		onClick = function()
+			ACABCharDB = ACABCharDB or {}
+			ACABCharDB.hasSelectedProfileBefore = true
+		end,
+	})
+
 	self:ShowDialog({
 		title = "Welcome to ACAB",
 		message = "Thank you for choosing ACAB, you are currently using the Profile \"Default\". " ..
 			"The Default profile is locked and cannot be edited - Edit Layout mode and Settings changes are unavailable while it is active.\n\n" ..
-			"Do you wish to create a new custom profile or a profile for this character?",
+			"Do you wish to set up your own custom profile?",
 		mode = "confirm",
 		buttons = buttons,
 	})
@@ -1285,15 +1297,71 @@ function ACAB:EnsureDB()
 		ACABDB.globalButtonSizeValue = ACAB.BUTTON_SIZE
 	end
 
-	if ACABDB.mainBarPaginationEnabled == nil then
-		ACABDB.mainBarPaginationEnabled = true
+	-- Gates pagination/stance-swap for every default bar (1-5); falls back
+	-- to any existing mainBarPaginationEnabled/mainBarStanceSwapEnabled value, else true.
+	if ACABDB.defaultBarPaginationEnabled == nil then
+		if ACABDB.mainBarPaginationEnabled ~= nil then
+			ACABDB.defaultBarPaginationEnabled = ACABDB.mainBarPaginationEnabled
+		else
+			ACABDB.defaultBarPaginationEnabled = true
+		end
 	end
-	if ACABDB.mainBarStanceSwapEnabled == nil then
-		ACABDB.mainBarStanceSwapEnabled = true
+	if ACABDB.defaultBarStanceSwapEnabled == nil then
+		if ACABDB.mainBarStanceSwapEnabled ~= nil then
+			ACABDB.defaultBarStanceSwapEnabled = ACABDB.mainBarStanceSwapEnabled
+		else
+			ACABDB.defaultBarStanceSwapEnabled = true
+		end
 	end
 
-	-- mainBarStanceBarAssignment/mainBarPageBarAssignment stay nil
-	-- (unassigned) until the user explicitly picks an Extra Bar.
+	-- Nested per default-bar-id: [id] -> assignedId, [id][stanceIndex] ->
+	-- assignedId. Migrates any existing bar-1-only value in.
+	if not ACABDB.defaultBarPageBarAssignment then
+		ACABDB.defaultBarPageBarAssignment = {}
+
+		if ACABDB.mainBarPageBarAssignment then
+			ACABDB.defaultBarPageBarAssignment[1] = ACABDB.mainBarPageBarAssignment
+		end
+	end
+
+	if not ACABDB.defaultBarStanceBarAssignment then
+		ACABDB.defaultBarStanceBarAssignment = {}
+
+		if ACABDB.mainBarStanceBarAssignment then
+			ACABDB.defaultBarStanceBarAssignment[1] = ACABDB.mainBarStanceBarAssignment
+		end
+	end
+
+	-- defaultBarStanceBarAssignment[id]/defaultBarPageBarAssignment[id] stay
+	-- nil (No Pageswap) until explicitly assigned.
+
+	-- One-time: sets bar 1's nil page/stance assignments to -1 (Default).
+	-- Must run only once - never reset this flag.
+	if not ACABDB.migratedDefaultBarSwapSentinel then
+		ACABDB.migratedDefaultBarSwapSentinel = true
+
+		if ACABDB.defaultBarPageBarAssignment[1] == nil then
+			ACABDB.defaultBarPageBarAssignment[1] = -1
+		end
+
+		if not ACABDB.defaultBarStanceBarAssignment[1] then
+			ACABDB.defaultBarStanceBarAssignment[1] = {}
+		end
+
+		local liveCount = GetNumShapeshiftForms and GetNumShapeshiftForms() or 0
+
+		if liveCount > self.MAX_STANCE_BUTTONS then
+			liveCount = self.MAX_STANCE_BUTTONS
+		end
+
+		local s
+
+		for s = 1, liveCount do
+			if ACABDB.defaultBarStanceBarAssignment[1][s] == nil then
+				ACABDB.defaultBarStanceBarAssignment[1][s] = -1
+			end
+		end
+	end
 
 	if ACABDB.mainBarPageIndicatorScale == nil then
 		ACABDB.mainBarPageIndicatorScale = 1
@@ -1557,6 +1625,19 @@ function ACAB:EnsureDB()
 
 	if not ACABDB.defaultBars then
 		ACABDB.defaultBars = seedDefaultBars(self)
+	end
+
+	-- Re-asserts dynamicDefaultBar = true on every default bar's (1-5) cfg.
+	do
+		local defId
+
+		for defId = 1, 5 do
+			local defCfg = ACABDB.defaultBars[defId]
+
+			if defCfg then
+				defCfg.dynamicDefaultBar = true
+			end
+		end
 	end
 
 	-- Migration-safe: an existing save from before the Pet Bar existed has

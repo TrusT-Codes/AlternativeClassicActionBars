@@ -1092,21 +1092,15 @@ function ACAB:ApplyBarShape(bar)
 			local desiredSlot
 			local slotValid
 
-			-- Fixed-slot bars (default bars 2-5, Pet Bar) always rebind pool
-			-- slot i to cfg.fixedActionSlots[i] - a real action slot for bars
-			-- 2-5, a pet slot 1-10 for the Pet Bar. No ACTION_SLOT_END
-			-- pool-range check applies since these are outside 73-120.
-			if cfg.fixedActionSlots then
-				desiredSlot = cfg.fixedActionSlots[i]
+			-- Default bars (1-5): pool slot i resolves dynamically via
+			-- GetDefaultBarSlotForIndex (page/stance/assignment redirect).
+			-- Must check dynamicDefaultBar before fixedActionSlots below - bars 2-5 set both.
+			if cfg.dynamicDefaultBar then
+				desiredSlot = self:GetDefaultBarSlotForIndex(cfg.id, i)
 				slotValid = desiredSlot ~= nil
-			elseif cfg.dynamicMainBar then
-				-- Bar 1 (Main) only: pool slot i has no permanent action
-				-- slot - it's recomputed every call from the current
-				-- page/bonus-bar state (DefaultBars.lua's
-				-- GetMainBarSlotForIndex). Calling
-				-- ACAB:ApplyBarShape(ACAB.bars[1]) after a page/stance change
-				-- is enough to pick up the new slots.
-				desiredSlot = self:GetMainBarSlotForIndex(i)
+			-- Fixed-slot bars (Pet Bar): binds pool slot i to cfg.fixedActionSlots[i], a pet slot 1-10.
+			elseif cfg.fixedActionSlots then
+				desiredSlot = cfg.fixedActionSlots[i]
 				slotValid = desiredSlot ~= nil
 			else
 				desiredSlot = cfg.slotStart + (i - 1)
@@ -1223,21 +1217,17 @@ function ACAB:CreateBarFromConfig(cfg)
 	for i = 1, self.MAX_BAR_BUTTONS do
 		local slot
 
-		-- Fixed-slot bars (default bars 2-5, Pet Bar): each pool slot i is
-		-- permanently tied to cfg.fixedActionSlots[i] - a real action slot
-		-- (Core.lua's CaptureFixedActionSlots) for bars 2-5, or a pet slot
-		-- 1-10 identity map for the Pet Bar - never the free 73-120 pool.
-		if cfg.fixedActionSlots then
-			slot = cfg.fixedActionSlots[i]
+		-- Default bars (1-5): initial slot via GetDefaultBarSlotForIndex, just
+		-- needs to be valid to bind to - ApplyBarShape re-resolves it later.
+		if cfg.dynamicDefaultBar then
+			slot = self:GetDefaultBarSlotForIndex(cfg.id, i)
 
 			if not slot then
 				break
 			end
-		elseif cfg.dynamicMainBar then
-			-- Bar 1 (Main) only, resolved the same way ApplyBarShape does -
-			-- the initial slot just needs to be valid to bind to, since
-			-- ApplyBarShape at the end of this function re-resolves it.
-			slot = self:GetMainBarSlotForIndex(i)
+		-- Fixed-slot bars (Pet Bar): pool slot i binds to cfg.fixedActionSlots[i], a pet slot 1-10.
+		elseif cfg.fixedActionSlots then
+			slot = cfg.fixedActionSlots[i]
 
 			if not slot then
 				break
@@ -1388,9 +1378,9 @@ end
 -- Extra Bar slot lookup
 --
 -- Resolves pool-slot `slotIndex` (1-12) of Extra Bar `barId` to its bound
--- native action slot, used by DefaultBars.lua's GetMainBarSlotForIndex.
+-- native action slot, used by DefaultBars.lua's GetDefaultBarSlotForIndex.
 -- Deliberately ignores enabled/IsShown - an Extra Bar assigned as a
--- stance/page source keeps supplying Main Bar regardless of its own
+-- stance/page source keeps supplying its default bar regardless of its own
 -- visibility.
 -------------------------------------------------------------------------
 
