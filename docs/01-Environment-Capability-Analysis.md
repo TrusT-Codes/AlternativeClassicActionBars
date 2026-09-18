@@ -842,6 +842,20 @@ This matches what this codebase's own pre-existing `DefaultBars.lua` function `B
 
 Also observed, unexplained and not chased further (not blocking, no user-visible symptom traced to it): whichever form was the *active* one at query time consistently returned a texture (`Interface\Icons\Spell_Nature_WispSplode`) that did not match that ability's own real icon (confirmed correct while inactive) — the same placeholder-looking texture regardless of which of the two abilities was active. Worth re-testing if a future icon-related Stance Bar bug surfaces, but not investigated further this round since no reported symptom traced back to it once the event-firing fix landed.
 
+## 5ak. Live confirmation: a frame's `GetLeft`/`GetTop`/`GetRight`/`GetBottom` return `nil` forever until it has been given an explicit `SetWidth`/`SetHeight` at least once — a valid `SetPoint` alone is not enough
+
+**Live-confirmed via an isolated throwaway frame (2026-09-18, Page Indicator overlay-hitbox bug):**
+
+```
+/run local f=CreateFrame("Frame",nil,UIParent);f:SetPoint("BOTTOMLEFT",UIParent,"BOTTOMLEFT",50,50);local a=f:GetLeft();f:SetWidth(10);f:SetHeight(10);DEFAULT_CHAT_FRAME:AddMessage(tostring(a).." "..tostring(f:GetLeft()))
+```
+
+printed `nil 50.000000683872` — `GetLeft()` before any `SetWidth`/`SetHeight` call is `nil` even though `SetPoint` had already been applied with a real anchor (`GetPoint(1)` returns the anchor data correctly the whole time — this is specifically about the *resolved rect*, not the anchor definition). The moment the frame is given a size, `GetLeft()` resolves immediately and correctly. This is **not** a timing/lazy-resolve race (§5af) — it never resolves no matter how long you wait or how many frames pass; it is gated purely on the frame having had a size set at least once.
+
+**Where this bit us:** `NativeElements.lua`'s Page Indicator container (`CreatePageIndicatorContainer`) is created, positioned via `SetPoint`, and only *measures* its real children (Up/Down/Text arrow buttons + page-number text) to compute its own final size — but until that measurement succeeds, `PixelSetSize` is never called on it. Every read of the container's own `GetLeft`/`GetTop` (and, cascading from it, every child anchored to the container) returned `nil` permanently, no matter how long a settle-retry loop waited. **Fix:** give the container a `SetWidth(1)`/`SetHeight(1)` placeholder immediately at creation, before anything ever reads its rect — the real measurement then overwrites this placeholder synchronously in the same call chain, with no visible flash of the wrong size.
+
+**Where else this likely applies.** Any container frame in this codebase that is created, anchored, and only sized *later* (after some measurement pass reads its own or its children's rects) is exposed to this exact trap — give it a placeholder size at creation time, not just a placeholder position. This is a different failure mode from §5af (lazy/stale-cache resolution against an ancestor that already has a valid rect) — that one eventually resolves given the right read order; this one never resolves at all without an explicit size call, regardless of read order or elapsed time.
+
 ## 6. Summary: what to build vs. what to reuse
 
 
