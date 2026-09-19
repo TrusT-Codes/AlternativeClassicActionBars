@@ -1,18 +1,11 @@
 -- SetupWizard.lua
--- Multi-step first-custom-profile setup wizard (ACAB:ShowSetupWizard), launched
--- from Database.lua's ShowFirstLoginDialog "Set up a new custom Profile"
--- button, or - in overwrite mode - from the Profiles settings page's "Run
--- Setup Wizard" button (SettingsGeneral.lua), which reconfigures the
--- already-active profile in place instead of creating a new one and skips
--- the name step. One lazily-created frame instance is reused across opens
--- (EnsureSetupWizardFrame, same pattern as UIWidgets.lua's EnsureDialogFrame).
--- Nothing is written to ACABProfilesDB/ACABDB until FinishWizard runs -
--- closing the wizard early (the X button) leaves self.wizardState
--- discarded and creates no orphan profile / changes nothing on an
--- existing one.
---
--- Engine-invoked script handlers (OnClick, OnEnterPressed, ...) receive the
--- frame via the global `this`, never as a `self` parameter.
+-- Multi-step first-custom-profile setup wizard (ACAB:ShowSetupWizard), launched from Database.lua's
+-- ShowFirstLoginDialog "Set up a new custom Profile" button, or - in overwrite mode - from the
+-- Profiles settings page's "Run Setup Wizard" button, which reconfigures the already-active profile in
+-- place instead of creating a new one and skips the name step. One lazily-created frame instance is
+-- reused across opens. Nothing is written to ACABProfilesDB/ACABDB until FinishWizard runs - closing
+-- the wizard early leaves self.wizardState discarded and creates/changes nothing.
+-- Engine-invoked script handlers receive the frame via the global `this`, never as a `self` parameter.
 
 local ACAB = AlternativeClassicActionBars
 
@@ -20,12 +13,9 @@ local WIZARD_WIDTH = 480
 local WIZARD_CONTENT_WIDTH = WIZARD_WIDTH - 40
 local PREVIEW_SLOT_COUNT = 5
 
--- Real, long-standing ability icon paths (present in the base Blizzard
--- icon atlas since classic, not tied to any one class) - cycled across
--- preview slots instead of every slot showing the same "?" icon. Not
--- pulled from the player's own spellbook: GetSpellTexture's exact
--- index/bookType behavior on this client hasn't been live-verified, and
--- these are purely cosmetic previews, not real spell icons.
+-- Real, long-standing ability icon paths (base Blizzard icon atlas, not tied to any one class) -
+-- cycled across preview slots instead of every slot showing the same "?" icon. Not pulled from the
+-- player's real spellbook - these are purely cosmetic previews.
 local PREVIEW_ICONS = {
 	"Interface\\Icons\\Spell_Nature_Lightning",
 	"Interface\\Icons\\Ability_Kick",
@@ -37,9 +27,8 @@ local PREVIEW_ICONS = {
 	"Interface\\Icons\\Ability_Rogue_Ambush",
 }
 
--- 1-based cycle through PREVIEW_ICONS for slot index `n` - no `%` on this
--- client (Lua 5.0), so table.getn(PREVIEW_ICONS)'s wraparound is done via
--- floor division instead.
+-- 1-based cycle through PREVIEW_ICONS for slot index `n` - no `%` on this client (Lua 5.0), so
+-- wraparound is done via floor division instead.
 local function PreviewIconForSlot(n)
 	local count = table.getn(PREVIEW_ICONS)
 	local zeroBased = n - 1
@@ -56,11 +45,9 @@ local function ComputePreviewBarWidth(buttonSize, spacing, count)
 	return (buttonSize * count) + (spacing * (count - 1))
 end
 
--- One cosmetic slot: vanilla style overlays Interface\Buttons\UI-Quickslot2
--- centered with a (0,-1) offset over a flush icon, sized ACAB.BORDER_RATIO
--- times the icon (Button.lua's own ApplySize ratio - real vanilla border
--- art is drawn larger than the icon it frames); modern style backdrops a
--- tooltip-skinned border with a 2px-inset icon.
+-- One cosmetic slot: vanilla style overlays Interface\Buttons\UI-Quickslot2 centered with a (0,-1)
+-- offset over a flush icon, sized ACAB.BORDER_RATIO times the icon (real vanilla border art is drawn
+-- larger than the icon it frames); modern style backdrops a tooltip-skinned border with a 2px-inset icon.
 local function CreateWizardPreviewSlot(parent, isModern, iconTexture)
 	local slot = CreateFrame("Frame", nil, parent)
 
@@ -96,9 +83,8 @@ local function CreateWizardPreviewSlot(parent, isModern, iconTexture)
 	return slot
 end
 
--- Resizes/repositions slots already created by CreateWizardPreviewBar in
--- place, without recreating any texture - used by step 8's live slider
--- updates. slots.container is the bar's own container frame.
+-- Resizes/repositions slots already created by CreateWizardPreviewBar in place, without recreating any
+-- texture - used by step 8's live slider updates. slots.container is the bar's own container frame.
 local function LayoutWizardPreviewSlots(slots, buttonSize, spacing)
 	local i
 
@@ -146,12 +132,9 @@ local function CreateWizardPreviewBar(parent, isModern, count, buttonSize, spaci
 	return container, slots
 end
 
--- Builds a preview bar from an explicit per-slot icon list (nil = empty
--- slot, e.g. an untrained Pet Bar ability) instead of CreateWizardPreviewBar's
--- auto-recycled PreviewIconForSlot - used where the exact icon per slot
--- matters (step 6's Pet Bar/Stance Bar). `count` is passed explicitly
--- rather than derived from table.getn(icons), since a Lua 5.0 array with
--- nil holes can't be measured reliably.
+-- Builds a preview bar from an explicit per-slot icon list (nil = empty slot) instead of
+-- CreateWizardPreviewBar's auto-recycled PreviewIconForSlot - used where the exact icon per slot
+-- matters. `count` is passed explicitly since a Lua 5.0 array with nil holes can't be measured reliably.
 local function CreateWizardIconRow(parent, isModern, icons, count, buttonSize, spacing)
 	local container = CreateFrame("Frame", nil, parent)
 	container:SetHeight(buttonSize)
@@ -172,20 +155,13 @@ local function CreateWizardIconRow(parent, isModern, icons, count, buttonSize, s
 end
 
 -------------------------------------------------------------------------
--- Step 4's example Stance Bar/Page Swap Indicator - a purely cosmetic,
--- wizard-local live demo, not the real Blizzard/ACAB frames (those are
--- process-wide singletons already positioned elsewhere on screen, so a
--- second preview instance can't wrap them). "Battle/Defensive/Berserker
--- Stance" are illustrative examples, not read from the player's real
--- spellbook/class - this step's dropdowns are cosmetic for the same
--- reason (see BuildStep4's own comment on that).
+-- Step 4's example Stance Bar/Page Swap Indicator - a purely cosmetic, wizard-local live demo, not the
+-- real Blizzard/ACAB frames (those are process-wide singletons already positioned elsewhere on screen).
+-- "Battle/Defensive/Berserker Stance" are illustrative examples, not read from the player's real class.
 -------------------------------------------------------------------------
 
--- stanceIcon is the stance BUTTON's own fixed icon (never changes, even
--- when its dropdown remaps which stance's abilities it previews) - icons
--- is that stance's own example ability bar. Kept as two separate fields
--- since they aren't always the same art (Defensive/Berserker's own
--- stance icon isn't either stance's first ability icon).
+-- stanceIcon is the stance button's own fixed icon (never changes even when its dropdown remaps which
+-- stance's abilities it previews) - icons is that stance's own example ability bar.
 local STEP4_STANCE_ABILITIES = {
 	{
 		name = "Battle Stance",
@@ -221,15 +197,11 @@ local STEP4_STANCE_ABILITIES = {
 
 local STEP4_BAR_SLOT_COUNT = 4
 
--- Step 6's example Stance Bar - the same 3 example stances' own icons
--- step 4 already uses (STEP4_STANCE_ABILITIES), not read from the
--- player's real class/forms (real Stance Bar shows GetNumShapeshiftForms()
--- buttons).
--- Real vanilla button art always overhangs its own frame bounds by at
--- least this much (ACAB.VANILLA_SPACING_FLOOR, Core.lua) regardless of a
--- stored 0 - same value step 3's own vanillaSpacing local already uses
--- for its preview bar, applied here too so the vanilla-bordered preview
--- doesn't render tighter than its real on-screen look.
+-- Step 6's example Stance Bar - the same 3 example stances' icons step 4 already uses, not read from
+-- the player's real class/forms.
+-- Real vanilla button art always overhangs its own frame bounds by at least this much regardless of a
+-- stored 0 - same value step 3's own vanillaSpacing local uses, applied here so the vanilla-bordered
+-- preview doesn't render tighter than its real on-screen look.
 local STEP6_VANILLA_SPACING = 4
 
 local STEP6_STANCE_PREVIEW_COUNT = table.getn(STEP4_STANCE_ABILITIES)
@@ -239,10 +211,8 @@ local STEP6_STANCE_ICONS = {
 	STEP4_STANCE_ABILITIES[3].stanceIcon,
 }
 
--- Step 6's example Pet Bar - the real vanilla 10-slot layout (3 command
--- buttons, one learned-ability example, 3 untrained/empty slots, 3
--- reaction buttons). Real icons come from GetPetActionInfo, which needs
--- a real pet the wizard doesn't have.
+-- Step 6's example Pet Bar - the real vanilla 10-slot layout (3 command buttons, one learned-ability
+-- example, 3 untrained/empty slots, 3 reaction buttons). Real icons need a real pet the wizard doesn't have.
 local STEP6_PET_PREVIEW_COUNT = 10
 local STEP6_PET_ICONS = {
 	"Interface\\Icons\\Ability_GhoulFrenzy",       -- Attack
@@ -255,9 +225,8 @@ local STEP6_PET_ICONS = {
 	"Interface\\Icons\\Ability_Seal",              -- Passive
 }
 
--- Same visual recipe as CreateWizardPreviewSlot, but clickable (an
--- overlaid Button, not a plain Frame) with a togglable selection glow -
--- used for step 4's 3 example stance buttons.
+-- Same visual recipe as CreateWizardPreviewSlot, but clickable with a togglable selection glow - used
+-- for step 4's 3 example stance buttons.
 local function CreateWizardStanceSlot(parent, isModern, iconTexture, onClick)
 	local slot = CreateWizardPreviewSlot(parent, isModern, iconTexture)
 
@@ -276,14 +245,11 @@ local function CreateWizardStanceSlot(parent, isModern, iconTexture, onClick)
 	return slot
 end
 
--- One vanilla/modern-skinned row of the 3 example stance buttons -
--- returns the container (caller anchors it) and the slots array, same
--- shape as CreateWizardPreviewBar's own return.
+-- One vanilla/modern-skinned row of the 3 example stance buttons - returns the container and the
+-- slots array, same shape as CreateWizardPreviewBar's own return.
 local function BuildStep4StanceRow(parent, isModern, onStanceClick)
 	local stanceSize = 28
-	-- Real vanilla button art overhangs its own frame bounds - same
-	-- vanillaSpacing/modernSpacing convention step 3's own preview bar
-	-- uses (BuildStep3).
+	-- Real vanilla button art overhangs its own frame bounds - same convention step 3's preview bar uses.
 	local stanceSpacing = isModern and 0 or 4
 	local count = table.getn(STEP4_STANCE_ABILITIES)
 
@@ -338,12 +304,9 @@ local function CreateWizardPageIndicator(parent, onToggle)
 	return container
 end
 
--- The 4 rows' (3 stances + Page 2) own dropdown choices - picks which of
--- the 3 example stances' ability set that row previews: for a stance row,
--- when its own button is clicked; for the Page 2 row, when Page 2 is
--- toggled active. Actually demonstrates re-assigning a stance/page's bar
--- content (the real feature this step explains) instead of just
--- mirroring the real settings page's unrelated Extra Bar option labels.
+-- The 4 rows' (3 stances + Page 2) own dropdown choices - picks which of the 3 example stances'
+-- ability set that row previews. Actually demonstrates re-assigning a stance/page's bar content
+-- instead of just mirroring the real settings page's unrelated Extra Bar option labels.
 local STEP4_STANCE_PREVIEW_OPTIONS = {
 	{ text = "Preview Battle Stance", value = 1 },
 	{ text = "Preview Defensive Stance", value = 2 },
@@ -373,15 +336,10 @@ local function CreateStep4StancePreviewRow(parent, labelText, dropdownName, defa
 end
 
 -------------------------------------------------------------------------
--- Step 7's "Better Experience Bar" color pickers - a wizard-local copy of
--- SettingsBars.lua's own CreateColorSwatchButton/SetColorSwatchColor/
--- OpenExpBarColorPicker (all file-local there): same small swatch button
--- and native ColorPickerFrame wiring, but anchored to the wizard frame
--- instead of ACAB.settingsFrame (SettingsBars.lua's version hardcodes
--- that anchor, which would be wrong - or simply absent - when opened from
--- here), and writing into a caller-supplied setter instead of ACABDB
--- directly, so this step can defer the actual write to FinishWizard like
--- every other wizard control.
+-- Step 7's "Better Experience Bar" color pickers - a wizard-local copy of SettingsBars.lua's own color
+-- swatch/picker wiring, but anchored to the wizard frame instead of ACAB.settingsFrame, and writing
+-- into a caller-supplied setter instead of ACABDB directly, so this step can defer the write to
+-- FinishWizard like every other wizard control.
 -------------------------------------------------------------------------
 
 local function CreateWizardColorSwatch(parent, name)
@@ -419,9 +377,8 @@ local function SetWizardColorSwatchColor(swatch, color)
 	swatch.colorTexture:SetVertexColor(color.r or 1, color.g or 1, color.b or 1)
 end
 
--- getter/setter: getter() returns the current {r,g,b} (or nil), setter(r,g,b)
--- stores a new one - same vanilla 1.12 ColorPickerFrame API (SetColorRGB/
--- func/opacityFunc/cancelFunc/hasOpacity) SettingsBars.lua's own picker uses.
+-- getter/setter: getter() returns the current {r,g,b} (or nil), setter(r,g,b) stores a new one - same
+-- vanilla 1.12 ColorPickerFrame API SettingsBars.lua's own picker uses.
 local function OpenWizardColorPicker(swatch, getter, setter)
 	local current = getter() or { r = 1, g = 1, b = 1 }
 
@@ -468,13 +425,11 @@ local STEP_TITLES = {
 	[8] = "Spacing & Button Size",
 }
 
--- Starting height before the first real fit (FitHeightToStep) replaces
--- it - only ever visible for one frame.
+-- Starting height before the first real fit (FitHeightToStep) replaces it - only ever visible for one frame.
 local INITIAL_HEIGHT = 200
 
--- Every step's own advance button (Next/Finish) - anchored to the wizard
--- frame itself (not `step`), so it stays in the same bottom-right spot,
--- same row as the shared Back button, regardless of step content height.
+-- Every step's own advance button (Next/Finish) - anchored to the wizard frame itself, so it stays in
+-- the same bottom-right spot, same row as the shared Back button, regardless of step content height.
 local function CreateWizardNavButton(step, wizard, text, height, minWidth, maxWidth, onClick)
 	local button = CreateFrame("Button", nil, step)
 
@@ -580,11 +535,9 @@ function ACABSetupWizardMixin:BuildStep3()
 	message:SetJustifyH("CENTER")
 	message:SetText("Choose a button style for your bars. You can change this later in Settings.")
 
-	-- Vanilla's icon is flush to the full button frame (Button.lua's own
-	-- Init) with the decorative border texture overlaid/overflowing past
-	-- it, matching real vanilla action bars. Reads slightly smaller than
-	-- modern's flush icon+backdrop footprint at equal icon size, so
-	-- modern gets +2px to match.
+	-- Vanilla's icon is flush to the full button frame with the decorative border texture overlaid
+	-- past it, matching real vanilla action bars. Reads slightly smaller than modern's flush
+	-- icon+backdrop footprint at equal icon size, so modern gets +2px to match.
 	local vanillaApparentSize = 30
 	local modernApparentSize = vanillaApparentSize + 2
 	local vanillaSpacing = 4
@@ -627,11 +580,9 @@ function ACABSetupWizardMixin:BuildStep3()
 	return step
 end
 
--- Order mirrors SettingsGeneral.lua's General tab: pagination checkbox
--- first, then stance-swap. The example bar/stance row/Page Swap Indicator
--- react live to both checkboxes and to clicking a stance/the page arrows
--- (UpdateStep4Preview) so the effect of each control is actually visible
--- before the user ever opens the real Bars Settings pages.
+-- Order mirrors SettingsGeneral.lua's General tab: pagination checkbox first, then stance-swap. The
+-- example bar/stance row/Page Swap Indicator react live to both checkboxes and to clicking a
+-- stance/the page arrows so the effect of each control is actually visible.
 function ACABSetupWizardMixin:BuildStep4()
 	local step = CreateFrame("Frame", nil, self)
 
@@ -701,16 +652,12 @@ function ACABSetupWizardMixin:BuildStep4()
 		"enabled, set up the real bar assignments on each default bar's " ..
 		"own Settings page - or enable it later from the General tab."
 	)
-	-- No explicit SetHeight - wraps to however many lines it needs at
-	-- WIZARD_CONTENT_WIDTH, so this clearance is generous (up to 3 lines)
-	-- rather than measured, unlike every other fixed cursorY step in this
-	-- wizard.
+	-- No explicit SetHeight - wraps to however many lines it needs, so this clearance is generous (up
+	-- to 3 lines) rather than measured, unlike every other fixed cursorY step in this wizard.
 	cursorY = cursorY - 40 - 10
 
-	-- Vanilla/modern variants of both the example stance row and action
-	-- bar, built upfront - only the pair matching step 3's choice is ever
-	-- shown (UpdateStep4PreviewStyle), same technique step 8's own
-	-- preview bar already uses.
+	-- Vanilla/modern variants of both the example stance row and action bar, built upfront - only the
+	-- pair matching step 3's choice is ever shown, same technique step 8's own preview bar uses.
 	local vanillaStanceContainer, vanillaStanceSlots = BuildStep4StanceRow(step, false, OnStanceClick)
 	vanillaStanceContainer:SetPoint("TOP", step, "TOP", 0, cursorY)
 
@@ -729,9 +676,8 @@ function ACABSetupWizardMixin:BuildStep4()
 	)
 	modernActionBarContainer:SetPoint("TOP", step, "TOP", 0, cursorY)
 
-	-- Page Swap Indicator lookalike (CreateWizardPageIndicator) - anchored
-	-- off the vanilla bar's own right edge; both bar variants share the
-	-- same width/position so this stays correct either way.
+	-- Page Swap Indicator lookalike - anchored off the vanilla bar's own right edge; both bar variants
+	-- share the same width/position so this stays correct either way.
 	local pageIndicator = CreateWizardPageIndicator(step, function()
 		ACAB.setupWizard.wizardState.pagePreviewActive = not ACAB.setupWizard.wizardState.pagePreviewActive
 		ACAB.setupWizard:UpdateStep4Preview()
@@ -740,18 +686,10 @@ function ACABSetupWizardMixin:BuildStep4()
 
 	cursorY = cursorY - ACAB.BUTTON_SIZE - 16
 
-	-- 3 stance-preview rows (each picks which of the 3 example stances'
-	-- ability set that row's own stance button shows when clicked) + 1
-	-- Page 2 row (picks which example stance's ability set Page 2 shows
-	-- when toggled active) - see STEP4_STANCE_PREVIEW_OPTIONS. All 4 are
-	-- gated on the two checkboxes above (UpdateStep4Visibility), same
-	-- CreateStep4StancePreviewRow builder so all 4 line up identically.
-	-- None of this is written to ACABDB, since these 3 example stances
-	-- are illustrative only and don't correspond to any particular
-	-- class's real stance/form indices (a Rogue's stance 1 isn't "Battle
-	-- Stance"). The real per-class assignment rows on each default bar's
-	-- own Bars Settings page are where this actually gets configured,
-	-- after the wizard finishes (see the disclaimer text above).
+	-- 3 stance-preview rows + 1 Page 2 row, all gated on the two checkboxes above, same
+	-- CreateStep4StancePreviewRow builder so all 4 line up identically. None of this is written to
+	-- ACABDB - these 3 example stances are illustrative only. The real per-class assignment rows on
+	-- each default bar's own Bars Settings page are where this actually gets configured.
 	local stanceDropdownRows = {}
 	local stanceDropdowns = {}
 	local s
@@ -846,18 +784,12 @@ function ACABSetupWizardMixin:BuildStep5()
 	return step
 end
 
--- Only reached via step 5's "modern" choice (same as step 7/8 below) -
--- lets the user preview and pick Pet Bar/Stance Bar's own native-vs-
--- styled mode before finishing. The two mode checkboxes mirror
--- SettingsBars.lua's CreateUseVanillaPetBarCheckbox/
--- CreateUseVanillaStanceBarCheckbox exactly (same label/tooltip text),
--- but write into wizardState instead of live ACABDB and skip their
--- "Reload Now" confirm dialog - FinishWizard's own single eventual
--- reload covers this, same as every other wizard control. Each bar gets
--- a vanilla/modern preview pair (only the one matching its own mode
--- checkbox is shown, UpdateStep6PreviewStyle - same technique steps 4/8
--- use for wizardState.modernBorderStyle) instead of one style always
--- shown regardless of the choice actually being made here.
+-- Only reached via step 5's "modern" choice (same as step 7/8 below) - lets the user preview and pick
+-- Pet Bar/Stance Bar's own native-vs-styled mode before finishing. The two mode checkboxes mirror
+-- SettingsBars.lua's CreateUseVanillaPetBarCheckbox/CreateUseVanillaStanceBarCheckbox (same
+-- label/tooltip text), but write into wizardState instead of live ACABDB and skip their "Reload Now"
+-- confirm dialog - FinishWizard's own single eventual reload covers this. Each bar gets a
+-- vanilla/modern preview pair, only the one matching its own mode checkbox shown.
 function ACABSetupWizardMixin:BuildStep6()
 	local step = CreateFrame("Frame", nil, self)
 
@@ -944,11 +876,7 @@ function ACABSetupWizardMixin:BuildStep6()
 	})
 	cursorY = cursorY - 24 - 14
 
-	-- Only meaningful/shown in styled mode (Button.lua's own
-	-- petBarShowEmpty check only applies to isPetSlot pool buttons -
-	-- native mode's real PetActionButtons always show all 10 regardless),
-	-- same reasoning SettingsBars.lua's own CreateCondenseEmptyPetSlotsCheckbox
-	-- comment gives.
+	-- Only meaningful/shown in styled mode - native mode's real PetActionButtons always show all 10 regardless.
 	local condenseCheckbox = ACAB:CreateLabeledCheckbox(step, "ACABSetupWizardCondensePetSlotsCheckbox", {
 		anchor = { "TOP", step, "TOP", -60, cursorY },
 		label = "Condense empty Button Space",
@@ -977,13 +905,9 @@ function ACABSetupWizardMixin:BuildStep6()
 	return step
 end
 
--- Order mirrors ExperienceBar.lua/SettingsBars.lua's own Experience Bar
--- settings page: Enabled, then (if enabled) a position choice, then
--- "Better Experience Bar" and (if enabled) everything it unlocks there -
--- 5 text-segment checkboxes, a font size slider, 3 color swatches, and a
--- rested-glow pulse interval slider. Every control here writes into
--- wizardState only; nothing is applied live or to ACABDB until
--- FinishWizard (see ApplyExpBarWizardState).
+-- Order mirrors SettingsBars.lua's own Experience Bar settings page: Enabled, then (if enabled) a
+-- position choice, then "Better Experience Bar" and everything it unlocks. Every control here writes
+-- into wizardState only; nothing is applied live or to ACABDB until FinishWizard.
 function ACABSetupWizardMixin:BuildStep7()
 	local step = CreateFrame("Frame", nil, self)
 
@@ -993,9 +917,8 @@ function ACABSetupWizardMixin:BuildStep7()
 	message:SetJustifyH("CENTER")
 	message:SetText("Set up your Experience Bar.")
 
-	-- Every widget below anchors to `step` directly at its own computed
-	-- cursorY, never widget-to-widget - a chained anchor drifts off-center
-	-- with each link. Mirrors SettingsBars.lua's own Experience Bar page.
+	-- Every widget below anchors to `step` directly at its own computed cursorY, never widget-to-widget
+	-- - a chained anchor drifts off-center with each link.
 	local cursorY = -18
 
 	local enabledCheckbox = ACAB:CreateLabeledCheckbox(step, "ACABSetupWizardExpBarEnabledCheckbox", {
@@ -1013,8 +936,7 @@ function ACABSetupWizardMixin:BuildStep7()
 	positionLabel:SetText("Where should your experience bar be:")
 	cursorY = cursorY - 16 - 8
 
-	-- Centered under its own label instead of beside it - beside it ran
-	-- past the wizard's right edge.
+	-- Centered under its own label instead of beside it - beside it ran past the wizard's right edge.
 	local positionDropdown = ACAB:CreateInlineDropdown(step, 120, "ACABSetupWizardExpBarPositionDropdown")
 	positionDropdown:ClearAllPoints()
 	positionDropdown:SetPoint("TOP", step, "TOP", 0, cursorY)
@@ -1034,8 +956,7 @@ function ACABSetupWizardMixin:BuildStep7()
 	})
 	cursorY = cursorY - 24 - 20
 
-	-- 5 independently toggleable text segments - same dbKey names as the
-	-- real settings page, stacked in the same order.
+	-- 5 independently toggleable text segments - same dbKey names as the real settings page.
 	local TEXT_TOGGLES = {
 		{ key = "expBarShowLevel", label = "Show Current Lvl" },
 		{ key = "expBarShowCurrentOverMax", label = "Show Current XP / Max" },
@@ -1064,8 +985,7 @@ function ACABSetupWizardMixin:BuildStep7()
 
 	cursorY = cursorY - 16
 
-	-- Font size slider - mirrors SettingsBars.lua's own range/step for
-	-- this same control.
+	-- Font size slider - mirrors SettingsBars.lua's own range/step for this same control.
 	local fontSizeLabel = step:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	fontSizeLabel:SetPoint("TOP", step, "TOP", 0, cursorY)
 	fontSizeLabel:SetText("Font Size")
@@ -1089,8 +1009,8 @@ function ACABSetupWizardMixin:BuildStep7()
 	})
 	cursorY = cursorY - 20 - 14 - 22
 
-	-- 3 color swatches: Earned XP Bar Color, Rested XP Bar Color, Overlay
-	-- Text Color - same order/labels as the real settings page.
+	-- 3 color swatches: Earned XP Bar Color, Rested XP Bar Color, Overlay Text Color - same
+	-- order/labels as the real settings page.
 	local function BuildColorRow(labelText, name, wizardKey)
 		local label = step:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 		label:SetPoint("TOP", step, "TOP", -70, cursorY)
@@ -1191,11 +1111,8 @@ function ACABSetupWizardMixin:BuildStep8()
 	previewLabel:SetPoint("TOP", message, "BOTTOM", 0, -10)
 	previewLabel:SetText("Preview")
 
-	-- One preview bar per style, both anchored at the same spot - only the
-	-- one matching wizardState.modernBorderStyle (chosen on step 3) is
-	-- ever shown (UpdateStep8PreviewStyle), so the bar the user sees here
-	-- actually matches what they picked instead of always rendering
-	-- vanilla-styled regardless of that choice.
+	-- One preview bar per style, both anchored at the same spot - only the one matching
+	-- wizardState.modernBorderStyle (chosen on step 3) is ever shown.
 	local vanillaBarContainer, vanillaBarSlots = CreateWizardPreviewBar(
 		step, false, PREVIEW_SLOT_COUNT, ACAB.BUTTON_SIZE, 0
 	)
@@ -1211,22 +1128,18 @@ function ACABSetupWizardMixin:BuildStep8()
 	step.modernBarContainer = modernBarContainer
 	step.modernBarSlots = modernBarSlots
 
-	-- Fixed clearance below previewLabel (not anchored to either bar's own
-	-- BOTTOM) so the checkbox stack doesn't jump as the button-size slider
-	-- grows the bar - BUTTON_SIZE_MAX plus a margin.
+	-- Fixed clearance below previewLabel (not anchored to either bar's own BOTTOM) so the checkbox
+	-- stack doesn't jump as the button-size slider grows the bar - BUTTON_SIZE_MAX plus a margin.
 	local PREVIEW_CLEARANCE = -(10 + ACAB.BUTTON_SIZE_MAX + 14)
 
-	-- Every row below anchors directly to previewLabel at its own computed
-	-- cursorY, never widget-to-widget - chaining a row off a Hide()'n
-	-- sibling's own unresolved rect grows the gap on every show/hide toggle.
-	-- CHECKBOX_HEIGHT/SLIDER_HEIGHT match CreateLabeledCheckbox/
-	-- CreateSettingSlider's own fixed sizes.
+	-- Every row below anchors directly to previewLabel at its own computed cursorY, never
+	-- widget-to-widget - chaining off a Hide()'n sibling's unresolved rect grows the gap on toggle.
 	local CHECKBOX_HEIGHT = 24
 	local SLIDER_HEIGHT = 17
 	local cursorY = PREVIEW_CLEARANCE
 
-	-- Stacked vertically (not side by side like the General settings
-	-- page's own pair) - side by side here runs past the wizard's width.
+	-- Stacked vertically (not side by side like the General settings page's own pair) - side by side
+	-- here runs past the wizard's width.
 	local spacingCheckbox = ACAB:CreateLabeledCheckbox(step, "ACABSetupWizardSpacingCheckbox", {
 		anchor = { "TOP", previewLabel, "BOTTOM", -60, cursorY },
 		label = "Enable global spacing",
@@ -1237,10 +1150,9 @@ function ACABSetupWizardMixin:BuildStep8()
 	})
 	cursorY = cursorY - CHECKBOX_HEIGHT - 14
 
-	-- Mirrors SettingsGeneral.lua's own global-spacing slider config
-	-- (step = ACAB.SPACING_STEP); the useDefaultLayout-driven display-offset
-	-- that slider applies doesn't apply here since the wizard only reaches
-	-- this step after useDefaultLayout has already been chosen "Disable".
+	-- Mirrors SettingsGeneral.lua's own global-spacing slider config; the useDefaultLayout-driven
+	-- display-offset that slider applies doesn't apply here since the wizard only reaches this step
+	-- after useDefaultLayout has already been chosen "Disable".
 	local spacingSlider, spacingValueText = ACAB:CreateLabeledSlider(step, "ACABSetupWizardSpacingSlider", {
 		anchor = { "TOP", previewLabel, "BOTTOM", 0, cursorY },
 		width = 180,
@@ -1308,18 +1220,15 @@ function ACABSetupWizardMixin:BuildStep8()
 end
 
 function ACABSetupWizardMixin:OnLoad()
-	-- FULLSCREEN_DIALOG: same strata as ACABDialogMixin, above the settings
-	-- window and any other addon UI.
+	-- FULLSCREEN_DIALOG: same strata as ACABDialogMixin, above the settings window and any other addon UI.
 	self:SetFrameStrata("FULLSCREEN_DIALOG")
 	self:SetWidth(WIZARD_WIDTH)
 	self:SetHeight(INITIAL_HEIGHT)
 
-	-- Anchored by TOP, not CENTER - FitHeightToStep reads this same TOP
-	-- edge as its measurement reference, and a CENTER anchor moves it on
-	-- every resize (top = center + height/2), compounding across resizes.
+	-- Anchored by TOP, not CENTER - FitHeightToStep reads this same TOP edge as its measurement
+	-- reference, and a CENTER anchor moves it on every resize, compounding across resizes.
 	self:SetPoint("TOP", UIParent, "TOP", 0, -80)
 
-	-- Matches ACABDialogMixin/Settings.lua's own window backdrop.
 	self:SetBackdrop({
 		bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
 		edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
@@ -1378,11 +1287,9 @@ function ACABSetupWizardMixin:OnLoad()
 
 	local i
 
-	-- Dual TOPLEFT+BOTTOMRIGHT anchor, both corners off `self` directly -
-	-- gives each step frame a real width AND height purely derived from
-	-- self's own (already-resolved) rect, set once here and never touched
-	-- again. STEP_CONTENT_TOP_OFFSET clears titleText+stepText (measured
-	-- live in testing); the bottom margin clears the Back/Next button row.
+	-- Dual TOPLEFT+BOTTOMRIGHT anchor, both corners off `self` directly - gives each step frame a real
+	-- width AND height derived from self's own rect, set once here. STEP_CONTENT_TOP_OFFSET clears
+	-- titleText+stepText; the bottom margin clears the Back/Next button row.
 	local STEP_CONTENT_TOP_OFFSET = -66
 	local STEP_CONTENT_BOTTOM_MARGIN = 50
 
@@ -1396,14 +1303,10 @@ function ACABSetupWizardMixin:OnLoad()
 	self:Hide()
 end
 
--- Resets all transient wizard state/widgets to their starting point - run
--- once per ACAB:ShowSetupWizard open, so a previous partial run (closed via
--- Cancel/X) never leaks into the next.
---
--- config.overwriteExisting: reconfigures the given (already-active)
--- config.profileName in place instead of creating a new profile - used by
--- the Profiles settings page's "Run Setup Wizard" button. Skips step 1
--- (the name is fixed to the current profile, not chosen).
+-- Resets all transient wizard state/widgets to their starting point - run once per
+-- ACAB:ShowSetupWizard open, so a previous partial run (closed via Cancel/X) never leaks into the next.
+-- config.overwriteExisting: reconfigures the given (already-active) config.profileName in place
+-- instead of creating a new profile. Skips step 1 (the name is fixed to the current profile).
 function ACABSetupWizardMixin:Reset(config)
 	config = config or {}
 
@@ -1485,10 +1388,8 @@ function ACABSetupWizardMixin:Reset(config)
 		step7.textToggleCheckboxes[i]:SetChecked(true)
 	end
 
-	-- Font size/pulse interval sliders show a real current-session default
-	-- (same lazy-nil idiom as the real settings page - ACAB.NATIVE_EXPBAR_FONT/
-	-- the 1.5s pulse default) purely for display; wizardState's own field
-	-- stays nil (no write at Finish) unless the user actually moves one.
+	-- Font size/pulse interval sliders show a real current-session default purely for display;
+	-- wizardState's own field stays nil (no write at Finish) unless the user actually moves one.
 	ACAB:CaptureNativeExpBarFontIfNeeded()
 
 	local nativeFontSize = ACAB.NATIVE_EXPBAR_FONT and (ACAB.NATIVE_EXPBAR_FONT.size - 1)
@@ -1531,13 +1432,9 @@ function ACABSetupWizardMixin:ShowStep(n)
 
 	self.currentStep = n
 
-	-- Overwrite mode skips step 1 (name is fixed to the current profile),
-	-- so the displayed count is renumbered to "of 7" starting at 1 instead
-	-- of showing a step 1 the user never saw, and Back has nothing to go
-	-- back to until step 3. Total is the max reachable step regardless of
-	-- mode - choosing "Keep Vanilla Layout" on step 5 or "Lock down
-	-- default Elements!" on step 2 finishes without ever visiting step
-	-- 6/7/8, same as this counter already not visiting every number in order.
+	-- Overwrite mode skips step 1, so the displayed count is renumbered to "of 7" starting at 1 instead
+	-- of showing a step the user never saw, and Back has nothing to go back to until step 3. Total is
+	-- the max reachable step regardless of mode - some paths finish early without visiting every step.
 	local firstStep = self.wizardState.overwriteExisting and 2 or 1
 	local totalSteps = self.wizardState.overwriteExisting and 7 or 8
 	local displayStep = self.wizardState.overwriteExisting and (n - 1) or n
@@ -1570,23 +1467,16 @@ function ACABSetupWizardMixin:ShowStep(n)
 	self:FitHeightToStep(n)
 end
 
--- Back always steps to currentStep-1 - every reachable path through the
--- wizard is a straight line (step 2's "Lock down default Elements!" and
--- step 4's "Keep Vanilla Layout + ArtBar enabled" both finish immediately
--- rather than skipping ahead), so there's no case where the previous step
--- isn't the one the user actually saw.
+-- Back always steps to currentStep-1 - every reachable path through the wizard is a straight line, so
+-- there's no case where the previous step isn't the one the user actually saw.
 function ACABSetupWizardMixin:GoToPreviousStep()
 	self:ShowStep(self.currentStep - 1)
 end
 
--- Deepest (lowest-on-screen) GetBottom() among `step`'s own direct child
--- frames/regions that are currently shown - container frames (e.g. a
--- preview bar) are measured as one unit via their own GetBottom(), not
--- recursed into, since their own height already spans their children.
--- Skips any widget flagged .ACABNavButton (each step's own Next/Finish
--- button): it's anchored to the WIZARD frame, not `step`, so its position
--- is a function of the wizard's own height - counting it as step content
--- would feed back into a taller wizard on every fit call.
+-- Deepest (lowest-on-screen) GetBottom() among `step`'s own direct child frames/regions that are
+-- currently shown - container frames are measured as one unit, not recursed into. Skips any widget
+-- flagged .ACABNavButton: it's anchored to the wizard frame, not `step`, so counting it as step
+-- content would feed back into a taller wizard on every fit call.
 local function MeasureStepBottom(step)
 	local deepest = nil
 	local widgets = { step:GetChildren() }
@@ -1612,15 +1502,11 @@ local function MeasureStepBottom(step)
 	return deepest
 end
 
--- Re-anchors TOPLEFT off UIParent's own BOTTOMLEFT at the wizard's current
--- on-screen position - called once, right after a drag ends (OnLoad's
--- OnDragStop), not on every resize. Dragging replaces OnLoad's TOP anchor
--- with an engine-derived one that's no longer guaranteed TOP-anchored, so
--- this restores that invariant for FitHeightToStep's own TOP-edge reads.
--- Must stay drag-end-only, not re-run per FitHeightToStep call: GetTop()
--- read immediately after a ClearAllPoints/SetPoint pair doesn't reliably
--- reflect the new anchor yet on this client, so a per-call reanchor bakes
--- in a stale "top" and compounds the wizard's height on every toggle.
+-- Re-anchors TOPLEFT off UIParent's own BOTTOMLEFT at the wizard's current on-screen position - called
+-- once, right after a drag ends, not on every resize. Dragging replaces OnLoad's TOP anchor with an
+-- engine-derived one that's no longer guaranteed TOP-anchored, so this restores that invariant.
+-- Must stay drag-end-only: GetTop() read immediately after a ClearAllPoints/SetPoint pair doesn't
+-- reliably reflect the new anchor yet on this client, so a per-call reanchor compounds height on toggle.
 function ACABSetupWizardMixin:NormalizeAnchorToTopLeft()
 	local left = self:GetLeft()
 	local top = self:GetTop()
@@ -1631,14 +1517,9 @@ function ACABSetupWizardMixin:NormalizeAnchorToTopLeft()
 	end
 end
 
--- Resizes the wizard to fit step `n`'s actual current content instead of a
--- guessed-at fixed height. GetBottom() on content just Show()'n this same
--- tick hasn't resolved on this client yet, so the measurement is deferred
--- one frame via ACAB:DeferFit. Guarded on currentStep still matching `n`
--- in case the user already moved on by the time the callback runs. Relies
--- on the wizard's current anchor (OnLoad's TOP, or NormalizeAnchorToTopLeft's
--- TOPLEFT post-drag) keeping its top edge fixed - see that function's own
--- comment for why this doesn't re-touch the anchor itself.
+-- Resizes the wizard to fit step `n`'s actual current content instead of a guessed-at fixed height.
+-- GetBottom() on content just Show()'n this tick hasn't resolved yet, so measurement is deferred one
+-- frame. Guarded on currentStep still matching `n` in case the user already moved on.
 function ACABSetupWizardMixin:FitHeightToStep(n)
 	local step = self.steps[n]
 
@@ -1667,8 +1548,8 @@ function ACABSetupWizardMixin:FitHeightToStep(n)
 	end)
 end
 
--- Validates step 1's profile-name entry and advances to step 2 - reused by
--- both the Next button and the edit box's OnEnterPressed.
+-- Validates step 1's profile-name entry and advances to step 2 - reused by both the Next button and
+-- the edit box's OnEnterPressed.
 function ACABSetupWizardMixin:AdvanceFromStep1()
 	local step = self.steps[1]
 	local name = step.editBox:GetText()
@@ -1693,11 +1574,8 @@ function ACABSetupWizardMixin:AdvanceFromStep1()
 	self:ShowStep(2)
 end
 
--- Gates step 4's 3 stance-assignment rows/Page Swap Indicator/page-
--- assignment row on the Stance/Page checkboxes, same Show/Hide-on-
--- checkbox pattern as every other reveal-on-checkbox control in this
--- wizard - then refreshes the preview, since toggling either checkbox
--- also changes what the example bar should be showing.
+-- Gates step 4's 3 stance-assignment rows/Page Swap Indicator/page-assignment row on the Stance/Page
+-- checkboxes - then refreshes the preview, since toggling either checkbox changes what the example bar shows.
 function ACABSetupWizardMixin:UpdateStep4Visibility()
 	local step = self.steps[4]
 	local state = self.wizardState
@@ -1717,10 +1595,8 @@ function ACABSetupWizardMixin:UpdateStep4Visibility()
 	end
 end
 
--- Shows whichever of step 4's vanilla/modern stance row + action bar
--- pairs matches step 3's choice (wizardState.modernBorderStyle) and hides
--- the other - called from ShowStep whenever step 4 becomes visible, same
--- technique as step 8's own UpdateStep8PreviewStyle.
+-- Shows whichever of step 4's vanilla/modern stance row + action bar pairs matches step 3's choice and
+-- hides the other - called from ShowStep whenever step 4 becomes visible.
 function ACABSetupWizardMixin:UpdateStep4PreviewStyle()
 	local step = self.steps[4]
 	local isModern = self.wizardState.modernBorderStyle and true or false
@@ -1731,21 +1607,12 @@ function ACABSetupWizardMixin:UpdateStep4PreviewStyle()
 	step.modernActionBarContainer:SetShown(isModern)
 end
 
--- Refreshes the example action bar's 4 icons and which stance button
--- glows, from the current stance/page selection. The 3 stance buttons
--- are always clickable and always update which one glows, regardless of
--- the Stance/Form checkbox - that checkbox only gates whether the ACTION
--- BAR actually reacts to the click (off: always shows Battle Stance's
--- own content, same as a real bar that never swaps), matching what the
--- checkbox actually controls instead of disabling the buttons outright.
--- Toggling Page 2 doesn't block stance selection either - clicking a
--- stance still moves the glow and updates stancePreviewAssignment's
--- target, it just doesn't change the bar while Page 2's own content is
--- what's showing (same content-priority a real Shift/Ctrl page hold has
--- over the active stance). Both style variants' slots are updated
--- regardless of which is currently shown (see UpdateStep4PreviewStyle),
--- so either is already correct the moment the user switches which one
--- that shows.
+-- Refreshes the example action bar's 4 icons and which stance button glows, from the current
+-- stance/page selection. The 3 stance buttons are always clickable and always update which one glows,
+-- regardless of the Stance/Form checkbox - that checkbox only gates whether the action bar reacts to
+-- the click. Toggling Page 2 doesn't block stance selection either - clicking a stance still moves the
+-- glow, it just doesn't change the bar while Page 2's content is showing (matching a real Shift/Ctrl
+-- page hold's priority over the active stance). Both style variants' slots are always updated.
 function ACABSetupWizardMixin:UpdateStep4Preview()
 	local step = self.steps[4]
 	local state = self.wizardState
@@ -1779,17 +1646,11 @@ function ACABSetupWizardMixin:UpdateStep4Preview()
 	end
 end
 
--- Shows whichever of step 6's two Stance Bar/Pet Bar preview pairs
--- matches each bar's own mode checkbox (wizardState.useNativeStanceBar/
--- useNativePetBar) - called from both checkboxes' onClick and from
--- ShowStep whenever step 6 becomes visible. A real native frame's look
--- is fixed (always vanilla Blizzard button art, regardless of step 3's
--- border-style choice) - only the STYLED case reflects
--- wizardState.modernBorderStyle, so unchecking "Use Vanilla" swaps the
--- real UI element for this addon's styled bar approach, not just a
--- different border skin on the same thing. Also gates the Condense
--- checkbox (styled Pet Bar mode only, Button.lua's own petBarShowEmpty
--- check never applies to native mode) and refreshes its own preview.
+-- Shows whichever of step 6's two Stance Bar/Pet Bar preview pairs matches each bar's own mode
+-- checkbox - called from both checkboxes' onClick and from ShowStep whenever step 6 becomes visible.
+-- A real native frame's look is fixed (always vanilla Blizzard button art) - only the styled case
+-- reflects wizardState.modernBorderStyle. Also gates the Condense checkbox (styled Pet Bar mode only)
+-- and refreshes its own preview.
 function ACABSetupWizardMixin:UpdateStep6PreviewStyle()
 	local step = self.steps[6]
 	local state = self.wizardState
@@ -1812,14 +1673,10 @@ function ACABSetupWizardMixin:UpdateStep6PreviewStyle()
 	end
 end
 
--- Re-flows whichever container currently represents the STYLED Pet Bar
--- (vanillaPetContainer or modernPetContainer, per wizardState.modernBorderStyle -
--- see UpdateStep6PreviewStyle) tight, hiding the 3 untrained-ability
--- slots, when Condense is checked - mirrors Button.lua's own
--- petBarShowEmpty check (native mode never condenses). Always resets
--- BOTH containers to their normal full 10-wide grid first, so neither is
--- ever left mid-condensed from a previous state once it becomes active
--- again (native/styled toggle, or switching border style).
+-- Re-flows whichever container currently represents the styled Pet Bar tight, hiding the 3
+-- untrained-ability slots, when Condense is checked (native mode never condenses). Always resets both
+-- containers to their normal full 10-wide grid first, so neither is left mid-condensed from a
+-- previous state once it becomes active again.
 function ACABSetupWizardMixin:UpdateStep6PetCondensePreview()
 	local step = self.steps[6]
 	local state = self.wizardState
@@ -1869,12 +1726,9 @@ function ACABSetupWizardMixin:UpdateStep6PetCondensePreview()
 	activeContainer:SetWidth(ComputePreviewBarWidth(ACAB.BUTTON_SIZE, activeSpacing, n))
 end
 
--- Gates step 7's position dropdown/"Better Experience Bar" checkbox on
--- Enable Experience Bar, and its 5 text toggles/font size/3 color swatches/
--- pulse interval on Better Experience Bar itself - same two-level gating
--- as the real settings page's ApplyBetterExpBarGating, but Show/Hide
--- instead of dim, matching every other reveal-on-checkbox control already
--- in this wizard (step 8's spacing/size sliders).
+-- Gates step 7's position dropdown/"Better Experience Bar" checkbox on Enable Experience Bar, and its
+-- 5 text toggles/font size/3 color swatches/pulse interval on Better Experience Bar itself - same
+-- two-level gating as the real settings page's ApplyBetterExpBarGating, but Show/Hide instead of dim.
 function ACABSetupWizardMixin:UpdateStep7Visibility()
 	local step = self.steps[7]
 	local state = self.wizardState
@@ -1927,10 +1781,8 @@ function ACABSetupWizardMixin:UpdateStep8SliderVisibility()
 	end
 end
 
--- Shows whichever of step 8's two preview bars matches step 3's choice
--- (wizardState.modernBorderStyle) and hides the other - called from
--- ShowStep whenever step 8 becomes visible, so the bar shown here always
--- matches what the user actually picked.
+-- Shows whichever of step 8's two preview bars matches step 3's choice and hides the other - called
+-- from ShowStep whenever step 8 becomes visible.
 function ACABSetupWizardMixin:UpdateStep8PreviewStyle()
 	local step = self.steps[8]
 	local isModern = self.wizardState.modernBorderStyle and true or false
@@ -1939,10 +1791,8 @@ function ACABSetupWizardMixin:UpdateStep8PreviewStyle()
 	step.modernBarContainer:SetShown(isModern)
 end
 
--- Recomputes the single active preview bar's slot layout from the current
--- spacing/size slider values (both aspects on the same bar, per whichever
--- step 3 picked) - updates both style variants' slots so either is
--- already correct whenever UpdateStep8PreviewStyle switches which is shown.
+-- Recomputes the single active preview bar's slot layout from the current spacing/size slider values -
+-- updates both style variants' slots so either is already correct when UpdateStep8PreviewStyle switches.
 function ACABSetupWizardMixin:ReflowStep8Preview()
 	local step = self.steps[8]
 	local state = self.wizardState
@@ -1950,12 +1800,8 @@ function ACABSetupWizardMixin:ReflowStep8Preview()
 	local buttonSize = (state.globalButtonSizeEnabled and state.globalButtonSizeValue) or ACAB.BUTTON_SIZE
 	local sliderSpacing = (state.globalSpacingEnabled and state.globalSpacingValue) or 0
 
-	-- Mirrors ACAB:ApplyGlobalSpacingToBar's real formula exactly
-	-- (Bar.lua): the slider's own displayed number is never itself
-	-- offset, but vanilla border style ADDS VANILLA_SPACING_FLOOR on top
-	-- of it for the real applied spacing - a slider left at 0 already
-	-- means real spacing 4 in vanilla style, same as every bar this
-	-- override applies to elsewhere. Modern style has no floor.
+	-- Mirrors Bar.lua's ApplyGlobalSpacingToBar formula: vanilla border style adds VANILLA_SPACING_FLOOR
+	-- on top of the slider's displayed value; modern style has no floor.
 	local vanillaSpacing = ACAB.VANILLA_SPACING_FLOOR + sliderSpacing
 	local modernSpacing = sliderSpacing
 
@@ -1971,17 +1817,10 @@ function ACABSetupWizardMixin:ReflowStep8Preview()
 	step.modernBarContainer:SetWidth(modernWidth)
 end
 
--- Applies step 7's Experience Bar choices onto `data`: Enabled, and (if
--- enabled) position - centered at the bottom or top of the screen, via
--- the exact same min/max Y the real Experience Bar settings page's own
--- slider would allow (ACAB:GetSimpleElementCoordinateRange, called live
--- against the real frame - safe to do before this profile's ReloadUI,
--- since the range only depends on screen size/scale and the exp bar
--- frame's own size, neither of which this wizard changes). "Better
--- Experience Bar" and everything it unlocks on that same page (5 text
--- toggles, font size, 3 colors, rested-glow pulse interval) is only
--- written when enabled - untouched fields are left alone, so the profile
--- just keeps whatever it already had for anything the user didn't touch.
+-- Applies step 7's Experience Bar choices onto `data`: Enabled, and (if enabled) position - centered
+-- at the bottom or top of the screen, via the same min/max Y the real settings page's slider allows.
+-- "Better Experience Bar" and everything it unlocks is only written when enabled - untouched fields
+-- are left alone, so the profile keeps whatever it already had for anything the user didn't touch.
 local function ApplyExpBarWizardState(state, data)
 	if state.expBarEnabled ~= nil then
 		data.expBarEnabled = state.expBarEnabled
@@ -2031,41 +1870,24 @@ local function ApplyExpBarWizardState(state, data)
 	end
 end
 
--- Applies the "Modern Layout" preset's non-geometry flags (step 4's
--- second choice) onto `data` - disables Blizzard's bar art and turns off
--- Snap to Grid/Snap to Adjacent Elements, which would otherwise fight the
--- user's own later manual adjustments to a flush-corner element. The
--- actual bar/element positions are computed separately, live, by
--- ACAB:ApplyModernLayoutGeometry below - `data` isn't yet the live
--- ACABDB at the point this runs (still being built, possibly for a
--- brand-new profile), so real frame geometry can't be measured against it.
+-- Applies the "Modern Layout" preset's non-geometry flags onto `data` - disables Blizzard's bar art
+-- and turns off Snap to Grid/Snap to Adjacent Elements, which would otherwise fight later manual
+-- adjustments. Actual positions are computed separately, live, by ApplyModernLayoutGeometry below -
+-- `data` isn't yet the live ACABDB at this point, so real frame geometry can't be measured against it.
 local function ApplyModernLayoutPreset(state, data)
 	data.disableBlizzardArt = true
 
-	-- Bag Bar sits exactly flush with the screen's corner below - a
-	-- natural target for the Edit Mode "Snap to Grid"/"Snap to Adjacent
-	-- Elements" features (DefaultBars.lua's ApplyDragSnap, on by default),
-	-- which fight any attempt to manually drag it away again afterward.
-	-- Off here so this profile doesn't fight your own later adjustments.
+	-- Bag Bar sits exactly flush with the screen's corner - a natural target for Snap to Grid/Snap to
+	-- Adjacent Elements, which would fight any attempt to manually drag it away again afterward.
 	data.snapToGrid = false
 	data.snapToAdjacentElements = false
 end
 
--- Applies the full Modern Layout preset's geometry directly onto the
--- live ACABDB - stacks Main Bar/Action Bar 1/Action Bar 2 (zero gap), the
--- right/left vertical bar clusters (bars 4/5 + Extra Bar 1-4), Stance/Pet
--- Bar (directly above Action Bar 2), the Page Indicator (if Page
--- Bar-Changes is on - ACAB:ResetPageIndicatorToModernBase's own guard
--- reads ACABDB.defaultBarPaginationEnabled, already written onto this
--- same ACABDB by ApplyWizardStateToProfileData before this runs) and the
--- bottom-right corner cluster (Bag Bar/Key Ring/Micro Menu/Latency Bar) -
--- the SAME per-element functions every individual "Reset to Modern
--- Layout Default" button calls, so the wizard and those buttons can
--- never drift apart. Must run against a live ACABDB that already points
--- at the target profile (ACAB:FinishWizard below) - bars 1-5 always
--- exist regardless of active profile, so this is safe to call the moment
--- FinishWizard has pointed ACABDB there, before the reload that discards
--- this session's now-unused in-memory state.
+-- Applies the full Modern Layout preset's geometry directly onto the live ACABDB - stacks Main Bar/
+-- Action Bar 1/Action Bar 2 (zero gap), the right/left vertical bar clusters, Stance/Pet Bar, the Page
+-- Indicator, and the bottom-right corner cluster - the same per-element functions every individual
+-- "Reset to Modern Layout Default" button calls, so the wizard and those buttons can never drift apart.
+-- Must run against a live ACABDB that already points at the target profile (FinishWizard below).
 function ACAB:ApplyModernLayoutGeometry()
 	self:ApplyModernMainActionBarsLayout()
 	self:ApplyModernVerticalBarClusterLayout()
@@ -2078,38 +1900,23 @@ function ACAB:ApplyModernLayoutGeometry()
 	self:ApplyModernCornerClusterLayout()
 end
 
--- Applies wizardState.useDefaultLayout/modernBorderStyle/general layout
--- format/global spacing+size onto `data` - shared by FinishWizard's create
--- and overwrite branches.
+-- Applies wizardState.useDefaultLayout/modernBorderStyle/general layout format/global spacing+size
+-- onto `data` - shared by FinishWizard's create and overwrite branches.
 local function ApplyWizardStateToProfileData(state, data)
 	data.useDefaultLayout = state.useDefaultLayout
 
 	if state.modernBorderStyle ~= nil then
 		data.modernBorderStyle = state.modernBorderStyle
 
-		-- Bar.lua's ApplyGlobalButtonStyle compares ACABDB.lastAppliedVanillaStyle
-		-- against the CURRENT style every login, and silently shifts every
-		-- default bar's buttonSize (+/-MODERN_BUTTON_SIZE_DELTA), position
-		-- and spacing to compensate for a style switch - meant for a user
-		-- flipping the style on an already-live profile mid-session, not a
-		-- brand-new profile that never had a previous style. Left unset (or
-		-- copied from whatever profile this data came from), it doesn't
-		-- match the style this wizard just chose, so that compensation
-		-- fired on the very next login and perturbed Action Bar 2 (and
-		-- everything anchored off it below) by that same delta - confirmed
-		-- live as the actual cause of Stance/Pet Bar's alignment being off,
-		-- not the width/spacing math itself. Setting this to match now
-		-- tells it nothing changed.
+		-- WARNING: must set lastAppliedVanillaStyle to match, or Bar.lua's ApplyGlobalButtonStyle
+		-- treats this as a live style switch on next login and shifts every default bar's
+		-- buttonSize/position/spacing to compensate, perturbing Action Bar 2 and Stance/Pet Bar's alignment.
 		data.lastAppliedVanillaStyle = not state.modernBorderStyle
 	end
 
-	-- Step 4 (Stance/Page Swapping) is only ever reached via step 2's
-	-- "unlocked" path (useDefaultLayout false) - the locked-default path
-	-- finishes immediately from step 2, so these checkboxes were never
-	-- shown/confirmed there and the profile keeps whatever it already
-	-- had, same deliberate no-op as generalLayoutFormat below. The 3
-	-- stance dropdowns/1 page dropdown on that step are cosmetic-only
-	-- (see BuildStep4's own comment) and never written here.
+	-- Step 4 (Stance/Page Swapping) is only ever reached via step 2's "unlocked" path - the
+	-- locked-default path finishes immediately from step 2, so these checkboxes were never
+	-- shown/confirmed and the profile keeps whatever it already had.
 	if state.useDefaultLayout == false then
 		data.defaultBarPaginationEnabled = state.pageSwapEnabled
 		data.defaultBarStanceSwapEnabled = state.stanceSwapEnabled
@@ -2125,14 +1932,9 @@ local function ApplyWizardStateToProfileData(state, data)
 		data.globalButtonSizeValue = state.globalButtonSizeValue
 	end
 
-	-- "blizzard" (Keep Vanilla Layout + ArtBar enabled) writes nothing onto
-	-- `data` here - steps 6-8 (Pet/Stance mode, Experience Bar, Spacing/
-	-- Button Size) are never visited on that path so there's nothing from
-	-- them to apply. The actual reset to vanilla positions/settings
-	-- happens separately in FinishWizard below (ACAB:
-	-- ResetAllElementsToVanillaLayout), against the live ACABDB once it
-	-- points at the target profile - `data` here isn't always that yet
-	-- (the create-profile path passes a plain ACABProfilesDB entry).
+	-- "blizzard" (Keep Vanilla Layout + ArtBar enabled) writes nothing onto `data` here - steps 6-8 are
+	-- never visited on that path. The actual reset to vanilla happens separately in FinishWizard below,
+	-- against the live ACABDB once it points at the target profile.
 	if state.generalLayoutFormat == "modern" then
 		data.defaultBars = data.defaultBars or {}
 
@@ -2154,12 +1956,9 @@ local function ApplyWizardStateToProfileData(state, data)
 	end
 end
 
--- Creates the profile from wizardState and switches to it (reloads the UI),
--- or - in overwrite mode (Profiles settings page's "Run Setup Wizard") -
--- applies wizardState directly onto the already-active profile and reloads.
--- On a name race in create mode (e.g. the name got taken between step 1 and
--- here), sends the user back to step 1 with the rejection message shown
--- instead of silently failing.
+-- Creates the profile from wizardState and switches to it (reloads the UI), or - in overwrite mode -
+-- applies wizardState directly onto the already-active profile and reloads. On a name race in create
+-- mode, sends the user back to step 1 with the rejection message shown instead of silently failing.
 function ACABSetupWizardMixin:FinishWizard()
 	local state = self.wizardState
 
@@ -2167,21 +1966,14 @@ function ACABSetupWizardMixin:FinishWizard()
 		ACABDB = ACABDB or {}
 		ApplyWizardStateToProfileData(state, ACABDB)
 
-		-- ACABDB already IS the live active profile in overwrite mode -
-		-- Modern Layout's geometry can apply/measure against real bars
-		-- for real right here, no profile switch needed first.
+		-- ACABDB already is the live active profile in overwrite mode - Modern Layout's geometry can
+		-- apply/measure against real bars right here, no profile switch needed first.
 		if state.generalLayoutFormat == "modern" then
 			ACAB:ApplyModernLayoutGeometry()
 		elseif state.generalLayoutFormat == "blizzard" then
-			-- "Keep Vanilla Layout" only reached this profile's OWN prior
-			-- data untouched (ApplyWizardStateToProfileData's own comment
-			-- on this branch) - in overwrite mode that prior data can
-			-- already be a Modern Layout profile from an earlier wizard
-			-- run, which would otherwise survive re-running the wizard and
-			-- picking Vanilla here. Same reset cascade
-			-- "Force Vanilla Layout Mode" (General tab) runs, so this
-			-- choice always lands on the real vanilla baseline regardless
-			-- of what the profile had before.
+			-- In overwrite mode the prior data can already be a Modern Layout profile from an earlier
+			-- wizard run - runs the same reset cascade "Force Vanilla Layout Mode" uses, so this choice
+			-- always lands on the real vanilla baseline regardless of what the profile had before.
 			ACAB:ResetAllElementsToVanillaLayout()
 		end
 
@@ -2206,31 +1998,19 @@ function ACABSetupWizardMixin:FinishWizard()
 
 	ApplyWizardStateToProfileData(state, ACABProfilesDB[state.profileName])
 
-	-- Persists whatever the OLD active profile's live ACABDB currently
-	-- holds before switching away from it - same first step
-	-- ACAB:SwitchProfile itself takes.
+	-- Persists whatever the OLD active profile's live ACABDB currently holds before switching away
+	-- from it - same first step ACAB:SwitchProfile itself takes.
 	ACAB:SaveActiveProfileData()
 
-	-- Points live ACABDB at the just-created profile WITHOUT reloading
-	-- yet (unlike ACAB:SwitchProfile, which reloads immediately) - Modern
-	-- Layout's geometry needs live bars 1-5 (always exist regardless of
-	-- active profile) to actually apply/measure against for real, and the
-	-- ReloadUI() this ends with discards this session's now-unused
-	-- in-memory state anyway, so switching the pointer here first is safe.
+	-- Points live ACABDB at the just-created profile without reloading yet - Modern Layout's geometry
+	-- needs live bars 1-5 to actually apply/measure against, and the ReloadUI() this ends with
+	-- discards this session's now-unused in-memory state anyway.
 	ACAB.activeProfileName = state.profileName
 	ACABDB = ACAB:DeepCopyTable(ACABProfilesDB[state.profileName])
 
-	-- Every already-created bar's own bar.config field (Bar.lua's
-	-- persistent reference, captured once at bar creation) still points
-	-- at the OLD ACABDB's tables after the reassignment above - Modern
-	-- Layout's geometry writes straight into bar.config, so without
-	-- re-pointing it here those writes land in an orphaned table
-	-- SaveActiveProfileData below never reads from, and the saved
-	-- profile silently keeps whatever ApplyWizardStateToProfileData/the
-	-- Default-profile copy already had (confirmed as the actual cause of
-	-- Main Bar/Action Bar 1/Action Bar 2 - and, downstream, Page
-	-- Indicator, anchored off Main Bar's real position - still showing
-	-- the old/default layout after Modern Layout setup finished).
+	-- WARNING: every already-created bar's own bar.config field still points at the OLD ACABDB's
+	-- tables after the reassignment above - must re-point it here or Modern Layout's geometry writes
+	-- land in an orphaned table SaveActiveProfileData never reads from, silently discarding the layout.
 	if ACAB.bars then
 		local barId, bar
 
@@ -2246,12 +2026,8 @@ function ACABSetupWizardMixin:FinishWizard()
 	if state.generalLayoutFormat == "modern" then
 		ACAB:ApplyModernLayoutGeometry()
 	elseif state.generalLayoutFormat == "blizzard" then
-		-- Same reasoning as the overwrite branch above - a brand-new
-		-- profile can still have inherited Modern Layout data (CreateProfile
-		-- seeds from the Default profile, or the live ACABDB when Default
-		-- hasn't been persisted yet - Database.lua's own comment on that
-		-- fallback), so this choice always resets to the real vanilla
-		-- baseline rather than trusting whatever it copied.
+		-- Same reasoning as the overwrite branch above - a brand-new profile can still have inherited
+		-- Modern Layout data, so this choice always resets to the real vanilla baseline.
 		ACAB:ResetAllElementsToVanillaLayout()
 	end
 
@@ -2280,12 +2056,10 @@ local function EnsureSetupWizardFrame()
 	return wizard
 end
 
--- The one entry point every caller uses to open the wizard - reuses the
--- lazily-created frame and resets it to a fresh starting state every time.
---
--- config (optional): { overwriteExisting = true, profileName = "..." } -
--- see ACABSetupWizardMixin:Reset. Omit for the normal first-login "create a
--- new profile" flow, which starts at step 1.
+-- The one entry point every caller uses to open the wizard - reuses the lazily-created frame and
+-- resets it to a fresh starting state every time.
+-- config (optional): { overwriteExisting = true, profileName = "..." }. Omit for the normal
+-- first-login "create a new profile" flow, which starts at step 1.
 function ACAB:ShowSetupWizard(config)
 	local wizard = EnsureSetupWizardFrame()
 

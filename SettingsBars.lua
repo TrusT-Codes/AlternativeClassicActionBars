@@ -1,15 +1,8 @@
 -- SettingsBars.lua
--- Bar-page builders split out of Settings.lua: default/custom bar pages
--- (GetOrCreateBarPage), native-frame "simple" pages (CreateSimpleBarPage/
--- GetOrCreateSimpleBarPage/RefreshSimpleBarPage), the shared refresh/gating
--- entry point (RefreshBarSettingsPage), the bar-list sidebar (CreateBarListRow/
--- RefreshBarList), bar-page navigation (ShowBarPage/OpenBarSettings/
--- OpenDefaultBarSettings), and each default bar's (1-5) own stance/page
--- assignment rows (RebuildDefaultBarAssignmentRows) and default-layout
--- toggle (ApplyUseDefaultLayoutChange).
---
--- Engine-invoked script handlers (OnClick, OnEvent, OnEnter, OnLeave, ...)
--- receive the frame via the global `this`, never as a `self` parameter.
+-- Bar-page builders split out of Settings.lua: default/custom bar pages, native-frame "simple" pages,
+-- the shared refresh/gating entry point, the bar-list sidebar, bar-page navigation, and each default
+-- bar's (1-5) own stance/page assignment rows and default-layout toggle.
+-- Engine-invoked script handlers receive the frame via the global `this`, never as a `self` parameter.
 
 local ACAB = AlternativeClassicActionBars
 
@@ -25,9 +18,8 @@ local GRID_PRESETS = {
 	{ rows = 12, cols = 1  },
 }
 
--- Pet Bar only ever has 10 real pool buttons (identity-mapped to pet slots
--- 1-10, see Core.lua's SeedOneDefaultBar) - its own preset set totals 10
--- cells instead of GRID_PRESETS' 12, so every preset actually fills the bar.
+-- Pet Bar only ever has 10 real pool buttons - its own preset set totals 10 cells instead of
+-- GRID_PRESETS' 12, so every preset actually fills the bar.
 local PET_BAR_GRID_PRESETS = {
 	{ rows = 1,  cols = 10 },
 	{ rows = 2,  cols = 5  },
@@ -44,11 +36,9 @@ local MICRO_MENU_GRID_PRESETS = {
 	{ rows = 8, cols = 1 },
 }
 
--- Stance Bar's usable form count varies per class/talent/session (commonly
--- 0-4, but not hardcoded to that range) - unlike Pet Bar's fixed 10, its
--- preset list can't be a static table. Returns every exact factor-pair
--- (rows, cols) of the given live count N, e.g. N=4 -> 4x1, 2x2, 1x4; N=3 ->
--- 3x1, 1x3; N=1 -> 1x1. Empty table for N <= 0 (no stances available).
+-- Stance Bar's usable form count varies per class/talent, so its preset list can't be a static table.
+-- Returns every exact factor-pair (rows, cols) of the given live count N, e.g. N=4 -> 4x1, 2x2, 1x4.
+-- Empty table for N <= 0.
 local function GetStanceBarGridOptions(count)
 	local presets = {}
 	local n = 0
@@ -92,16 +82,11 @@ local function GetGridPresetsForBar(barId)
 	return GRID_PRESETS
 end
 
--- Friendly names for the 5 fixed default bars (1-5) live on
--- ACAB.DEFAULT_BAR_NAMES (Core.lua). GetBarDisplayName below delegates to
--- ACAB:GetBarDisplayName for the default-bar/Extra-Bar case.
+-- Friendly names for the 5 fixed default bars (1-5) live on ACAB.DEFAULT_BAR_NAMES (Core.lua).
 
--- Friendly names for the Bag Bar / Micro Menu pages, keyed by string
--- ("bagbar"/"micromenu") so they never collide with the numeric
--- default-bar (1-5)/custom-bar (6+) id scheme. The Stance Bar (like the
--- Pet Bar) is keyed by its own numeric ACAB.STANCE_BAR_ID instead, and gets
--- its display name from ACAB:GetBarDisplayName (Core.lua's
--- DEFAULT_BAR_NAMES) via the fallthrough below.
+-- Friendly names for the Bag Bar / Micro Menu pages, keyed by string so they never collide with the
+-- numeric default-bar (1-5)/custom-bar (6+) id scheme. Stance Bar (like Pet Bar) is keyed by its own
+-- numeric id instead, and gets its display name via the fallthrough below.
 local SIMPLE_BAR_NAMES = {
 	bagbar = "Bag Bar",
 	micromenu = "Micro Menu",
@@ -112,20 +97,16 @@ local SIMPLE_BAR_NAMES = {
 }
 
 
--- True while the Pet Bar's "Use Vanilla Pet Bar" checkbox is on -
--- GetOrCreateBarPage/RefreshBarSettingsPage route the Pet Bar's numeric id
--- to the simple-page builder (ACAB.simpleBarPageConfigs[ACAB.PET_BAR_ID], set up
--- alongside stance/bagbar/etc. further below) only while this is true;
--- otherwise it uses the normal full grid/spacing/button-size default-bar
--- page every other numbered default bar gets.
+-- True while the Pet Bar's "Use Vanilla Pet Bar" checkbox is on - GetOrCreateBarPage/
+-- RefreshBarSettingsPage route the Pet Bar's numeric id to the simple-page builder only while this is
+-- true; otherwise it uses the normal full grid/spacing/button-size default-bar page.
 local function IsPetBarNativeMode()
 	local cfg = ACABDB and ACABDB.defaultBars and ACABDB.defaultBars[ACAB.PET_BAR_ID]
 
 	return cfg and cfg.useNativePetBar == true
 end
 
--- Same role as IsPetBarNativeMode above, for the Stance Bar's own
--- styled-mode-only toggle (cfg.useNativeStanceBar).
+-- Same role as IsPetBarNativeMode above, for the Stance Bar's own styled-mode-only toggle.
 local function IsStanceBarNativeMode()
 	local cfg = ACABDB and ACABDB.defaultBars and ACABDB.defaultBars[ACAB.STANCE_BAR_ID]
 
@@ -143,12 +124,11 @@ local function GetBarDisplayName(barId, isDefault)
 end
 -------------------------------------------------------------------------
 -- Hover-only slider show/hide reflow
---
--- The duration slider only occupies space while its checkbox is checked; everything below it on the page shifts to match.
+-- The duration slider only occupies space while its checkbox is checked; everything below it shifts to match.
 -------------------------------------------------------------------------
 
--- Registers `frame` (positioned at its "collapsed" baseline x/y) so ReflowRowsBelowHoverOnly can shift it when the slider toggles.
--- Defined as a ACAB: method, not a file-local, since Lua 5.0 caps a function at 32 upvalues and GetOrCreateBarPage is already close to it.
+-- Registers `frame` (positioned at its "collapsed" baseline x/y) so ReflowRowsBelowHoverOnly can shift
+-- it when the slider toggles. A ACAB: method since Lua 5.0 caps a function at 32 upvalues.
 function ACAB:AddHoverOnlyReflowRow(page, frame, x, y)
 	if not frame then
 		return
@@ -182,17 +162,11 @@ function ACAB:ReflowRowsBelowHoverOnly(page, sliderShown, sliderRowHeight)
 	end
 end
 
--- Shown instead of the normal explanatory tooltip whenever this checkbox
--- is locked (RefreshSimpleBarPage's petLocked/stanceLocked, both cases:
--- Default Layout or Default Profile) - forcing native mode is what makes
--- Stance/Pet Bar's own position/shape controls stay usable in that state,
--- so switching AWAY from native there isn't allowed. Two separate strings,
--- one per reason (default profile takes priority, same as
--- Settings.lua's PROFILE_LOCK_MESSAGE_PROFILE/_LAYOUT), since the fix is
--- different for each: create a profile vs. disable layout-force. The
--- checkbox itself now performs that fix on click too (config.onLockedClick,
--- ACAB:HandleLockReasonClick), same as the lock banner, so both texts end
--- with the same gold call-to-action line.
+-- Shown instead of the normal explanatory tooltip whenever this checkbox is locked - forcing native
+-- mode is what makes Stance/Pet Bar's own position/shape controls stay usable in that state, so
+-- switching away from native isn't allowed. Two separate strings, one per reason (default profile takes
+-- priority), since the fix differs: create a profile vs. disable layout-force. The checkbox performs
+-- that fix on click too, same as the lock banner, so both texts end with the same gold call-to-action.
 local VANILLA_MODE_LOCKED_TEXT_PROFILE =
 	"Can't change while using the default profile. Set up a profile in " ..
 	"Profile Settings to enable this Setting. " ..
@@ -268,9 +242,8 @@ local function CreateUseVanillaPetBarCheckbox(page, y)
 	return checkbox
 end
 
--- Mirrors CreateUseVanillaPetBarCheckbox exactly, for the Stance Bar's own
--- styled-mode-only toggle (cfg.useNativeStanceBar). Added to both the
--- Stance Bar's full grid page and its native/simple page, same as Pet Bar.
+-- Mirrors CreateUseVanillaPetBarCheckbox, for the Stance Bar's own styled-mode-only toggle. Added to
+-- both the Stance Bar's full grid page and its native/simple page, same as Pet Bar.
 local function CreateUseVanillaStanceBarCheckbox(page, y)
 	-- Native mode's real ShapeshiftButton1-N aren't Bar.lua/Button.lua pool buttons, so they're outside Hoverbind's dispatch system.
 	local checkbox = ACAB:CreateLabeledCheckbox(page, "ACABStanceBarUseVanillaCheckbox", {
@@ -326,12 +299,9 @@ local function CreateUseVanillaStanceBarCheckbox(page, y)
 	return checkbox
 end
 
--- Shared "Condense empty Button Space" checkbox, added next to "Use
--- Vanilla Pet Bar" above on both Pet Bar pages. Pure visibility toggle
--- (unlike "Use Vanilla Pet Bar"), so it applies live with no reload -
--- writes cfg.condenseEmptyPetSlots then re-applies whichever mode's own
--- shape function is currently effective (the other one no-ops safely,
--- same as ACAB:ResetPetBarNativeLayout's own comment).
+-- Shared "Condense empty Button Space" checkbox, added next to "Use Vanilla Pet Bar" on both Pet Bar
+-- pages. Pure visibility toggle, applies live with no reload - writes cfg.condenseEmptyPetSlots then
+-- re-applies whichever mode's shape function is currently effective (the other one no-ops safely).
 local function CreateCondenseEmptyPetSlotsCheckbox(page, y)
 	local checkbox = ACAB:CreateLabeledCheckbox(page, "ACABPetBarCondenseCheckbox", {
 		anchor = { "TOPLEFT", page, "TOPLEFT", ACAB.INDENT_SECTION, y },
@@ -354,12 +324,8 @@ local function CreateCondenseEmptyPetSlotsCheckbox(page, y)
 				ACAB:ApplyPetBarNativeShape()
 			end
 
-			-- Condensing changes the bar's actual on-screen footprint, so the
-			-- Position sliders' clamp range must be recomputed immediately -
-			-- dispatched to whichever page kind is actually showing right now
-			-- (GetOrCreateBarPage/RefreshPositionSliderRange for the
-			-- custom-styled grid page, RefreshSimpleBarPage for the native
-			-- page, which measures petBarNativeContainer's own real size).
+			-- Condensing changes the bar's on-screen footprint, so the Position sliders' clamp range
+			-- must be recomputed immediately, dispatched to whichever page kind is actually showing.
 			if IsPetBarNativeMode() then
 				if ACAB.RefreshSimpleBarPage then
 					ACAB:RefreshSimpleBarPage(ACAB.PET_BAR_ID)
@@ -424,11 +390,8 @@ end
 local LIST_ROW_HEIGHT = 24
 local LIST_ROW_GAP    = 4
 
--- Matches f.listPanel's backdrop (SetWidth 140, 2px insets). Every row's
--- fade-strip highlight (ACABListRowMixin:SetVisualWidth) spans this same
--- fixed width/offset regardless of whether the row has an inline checkbox,
--- so the highlighted area always fills the list panel's inner rectangle
--- edge-to-edge.
+-- Matches f.listPanel's backdrop (SetWidth 140, 2px insets). Every row's fade-strip highlight spans
+-- this same fixed width/offset so the highlighted area always fills the list panel's inner rectangle.
 local LIST_ITEM_VISUAL_OFFSET = 2
 local LIST_ITEM_VISUAL_WIDTH = 140 - (LIST_ITEM_VISUAL_OFFSET * 2)
 local SWATCH_SIZE = 46
@@ -436,8 +399,8 @@ local SWATCH_GAP  = 8
 local SWATCH_PAD  = 4
 -------------------------------------------------------------------------
 -- Only show on hover - shared checkbox + slider
---
--- Used by both GetOrCreateBarPage and CreateSimpleBarPage. The slider (and its live value label) only show while the checkbox is checked.
+-- Used by both GetOrCreateBarPage and CreateSimpleBarPage. The slider (and its live value label) only
+-- show while the checkbox is checked.
 -------------------------------------------------------------------------
 
 -- Vertical space each row reserves for callers' layout-cursor math. ACAB fields, not file-locals, for the same reason as ACAB:AddHoverOnlyReflowRow above.
@@ -580,10 +543,8 @@ end
 
 -------------------------------------------------------------------------
 -- Grid preset swatches
---
--- Small preview frames built from WHITE8X8-textured squares, matching the
--- texture idiom used by Button.lua's editOverlay. Clicking a swatch
--- applies immediately.
+-- Small preview frames built from WHITE8X8-textured squares, matching Button.lua's editOverlay
+-- texture idiom. Clicking a swatch applies immediately.
 -------------------------------------------------------------------------
 
 local function CreateGridSwatch(parent, preset)
@@ -686,14 +647,10 @@ local function GridSwatch_OnClick()
 	local barId = page.barId
 
 	if barId == "micromenu" then
-		-- page.isDefault is unconditionally true for every simple page
-		-- (CreateSimpleBarPage, unrelated profile-lock-gating reuse of that
-		-- field name) - must be checked before the page.isDefault branch
-		-- below or this would wrongly call ACAB:SetDefaultBarLayout.
+		-- page.isDefault is unconditionally true for every simple page - must be checked before the
+		-- page.isDefault branch below or this would wrongly call ACAB:SetDefaultBarLayout.
 		ACAB:SetMicroMenuLayout(this.cols, this.rows)
 	elseif page.isDefault then
-		-- ACAB:SetDefaultBarLayout (DefaultBars.lua) handles both bar 1 and
-		-- bars 2-5, delegating to Bar.lua's SetBarLayout for bars 2-5.
 		ACAB:SetDefaultBarLayout(barId, this.cols, this.rows)
 	else
 		local bar = ACAB.bars[barId]
@@ -706,12 +663,9 @@ local function GridSwatch_OnClick()
 	ACAB:RefreshBarSettingsPage(barId)
 end
 
--- Builds (or rebuilds) a page's Grid Layout swatch row at a fixed Y anchor,
--- from GetGridPresetsForBar(barId). Stance Bar's preset list is live
--- (GetStanceBarGridOptions) rather than a fixed table, so unlike every
--- other bar kind its swatches must be torn down and rebuilt on every page
--- refresh, not just once at page creation - see RefreshBarSettingsPage's
--- own Stance Bar branch, which calls this again on every page show.
+-- Builds (or rebuilds) a page's Grid Layout swatch row at a fixed Y anchor, from
+-- GetGridPresetsForBar(barId). Stance Bar's preset list is live rather than a fixed table, so unlike
+-- every other bar kind its swatches must be torn down and rebuilt on every page refresh.
 local function RebuildGridSwatches(page, barId, swatchY)
 	local i
 
@@ -795,12 +749,9 @@ local function RefreshGridSwatchSelection(page, cols, rows)
 end
 -------------------------------------------------------------------------
 -- Create a bar settings page
---
--- Shared between default bars (1-5) and custom bars (6+). The controls
--- that don't apply to one kind (enable checkbox for bar 1 / default
--- bars 2-5 only, button-count stepper and Delete Bar for custom bars
--- only) are simply not created for the other kind, rather than
--- maintaining two parallel page builders.
+-- Shared between default bars (1-5) and custom bars (6+). Controls that don't apply to one kind
+-- (enable checkbox for bar 1 / default bars 2-5 only, button-count stepper and Delete Bar for custom
+-- bars only) are simply not created for the other kind, rather than maintaining two parallel builders.
 -------------------------------------------------------------------------
 
 function ACAB:GetOrCreateBarPage(barId)
@@ -808,17 +759,13 @@ function ACAB:GetOrCreateBarPage(barId)
 		ACAB:CreateSettingsFrame()
 	end
 
-	-- Pet Bar in native mode: same simple-page builder as Bag Bar/Micro
-	-- Menu below, keyed by its own numeric id rather than a string -
-	-- checked separately from the generic ACAB.simpleBarPageConfigs test below
-	-- so the SAME id can route to either page builder depending on mode.
+	-- Pet Bar in native mode: same simple-page builder as Bag Bar/Micro Menu below, keyed by its own
+	-- numeric id so the same id can route to either page builder depending on mode.
 	if barId == ACAB.PET_BAR_ID and IsPetBarNativeMode() then
 		return self:GetOrCreateSimpleBarPage(barId)
 	end
 
-	-- Stance Bar, same dispatch as the Pet Bar branch above - the SAME
-	-- numeric id can route to either page builder depending on
-	-- cfg.useNativeStanceBar.
+	-- Stance Bar, same dispatch as the Pet Bar branch above.
 	if barId == ACAB.STANCE_BAR_ID and IsStanceBarNativeMode() then
 		return self:GetOrCreateSimpleBarPage(barId)
 	end
@@ -844,9 +791,8 @@ function ACAB:GetOrCreateBarPage(barId)
 		ACAB.settingsFrame.contentPanel
 	)
 
-	-- Anchored through ApplyPageBannerReserve (rather than SetAllPoints) so
-	-- the page can slide down to open up the profile-lock banner's band
-	-- only while that banner is actually shown - starts unlocked/flush.
+	-- Anchored through ApplyPageBannerReserve so the page can slide down to open the profile-lock
+	-- banner's band while shown - starts unlocked/flush.
 	ACAB:ApplyPageBannerReserve(page, false)
 
 	page.barId = barId
@@ -864,9 +810,7 @@ function ACAB:GetOrCreateBarPage(barId)
 		"GameFontNormalLarge"
 	)
 
-	-- Anchored to contentPanel, not `page` - the title has to stay put
-	-- while the page slides down to open the banner's band beneath it
-	-- (ACAB:ApplyPageBannerReserve).
+	-- Anchored to contentPanel, not `page` - the title has to stay put while the page slides down.
 	title:SetPoint(
 		"TOPLEFT",
 		ACAB.settingsFrame.contentPanel,
@@ -883,28 +827,22 @@ function ACAB:GetOrCreateBarPage(barId)
 
 	title:SetText(titleText)
 
-	-- Extra Bars (ids 6-9) get the same "Enabled" checkbox default bars
-	-- 2-5 get (ACAB:IsExtraBarId/SetExtraBarEnabled, Bar.lua).
+	-- Extra Bars (ids 6-9) get the same "Enabled" checkbox default bars 2-5 get.
 	local isExtraBar = ACAB:IsExtraBarId(barId)
 	local hasEnableCheckbox = (isDefault and barId ~= 1) or isExtraBar
 
 	-------------------------------------------------------------------------
 	-- Vertical layout cursor
-	--
-	-- Every offset below is derived from deltas rather than independent
-	-- magic numbers, so this whole block is the single place to retune
-	-- spacing instead of hunting through every control's SetPoint.
+	-- Every offset below is derived from deltas rather than independent magic numbers, so this whole
+	-- block is the single place to retune spacing instead of hunting through every control's SetPoint.
 	-------------------------------------------------------------------------
 
-	-- The page slides down by PROFILE_LOCK_BANNER_HEIGHT only while the
-	-- lock banner is actually shown (ACAB:ApplyPageBannerReserve, called
-	-- from ApplyProfileLockGating).
+	-- The page slides down by PROFILE_LOCK_BANNER_HEIGHT only while the lock banner is shown.
 	local contentTopOffset = 0
 
 	local checkboxY = -44 + contentTopOffset
 
-	-- Position section starts right under the title, or - on bars 2-5 -
-	-- right under the enable checkbox block.
+	-- Position section starts right under the title, or - on bars 2-5 - right under the enable checkbox.
 	local positionStartY = -46 + contentTopOffset
 
 	if hasEnableCheckbox then
@@ -926,9 +864,8 @@ function ACAB:GetOrCreateBarPage(barId)
 		positionStartY = positionStartY - (24 + 14) * 3
 	end
 
-	-- Stance Bar only: "Use Vanilla Stance Bar" reserves one more row right
-	-- below Enabled - no condense/autocast equivalent (see Button.lua's
-	-- isStanceSlot header comment for why).
+	-- Stance Bar only: "Use Vanilla Stance Bar" reserves one more row right below Enabled - no
+	-- condense/autocast equivalent.
 	local isStanceBarPage = barId == ACAB.STANCE_BAR_ID
 	local useVanillaStanceBarY = positionStartY
 
@@ -1026,10 +963,8 @@ function ACAB:GetOrCreateBarPage(barId)
 	end
 
 	-------------------------------------------------------------------------
-	-- Position section: sliders' min/max come from GetActionBarCoordinateRange
-	-- (this bar's own buttonSize/buttonCount/border), kept live by
-	-- RefreshPositionSliderRange. Live X/Y values show as a centered
-	-- FontString under each slider, same as Button Size.
+	-- Position section: sliders' min/max come from GetActionBarCoordinateRange, kept live by
+	-- RefreshPositionSliderRange. Live X/Y values show as a centered FontString under each slider.
 	-------------------------------------------------------------------------
 
 	local minX, maxX, minY, maxY =
@@ -1079,14 +1014,12 @@ function ACAB:GetOrCreateBarPage(barId)
 		onApply = function() ACAB:ApplyLiveBarPosition(page) end,
 	})
 
-	-- Reset to Vanilla Layout (default bars only) is created further
-	-- down, below the Spacing slider and above Grid Layout.
+	-- Reset to Vanilla Layout (default bars only) is created further down, below Spacing and above Grid Layout.
 
 	-------------------------------------------------------------------------
 	-- Size & Layout
-	--
-	-- sizeLayoutTitleY/buttonSizeSliderY are computed in the vertical
-	-- layout cursor block above, cascading from the Y slider's value text.
+	-- sizeLayoutTitleY/buttonSizeSliderY are computed in the vertical layout cursor block above,
+	-- cascading from the Y slider's value text.
 	-------------------------------------------------------------------------
 
 	local layoutTitle = page:CreateFontString(
@@ -1153,11 +1086,8 @@ function ACAB:GetOrCreateBarPage(barId)
 
 	self:AddHoverOnlyReflowRow(page, buttonSizeSlider, ACAB.INDENT_INPUT, buttonSizeSliderY)
 
-	-- Lock icon - every bar kind gets one (Action/Extra Bars 1-9 and
-	-- Pet Bar/Stance Bar's own styled-mode page alike), matching
-	-- ApplyGlobalButtonSize's own scope (Bar.lua). Hidden/shown and kept
-	-- in sync by RefreshBarPageGlobalOverrideGating, not here - this only
-	-- wires the click.
+	-- Lock icon - every bar kind gets one, matching ApplyGlobalButtonSize's own scope. Hidden/shown and
+	-- kept in sync by RefreshBarPageGlobalOverrideGating, not here - this only wires the click.
 	local buttonSizeLockButton = ACAB:CreateLockToggleButton(
 		page,
 		"ACABBar" .. tostring(barId) .. "ButtonSizeLockButton",
@@ -1194,19 +1124,15 @@ function ACAB:GetOrCreateBarPage(barId)
 	page.buttonSizeLockButton = buttonSizeLockButton
 
 	-------------------------------------------------------------------------
-	-- Spacing - every bar kind gets this control, default bars 1-5 and
-	-- custom bars 6+. Mirrors the Button Size slider's live-value-label/
+	-- Spacing - every bar kind gets this control. Mirrors the Button Size slider's live-value-label/
 	-- min-max-end-label pattern.
 	-------------------------------------------------------------------------
 
 	local gridTitleY
 	local swatchY
 
-	-- Every bar (default or custom) is guaranteed a real cfg.spacing field
-	-- from creation. The OnValueChanged handler below branches to whichever
-	-- setter the bar kind needs: ACAB:SetDefaultBarSpacing for default bars
-	-- (itself branching bar-1-direct-write vs. bars-2-5-delegate-to-Bar.lua),
-	-- ACAB:SetBarSpacing for custom bars.
+	-- The OnValueChanged handler below branches to whichever setter the bar kind needs:
+	-- ACAB:SetDefaultBarSpacing for default bars, ACAB:SetBarSpacing for custom bars.
 	do
 		local spacingTitleY = buttonSizeSliderY - 36
 		local spacingSliderY = spacingTitleY - 26
@@ -1232,17 +1158,15 @@ function ACAB:GetOrCreateBarPage(barId)
 
 		self:AddHoverOnlyReflowRow(page, spacingTitle, ACAB.INDENT_SECTION, spacingTitleY)
 
-		-- Placeholder initial text only - RefreshBarSettingsPage (called
-		-- immediately after GetOrCreateBarPage by ShowBarPage) sets the
-		-- real value from cfg.spacing before this page is ever shown.
+		-- Placeholder initial text only - RefreshBarSettingsPage sets the real value from cfg.spacing
+		-- before this page is ever shown.
 		local spacingSlider, spacingValueText, spacingSliderLow, spacingSliderHigh = ACAB:CreateLabeledSlider(
 			page,
 			"ACABBar" .. tostring(barId) .. "SpacingSlider",
 			{
 				anchor = { "TOPLEFT", page, "TOPLEFT", ACAB.INDENT_INPUT, spacingSliderY },
-				-- Displayed range (0-based); see GetSpacingDisplayOffset. Recomputed
-				-- on every RefreshBarSettingsPage call since the offset can change
-				-- live with the border-style toggle.
+				-- Displayed range (0-based); recomputed on every RefreshBarSettingsPage call since the
+				-- offset can change live with the border-style toggle.
 				min = 0,
 				max = ACAB.SPACING_MAX - ACAB:GetSpacingDisplayOffset(),
 				step = ACAB.SPACING_STEP,
@@ -1253,8 +1177,7 @@ function ACAB:GetOrCreateBarPage(barId)
 				format = tostring,
 				onChange = function(value, suppressApply)
 					if not suppressApply then
-						-- The slider's own value is always DISPLAYED (0-based) -
-						-- convert to real only at this write boundary.
+						-- The slider's own value is always displayed (0-based) - convert to real only at this write boundary.
 						local real = value + ACAB:GetSpacingDisplayOffset()
 
 						if page.isDefault then
@@ -1281,8 +1204,7 @@ function ACAB:GetOrCreateBarPage(barId)
 
 		self:AddHoverOnlyReflowRow(page, spacingSlider, ACAB.INDENT_INPUT, spacingSliderY)
 
-		-- Lock icon - mirrors the Button Size lock button above exactly,
-		-- for the General tab's global Spacing override.
+		-- Lock icon - mirrors the Button Size lock button above, for the General tab's global Spacing override.
 		local spacingLockButton = ACAB:CreateLockToggleButton(
 			page,
 			"ACABBar" .. tostring(barId) .. "SpacingLockButton",
@@ -1320,8 +1242,7 @@ function ACAB:GetOrCreateBarPage(barId)
 
 		if isDefault then
 			-------------------------------------------------------------------------
-			-- Reset to native/vanilla default position (default bars only -
-			-- custom bars have no native anchor to reset to).
+			-- Reset to native/vanilla default position (default bars only - custom bars have no native anchor to reset to).
 			-------------------------------------------------------------------------
 
 			local resetButtonY = spacingSliderY - 36
@@ -1332,20 +1253,15 @@ function ACAB:GetOrCreateBarPage(barId)
 				maxWidth = 200,
 				text = "Reset to Vanilla Layout",
 				onClick = function()
-					-- Restores position/spacing/cols/rows/buttonSize to
-					-- their native defaults.
+					-- Restores position/spacing/cols/rows/buttonSize to their native defaults.
 					ACAB:ResetDefaultBarLayout(page.barId)
 
-					-- Page Indicator visually anchors off Main Bar's own
-					-- position - reset it alongside Main Bar, or it's left
-					-- wherever it was before this reset.
+					-- Page Indicator visually anchors off Main Bar's own position - reset it alongside Main Bar.
 					if page.barId == 1 and ACAB.ResetPageIndicatorLayout then
 						ACAB:ResetPageIndicatorLayout()
 					end
 
-					-- Re-syncs every control's displayed value (X/Y sliders,
-					-- Button Size, grid-swatch selection) from the saved
-					-- config after this external write.
+					-- Re-syncs every control's displayed value from the saved config after this external write.
 					ACAB:RefreshBarSettingsPage(page.barId)
 				end,
 			})
@@ -1354,9 +1270,8 @@ function ACAB:GetOrCreateBarPage(barId)
 
 			self:AddHoverOnlyReflowRow(page, resetPositionButton, ACAB.INDENT_INPUT, resetButtonY)
 
-			-- Bars 1-5: Main Bar/Action Bar 1/Action Bar 2 stack (1-3) and
-			-- the right vertical bar cluster (4-5, ACAB:ResetBarLayoutToModernBase
-			-- dispatches each id to the right shared function).
+			-- Bars 1-5: Main Bar/Action Bar 1/Action Bar 2 stack (1-3) and the right vertical bar
+			-- cluster (4-5, ResetBarLayoutToModernBase dispatches each id to the right shared function).
 			local nextY = resetButtonY
 
 			if barId >= 1 and barId <= 5 then
@@ -1370,9 +1285,7 @@ function ACAB:GetOrCreateBarPage(barId)
 					onClick = function()
 						ACAB:ResetBarLayoutToModernBase(page.barId)
 
-						-- Page Indicator visually anchors off Main Bar's own
-						-- position - reset it alongside Main Bar, or it's
-						-- left wherever it was before this reset.
+						-- Page Indicator visually anchors off Main Bar's own position - reset it alongside Main Bar.
 						if page.barId == 1 and ACAB.ResetPageIndicatorToModernBase then
 							ACAB:ResetPageIndicatorToModernBase()
 						end
@@ -1418,9 +1331,7 @@ function ACAB:GetOrCreateBarPage(barId)
 			self:AddHoverOnlyReflowRow(page, resetPositionButton, ACAB.INDENT_INPUT, resetButtonY)
 
 			-------------------------------------------------------------------------
-			-- Reset to Modern Layout Default - Extra Bar 1-4 are part of
-			-- Modern Layout's vertical bar clusters (ACAB:ResetExtraBarLayoutToModernBase,
-			-- Bar.lua).
+			-- Reset to Modern Layout Default - Extra Bar 1-4 are part of Modern Layout's vertical bar clusters.
 			-------------------------------------------------------------------------
 
 			local resetModernY = resetButtonY - 30
@@ -1474,7 +1385,8 @@ function ACAB:GetOrCreateBarPage(barId)
 
 	RebuildGridSwatches(page, barId, swatchY)
 
-	-- Grid Layout can't just be added to page.hoverOnlyReflowRows - its swatches are a dynamic array, repositioned in place instead of rebuilt here.
+	-- Grid Layout can't just be added to page.hoverOnlyReflowRows - its swatches are a dynamic array,
+	-- repositioned in place instead of rebuilt here.
 	page.hoverOnlyExtraReflow = function(offset)
 		gridTitle:ClearAllPoints()
 		gridTitle:SetPoint("TOPLEFT", page, "TOPLEFT", ACAB.INDENT_SECTION, gridTitleY - offset)
@@ -1502,14 +1414,12 @@ function ACAB:GetOrCreateBarPage(barId)
 	end
 
 	-------------------------------------------------------------------------
-	-- Button count stepper (custom bars only) - default bars always show
-	-- all 12 Blizzard buttons.
+	-- Button count stepper (custom bars only) - default bars always show all 12 Blizzard buttons.
 	-------------------------------------------------------------------------
 
 	if not isDefault then
-		-- Derived from swatchY: the swatch grid is SWATCH_SIZE tall plus
-		-- its own caption line below it, then a 14px gap before this
-		-- section's label, then a 28px label-to-row gap.
+		-- Derived from swatchY: the swatch grid is SWATCH_SIZE tall plus its caption line, then a 14px
+		-- gap before this section's label, then a 28px label-to-row gap.
 		local buttonCountLabelY = swatchY - SWATCH_SIZE - 14 - 14
 		local buttonCountRowY = buttonCountLabelY - 28
 
@@ -1667,18 +1577,14 @@ function ACAB:GetOrCreateBarPage(barId)
 	end
 
 	-------------------------------------------------------------------------
-	-- Page Indicator Scale (Main Bar only). Position is drag-only
-	-- (EnsureContainerOverlay, DefaultBars.lua); only Scale is exposed here,
-	-- reusing the button-count stepper's Y-offset formula (never present on
-	-- bar 1). Shown/hidden by ACAB:RefreshMainBarPageIndicatorControlsVisibility
-	-- (gated on ACABDB.defaultBarPaginationEnabled).
+	-- Page Indicator Scale (Main Bar only). Position is drag-only; only Scale is exposed here.
+	-- Shown/hidden by RefreshMainBarPageIndicatorControlsVisibility (gated on defaultBarPaginationEnabled).
 	-------------------------------------------------------------------------
 
 	-- Page Indicator + Stance/Page Bar Assignment: only on default bars (1-5).
 	if barId >= 1 and barId <= 5 then
-		-- Anchor for the Stance/Page Bar Assignment section below; bar 1
-		-- pushes it under its own Page Indicator Scale slider, bars 2-5
-		-- start right under the grid swatches.
+		-- Anchor for the Stance/Page Bar Assignment section below; bar 1 pushes it under its own Page
+		-- Indicator Scale slider, bars 2-5 start right under the grid swatches.
 		local assignmentAnchorY = swatchY - SWATCH_SIZE - 14 - 14
 
 		if barId == 1 then
@@ -1732,19 +1638,15 @@ function ACAB:GetOrCreateBarPage(barId)
 		end
 
 		-------------------------------------------------------------------------
-		-- Stance / Page Bar Assignment: each default bar (1-5) gets its own
-		-- independent assignment container; gating checkboxes live on the
-		-- General tab. Empty placeholder - RebuildDefaultBarAssignmentRows
-		-- populates/collapses it, called from RefreshBarSettingsPage(barId),
-		-- both checkboxes' OnClick, and UPDATE_SHAPESHIFT_FORMS.
+		-- Stance / Page Bar Assignment: each default bar (1-5) gets its own independent assignment
+		-- container; gating checkboxes live on the General tab. Empty placeholder -
+		-- RebuildDefaultBarAssignmentRows populates/collapses it.
 		-------------------------------------------------------------------------
 
 		local assignmentContainer = CreateFrame("Frame", nil, page)
 
-		-- Anchored to `page`'s left margin, not to pageIndicatorValueText -
-		-- that FontString's only "TOP" anchor point is centered under the
-		-- slider, not left-aligned, which would push assignment rows too
-		-- far right and overflow the page's visible width.
+		-- Anchored to `page`'s left margin, not to pageIndicatorValueText - that FontString's "TOP"
+		-- anchor is centered under the slider, which would push assignment rows past the page's width.
 		assignmentContainer:SetPoint(
 			"TOPLEFT",
 			page,
@@ -1776,20 +1678,15 @@ end
 
 -------------------------------------------------------------------------
 -- Apply X/Y position live from a page's sliders
---
--- Shared by both slider OnValueChanged handlers above so the "which bar
--- kind gets which setter" branch only lives in one place.
+-- Shared by both slider OnValueChanged handlers above so the "which bar kind gets which setter"
+-- branch only lives in one place.
 -------------------------------------------------------------------------
 
 function ACAB:ApplyLiveBarPosition(page)
-	-- Reads the cached applied value (xAppliedValue/yAppliedValue, kept
-	-- current by each slider's own OnValueChanged), not slider:GetValue()
-	-- directly - during an active drag those can differ, since the
-	-- pixel-snap is applied to the cache only. Calling slider:SetValue()
-	-- from inside OnValueChanged to force the snap onto the slider itself
-	-- was tried and reverted: it desyncs the native widget's own
-	-- drag-tracking the moment it fires mid-drag, breaking further
-	-- dragging for the rest of that gesture.
+	-- Reads the cached applied value, not slider:GetValue() directly - during an active drag those can
+	-- differ, since the pixel-snap is applied to the cache only. Do not call slider:SetValue() from
+	-- inside OnValueChanged to force the snap onto the slider itself - it desyncs the native widget's
+	-- own drag-tracking mid-drag, breaking further dragging for the rest of that gesture.
 	local x = page.xAppliedValue or page.xSlider:GetValue()
 	local y = page.yAppliedValue or page.ySlider:GetValue()
 
@@ -1797,9 +1694,8 @@ function ACAB:ApplyLiveBarPosition(page)
 		return
 	end
 
-	-- Passes full precision through untouched - only the sliders' displayed
-	-- text is rounded to 2 decimals, not the value written to
-	-- ACABDB / applied to the bar.
+	-- Passes full precision through untouched - only the sliders' displayed text is rounded to 2
+	-- decimals, not the value written to ACABDB / applied to the bar.
 	if page.isDefault then
 		self:SetDefaultBarPosition(page.barId, x, y)
 	else
@@ -1812,17 +1708,12 @@ function ACAB:ApplyLiveBarPosition(page)
 end
 -------------------------------------------------------------------------
 -- Experience Bar page-only helpers.
---
--- Declared here (real Lua 5.0 locals, ahead of CreateSimpleBarPage's own
--- definition below) rather than inline in the "expbar"-only block inside
--- it, since Lua 5.0 has no forward-declaration/hoisting for local
--- functions - a local must exist before whatever references it.
+-- Declared here (real Lua 5.0 locals, ahead of CreateSimpleBarPage's own definition below) since Lua
+-- 5.0 has no forward-declaration/hoisting for local functions.
 -------------------------------------------------------------------------
 
--- A small clickable color swatch: a bordered square button (same
--- backdrop/insets convention CreateGridSwatch above already uses) with a
--- solid WHITE8X8 texture inside that gets tinted to whatever color it
--- currently represents.
+-- A small clickable color swatch: a bordered square button with a solid WHITE8X8 texture inside that
+-- gets tinted to whatever color it currently represents.
 local function CreateColorSwatchButton(parent, name)
 	local swatch = CreateFrame("Button", name, parent)
 
@@ -1864,15 +1755,9 @@ local function SetColorSwatchColor(swatch, color)
 	swatch.colorTexture:SetVertexColor(color.r or 1, color.g or 1, color.b or 1)
 end
 
--- Opens vanilla's standard native ColorPickerFrame, wired to `getter`
--- (ACABDB.expBarColorEarned/expBarColorRested) for the initial value
--- and `setter` (ACAB:SetExpBarColorEarned/SetExpBarColorRested) for both
--- live-drag updates (func) and Cancel (cancelFunc, restoring whatever was
--- active before the picker opened) - the well-documented vanilla 1.12
--- ColorPickerFrame API (SetColorRGB/func/opacityFunc/cancelFunc/
--- hasOpacity), not a modern/Classic-only equivalent. `swatch` is kept in
--- sync live too, so the button's own color always reflects the current
--- value without needing to close/reopen the settings page.
+-- Opens vanilla's standard native ColorPickerFrame, wired to `getter` for the initial value and
+-- `setter` for both live-drag updates (func) and Cancel (cancelFunc, restoring the prior value).
+-- `swatch` is kept in sync live too, reflecting the current value without a settings page reopen.
 local function OpenExpBarColorPicker(swatch, getter, setter)
 	local current = getter() or { r = 1, g = 1, b = 1 }
 
@@ -1883,9 +1768,8 @@ local function OpenExpBarColorPicker(swatch, getter, setter)
 		SetColorSwatchColor(swatch, getter())
 	end
 
-	-- hasOpacity = false: bar-fill colors have no separate alpha channel
-	-- here. opacityFunc is still assigned as a no-op per ColorPickerFrame's
-	-- documented field set, in case the client calls it regardless.
+	-- hasOpacity = false: bar-fill colors have no separate alpha channel here. opacityFunc is still
+	-- assigned as a no-op in case the client calls it regardless.
 	ColorPickerFrame.opacityFunc = function() end
 	ColorPickerFrame.hasOpacity = false
 
@@ -1898,22 +1782,13 @@ local function OpenExpBarColorPicker(swatch, getter, setter)
 
 	ColorPickerFrame:SetColorRGB(current.r, current.g, current.b)
 
-	-- Anchors the native picker next to this addon's own Settings window
-	-- instead of wherever it was last centered. `ACAB.settingsFrame` (this
-	-- file's own module local, set once by CreateSettingsFrame) is
-	-- guaranteed non-nil here - only reachable by clicking a swatch on an
-	-- already-open Experience Bar settings page.
+	-- Anchors the native picker next to this addon's own Settings window instead of wherever it was
+	-- last centered. ACAB.settingsFrame is guaranteed non-nil here - only reachable via an open page.
 	ColorPickerFrame:ClearAllPoints()
 	ColorPickerFrame:SetPoint("TOPLEFT", ACAB.settingsFrame, "TOPRIGHT", 10, 0)
 
-	-- CreateSettingsFrame pins the Settings window itself to "DIALOG"
-	-- strata. "FULLSCREEN_DIALOG" is the next tier up in this client's
-	-- fixed FRAME_STRATA ordering (BACKGROUND < LOW < MEDIUM < HIGH <
-	-- DIALOG < FULLSCREEN < FULLSCREEN_DIALOG < TOOLTIP - a stock client
-	-- enum, not something any of this addon's four mods change), which
-	-- guarantees the picker renders above the Settings window regardless of
-	-- whatever strata ColorPickerFrame's own native FrameXML definition
-	-- already uses - no need to guess/check its prior value first.
+	-- CreateSettingsFrame pins the Settings window to "DIALOG" strata. "FULLSCREEN_DIALOG" is the next
+	-- tier up in this client's fixed FRAME_STRATA ordering, guaranteeing the picker renders above it.
 	ColorPickerFrame:SetFrameStrata("FULLSCREEN_DIALOG")
 
 	ShowUIPanel(ColorPickerFrame)
@@ -1936,12 +1811,9 @@ local function CreateExpBarTextToggleCheckbox(page, name, labelText, y, dbKey)
 	})
 end
 
--- Gates the 5 text-toggle checkboxes + Font Size slider + 3 color swatches
--- + Reset Colors button + Pulse Interval slider on "Enable Better
--- Experience Bar" - EnableMouse(false)+SetAlpha(0.5), same as
--- ApplyDefaultLayoutGating. Pulse Interval is included since the rested-
--- glow pulse it controls is separately gated on this same checkbox
--- (ACAB:ApplyExpBarRestedOverlay, DefaultBars.lua).
+-- Gates the 5 text-toggle checkboxes + Font Size slider + 3 color swatches + Reset Colors button +
+-- Pulse Interval slider on "Enable Better Experience Bar" - EnableMouse(false)+SetAlpha(0.5), same as
+-- ApplyDefaultLayoutGating.
 local function ApplyBetterExpBarGating(page)
 	if not page or not page.betterExpBarCheckbox then
 		return
@@ -1977,13 +1849,10 @@ local function ApplyBetterExpBarGating(page)
 end
 
 -------------------------------------------------------------------------
--- Simple bar pages (Stance Bar / Bag Bar / Micro Menu): one builder,
--- parameterized via ACAB.simpleBarPageConfigs, instead of three near-
--- identical page builders. Position (X/Y, live) + optional Enable
--- checkbox (Bag Bar/Micro Menu only - Stance Bar's shape is native/class-
--- driven) + "Reset to Vanilla Layout". No grid/spacing/button-size/
--- buttonCount/Delete controls - none of these is a ACAB-owned
--- button grid.
+-- Simple bar pages (Stance Bar / Bag Bar / Micro Menu): one builder, parameterized via
+-- ACAB.simpleBarPageConfigs, instead of three near-identical page builders. Position (X/Y, live) +
+-- optional Enable checkbox + "Reset to Vanilla Layout". No grid/spacing/button-size/buttonCount/Delete
+-- controls - none of these is a ACAB-owned button grid.
 -------------------------------------------------------------------------
 
 local function CreateSimpleBarPage(key)
@@ -2013,8 +1882,7 @@ local function CreateSimpleBarPage(key)
 		"GameFontNormalLarge"
 	)
 
-	-- Anchored to contentPanel, not `page` - stays put while the page
-	-- slides down for the banner (ACAB:ApplyPageBannerReserve).
+	-- Anchored to contentPanel, not `page` - stays put while the page slides down for the banner.
 	title:SetPoint(
 		"TOPLEFT",
 		ACAB.settingsFrame.contentPanel,
@@ -2025,8 +1893,7 @@ local function CreateSimpleBarPage(key)
 
 	title:SetText(config.title .. " Settings (Default)")
 
-	-- No unconditional banner reserve - see GetOrCreateBarPage's own
-	-- contentTopOffset comment.
+	-- No unconditional banner reserve - see GetOrCreateBarPage's own contentTopOffset comment.
 	local contentTopOffset = 0
 	local enableCheckboxY = -44 + contentTopOffset
 
@@ -2124,9 +1991,8 @@ local function CreateSimpleBarPage(key)
 
 		RefreshTooltipAnchorCorner()
 
-		-- Exposed for RefreshSimpleBarPage's own refresh and
-		-- ApplyProfileLockGating's generic assignmentRows lock sweep -
-		-- this page never otherwise uses assignmentRows.
+		-- Exposed for RefreshSimpleBarPage's own refresh and ApplyProfileLockGating's generic
+		-- assignmentRows lock sweep - this page never otherwise uses assignmentRows.
 		row.dropdown = dropdown
 		page.tooltipAnchorCornerRow = row
 		page.assignmentRows = { row }
@@ -2134,10 +2000,9 @@ local function CreateSimpleBarPage(key)
 		topY = topY - 32 - 14
 	end
 
-	-- Elements with a real measurable frame (config.getElementFrame) use
-	-- that frame's own current size for the clamp range (kept live by
-	-- RefreshSimplePositionSliderRange below); any page without one falls
-	-- back to the generic screen-relative range.
+	-- Elements with a real measurable frame use that frame's own current size for the clamp range
+	-- (kept live by RefreshSimplePositionSliderRange below); pages without one fall back to the
+	-- generic screen-relative range.
 	local minX, maxX, minY, maxY
 
 	if config.getElementFrame then
@@ -2205,29 +2070,20 @@ local function CreateSimpleBarPage(key)
 		end,
 	})
 
-	-- Cursor for whichever of Spacing/Scale/Orientation this element
-	-- actually has - cascades exactly like
-	-- CreateBarPage's own section-to-section deltas (36px title gap, 26px
-	-- title-to-slider gap), so the Reset button (and the window's own
-	-- dynamic height-fit, FitSettingsWindowToBarPage) always lands
-	-- correctly below however many of these three optional sections this
-	-- config actually enables.
+	-- Cursor for whichever of Spacing/Scale/Orientation this element actually has - cascades exactly
+	-- like CreateBarPage's own section-to-section deltas, so the Reset button and the window's own
+	-- height-fit always land correctly below however many of these optional sections are enabled.
 	local cursorY = ySliderY - 36
 
 	-------------------------------------------------------------------------
-	-- Spacing (Bag Bar/Micro Menu only - config.hasSpacing) - reuses the
-	-- default-bar page's own Spacing slider block structure/styling
-	-- exactly (title, slider, live value label, min/max end labels).
+	-- Spacing (Bag Bar/Micro Menu only - config.hasSpacing) - reuses the default-bar page's own
+	-- Spacing slider block structure/styling exactly.
 	-------------------------------------------------------------------------
 
 	if config.hasSpacing then
-		-- config.spacingMin lets one element override the shared
-		-- ACAB.SPACING_MIN floor - Micro Menu sets this to -10 so users can
-		-- pull its native buttons into a slight overlap, compensating for
-		-- padding baked into their own art that a spacing of 0 (their
-		-- measured native gap) doesn't remove. Every other hasSpacing
-		-- element (Bag Bar, Stance Bar) has no override and keeps the
-		-- original ACAB.SPACING_MIN (0) floor.
+		-- config.spacingMin lets one element override the shared ACAB.SPACING_MIN floor - Micro Menu
+		-- sets this to -10 so users can pull its native buttons into a slight overlap, compensating for
+		-- padding baked into their own art.
 		local spacingMin = config.spacingMin or ACAB.SPACING_MIN
 
 		local spacingTitleY = cursorY
@@ -2257,8 +2113,7 @@ local function CreateSimpleBarPage(key)
 				format = tostring,
 				onChange = function(value, suppressApply)
 					if not suppressApply then
-						-- Micro Menu displays value - uiOffset as the actual
-						-- stored/applied spacing (config.spacingUiOffset); every
+						-- Micro Menu displays value - uiOffset as the actual stored/applied spacing; every
 						-- other hasSpacing page has no offset (defaults to 0).
 						local uiOffset = config.spacingUiOffset or 0
 
@@ -2280,10 +2135,8 @@ local function CreateSimpleBarPage(key)
 	end
 
 	-------------------------------------------------------------------------
-	-- Scale (all three simple pages that have one - config.hasScale). Range
-	-- 0.5 to 2.0, step 0.1 - a proportional container/frame SetScale, not a
-	-- pixel quantity, so the live value label shows one decimal place
-	-- rather than an integer.
+	-- Scale (all three simple pages that have one - config.hasScale). Range 0.5 to 2.0, step 0.1 - a
+	-- proportional SetScale, not a pixel quantity, so the live value label shows one decimal place.
 	-------------------------------------------------------------------------
 
 	if config.hasScale then
@@ -2314,15 +2167,11 @@ local function CreateSimpleBarPage(key)
 					if not suppressApply then
 						config.setScale(value)
 
-						-- Scale change also compensates stored x/y
-						-- (DefaultBars.lua's Set*Scale, keeping the element's
-						-- bottom-left corner fixed). WARNING: a full page
-						-- refresh is required here, not just
-						-- RefreshSimplePositionSliderRange - it re-syncs the
-						-- X/Y sliders' displayed value from the new true
-						-- position before re-clamping, or the min/max
-						-- recompute reclamps against a stale value and
-						-- produces a spurious jump.
+						-- Scale change also compensates stored x/y (keeping the element's bottom-left
+						-- corner fixed). WARNING: a full page refresh is required here, not just
+						-- RefreshSimplePositionSliderRange - it re-syncs the X/Y sliders' displayed
+						-- value from the new true position before re-clamping, or the recompute
+						-- reclamps against a stale value and produces a spurious jump.
 						ACAB:RefreshSimpleBarPage(key)
 					else
 						-- Feeds this element's rendered footprint - keep the X/Y clamp range current.
@@ -2341,9 +2190,8 @@ local function CreateSimpleBarPage(key)
 	end
 
 	-------------------------------------------------------------------------
-	-- Grid Layout (Micro Menu only - config.hasGrid). Fixed preset swatch
-	-- picker, same mechanism as the full grid pages (GetOrCreateBarPage),
-	-- reusing RebuildGridSwatches/RefreshGridSwatchSelection directly.
+	-- Grid Layout (Micro Menu only - config.hasGrid). Fixed preset swatch picker, same mechanism as
+	-- the full grid pages, reusing RebuildGridSwatches/RefreshGridSwatchSelection directly.
 	-------------------------------------------------------------------------
 
 	if config.hasGrid then
@@ -2359,8 +2207,8 @@ local function CreateSimpleBarPage(key)
 
 		RebuildGridSwatches(page, key, swatchY)
 
-		-- Grid Layout can't just be added to page.hoverOnlyReflowRows - its
-		-- swatches are a dynamic array, repositioned in place instead.
+		-- Grid Layout can't just be added to page.hoverOnlyReflowRows - its swatches are a dynamic
+		-- array, repositioned in place instead.
 		page.hoverOnlyExtraReflow = function(offset)
 			gridTitle:ClearAllPoints()
 			gridTitle:SetPoint("TOPLEFT", page, "TOPLEFT", ACAB.INDENT_SECTION, gridTitleY - offset)
@@ -2382,18 +2230,15 @@ local function CreateSimpleBarPage(key)
 			end
 		end
 
-		-- Same swatch-height-plus-caption-plus-gap arithmetic as
-		-- GetOrCreateBarPage's own button-count-row positioning below its
-		-- Grid Layout section.
+		-- Same swatch-height-plus-caption-plus-gap arithmetic as GetOrCreateBarPage's own
+		-- button-count-row positioning.
 		cursorY = swatchY - SWATCH_SIZE - 14 - 14
 	end
 
 	-------------------------------------------------------------------------
-	-- "Better Experience Bar" + its 5 text toggles + 2 bar-fill color
-	-- pickers - Experience Bar page only. Independent of the "Enabled"
-	-- checkbox further up this function (config.hasEnable, the container's
-	-- own Position/Scale/Enable/Reset) - ACABDB.betterExpBarEnabled
-	-- only governs the text overlay, never the container's own movability.
+	-- "Better Experience Bar" + its 5 text toggles + 2 bar-fill color pickers - Experience Bar page
+	-- only. Independent of the "Enabled" checkbox further up (ACABDB.betterExpBarEnabled only governs
+	-- the text overlay, never the container's own movability).
 	-------------------------------------------------------------------------
 
 	if key == "expbar" then
@@ -2415,9 +2260,8 @@ local function CreateSimpleBarPage(key)
 
 				ACAB:ApplyBetterExpBarVisual()
 
-				-- Applies the saved earned/rested color when turning the
-				-- feature on; ACAB:ApplyExpBarColors itself gates on
-				-- betterExpBarEnabled, so this is a no-op when turning it off.
+				-- Applies the saved earned/rested color when turning the feature on; ApplyExpBarColors
+				-- itself gates on betterExpBarEnabled, so this is a no-op when turning it off.
 				ACAB:ApplyExpBarColors()
 
 				ApplyBetterExpBarGating(page)
@@ -2431,9 +2275,8 @@ local function CreateSimpleBarPage(key)
 		cursorY = cursorY - 24 - 14
 
 		-------------------------------------------------------------------------
-		-- Overlay Text Size slider, below "Enable Better Experience Bar".
-		-- Range/step/ClampFontSize match the General panel's Hotkey/Count
-		-- Text Size sliders.
+		-- Overlay Text Size slider, below "Enable Better Experience Bar". Range/step/ClampFontSize
+		-- match the General panel's Hotkey/Count Text Size sliders.
 		-------------------------------------------------------------------------
 
 		local fontSizeTitleY = cursorY
@@ -2449,9 +2292,8 @@ local function CreateSimpleBarPage(key)
 
 		ACAB:AddHoverOnlyReflowRow(page, fontSizeTitle, ACAB.INDENT_SECTION, fontSizeTitleY)
 
-		-- Placeholder initial text only - RefreshSimpleBarPage overwrites
-		-- this with the real saved/native value before this page is ever
-		-- visible.
+		-- Placeholder initial text only - RefreshSimpleBarPage overwrites this with the real
+		-- saved/native value before this page is ever visible.
 		local fontSizeSlider, fontSizeValueText = ACAB:CreateLabeledSlider(
 			page,
 			"ACABSimplePageExpBarFontSizeSlider",
@@ -2580,10 +2422,8 @@ local function CreateSimpleBarPage(key)
 		cursorY = cursorY - 24 - 14
 
 		-------------------------------------------------------------------------
-		-- Overlay Text Color swatch, below the Rested XP Bar Color picker.
-		-- Wired to ACABDB.expBarTextColor/ACAB:SetExpBarTextColor via the
-		-- same CreateColorSwatchButton/OpenExpBarColorPicker mechanic as the
-		-- bar-fill pickers above.
+		-- Overlay Text Color swatch, below the Rested XP Bar Color picker. Wired to
+		-- ACABDB.expBarTextColor/SetExpBarTextColor via the same mechanic as the bar-fill pickers above.
 		-------------------------------------------------------------------------
 
 		local textColorLabel = page:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -2633,9 +2473,8 @@ local function CreateSimpleBarPage(key)
 		cursorY = cursorY - 22 - 26
 
 		-------------------------------------------------------------------------
-		-- Rested Glow Pulse Interval slider, below the Reset Colors button.
-		-- Better-Experience-Bar-only (gated by ApplyBetterExpBarGating
-		-- below). Range/step: 0.5 to 5.0 seconds, step 0.1.
+		-- Rested Glow Pulse Interval slider, below the Reset Colors button. Better-Experience-Bar-only
+		-- (gated by ApplyBetterExpBarGating below). Range/step: 0.5 to 5.0 seconds, step 0.1.
 		-------------------------------------------------------------------------
 
 		local pulseIntervalTitleY = cursorY
@@ -2648,8 +2487,8 @@ local function CreateSimpleBarPage(key)
 
 		ACAB:AddHoverOnlyReflowRow(page, pulseIntervalTitle, ACAB.INDENT_SECTION, pulseIntervalTitleY)
 
-		-- Placeholder initial text only - RefreshSimpleBarPage overwrites
-		-- this with the real saved value before this page is ever visible.
+		-- Placeholder initial text only - RefreshSimpleBarPage overwrites this with the real saved
+		-- value before this page is ever visible.
 		local pulseIntervalSlider, pulseIntervalValueText = ACAB:CreateLabeledSlider(
 			page,
 			"ACABSimplePageExpBarPulseIntervalSlider",
@@ -2680,11 +2519,9 @@ local function CreateSimpleBarPage(key)
 	end
 
 	-------------------------------------------------------------------------
-	-- Show Key Ring (Bag Bar page only) - KeyRingButton is independently
-	-- toggleable/positionable (DefaultBars.lua's SetKeyRingEnabled/
-	-- SetKeyRingPosition); this checkbox is purely show/hide. Dragging is
-	-- done directly on the button itself (its own overlay, right-click
-	-- routes back to this page - DefaultBars.lua's ApplyKeyRingPosition).
+	-- Show Key Ring (Bag Bar page only) - KeyRingButton is independently toggleable/positionable; this
+	-- checkbox is purely show/hide. Dragging is done directly on the button itself (its own overlay,
+	-- right-click routes back to this page).
 	-------------------------------------------------------------------------
 
 	if key == "bagbar" then
@@ -2705,10 +2542,8 @@ local function CreateSimpleBarPage(key)
 		cursorY = cursorY - 24 - 14
 
 		-------------------------------------------------------------------------
-		-- Key Ring Scale, below the checkbox above. Standalone rather than
-		-- config-driven: Key Ring has no ACAB.simpleBarPageConfigs entry of
-		-- its own (it lives on the Bag Bar's page). Writes through
-		-- ACAB:SetKeyRingScale.
+		-- Key Ring Scale, below the checkbox above. Standalone rather than config-driven: Key Ring has
+		-- no ACAB.simpleBarPageConfigs entry of its own (it lives on the Bag Bar's page).
 		-------------------------------------------------------------------------
 
 		local keyRingScaleTitleY = cursorY
@@ -2764,12 +2599,9 @@ local function CreateSimpleBarPage(key)
 		onClick = function()
 			config.reset()
 
-			-- GetSimpleElementCoordinateRange reads the element's real
-			-- rendered GetWidth()/GetHeight() - a SetWidth/SetHeight from
-			-- config.reset() above doesn't resolve until the next frame on
-			-- this client, so refreshing synchronously here would compute
-			-- the slider range against the stale pre-reset footprint.
-			-- Deferred one frame so it reads the settled size instead.
+			-- GetSimpleElementCoordinateRange reads the element's real rendered size - a SetWidth/
+			-- SetHeight from config.reset() doesn't resolve until the next frame on this client, so
+			-- this is deferred one frame to read the settled size instead.
 			if C_Timer and C_Timer.After then
 				C_Timer.After(0, function()
 					ACAB:RefreshBarSettingsPage(key)
@@ -2799,9 +2631,7 @@ local function CreateSimpleBarPage(key)
 			onClick = function()
 				config.resetModern()
 
-				-- Same next-frame defer as the Vanilla Layout reset button above -
-				-- GetSimpleElementCoordinateRange needs the settled post-reset
-				-- size, not the stale pre-reset one.
+				-- Same next-frame defer as the Vanilla Layout reset button above.
 				if C_Timer and C_Timer.After then
 					C_Timer.After(0, function()
 						ACAB:RefreshBarSettingsPage(key)
@@ -2848,20 +2678,17 @@ function ACAB:RefreshSimpleBarPage(key)
 		return
 	end
 
-	-- Suppress OnValueChanged re-application before touching the sliders at
-	-- all - SetMinMaxValues just below re-clamps the slider's CURRENT value
-	-- if it's now outside the new range, which fires OnValueChanged same as
-	-- a real drag would. Setting suppressApply first (not after, as this
-	-- used to) stops that clamp from writing a stray value into the saved
-	-- config ahead of the explicit clamp-and-persist logic below.
+	-- Suppress OnValueChanged re-application before touching the sliders at all - SetMinMaxValues just
+	-- below re-clamps the slider's current value if now outside the new range, firing OnValueChanged
+	-- same as a real drag would. This stops that clamp from writing a stray value into the saved config
+	-- ahead of the explicit clamp-and-persist logic below.
 	page.xSlider.suppressApply = true
 	page.ySlider.suppressApply = true
 	page.xSlider.suppressSnap = true
 	page.ySlider.suppressSnap = true
 
-	-- X/Y clamp range - recomputed from this element's CURRENT rendered
-	-- size before syncing the value below, so scale/spacing changes,
-	-- grid-preset picks, and "Reset to Vanilla Layout" (all of which
+	-- X/Y clamp range - recomputed from this element's current rendered size before syncing the value
+	-- below, so scale/spacing changes, grid-preset picks, and "Reset to Vanilla Layout" (all of which
 	-- route here) always re-clamp against the up to date footprint.
 	if config.getElementFrame then
 		local frame = config.getElementFrame()
@@ -2874,12 +2701,10 @@ function ACAB:RefreshSimpleBarPage(key)
 			page.xSlider:SetMinMaxValues(minX, maxX)
 			page.ySlider:SetMinMaxValues(minY, maxY)
 
-			-- A scale increase keeps the bottom-left corner fixed and grows
-			-- toward the top-right, so a position that was valid before can
-			-- push the far edge off-screen after the footprint grows -
-			-- clamp and persist here (not just SetMinMaxValues, which only
-			-- clamps the slider's DISPLAYED value, not the saved position)
-			-- so the stored position never silently drifts off-screen.
+			-- A scale increase keeps the bottom-left corner fixed and grows toward the top-right, so a
+			-- position that was valid before can push the far edge off-screen after the footprint
+			-- grows - clamp and persist here (not just SetMinMaxValues, which only clamps the slider's
+			-- displayed value, not the saved position).
 			if rawPos and config.setPosition then
 				local clampedX = rawPos.x or 0
 				local clampedY = rawPos.y or 0
@@ -2901,9 +2726,8 @@ function ACAB:RefreshSimpleBarPage(key)
 	page.xSlider:SetValue(pos.x or 0)
 	page.ySlider:SetValue(pos.y or 0)
 
-	-- Explicit, not just relying on OnValueChanged: it doesn't fire (and
-	-- so wouldn't refresh xAppliedValue/yAppliedValue) when pos.x/y equals
-	-- whatever the slider was already sitting at.
+	-- Explicit, not just relying on OnValueChanged: it doesn't fire when pos.x/y equals whatever the
+	-- slider was already sitting at.
 	page.xAppliedValue = pos.x or 0
 	page.yAppliedValue = pos.y or 0
 
@@ -2919,11 +2743,9 @@ function ACAB:RefreshSimpleBarPage(key)
 		page.enableCheckbox:SetChecked(config.getEnabled() ~= false)
 	end
 
-	-- Both checkboxes lock (greyed out via ACAB:LockControlKeepingTooltip
-	-- further below, after ApplyProfileLockGating) and their DISPLAYED
-	-- checked-state collapses to the vanilla-forced value while locked,
-	-- rather than showing the raw stored preference - same collapse idiom
-	-- as modernBorderStyleCheckbox (Core.lua's IsVanillaBorderStyle).
+	-- Both checkboxes lock (greyed out via LockControlKeepingTooltip further below) and their
+	-- displayed checked-state collapses to the vanilla-forced value while locked, rather than showing
+	-- the raw stored preference.
 	if page.useVanillaPetBarCheckbox or page.condenseEmptyPetSlotsCheckbox then
 		local petLocked = ACAB:IsDefaultProfileActive() or ACABDB.useDefaultLayout == true
 		local petCfg = ACABDB.defaultBars and ACABDB.defaultBars[ACAB.PET_BAR_ID]
@@ -2946,16 +2768,13 @@ function ACAB:RefreshSimpleBarPage(key)
 		page.useVanillaStanceBarCheckbox:SetChecked(stanceLocked or IsStanceBarNativeMode())
 	end
 
-	-- Show Key Ring (Bag Bar page only) - independent of config.getEnabled
-	-- above (that's the Bag Bar's OWN enable flag), reads
-	-- ACABDB.keyRingEnabled directly since it has no
-	-- ACAB.simpleBarPageConfigs entry of its own.
+	-- Show Key Ring (Bag Bar page only) - independent of config.getEnabled above, reads
+	-- ACABDB.keyRingEnabled directly since it has no ACAB.simpleBarPageConfigs entry of its own.
 	if page.keyRingCheckbox then
 		page.keyRingCheckbox:SetChecked(ACABDB.keyRingEnabled ~= false)
 	end
 
-	-- Key Ring Scale - same standalone (non-config-driven) treatment as
-	-- the checkbox above.
+	-- Key Ring Scale - same standalone (non-config-driven) treatment as the checkbox above.
 	if page.keyRingScaleSlider then
 		local keyRingScale = ACABDB.keyRingScale or 1
 
@@ -2977,14 +2796,12 @@ function ACAB:RefreshSimpleBarPage(key)
 	end
 
 	-------------------------------------------------------------------------
-	-- Spacing/Scale/Orientation - each optional per
-	-- config.hasSpacing/hasScale/hasOrientation, mirroring the enable
-	-- checkbox's own presence check above.
+	-- Spacing/Scale/Orientation - each optional per config.hasSpacing/hasScale/hasOrientation,
+	-- mirroring the enable checkbox's own presence check above.
 	-------------------------------------------------------------------------
 
 	if page.spacingSlider and config.getSpacing then
-		-- Displayed slider value = actual stored spacing + uiOffset
-		-- (Micro Menu only - see config.spacingUiOffset).
+		-- Displayed slider value = actual stored spacing + uiOffset (Micro Menu only).
 		local uiOffset = config.spacingUiOffset or 0
 		local spacing = (config.getSpacing() or 0) + uiOffset
 		local spacingMin = config.spacingMin or ACAB.SPACING_MIN
@@ -3045,12 +2862,9 @@ function ACAB:RefreshSimpleBarPage(key)
 	end
 
 	-------------------------------------------------------------------------
-	-- "Better Experience Bar" + its 5 text toggles + Font Size slider +
-	-- 3 color swatches (Experience Bar page only) - independent of
-	-- config.getEnabled above (that's the container's OWN enable flag), so
-	-- these read ACABDB.betterExpBarEnabled/expBarShow*/expBarFontSize/
-	-- expBarColor*/expBarTextColor directly, same non-config-driven
-	-- treatment as Key Ring's own fields above.
+	-- "Better Experience Bar" + its 5 text toggles + Font Size slider + 3 color swatches (Experience
+	-- Bar page only) - independent of config.getEnabled above, so these read
+	-- ACABDB.betterExpBarEnabled/expBarShow*/expBarFontSize/expBarColor*/expBarTextColor directly.
 	-------------------------------------------------------------------------
 
 	if page.betterExpBarCheckbox then
@@ -3076,10 +2890,8 @@ function ACAB:RefreshSimpleBarPage(key)
 			page.expBarShowRestedTotalCheckbox:SetChecked(ACABDB.expBarShowRestedTotal == true)
 		end
 
-		-- ACABDB.expBarFontSize stays nil until the user moves this
-		-- slider (same lazy-default idiom as hotkeyFontSize/countFontSize).
-		-- ACAB:CaptureNativeExpBarFontIfNeeded guarantees ACAB.NATIVE_EXPBAR_FONT
-		-- is populated, safe to call even before this overlay is built.
+		-- ACABDB.expBarFontSize stays nil until the user moves this slider (same lazy-default idiom as
+		-- hotkeyFontSize/countFontSize).
 		if page.expBarFontSizeSlider then
 			ACAB:CaptureNativeExpBarFontIfNeeded()
 
@@ -3095,12 +2907,8 @@ function ACAB:RefreshSimpleBarPage(key)
 			end
 		end
 
-		-- ACAB:CaptureExpBarColorsIfNeeded (via ACAB:ApplyExpBarColors,
-		-- called unconditionally from Core.lua's login sequence) has
-		-- already guaranteed both fields are non-nil by the time Settings
-		-- can even be opened, so no nil fallback is needed here the way
-		-- the color picker's own OpenExpBarColorPicker call defensively
-		-- has one.
+		-- CaptureExpBarColorsIfNeeded (via ApplyExpBarColors, called from the login sequence) already
+		-- guarantees both fields are non-nil by the time Settings can be opened.
 		if page.earnedColorSwatch then
 			SetColorSwatchColor(page.earnedColorSwatch, ACABDB.expBarColorEarned)
 		end
@@ -3109,16 +2917,12 @@ function ACAB:RefreshSimpleBarPage(key)
 			SetColorSwatchColor(page.restedColorSwatch, ACABDB.expBarColorRested)
 		end
 
-		-- ACABDB.expBarTextColor is always seeded by Core.lua's
-		-- EnsureDB (a straight default, no live-frame capture needed), so
-		-- it's never nil here.
+		-- ACABDB.expBarTextColor is always seeded by Core.lua's EnsureDB, so it's never nil here.
 		if page.expBarTextColorSwatch then
 			SetColorSwatchColor(page.expBarTextColorSwatch, ACABDB.expBarTextColor)
 		end
 
-		-- ACABDB.expBarGlowPulseInterval is always seeded by
-		-- Core.lua's EnsureDB (same as expBarTextColor above), so it's
-		-- never nil here.
+		-- ACABDB.expBarGlowPulseInterval is always seeded the same way.
 		if page.expBarGlowPulseIntervalSlider then
 			local interval = ACABDB.expBarGlowPulseInterval or 1.5
 
@@ -3134,40 +2938,23 @@ function ACAB:RefreshSimpleBarPage(key)
 		ApplyBetterExpBarGating(page)
 	end
 
-	-- Stance Bar/Pet Bar/Cast Bar stay fully unlocked on this gate even
-	-- while useDefaultLayout is on - they stack dynamically off Action
-	-- Bar 1/2/Extra Bar 1/2 (GetStanceBarBaselineY/GetPetBarBaselineY/
-	-- GetCastBarBaselineY, only while each element's own
-	-- usesDefaultPosition flag is true) and are draggable in edit mode
-	-- regardless (DefaultBars.lua's ApplyDefaultLayoutEditVisual), so
-	-- their own Settings page must stay editable the same way. Every
-	-- other simple page keeps the normal layout lock.
+	-- Stance Bar/Pet Bar/Cast Bar stay fully unlocked on this gate even while useDefaultLayout is on -
+	-- they stack dynamically off Action Bar 1/2/Extra Bar 1/2 and are draggable in edit mode
+	-- regardless, so their own Settings page must stay editable the same way.
 	local skipLayoutLock = key == ACAB.PET_BAR_ID or key == ACAB.STANCE_BAR_ID or key == "castbar" or key == "tooltip"
 
-	-- Same gating window as bar 1 (CanDragDefaultLayout's underlying
-	-- rule) - the enable checkbox and Reset button are deliberately
-	-- excluded, mirroring ApplyDefaultLayoutGating's own established
-	-- rule for bar 1 (they stay fully functional regardless of
-	-- useDefaultLayout).
+	-- Same gating window as bar 1 - the enable checkbox and Reset button are deliberately excluded,
+	-- mirroring ApplyDefaultLayoutGating's own rule for bar 1.
 	ACAB:ApplyDefaultLayoutGating(page, skipLayoutLock or ACABDB.useDefaultLayout ~= true)
 
-	-- Default-profile lock (independent of the useDefaultLayout gate
-	-- above) - every simple page is also subject to that layout lock
-	-- (the ApplyDefaultLayoutGating call just above), so the banner
-	-- should reflect it here too - except the three elements exempted above.
+	-- Default-profile lock (independent of the useDefaultLayout gate above) - every simple page is also
+	-- subject to that layout lock, so the banner should reflect it here too.
 	self:ApplyProfileLockGating(page, not skipLayoutLock)
 
-	-- Use Vanilla Pet Bar/Stance Bar (and Pet Bar's coupled Condense Empty
-	-- Slots) stay locked by Default Layout/Default Profile even on the
-	-- Pet Bar/Stance Bar page's otherwise-unlocked gate above - forcing
-	-- native mode is exactly what lets that page's position/shape controls
-	-- stay usable, so switching away from native isn't allowed while
-	-- either lock is active. Runs AFTER ApplyProfileLockGating (not
-	-- folded into the exempt list there) so it has the final say, and
-	-- uses ACAB:LockControlKeepingTooltip instead of ACAB:LockControl so
-	-- the red locked-reason tooltip (GetVanillaModeLockedText,
-	-- CreateUseVanillaPetBarCheckbox/CreateUseVanillaStanceBarCheckbox)
-	-- still shows on hover while locked.
+	-- Use Vanilla Pet Bar/Stance Bar (and Pet Bar's coupled Condense Empty Slots) stay locked by
+	-- Default Layout/Default Profile even on the otherwise-unlocked gate above - forcing native mode is
+	-- exactly what lets that page's controls stay usable. Runs after ApplyProfileLockGating so it has
+	-- the final say, and uses LockControlKeepingTooltip so the red locked-reason tooltip still shows.
 	local vanillaModeLocked = ACAB:IsDefaultProfileActive() or ACABDB.useDefaultLayout == true
 
 	if page.useVanillaPetBarCheckbox then
@@ -3183,16 +2970,11 @@ function ACAB:RefreshSimpleBarPage(key)
 	end
 end
 
--- Config table for each simple page - the single place mapping
--- Settings.lua's UI onto DefaultBars.lua's ACAB:Set*/Reset*/Get* API.
--- Referenced by CreateBarListRow and GetOrCreateBarPage/
--- RefreshBarSettingsPage's dispatch checks.
---
--- Stance Bar native mode: keyed by the numeric ACAB.STANCE_BAR_ID (like the
--- Pet Bar's entry below), reached only via IsStanceBarNativeMode()
--- dispatch. WARNING: drives the native-mode ACABDB.stanceBar* fields
--- ONLY - separate from ACABDB.defaultBars[STANCE_BAR_ID], the styled
--- mode's own cfg (see Core.lua's ACAB.STANCE_BAR_ID header comment).
+-- Config table for each simple page - the single place mapping Settings.lua's UI onto DefaultBars.lua's
+-- ACAB:Set*/Reset*/Get* API.
+-- Stance Bar native mode: keyed by the numeric ACAB.STANCE_BAR_ID, reached only via
+-- IsStanceBarNativeMode() dispatch. WARNING: drives the native-mode ACABDB.stanceBar* fields only -
+-- separate from ACABDB.defaultBars[STANCE_BAR_ID], the styled mode's own cfg.
 ACAB.simpleBarPageConfigs[ACAB.STANCE_BAR_ID] = {
 	title = "Stance Bar",
 	hasEnable = true,
@@ -3200,17 +2982,13 @@ ACAB.simpleBarPageConfigs[ACAB.STANCE_BAR_ID] = {
 	setPosition = function(x, y) ACAB:SetStanceBarPosition(x, y) end,
 	getElementFrame = function() return ACAB.stanceBarContainer end,
 	reset = function()
-		-- Layout first: it writes scale directly to the DB without
-		-- reapplying position, so applying position after settles it
-		-- under the final scale instead of the stale pre-reset one.
+		-- Layout first: it writes scale directly to the DB without reapplying position, so applying
+		-- position after settles it under the final scale instead of the stale pre-reset one.
 		ACAB:ResetStanceBarLayout()
 		ACAB:ResetStanceBarPosition()
 	end,
 	resetModern = function()
-		-- Layout first, same reason as `reset` above: PixelSetPoint reads
-		-- the container's live GetEffectiveScale to stay pixel-perfect, so
-		-- applying position while a stale non-1 scale is still live lands
-		-- it at the wrong X/Y - settle scale back to 1 before repositioning.
+		-- Layout first, same reason as `reset` above - settle scale back to 1 before repositioning.
 		ACAB:ResetStanceBarLayout()
 		ACAB:ResetStanceBarPositionToModernBase()
 	end,
@@ -3342,10 +3120,8 @@ ACAB.simpleBarPageConfigs[ACAB.PET_BAR_ID] = {
 	setHoverDuration = function(v) ACAB:SetPetBarNativeHoverDuration(v) end,
 }
 
--- Scale only: Blizzard owns MainMenuBarPerformanceBarFrame's own internal
--- layout entirely (it's a single self-contained frame, not a
--- ACAB-owned chain), so Spacing/Orientation have nothing real to
--- drive.
+-- Scale only: Blizzard owns MainMenuBarPerformanceBarFrame's own internal layout entirely, so
+-- Spacing/Orientation have nothing real to drive.
 ACAB.simpleBarPageConfigs["latencybar"] = {
 	title = "Latency Bar",
 	hasEnable = true,
@@ -3369,37 +3145,24 @@ ACAB.simpleBarPageConfigs["latencybar"] = {
 	setHoverDuration = function(v) ACAB:SetLatencyBarHoverDuration(v) end,
 }
 
--- Experience Bar: Scale only, same reasoning as the Latency Bar's own
--- config above - MainMenuExpBar is a single self-contained native frame,
--- not a ACAB-owned chain, so Spacing/Orientation have nothing real
--- to drive. This config only covers the container's own
--- Position/Scale/Enable/Reset - "Enable Better Experience Bar" and its
--- own text-toggle/color-picker controls live on this same settings page
--- too (CreateSimpleBarPage's own "if key == 'expbar'" block), but remain
--- functionally independent (ACABDB.betterExpBarEnabled only governs
--- the text overlay, never this container's own movability).
+-- Experience Bar: Scale only, same reasoning as Latency Bar above. This config only covers the
+-- container's own Position/Scale/Enable/Reset - "Enable Better Experience Bar" and its text-toggle/
+-- color-picker controls live on this same page too, but remain functionally independent.
 ACAB.simpleBarPageConfigs["expbar"] = {
 	title = "Experience Bar",
 	hasEnable = true,
 	getPosition = function() return ACABDB.expBarPosition end,
 	setPosition = function(x, y) ACAB:SetExpBarPosition(x, y) end,
 	getElementFrame = function() return getglobal(ACAB.EXP_BAR_FRAME_NAME) end,
-	-- Extra headroom on Y max: users may want to hide the top sliver of
-	-- this frame off-screen. In real screen pixels (GetPixelStep(),
-	-- applied before the /scale division in GetSimpleElementCoordinateRange
-	-- so the on-screen effect stays exactly this many pixels regardless of
-	-- the frame's own current scale) - not a raw position-value amount,
-	-- since a given change in x/y doesn't always move the element by a
-	-- matching amount on screen.
+	-- Extra headroom on Y max: users may want to hide the top sliver of this frame off-screen. In real
+	-- screen pixels, applied before the /scale division so the on-screen effect stays exactly this many
+	-- pixels regardless of the frame's own current scale.
 	extraMaxYPixels = 2,
 	reset = function()
 		ACAB:ResetExpBarLayout()
 	end,
-	-- No distinct Modern Layout position of its own (the wizard only
-	-- shifts Main Bar/Action Bar 1/2 UP to clear whatever position the
-	-- Experience Bar is already at, per ACAB:GetModernBaseExpBarClearance -
-	-- it never repositions the Experience Bar itself) - same as "Reset to
-	-- Vanilla Layout" so the button is present/consistent either way.
+	-- No distinct Modern Layout position of its own (the wizard only shifts Main Bar/Action Bar 1/2 up
+	-- to clear the Experience Bar, never repositions it) - same as "Reset to Vanilla Layout".
 	resetModern = function()
 		ACAB:ResetExpBarLayout()
 	end,
@@ -3424,9 +3187,8 @@ ACAB.simpleBarPageConfigs["castbar"] = {
 	reset = function()
 		ACAB:ResetCastBarLayout()
 	end,
-	-- No distinct Modern Layout position of its own - Cast Bar already
-	-- dynamically stacks off the default bars regardless of layout mode,
-	-- so this is the same as "Reset to Vanilla Layout".
+	-- No distinct Modern Layout position of its own - Cast Bar already dynamically stacks off the
+	-- default bars regardless of layout mode, so this is the same as "Reset to Vanilla Layout".
 	resetModern = function()
 		ACAB:ResetCastBarLayout()
 	end,
@@ -3435,9 +3197,7 @@ ACAB.simpleBarPageConfigs["castbar"] = {
 	setScale = function(v) ACAB:SetCastBarScale(v) end,
 }
 
--- Tooltip: repositions only the fixed-position GameTooltip (quest log,
--- NPC hover, Micro Menu buttons, etc) - widget-relative tooltips are
--- untouched. See NativeElements.lua's HookGameTooltipDefaultAnchor.
+-- Tooltip: repositions only the fixed-position GameTooltip - widget-relative tooltips are untouched.
 ACAB.simpleBarPageConfigs["tooltip"] = {
 	title = "Tooltip",
 	hasEnable = true,
@@ -3447,8 +3207,7 @@ ACAB.simpleBarPageConfigs["tooltip"] = {
 	reset = function()
 		ACAB:ResetTooltipLayout()
 	end,
-	-- No distinct Modern Layout position of its own - same as "Reset to
-	-- Vanilla Layout" so the button is present/consistent either way.
+	-- No distinct Modern Layout position of its own - same as "Reset to Vanilla Layout".
 	resetModern = function()
 		ACAB:ResetTooltipLayout()
 	end,
@@ -3467,9 +3226,8 @@ ACAB.simpleBarPageConfigs["micromenu"] = {
 	getElementFrame = function() return ACAB.microMenuContainer end,
 	extraMaxYPixels = 4,
 	reset = function()
-		-- Layout first: it writes scale directly to the DB without
-		-- reapplying position, so applying position after settles it
-		-- under the final scale instead of the stale pre-reset one.
+		-- Layout first: it writes scale directly to the DB without reapplying position, so applying
+		-- position after settles it under the final scale instead of the stale pre-reset one.
 		ACAB:ResetMicroMenuLayout()
 		ACAB:ResetMicroMenuPosition()
 	end,
@@ -3478,13 +3236,10 @@ ACAB.simpleBarPageConfigs["micromenu"] = {
 	getEnabled = function() return ACABDB.microMenuEnabled end,
 	setEnabled = function(v) ACAB:SetMicroMenuEnabled(v) end,
 	hasSpacing = true,
-	-- -10 floor, not the shared ACAB.SPACING_MIN (0) - see
-	-- ACAB:SetMicroMenuSpacing's own comment (DefaultBars.lua) and
-	-- CreateSimpleBarPage's spacingMin handling above.
+	-- -10 floor, not the shared ACAB.SPACING_MIN (0).
 	spacingMin = -10,
-	-- Displayed slider value = actual stored spacing + 4 (native button art
-	-- padding makes an actual spacing of 0 look like a visible gap) - see
-	-- ACAB:SetMicroMenuSpacing's own comment (DefaultBars.lua).
+	-- Displayed slider value = actual stored spacing + 4 (native button art padding makes an actual
+	-- spacing of 0 look like a visible gap).
 	spacingUiOffset = 4,
 	getSpacing = function() return ACABDB.microMenuSpacing end,
 	setSpacing = function(v) ACAB:SetMicroMenuSpacing(v) end,
@@ -3492,9 +3247,8 @@ ACAB.simpleBarPageConfigs["micromenu"] = {
 	getScale = function() return ACABDB.microMenuScale end,
 	setScale = function(v) ACAB:SetMicroMenuScale(v) end,
 	hasGrid = true,
-	-- GridSwatch_OnClick calls ACAB:SetMicroMenuLayout directly (barId ==
-	-- "micromenu" branch), not through a config setter - only getGridLayout
-	-- is needed here, to sync swatch selection on refresh.
+	-- GridSwatch_OnClick calls ACAB:SetMicroMenuLayout directly, not through a config setter - only
+	-- getGridLayout is needed here, to sync swatch selection on refresh.
 	getGridLayout = function() return ACABDB.microMenuCols or 8, ACABDB.microMenuRows or 1 end,
 	hasHoverOnly = true,
 	getHoverOnly = function() return ACABDB.microMenuHoverOnly end,
@@ -3503,11 +3257,8 @@ ACAB.simpleBarPageConfigs["micromenu"] = {
 	setHoverDuration = function(v) ACAB:SetMicroMenuHoverDuration(v) end,
 }
 
--- Shared right-click-to-settings entry point for any string-keyed simple
--- page - DefaultBars.lua's Stance Bar/Bag Bar/Micro Menu/Key Ring/Latency
--- Bar overlays all call this directly (EnsureContainerOverlay) rather than
--- needing their own OpenXSettings wrapper apiece, mirroring
--- OpenDefaultBarSettings' role for the numeric default bars (1-5) below.
+-- Shared right-click-to-settings entry point for any string-keyed simple page - DefaultBars.lua's
+-- overlays all call this directly rather than needing their own OpenXSettings wrapper apiece.
 function ACAB:OpenBarSettingsByKey(key)
 	self:ShowSettingsFrame()
 	self:ShowBarPage(key)
@@ -3552,22 +3303,15 @@ function ACAB:RefreshBarSettingsPage(barId)
 	self:RefreshHoverOnlyControls(page, cfg.hoverOnly, cfg.hoverDuration)
 
 	-------------------------------------------------------------------------
-	-- X/Y clamp range - recomputed from this bar's CURRENT
-	-- buttonSize/buttonCount/cols/rows before syncing the value below, so
-	-- a grid-preset pick or "Reset to Vanilla Layout" (both of which
-	-- route here) always re-clamps against the up to date range. Just
-	-- SetMinMaxValues, not the full RefreshPositionSliderRange (which also
-	-- re-clamps the CURRENT value) - SetValue(x) right below already
-	-- re-syncs the value from cfg, the actual source of truth here.
-	-------------------------------------------------------------------------
-
-	-------------------------------------------------------------------------
-	-- Suppress OnValueChanged re-application before touching the sliders at
-	-- all - SetMinMaxValues below re-clamps the slider's CURRENT value if
-	-- it's now outside the new range, which fires OnValueChanged same as a
-	-- real drag would. Setting suppressApply first (not after) stops that
-	-- clamp from writing a stray value into the saved config before
-	-- SetValue(x)/SetValue(y) below applies the real one.
+	-- X/Y clamp range - recomputed from this bar's current buttonSize/buttonCount/cols/rows before
+	-- syncing the value below, so a grid-preset pick or "Reset to Vanilla Layout" always re-clamps
+	-- against the up to date range. Just SetMinMaxValues, not the full RefreshPositionSliderRange -
+	-- SetValue(x) right below already re-syncs the value from cfg, the actual source of truth here.
+	--
+	-- Suppress OnValueChanged re-application before touching the sliders at all - SetMinMaxValues
+	-- below re-clamps the slider's current value if now outside the new range, firing OnValueChanged
+	-- same as a real drag would. Setting suppressApply first stops that clamp from writing a stray
+	-- value into the saved config before SetValue(x)/SetValue(y) below applies the real one.
 	-------------------------------------------------------------------------
 
 	page.xSlider.suppressApply = true
@@ -3597,15 +3341,9 @@ function ACAB:RefreshBarSettingsPage(barId)
 	page.xSlider:SetValue(x)
 	page.ySlider:SetValue(y)
 
-	-- SetValue only fires OnValueChanged (and therefore the %.2f-formatted
-	-- value-text update in each slider's own handler) when the value
-	-- actually CHANGES - if cfg.x/y equals whatever the slider was already
-	-- sitting at (e.g. the page's initial unformatted "0.00" placeholder
-	-- text from GetOrCreateBarPage, or a value unchanged since the last
-	-- refresh), that handler never runs and xValueText/yValueText (and
-	-- xAppliedValue/yAppliedValue) would keep showing/holding stale
-	-- values. Setting them explicitly here guarantees they're current on
-	-- every refresh regardless of whether the value changed.
+	-- SetValue only fires OnValueChanged (and the value-text update) when the value actually changes -
+	-- if cfg.x/y equals whatever the slider was already sitting at, that handler never runs. Setting
+	-- these explicitly here guarantees they're current on every refresh regardless.
 	page.xAppliedValue = x
 	page.yAppliedValue = y
 
@@ -3642,9 +3380,8 @@ function ACAB:RefreshBarSettingsPage(barId)
 	if page.spacingSlider then
 		local offset = ACAB:GetSpacingDisplayOffset()
 
-		-- Recomputed every refresh - the offset (and therefore the
-		-- displayed range) can change live when the border-style toggle
-		-- flips while this page is already built.
+		-- Recomputed every refresh - the offset (and displayed range) can change live when the
+		-- border-style toggle flips while this page is already built.
 		page.spacingSlider:SetMinMaxValues(0, ACAB.SPACING_MAX - offset)
 
 		if page.spacingSliderLow then
@@ -3690,10 +3427,8 @@ function ACAB:RefreshBarSettingsPage(barId)
 
 	-------------------------------------------------------------------------
 	-- Grid preset selection
-	--
-	-- Stance Bar only: its preset list is live (GetStanceBarGridOptions),
-	-- so the swatch row itself is torn down and rebuilt here every time the
-	-- page is shown - see RebuildGridSwatches' own comment.
+	-- Stance Bar only: its preset list is live, so the swatch row is torn down and rebuilt here every
+	-- time the page is shown.
 	-------------------------------------------------------------------------
 
 	if barId == ACAB.STANCE_BAR_ID and page.gridSwatchY then
@@ -3716,11 +3451,8 @@ function ACAB:RefreshBarSettingsPage(barId)
 
 	-------------------------------------------------------------------------
 	-- Enable checkbox (default bars 2-5 AND Extra Bars 6-9)
-	--
-	-- Bars 2-5's real Blizzard buttons are permanently hidden regardless
-	-- of the native SHOW_MULTI_ACTIONBAR_* globals, so cfg.enabled (our
-	-- own saved flag) is the sole source of truth. Extra Bars follow the
-	-- same rule - see Bar.lua's SetExtraBarEnabled.
+	-- Bars 2-5's real Blizzard buttons are permanently hidden regardless of the native globals, so
+	-- cfg.enabled is the sole source of truth. Extra Bars follow the same rule.
 	-------------------------------------------------------------------------
 
 	if page.enableCheckbox and ((isDefault and barId ~= 1) or ACAB:IsExtraBarId(barId)) then
@@ -3731,11 +3463,8 @@ function ACAB:RefreshBarSettingsPage(barId)
 
 	-------------------------------------------------------------------------
 	-- Use Vanilla Pet Bar / Condense empty Button Space (Pet Bar page only)
-	--
-	-- Both lock (ApplyProfileLockGating below) and their DISPLAYED
-	-- checked-state collapses to the vanilla-forced value while locked -
-	-- same collapse idiom as modernBorderStyleCheckbox (Core.lua's
-	-- IsVanillaBorderStyle).
+	-- Both lock (ApplyProfileLockGating below) and their displayed checked-state collapses to the
+	-- vanilla-forced value while locked.
 	-------------------------------------------------------------------------
 
 	if page.useVanillaPetBarCheckbox then
@@ -3751,8 +3480,7 @@ function ACAB:RefreshBarSettingsPage(barId)
 	end
 
 	-------------------------------------------------------------------------
-	-- Use Vanilla Stance Bar (Stance Bar page only) - same lock/collapse
-	-- idiom as Use Vanilla Pet Bar above.
+	-- Use Vanilla Stance Bar (Stance Bar page only) - same lock/collapse idiom as Use Vanilla Pet Bar above.
 	-------------------------------------------------------------------------
 
 	if page.useVanillaStanceBarCheckbox then
@@ -3780,39 +3508,28 @@ function ACAB:RefreshBarSettingsPage(barId)
 		ACAB:RefreshMainBarPageIndicatorControlsVisibility()
 	end
 
-	-- Rebuilds assignment rows every time this bar's page is (re)shown, for
-	-- every default bar (1-5) - see GetOrCreateBarPage.
+	-- Rebuilds assignment rows every time this bar's page is (re)shown, for every default bar (1-5).
 	if page.assignmentContainer then
 		ACAB:RebuildDefaultBarAssignmentRows(barId)
 	end
 
 	-------------------------------------------------------------------------
-	-- Default-layout lock, numbered default bars (1-5) - while "Force
-	-- Vanilla Layout Mode" is on, every one of these bars' controls
-	-- locks except enable/disable, exactly like the Default-profile lock.
-	-- Both share the same combined lock and control list
-	-- (ACAB:ApplyProfileLockGating below).
+	-- Default-layout lock, numbered default bars (1-5) - while "Force Vanilla Layout Mode" is on,
+	-- every one of these bars' controls locks except enable/disable, exactly like the Default-profile
+	-- lock. Both share the same combined lock and control list.
 	-------------------------------------------------------------------------
 
-	-- Default-profile lock (independent of the useDefaultLayout gate
-	-- above) - applies to every bar page, not just numbered default bars.
-	-- Only numbered default bars (1-5) are also subject to the layout
-	-- lock, so only their banner/controls should reflect that lock too.
+	-- Default-profile lock (independent of the useDefaultLayout gate above) - applies to every bar
+	-- page. Only numbered default bars (1-5) are also subject to the layout lock.
 	self:ApplyProfileLockGating(page, page.isDefault)
 
-	-- Locks this page's own spacing/buttonSize sliders whenever the
-	-- corresponding global override (General tab) is on, so a bar page
-	-- opened after the global toggle was already enabled still starts
-	-- locked.
+	-- Locks this page's own spacing/buttonSize sliders whenever the corresponding global override is
+	-- on, so a bar page opened after the toggle was already enabled still starts locked.
 	ACAB:RefreshBarPageGlobalOverrideGating(page)
 
-	-- Bar 5 can only be enabled while bar 4 is (matches native's own
-	-- dependency, DefaultBars.lua's SetDefaultBarEnabled) unless the
-	-- General tab's bypass option is on. Runs AFTER ApplyProfileLockGating
-	-- (not alongside the SetChecked block above) - that call unconditionally
-	-- UNLOCKS enableCheckbox whenever the Default-profile/layout lock
-	-- itself isn't active (its own exemption for numbered default bars),
-	-- which was clobbering this lock when placed earlier in the function.
+	-- Bar 5 can only be enabled while bar 4 is, unless the General tab's bypass option is on. Runs
+	-- after ApplyProfileLockGating - that call unconditionally unlocks enableCheckbox whenever the
+	-- Default-profile/layout lock itself isn't active, which was clobbering this lock placed earlier.
 	if page.enableCheckbox and barId == 5 then
 		local bar4Cfg = ACABDB.defaultBars[4]
 		local allowed = ACABDB.bypassRightActionBar2Dependency == true
@@ -3822,16 +3539,9 @@ function ACAB:RefreshBarSettingsPage(barId)
 	end
 end
 
--- Locks (dims, EnableMouse(false)) a full bar page's own spacing/
--- buttonSize sliders while the corresponding global override (General
--- tab) is enabled AND this bar hasn't been unlocked from it via its own
--- lock icon (cfg.spacingUnlocked/buttonSizeUnlocked, toggled by
--- page.spacingLockButton/buttonSizeLockButton's onClick in
--- GetOrCreateBarPage) - only ever called from RefreshBarSettingsPage's
--- non-simple-bar path above, so simple bar pages (Bag Bar/Micro Menu/
--- etc.) are naturally never affected. Pet Bar/Stance Bar's styled-mode
--- page goes through this same path and is treated identically to every
--- other bar - see Bar.lua's ApplyGlobalSpacing/ApplyGlobalButtonSize.
+-- Locks (dims, EnableMouse(false)) a full bar page's own spacing/buttonSize sliders while the
+-- corresponding global override is enabled AND this bar hasn't been unlocked via its own lock icon.
+-- Only called from RefreshBarSettingsPage's non-simple-bar path, so simple bar pages are never affected.
 function ACAB:RefreshBarPageGlobalOverrideGating(page)
 	if not page then
 		return
@@ -3839,13 +3549,9 @@ function ACAB:RefreshBarPageGlobalOverrideGating(page)
 
 	local cfg = ACAB:GetBarConfig(page.barId)
 
-	-- Must also respect the Default-profile/Default-layout lock
-	-- (ACAB:ApplyProfileLockGating, called just before this in
-	-- RefreshBarSettingsPage/RefreshSimpleBarPage) - without this, this
-	-- function unconditionally RE-ENABLES the slider whenever the global
-	-- override checkbox happens to be off, blindly overwriting whatever
-	-- that other lock had just set. While alsoLocked, the lock icons hide
-	-- too - clicking them couldn't free anything from a lock that broad.
+	-- Must also respect the Default-profile/Default-layout lock, called just before this - without it,
+	-- this function unconditionally re-enables the slider whenever the global override checkbox is
+	-- off, overwriting whatever that other lock had just set.
 	local alsoLocked = self:IsDefaultProfileActive()
 		or (page.isDefault and ACABDB.useDefaultLayout == true)
 
@@ -3878,12 +3584,8 @@ function ACAB:RefreshBarPageGlobalOverrideGating(page)
 	end
 end
 
--- Live-refreshes the spacing/buttonSize lock on every currently cached
--- full bar page (1-9) without a full RefreshBarSettingsPage resync -
--- called from the two new global-override checkboxes/sliders (General
--- tab) so already-open bar pages lock/unlock immediately. Simple bar
--- pages (string keys in ACAB.settingsFrame.pages) are skipped - out of scope
--- for the global overrides.
+-- Live-refreshes the spacing/buttonSize lock on every currently cached full bar page (1-9) without a
+-- full RefreshBarSettingsPage resync. Simple bar pages (string keys) are skipped - out of scope.
 function ACAB:RefreshAllBarPagesGlobalOverrideGating()
 	if not ACAB.settingsFrame then
 		return
@@ -3989,12 +3691,8 @@ function ACAB:ShowBarPage(barId)
 
 	ACAB.settingsFrame.activeBarId = barId
 
-	-- Keep the sidebar row's persistent gold highlight in sync with
-	-- whichever bar page is actually showing (ACABListRowMixin:SetSelected).
-	-- Both lookups are nil-guarded: barButtonsByBarId may not have an
-	-- entry yet (list not built this session) or ever (e.g. bagbar/
-	-- micromenu/latencybar/expbar rows are conditionally absent per
-	-- RefreshBarList's own exists checks).
+	-- Keep the sidebar row's persistent gold highlight in sync with whichever bar page is actually
+	-- showing. Both lookups are nil-guarded: barButtonsByBarId may not have an entry yet or ever.
 	if ACAB.settingsFrame.selectedBarId ~= nil and ACAB.settingsFrame.selectedBarId ~= barId then
 		local oldRow = ACAB.settingsFrame.barButtonsByBarId[ACAB.settingsFrame.selectedBarId]
 
@@ -4011,30 +3709,23 @@ function ACAB:ShowBarPage(barId)
 
 	ACAB.settingsFrame.selectedBarId = barId
 
-	-- Resizes the window to fit this page's actual controls now that it
-	-- (and the always-visible bar list) are both on-screen and
-	-- positioned - GetTop()/GetBottom() only return real values for
-	-- currently-shown frames, so this has to run after target:Show()
-	-- above, not before it. Deferred one frame (DeferFit) so its own
-	-- candidates' positions have settled before anything measures them.
+	-- Resizes the window to fit this page's actual controls now that it (and the always-visible bar
+	-- list) are both on-screen - GetTop()/GetBottom() only return real values for currently-shown
+	-- frames, so this must run after target:Show(). Deferred one frame so positions have settled.
 	ACAB:DeferFit(function() ACAB:FitSettingsWindowToBarPage(barId) end)
 end
 
 -------------------------------------------------------------------------
 -- General tab panel (ACABDB.useDefaultLayout)
---
--- Built lazily on first use, exactly like GetOrCreateBarPage - anchored
--- to span the same combined area listPanel + contentPanel occupy
--- together, since the bar list has no meaning in this view.
+-- Built lazily on first use, exactly like GetOrCreateBarPage - anchored to span the same combined area
+-- listPanel + contentPanel occupy together, since the bar list has no meaning in this view.
 -------------------------------------------------------------------------
 
 -------------------------------------------------------------------------
 -- Stance / Page Bar Assignment cyclic value
---
--- 0 = "No Pageswap" sentinel, not a real nil - avoids a table hole at
--- index 1 (undefined for table.getn/# in Lua 5.0); translated to/from nil
--- only at CreateExtraBarAssignmentRow's getFn/setFn boundary below.
--- -1 = "Default" sentinel - a real number, stored/read as-is, must never equal 0.
+-- 0 = "No Pageswap" sentinel, not a real nil - avoids a table hole at index 1 (undefined for
+-- table.getn/# in Lua 5.0); translated to/from nil only at CreateExtraBarAssignmentRow's getFn/setFn
+-- boundary below. -1 = "Default" sentinel - a real number, must never equal 0.
 -------------------------------------------------------------------------
 
 local EXTRA_BAR_ASSIGNMENT_CYCLE = { 0, -1, 6, 7, 8, 9 }
@@ -4051,9 +3742,8 @@ local function ExtraBarAssignmentLabel(assignedId)
 	return "Extra Bar " .. tostring(assignedId - ACAB.EXTRA_BAR_ID_START + 1)
 end
 
--- Builds the 6 dropdown choices (No Pageswap, Default, Extra Bar 1-4) once.
--- { value = 0 } translates to nil at RefreshValue/onSelect's ACABDB
--- boundary below; { value = -1 } passes through unchanged.
+-- Builds the 6 dropdown choices (No Pageswap, Default, Extra Bar 1-4) once. { value = 0 } translates
+-- to nil at RefreshValue/onSelect's ACABDB boundary below; { value = -1 } passes through unchanged.
 local function BuildExtraBarAssignmentDropdownOptions()
 	local options = {}
 	local i
@@ -4072,12 +3762,9 @@ end
 
 local EXTRA_BAR_ASSIGNMENT_DROPDOWN_OPTIONS = BuildExtraBarAssignmentDropdownOptions()
 
--- Builds one Extra Bar assignment row (native dropdown via
--- ACAB:CreateInlineDropdown). dropdownName must be a unique, stable global
--- frame name keyed off the row's stable identity (stance index / "page
--- bar"), so repeated rebuilds reuse the same frame. getFn/setFn use a raw
--- ACABDB value (Extra Bar id 6-9, or nil) - never the 0 sentinel,
--- which is internal to this function.
+-- Builds one Extra Bar assignment row. dropdownName must be a unique, stable global frame name keyed
+-- off the row's stable identity. getFn/setFn use a raw ACABDB value (Extra Bar id 6-9, or nil) - never
+-- the 0 sentinel, which is internal to this function.
 local function CreateExtraBarAssignmentRow(parent, labelText, getFn, setFn, dropdownName)
 	local row = CreateFrame("Frame", nil, parent)
 
@@ -4125,20 +3812,16 @@ function ACAB:RebuildDefaultBarAssignmentRows(barId)
 		return
 	end
 
-	-- Force-close any open dropdown popout before tearing down/rebuilding
-	-- the rows below - DropDownList1 is a single shared global popout, not
-	-- owned per-dropdown, so a left-open one could otherwise still be
-	-- sitting on screen referencing a row this rebuild is about to discard.
+	-- Force-close any open dropdown popout before tearing down/rebuilding the rows below -
+	-- DropDownList1 is a single shared global popout, not owned per-dropdown.
 	if CloseDropDownMenus then
 		CloseDropDownMenus()
 	end
 
-	-- CreateFrame with a reused name creates a NEW frame that merely
-	-- shares the name, not the same underlying object - two dropdowns
-	-- sharing a name corrupt each other's native UIDropDownMenu_*
-	-- sub-piece lookups (getglobal(self:GetName() .. "...")). Suffixing
-	-- every dropdown name with a monotonic per-rebuild generation counter
-	-- must stay in place or the fragmented-skin/blank-label bug returns.
+	-- CreateFrame with a reused name creates a NEW frame that merely shares the name, not the same
+	-- underlying object - two dropdowns sharing a name corrupt each other's native UIDropDownMenu_*
+	-- sub-piece lookups. Suffixing every dropdown name with a per-rebuild generation counter must stay
+	-- in place or the fragmented-skin/blank-label bug returns.
 	page.assignmentRebuildGeneration = (page.assignmentRebuildGeneration or 0) + 1
 
 	local generationSuffix = "_" .. tostring(page.assignmentRebuildGeneration)
@@ -4156,8 +3839,7 @@ function ACAB:RebuildDefaultBarAssignmentRows(barId)
 	local rowIndex = 0
 	local y = 0
 
-	-- Gated on defaultBarStanceSwapEnabled, matching the Page Bar row's own
-	-- defaultBarPaginationEnabled gate below.
+	-- Gated on defaultBarStanceSwapEnabled, matching the Page Bar row's own defaultBarPaginationEnabled gate below.
 	local stanceSwapOn = ACABDB.defaultBarStanceSwapEnabled ~= false
 	local count = stanceSwapOn and GetNumShapeshiftForms and GetNumShapeshiftForms() or 0
 
@@ -4189,7 +3871,7 @@ function ACAB:RebuildDefaultBarAssignmentRows(barId)
 
 					ACAB:RefreshDefaultBarSlots()
 				end,
-				-- Name includes bar id + stance index + generation suffix - must stay unique or dropdown frame-identity corruption returns.
+				-- Name must stay unique (bar id + stance index + generation suffix) or dropdown frame-identity corruption returns.
 				"ACABDefaultBarStanceAssignmentDropdown" .. tostring(barId) .. "_" .. tostring(s) .. generationSuffix
 			)
 
@@ -4230,10 +3912,8 @@ function ACAB:RebuildDefaultBarAssignmentRows(barId)
 		y = y - 34
 	end
 
-	-- Never 0 - a zero-height frame is a harmless but needless edge case
-	-- for the live BOTTOMLEFT anchor chain hotkeyTitle depends on
-	-- (GetOrCreateGeneralPanel's own comment) when nothing rendered at all
-	-- (no stances, pagination off).
+	-- Never 0 - a zero-height frame is a needless edge case for the live BOTTOMLEFT anchor chain when
+	-- nothing rendered at all (no stances, pagination off).
 	local height = -y
 
 	if height < 1 then
@@ -4258,114 +3938,71 @@ function ACAB:RebuildAllDefaultBarAssignmentRows()
 	end
 end
 
--- Applies a "Force Vanilla Layout Mode" checkbox change: persists the
--- value, re-gates every affected page, and (only when switching ON from
--- OFF) runs the full reset-to-Vanilla-Layout cascade. Split out from the
--- checkbox's OnClick so the confirm dialog below can defer this call until
--- the user accepts the reset warning.
+-- Applies a "Force Vanilla Layout Mode" checkbox change: persists the value, re-gates every affected
+-- page, and (only when switching ON from OFF) runs the full reset-to-Vanilla-Layout cascade. Split out
+-- from the checkbox's OnClick so the confirm dialog below can defer this call until accepted.
 function ACAB:ApplyUseDefaultLayoutChange(checked)
 	local wasDefault = ACABDB.useDefaultLayout == true
 
 	ACABDB.useDefaultLayout = checked
 
-	-- Re-gate any default-bar page already built/cached so it
-	-- reflects the new state immediately if it happens to be
-	-- visible (or gets shown next) without needing a reload.
+	-- Re-gate any default-bar page already built/cached so it reflects the new state immediately.
 	ACAB:RefreshDefaultLayoutGatingOnAllPages()
 
-	-- Idempotent when the saved cfg values themselves haven't
-	-- changed (only interactivity changed) - safe/cheap to call
-	-- unconditionally so bars are guaranteed visually in sync
-	-- rather than only catching up on next login.
+	-- Idempotent when saved cfg values haven't changed - safe/cheap to call unconditionally so bars
+	-- are guaranteed visually in sync rather than only catching up on next login.
 	if ACAB.ApplyAllDefaultBars then
 		ACAB:ApplyAllDefaultBars()
 	end
 
-	-- useDefaultLayout changes whether dragging is currently
-	-- possible (ACAB:CanDragDefaultLayout()) even when edit mode's
-	-- own state hasn't changed, so the default-bar/stance-bar
-	-- overlays need their own refresh here too, not just from
-	-- ApplyEditModeVisual's call sites.
+	-- useDefaultLayout changes whether dragging is currently possible even when edit mode's own state
+	-- hasn't changed, so the default-bar/stance-bar overlays need their own refresh here too.
 	if ACAB.ApplyDefaultLayoutEditVisual then
 		ACAB:ApplyDefaultLayoutEditVisual()
 	end
 
-	-- Stance Bar is an unconditionally-positioned ACAB-owned
-	-- container exactly like Bag Bar/Micro Menu (see
-	-- ACAB:CreateStanceBarContainer's PLAYER_LOGIN placement,
-	-- Core.lua), so switching OFF doesn't need to capture/apply
-	-- anything (its position is always live), and switching back
-	-- ON is handled by the same reset cascade below as Bag Bar/
-	-- Micro Menu/Latency Bar/Key Ring.
+	-- Stance Bar is an unconditionally-positioned ACAB-owned container exactly like Bag Bar/Micro Menu,
+	-- so switching OFF needs nothing extra, and switching back ON is handled by the same reset cascade.
 	if (not wasDefault) and checked then
 		ACAB:ResetAllElementsToVanillaLayout()
 
-		-- "Use Modern Button Style"/Global Spacing/Global ButtonSize only
-		-- take visual effect while useDefaultLayout is off
-		-- (ApplyGlobalSpacing/ApplyGlobalButtonSize/IsVanillaBorderStyle
-		-- all no-op/override while it's on) - clear the flags themselves
-		-- too, not just leave them cosmetically locked, so they don't
-		-- silently reapply the instant the user switches back off. Only
-		-- correct here, not inside ACAB:ResetAllElementsToVanillaLayout
-		-- itself - the Setup Wizard's own "Keep Vanilla Layout" choice
-		-- shares that same reset cascade but leaves useDefaultLayout
-		-- unlocked, where these are still live, independently-chosen
-		-- settings (e.g. an earlier wizard step's Modern Border Style
-		-- pick) that must survive a Vanilla LAYOUT choice untouched.
+		-- "Use Modern Button Style"/Global Spacing/Global ButtonSize only take visual effect while
+		-- useDefaultLayout is off - clear the flags themselves too, not just leave them cosmetically
+		-- locked, so they don't silently reapply the instant the user switches back off. Only correct
+		-- here, not inside ResetAllElementsToVanillaLayout itself - the Setup Wizard's own "Keep
+		-- Vanilla Layout" choice shares that reset cascade but leaves these settings untouched.
 		ACABDB.modernBorderStyle = false
 		ACABDB.globalSpacingEnabled = false
 		ACABDB.globalButtonSizeEnabled = false
 
-		-- Re-syncs every already-built default/simple bar page's
-		-- sliders/checkboxes from the values the resets above just
-		-- wrote - the earlier RefreshDefaultLayoutGatingOnAllPages
-		-- call in this handler ran BEFORE these resets, so it only
-		-- caught up gating/alpha, not the underlying values.
+		-- Re-syncs every already-built page's sliders/checkboxes from the values the resets above just
+		-- wrote - the earlier RefreshDefaultLayoutGatingOnAllPages call ran before these resets.
 		ACAB:RefreshDefaultLayoutGatingOnAllPages()
 	end
 
-	-- Runs LAST, after any reset cascade above, so bars 1-5 are
-	-- already at their true native values by the time this reads
-	-- them - re-evaluates ACAB:IsVanillaBorderStyle() live: turning
-	-- this ON forces every bar back to vanilla styling (skipping
-	-- bars 1-5, already handled by the reset cascade above -
-	-- see ApplyGlobalButtonStyle's own skipDefaultBars comment);
-	-- turning it OFF re-applies whatever modernBorderStyle is
-	-- currently stored instead of leaving bars showing the
-	-- forced-vanilla look until next login.
+	-- Runs last, after any reset cascade above, so bars 1-5 are already at their true native values.
+	-- Turning this ON forces every bar back to vanilla styling (bars 1-5 already handled by the reset
+	-- cascade); turning it OFF re-applies whatever modernBorderStyle is currently stored.
 	ACAB:ApplyGlobalButtonStyle()
 
-	-- The global spacing/buttonSize overrides both no-op while
-	-- useDefaultLayout is on (Bar.lua) - re-running them here
-	-- means turning it back OFF immediately re-applies a
-	-- previously-locked-out override instead of waiting for the
-	-- next slider move.
+	-- The global spacing/buttonSize overrides both no-op while useDefaultLayout is on - re-running them
+	-- means turning it back off immediately re-applies a previously-locked-out override.
 	ACAB:ApplyGlobalSpacing()
 	ACAB:ApplyGlobalButtonSize()
 
-	-- Updates the new "Use Modern Button Style" checkbox's own
-	-- checked/grey-out state immediately (RefreshGeneralPanel
-	-- isn't otherwise called from this handler) so it reflects
-	-- the lock the moment useDefaultLayout changes, without
-	-- needing to leave and reopen the General tab.
+	-- Updates "Use Modern Button Style"'s own checked/grey-out state immediately so it reflects the
+	-- lock the moment useDefaultLayout changes.
 	ACAB:RefreshGeneralPanel()
 
 	ACAB:RefreshAllBarPagesGlobalOverrideGating()
 end
 
--- Full reset-to-Vanilla-Layout cascade: resets every default-bar-family id
--- (1-5, Pet Bar, Stance Bar) and every single-native-frame element (Bag
--- Bar/Key Ring/Micro Menu/Latency Bar/Cast Bar/Experience Bar/Page
--- Indicator) back to its captured native anchor, and disables Extra Bars
--- (no Blizzard-default equivalent) - shared by ApplyUseDefaultLayoutChange
--- above (General tab's "Force Vanilla Layout Mode" checkbox) and the Setup
--- Wizard's own "Keep Vanilla Layout" choice (SetupWizard.lua's
--- FinishWizard), so neither path can leave stale Modern Layout positions
--- behind. Deliberately does NOT touch modernBorderStyle/globalSpacingEnabled/
--- globalButtonSizeEnabled - the Setup Wizard's Vanilla Layout choice is
--- about POSITION only and leaves those independently-chosen settings
--- alone; only ApplyUseDefaultLayoutChange's own true lockdown (which makes
--- those controls inert) clears them, itself, right after calling this.
+-- Full reset-to-Vanilla-Layout cascade: resets every default-bar-family id (1-5, Pet Bar, Stance Bar)
+-- and every single-native-frame element back to its captured native anchor, and disables Extra Bars -
+-- shared by ApplyUseDefaultLayoutChange above and the Setup Wizard's "Keep Vanilla Layout" choice.
+-- Deliberately does not touch modernBorderStyle/globalSpacingEnabled/globalButtonSizeEnabled - the
+-- Setup Wizard's Vanilla Layout choice is about position only; only ApplyUseDefaultLayoutChange's own
+-- true lockdown clears those, right after calling this.
 function ACAB:ResetAllElementsToVanillaLayout()
 	local i
 
@@ -4373,18 +4010,13 @@ function ACAB:ResetAllElementsToVanillaLayout()
 		ACAB:ResetDefaultBarLayout(ACAB.DEFAULT_BAR_IDS[i])
 	end
 
-	-- Bars 2-5's enabled state now mirrors the real native "Show ...
-	-- Action Bar" checkboxes (session-live only, per
-	-- docs/01-Environment-Capability-Analysis.md §5m/§6) instead of
-	-- whatever ACAB had stored - same reconciliation
-	-- MultiActionBar_Update's own hook already performs reactively.
+	-- Bars 2-5's enabled state now mirrors the real native "Show ... Action Bar" checkboxes
+	-- (session-live only) instead of whatever ACAB had stored.
 	if ACAB.ReconcileDefaultBarEnabledFromNative then
 		ACAB:ReconcileDefaultBarEnabledFromNative()
 	end
 
-	-- Extra Bars (6-9) are ACAB-only content with no Blizzard-
-	-- default equivalent - hidden outright while the native layout
-	-- owns bars 1-5.
+	-- Extra Bars (6-9) are ACAB-only content with no Blizzard-default equivalent - hidden outright.
 	local extraId
 
 	for extraId = ACAB.EXTRA_BAR_ID_START, ACAB.EXTRA_BAR_ID_START + ACAB.EXTRA_BAR_COUNT - 1 do
@@ -4414,17 +4046,11 @@ function ACAB:ResetAllElementsToVanillaLayout()
 		ACAB:ResetMicroMenuLayout()
 	end
 
-	-- Force native mode's stored flags BEFORE anything below reads them -
-	-- ACAB:IsPetBarNativeModeEffective/IsStanceBarNativeModeEffective only
-	-- treat native as forced while ACABDB.useDefaultLayout ~= false, which
-	-- isn't true for the Setup Wizard's own "Keep Vanilla Layout" choice
-	-- (stays unlocked/false) - without these set first, a profile that was
-	-- previously in styled Pet/Stance mode leaves CreatePetBarNativeContainer/
-	-- CreateStanceBarContainer below seeing native mode as NOT effective,
-	-- so the container never gets built and GetPetBarBaselineY/
-	-- GetStanceBarBaselineY fall back to the raw captured native anchor,
-	-- ignoring Action Bar 1/2's current enabled state and landing
-	-- overlapped by it.
+	-- Force native mode's stored flags before anything below reads them - IsPetBarNativeModeEffective/
+	-- IsStanceBarNativeModeEffective only treat native as forced while useDefaultLayout ~= false, which
+	-- isn't true for the Setup Wizard's "Keep Vanilla Layout" choice. Without these set first, a
+	-- profile previously in styled mode leaves the containers below unbuilt, and the baseline-Y
+	-- functions fall back to the raw captured native anchor, landing overlapped by Action Bar 1/2.
 	do
 		local petCfg = ACABDB.defaultBars[ACAB.PET_BAR_ID]
 
@@ -4440,11 +4066,8 @@ function ACAB:ResetAllElementsToVanillaLayout()
 		end
 	end
 
-	-- Pet Bar/Stance Bar native containers may not exist yet this session
-	-- (a fresh/prior session can boot styled - see
-	-- ACAB:EnsureFixedSlotBarCreated's own comment, DefaultBars.lua, for
-	-- the same gap on the Modern Layout side) - build them on demand
-	-- before resetting so the reset below has something live to apply to.
+	-- Pet Bar/Stance Bar native containers may not exist yet this session (a fresh/prior session can
+	-- boot styled) - build them on demand before resetting so the reset below has something to apply to.
 	if ACAB.CreatePetBarNativeContainer then
 		ACAB:CreatePetBarNativeContainer()
 	end
@@ -4465,9 +4088,8 @@ function ACAB:ResetAllElementsToVanillaLayout()
 		ACAB:ResetLatencyBarLayout()
 	end
 
-	-- Cast Bar: same single-native-frame reset treatment as Latency
-	-- Bar above - also resets castBarUsesDefaultPosition to true
-	-- (ResetCastBarLayout itself), re-enabling its own dynamic stacking.
+	-- Cast Bar: same single-native-frame reset treatment as Latency Bar above - also resets
+	-- castBarUsesDefaultPosition to true, re-enabling its own dynamic stacking.
 	if ACAB.ResetCastBarLayout then
 		ACAB:ResetCastBarLayout()
 	end
@@ -4476,8 +4098,7 @@ function ACAB:ResetAllElementsToVanillaLayout()
 		ACAB:ResetKeyRingPosition()
 	end
 
-	-- Key Ring ships visible on native vanilla - re-enable it
-	-- regardless of whatever the user had it set to.
+	-- Key Ring ships visible on native vanilla - re-enable it regardless of the prior setting.
 	if ACAB.SetKeyRingEnabled then
 		ACAB:SetKeyRingEnabled(true)
 	end
@@ -4498,33 +4119,25 @@ function ACAB:ResetAllElementsToVanillaLayout()
 		ACAB:SetDefaultBarStanceSwapEnabled(true)
 	end
 
-	-- Experience Bar: same reset treatment as every other
-	-- single-native-frame element above.
+	-- Experience Bar: same reset treatment as every other single-native-frame element above.
 	if ACAB.ResetExpBarLayout then
 		ACAB:ResetExpBarLayout()
 	end
 
-	-- See ACAB:ResetPageIndicatorLayout's own comment (DefaultBars.lua).
 	if ACAB.ResetPageIndicatorLayout then
 		ACAB:ResetPageIndicatorLayout()
 	end
 
-	-- Pet Bar native mode only - ResetDefaultBarLayout above (the
-	-- custom-styled grid mode's own reset) has nothing to act on
-	-- while self.bars[PET_BAR_ID] doesn't exist. No-ops safely in
-	-- custom mode (self.petBarNativeContainer is nil then).
+	-- Pet Bar native mode only - ResetDefaultBarLayout above has nothing to act on while
+	-- self.bars[PET_BAR_ID] doesn't exist. No-ops safely in custom mode.
 	if ACAB.ResetPetBarNativeLayout then
 		ACAB:ResetPetBarNativeLayout()
 	end
 
-	-- Stance Bar position must be re-verified dead last, after every other
-	-- reset/reapply above (bar 2's enabled state included) - its Y is
-	-- computed relative to bar 2's own final on/off state
-	-- (ACAB:GetStanceBarBaselineY), and ResetStanceBarPosition above only
-	-- restores the stale point-in-time snapshot captured at first seed,
-	-- not a fresh recompute. Without this, the Stance Bar can visually
-	-- land overlapping/behind Bar 1 until something else (e.g. manually
-	-- toggling bar 2 off then on) happens to trigger a reflow.
+	-- Stance Bar position must be re-verified dead last, after every other reset/reapply above - its Y
+	-- is computed relative to bar 2's final on/off state, and ResetStanceBarPosition above only
+	-- restores the stale snapshot captured at first seed, not a fresh recompute. Without this, the
+	-- Stance Bar can land overlapping/behind Bar 1 until something else triggers a reflow.
 	if ACAB.ReflowStanceBarForBar2Toggle then
 		local bar2Cfg = ACABDB.defaultBars and ACABDB.defaultBars[2]
 
@@ -4533,10 +4146,8 @@ function ACAB:ResetAllElementsToVanillaLayout()
 end
 -------------------------------------------------------------------------
 -- Bar list row creation
---
--- One row layout shared by default bars (1-5) and custom bars (6+) -
--- only the presence of the inline enable-checkbox (default bars 2-5)
--- and the small kind indicator text differ.
+-- One row layout shared by default bars (1-5) and custom bars (6+) - only the presence of the inline
+-- enable-checkbox (default bars 2-5) and the small kind indicator text differ.
 -------------------------------------------------------------------------
 
 local function CreateBarListRow(barId, isDefault, cfg, generationSuffix)
@@ -4660,31 +4271,24 @@ local function CreateBarListRow(barId, isDefault, cfg, generationSuffix)
 
 				onToggle(checked)
 
-				-- Keep the corresponding page's own checkbox (if built)
-				-- in sync too.
+				-- Keep the corresponding page's own checkbox (if built) in sync too.
 				ACAB:RefreshBarSettingsPage(this.barId)
 			end
 		)
 
 		row.checkbox = checkbox
 
-		-- Only exempt for numbered default bars (2-5 - bar 1 never gets a
-		-- sidebar checkbox at all) from BOTH the Default-profile AND
-		-- Default-layout locks, matching page.enableCheckbox's own
-		-- exemption on those pages (ACAB:ApplyProfileLockGating). Bag Bar/
-		-- Micro Menu and Extra Bars (6-9) get NO exemption - their
-		-- checkbox locks exactly like every other control on their page,
-		-- under the Default-profile lock only (layout lock never applies
-		-- to them).
+		-- Only exempt for numbered default bars (2-5) from both the Default-profile and
+		-- Default-layout locks, matching page.enableCheckbox's own exemption. Bag Bar/Micro Menu and
+		-- Extra Bars (6-9) get no exemption - their checkbox locks under the Default-profile lock only.
 		local isNumberedDefaultBar = isDefault and type(barId) == "number" and barId ~= 1
 
 		if not isNumberedDefaultBar then
 			ACAB:LockControl(checkbox, ACAB:IsDefaultProfileActive())
 		end
 
-		-- Bar 5's sidebar checkbox mirrors its page's own enableCheckbox
-		-- lock (see RefreshBarSettingsPage) - only enabled while bar 4 is,
-		-- unless the bypass option is on.
+		-- Bar 5's sidebar checkbox mirrors its page's own enableCheckbox lock - only enabled while bar
+		-- 4 is, unless the bypass option is on.
 		if isNumberedDefaultBar and barId == 5 then
 			local bar4Cfg = ACABDB.defaultBars[4]
 			local allowed = ACABDB.bypassRightActionBar2Dependency == true
@@ -4694,11 +4298,8 @@ local function CreateBarListRow(barId, isDefault, cfg, generationSuffix)
 		end
 	end
 
-	-- Grey out (ACABListRowMixin:SetDisabled - also blocks the row's own
-	-- onClick, but bar 5's page is still reachable via its own checkbox's
-	-- lock/the bypass option) the row itself too, so its locked state is
-	-- visible at a glance in the list, not just on the small checkbox
-	-- beside it.
+	-- Grey out the row itself too (also blocks the row's own onClick, but bar 5's page is still
+	-- reachable via its own checkbox's lock/bypass option), so its locked state is visible at a glance.
 	if isDefault and barId == 5 then
 		local bar4Cfg = ACABDB.defaultBars[4]
 		local allowed = ACABDB.bypassRightActionBar2Dependency == true
@@ -4712,10 +4313,8 @@ end
 
 -------------------------------------------------------------------------
 -- Refresh left bar list
---
--- Unified list: Bar 1 -> Bar 5, a divider, then the 4 permanent Extra
--- Bars (6-9) - no "+ Add New Bar" row, since capacity is fixed and every
--- possible bar id already always exists.
+-- Unified list: Bar 1 -> Bar 5, a divider, then the 4 permanent Extra Bars (6-9) - no "+ Add New Bar"
+-- row, since capacity is fixed and every possible bar id already always exists.
 -------------------------------------------------------------------------
 
 function ACAB:RefreshBarList()
@@ -4738,9 +4337,7 @@ function ACAB:RefreshBarList()
 	ACAB.settingsFrame.barButtons = {}
 	ACAB.settingsFrame.barButtonsByBarId = {}
 
-	-- Same per-rebuild generation-counter mitigation RebuildDefaultBarAssignmentRows
-	-- uses for its own dynamically created dropdowns - see CreateBarListRow's
-	-- checkbox naming.
+	-- Same per-rebuild generation-counter mitigation RebuildDefaultBarAssignmentRows uses.
 	ACAB.settingsFrame.barListRebuildGeneration = (ACAB.settingsFrame.barListRebuildGeneration or 0) + 1
 	local generationSuffix = "_" .. tostring(ACAB.settingsFrame.barListRebuildGeneration)
 
@@ -4758,9 +4355,8 @@ function ACAB:RefreshBarList()
 		local cfg = ACABDB.defaultBars[id]
 
 		if cfg then
-			-- Bars 2-5/Pet Bar's real Blizzard buttons are permanently hidden
-			-- regardless of the native SHOW_MULTI_ACTIONBAR_* globals, so
-			-- cfg.enabled is read directly as the sole source of truth.
+			-- Bars 2-5/Pet Bar's real Blizzard buttons are permanently hidden regardless of the native
+			-- globals, so cfg.enabled is read directly as the sole source of truth.
 			local row = CreateBarListRow(id, true, cfg, generationSuffix)
 
 			row:SetPoint(
@@ -4780,13 +4376,9 @@ function ACAB:RefreshBarList()
 	end
 
 	-------------------------------------------------------------------------
-	-- Bag Bar / Micro Menu - distinct string keys, not numbered default/
-	-- custom bars, grouped with the default bars above the divider since
-	-- they're equally native-backed. Always shown; drag/position-slider
-	-- interactivity is gated separately by useDefaultLayout
-	-- (ApplyDefaultLayoutGating), same as default bars 1-5. The Stance Bar
-	-- (like the Pet Bar) is covered by the ACAB.DEFAULT_BAR_IDS loop above
-	-- instead, keyed by its own numeric id.
+	-- Bag Bar / Micro Menu - distinct string keys, grouped with the default bars above the divider
+	-- since they're equally native-backed. Always shown; drag/position-slider interactivity is gated
+	-- separately by useDefaultLayout, same as default bars 1-5.
 	-------------------------------------------------------------------------
 
 	local specialKeys = { "bagbar", "micromenu", "latencybar", "expbar", "castbar", "tooltip" }
@@ -4795,12 +4387,8 @@ function ACAB:RefreshBarList()
 	for si = 1, table.getn(specialKeys) do
 		local key = specialKeys[si]
 
-		-- Bag Bar/Micro Menu rows only appear once their container was
-		-- built (ACAB:CreateBagBarAndMicroMenu, DefaultBars.lua) - degrades
-		-- gracefully if discovery failed. Latency/Experience/Cast Bar get
-		-- the same defensive check since their native frame's presence on
-		-- this modded client isn't fully confirmed (see DefaultBars.lua's
-		-- own header comment).
+		-- Bag Bar/Micro Menu rows only appear once their container was built - degrades gracefully if
+		-- discovery failed. Latency/Experience/Cast Bar get the same defensive check.
 		local exists = true
 
 		if key == "bagbar" then
@@ -4840,10 +4428,7 @@ function ACAB:RefreshBarList()
 	-- Divider between default and custom bars
 	-------------------------------------------------------------------------
 
-	-- WHITE8X8 rather than "Interface\Common\UI-TooltipDivider" - the
-	-- latter isn't confirmed to exist on this 1.12.1 client, while
-	-- WHITE8X8 is already proven working here (see Button.lua's
-	-- editOverlay). A thin dim line is enough of a section break.
+	-- WHITE8X8 rather than "Interface\Common\UI-TooltipDivider" - a thin dim line is enough of a section break.
 	local divider = ACAB.settingsFrame.listContent:CreateTexture(
 		nil,
 		"ARTWORK"
@@ -4864,17 +4449,14 @@ function ACAB:RefreshBarList()
 
 	rowIndex = rowIndex + 1
 
-	-- The divider shares the same tracked-widget list purely so it gets
-	-- hidden/recreated alongside everything else on refresh - it has no
-	-- barId/checkbox/onClick, and (unlike every real row) is deliberately
-	-- NOT added to barButtonsByBarId.
+	-- The divider shares the same tracked-widget list purely so it gets hidden/recreated alongside
+	-- everything else on refresh - deliberately not added to barButtonsByBarId.
 	ACAB.settingsFrame.barButtons[rowIndex] = divider
 
 	yOffset = yOffset - 14
 
 	-------------------------------------------------------------------------
-	-- Extra Bars 6-9 - always exactly 4 entries (Core.lua's
-	-- EnsureExtraBars), each toggled via its own inline checkbox above.
+	-- Extra Bars 6-9 - always exactly 4 entries, each toggled via its own inline checkbox above.
 	-------------------------------------------------------------------------
 
 	for i = 1, table.getn(ACABDB.bars) do
@@ -4899,16 +4481,11 @@ function ACAB:RefreshBarList()
 		end
 	end
 
-	-- No "+ Add New Bar" button - capacity is fixed at exactly
-	-- ACAB.EXTRA_BAR_COUNT (4) permanent Extra Bars, always listed in the
-	-- loop above; a user enables/disables one via its inline checkbox
-	-- instead.
+	-- No "+ Add New Bar" button - capacity is fixed at exactly 4 permanent Extra Bars, always listed
+	-- in the loop above; a user enables/disables one via its inline checkbox instead.
 
-	-- Rows are all rebuilt fresh above (RefreshBarList can run after a bar
-	-- page is already showing - profile switch, bar enable/disable) - the
-	-- new row for the already-selected bar has isSelected == false until
-	-- this restores it, since ACABListRowMixin state lives on the row
-	-- instance, not the barId.
+	-- Rows are all rebuilt fresh above - the new row for the already-selected bar has isSelected ==
+	-- false until this restores it, since row-selection state lives on the row instance, not the barId.
 	if ACAB.settingsFrame.selectedBarId ~= nil then
 		local selectedRow = ACAB.settingsFrame.barButtonsByBarId[ACAB.settingsFrame.selectedBarId]
 
@@ -4918,14 +4495,12 @@ function ACAB:RefreshBarList()
 	end
 end
 
--- No ACAB:DeleteBar function exists - every non-default bar id (6-9) is a
--- permanent Extra Bar (Core.lua's EnsureExtraBars) toggled via
--- cfg.enabled (Bar.lua's SetExtraBarEnabled), never added/removed.
+-- No ACAB:DeleteBar function exists - every non-default bar id (6-9) is a permanent Extra Bar toggled
+-- via cfg.enabled, never added/removed.
 
 -------------------------------------------------------------------------
--- Open specific bar settings (custom bars only - called from
--- Button.lua's right-click-to-configure on a live custom-bar button;
--- default bars aren't backed by ACAB.bars, see DefaultBars.lua)
+-- Open specific bar settings (custom bars only - called from Button.lua's right-click-to-configure on
+-- a live custom-bar button; default bars aren't backed by ACAB.bars)
 -------------------------------------------------------------------------
 
 function ACAB:OpenBarSettings(bar)
@@ -4941,10 +4516,8 @@ function ACAB:OpenBarSettings(bar)
 end
 
 -------------------------------------------------------------------------
--- Open specific bar settings (default bars 1-5 - called from
--- HoverBind.lua's right-click hook on a live Blizzard default-bar
--- button; default bars have no live ACAB.bars entry the way custom bars
--- do, so this takes a bar id directly rather than a bar object).
+-- Open specific bar settings (default bars 1-5 - called from HoverBind.lua's right-click hook; default
+-- bars have no live ACAB.bars entry, so this takes a bar id directly rather than a bar object)
 -------------------------------------------------------------------------
 
 function ACAB:OpenDefaultBarSettings(barId)
