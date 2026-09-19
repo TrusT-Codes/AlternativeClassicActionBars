@@ -1,18 +1,7 @@
 -- DefaultBars.lua
--- Owns bars 1-5: the fixed-id "default bars" wrapping Blizzard's own
--- MainMenuBar/MultiBarBottomLeft/MultiBarBottomRight/MultiBarRight/
--- MultiBarLeft frames (see Bar.lua/Button.lua for the bars 6+ pool model).
--- Only repositions/reflows/resizes/shows-hides these real frames, never
--- touches their action-slot bindings.
---
--- Also owns the shared chain/grid-anchored container engine and drag
--- engine (BuildChainAnchoredContainer, ApplyChainAnchoredShape,
--- ApplyGridAnchoredShape, EnsureContainerOverlay, InstallReanchorGuard,
--- InstallShowGuard, EnsureDragFrame, etc.) that NativeElements.lua,
--- PetStanceBars.lua, and ExperienceBar.lua build on. Those 3 files make
--- top-level (file-load-time) calls into these functions, so they MUST
--- load after this file or the client throws "attempt to call nil value"
--- on login.
+-- Owns bars 1-5 (wraps Blizzard's MainMenuBar/MultiBar* frames; repositions/reflows/resizes/shows-hides only, never touches action-slot bindings).
+-- Also owns the shared chain/grid-anchored container + drag engine used by NativeElements.lua/PetStanceBars.lua/ExperienceBar.lua.
+-- Must load before those 3 files - they call these functions at file-load time, or login throws "attempt to call nil value".
 
 local ACAB = AlternativeClassicActionBars
 
@@ -28,26 +17,14 @@ ACAB.DEFAULT_BAR_FRAME_PREFIXES = {
 	[3] = "MultiBarBottomRightButton",-- Bottom Right.
 	[4] = "MultiBarRightButton",      -- Right.
 	[5] = "MultiBarLeftButton",       -- Right 2.
-	[ACAB.PET_BAR_ID] = "PetActionButton", -- Pet Bar (only 10 real frames -
-	                                      -- GetDefaultBarButtons' own "stop
-	                                      -- at first missing frame" loop
-	                                      -- naturally returns a 10-length
-	                                      -- table).
-	[ACAB.STANCE_BAR_ID] = "ShapeshiftButton", -- Stance Bar (styled mode) -
-	                                      -- only for hide+neuter and the
-	                                      -- initial anchor/spacing capture;
-	                                      -- content is the shapeshift-form
-	                                      -- API instead (Button.lua isStanceSlot).
+	[ACAB.PET_BAR_ID] = "PetActionButton", -- Pet Bar (only 10 real frames).
+	[ACAB.STANCE_BAR_ID] = "ShapeshiftButton", -- Stance Bar, styled mode: hide+neuter and anchor capture only.
 }
 
 -- Real vanilla stance bars top out at 10 slots (ShapeshiftButton1-10).
--- GetStanceBarButtons stops at the first missing frame instead of
--- assuming all 10 exist, the same tolerance as GetDefaultBarButtons.
 ACAB.MAX_STANCE_BUTTONS = 10
 
--- Returns an ordered table (1-12) of the real Blizzard button frames for
--- a given default bar id, or nil if the id isn't a known default bar or
--- the global frames don't exist yet (e.g. called too early).
+-- Returns ordered table of real Blizzard button frames for a default bar id, or nil if unknown/not yet loaded.
 function ACAB:GetDefaultBarButtons(id)
 	local prefix = self.DEFAULT_BAR_FRAME_PREFIXES[id]
 
@@ -78,17 +55,12 @@ end
 
 -------------------------------------------------------------------------
 -- Default bars (1-5) dynamic content-source redirect
---
--- Each default bar's 12 pool buttons resolve their action slot from the
--- effective page (GetDefaultBarEffectivePage); native paging formula:
--- actionSlot = buttonID + (page-1)*12, GetBonusBarOffset() (1/2/3) maps to
--- page 6+offset (7/8/9). Bars 2-5 redirect this same page/stance signal
--- onto an assigned Extra Bar instead (see GetDefaultBarSlotForIndex).
+-- Buttons resolve their action slot from the effective page (GetDefaultBarEffectivePage);
+-- paging: actionSlot = buttonID + (page-1)*12, bonus bar offset maps to page 6+offset.
+-- Bars 2-5 redirect page/stance signal to an assigned Extra Bar instead (GetDefaultBarSlotForIndex).
 -------------------------------------------------------------------------
 
--- Page every default bar's buttons currently read from. Pagination toggle
--- locks to page 1; stance-swap only applies on top of page 1, so a
--- manually-paged-away bar is never overridden by a stance change.
+-- Page every default bar's buttons currently read from. Pagination toggle locks to page 1; stance-swap only applies on page 1.
 function ACAB:GetDefaultBarEffectivePage()
 	self:EnsureDB()
 
@@ -109,11 +81,7 @@ function ACAB:GetDefaultBarEffectivePage()
 	return page
 end
 
--- Resolves which of the player's stance slots (1..GetNumShapeshiftForms())
--- is currently active. GetBonusBarOffset() alone only reports which bonus
--- bar is showing, not the stance-form index - not a 1:1 mapping for a
--- class with more forms than bonus bars (e.g. Druid's Travel Form grants
--- no bonus bar of its own).
+-- Resolves which of the player's stance slots is currently active (GetBonusBarOffset alone isn't a 1:1 mapping to stance index).
 function ACAB:GetActiveStanceIndex()
 	local count = GetNumShapeshiftForms and GetNumShapeshiftForms() or 0
 
@@ -196,9 +164,7 @@ function ACAB:GetDefaultBarSlotForIndex(id, slotIndex)
 	return StaticSlot()
 end
 
--- Re-resolves every default bar's (1-5) pool button slots from the current
--- page/bonus-bar state via Bar.lua's ApplyBarShape (cfg.dynamicDefaultBar).
--- Called on CURRENT_ACTIONBAR_PAGE/GetBonusBarOffset() change or toggle flip.
+-- Re-resolves every default bar's pool button slots from current page/bonus-bar state.
 function ACAB:RefreshDefaultBarSlots()
 	local id
 
@@ -211,10 +177,7 @@ function ACAB:RefreshDefaultBarSlots()
 	end
 end
 
--- Settings.lua General tab checkboxes write through these. Neither toggle
--- changes any default bar's visibility, only which action slots its
--- buttons read from, so both reapply via RefreshDefaultBarSlots instead
--- of Show()/Hide().
+-- Written by Settings.lua General tab checkboxes; only changes which action slots buttons read from, not visibility.
 function ACAB:SetDefaultBarPaginationEnabled(enabled)
 	self:EnsureDB()
 
@@ -222,8 +185,7 @@ function ACAB:SetDefaultBarPaginationEnabled(enabled)
 
 	self:RefreshDefaultBarSlots()
 
-	-- Page Indicator visibility derives from this toggle (no flag of its
-	-- own); it's a bar-1-only element.
+	-- Page Indicator visibility derives from this toggle (bar-1-only).
 	if self.ApplyPageIndicatorVisibility then
 		self:ApplyPageIndicatorVisibility()
 	end
@@ -237,24 +199,14 @@ function ACAB:SetDefaultBarStanceSwapEnabled(enabled)
 	self:RefreshDefaultBarSlots()
 end
 
--- Runs after real vanilla's ChangeActionBarPage (fires on every Shift/Ctrl
--- page swap and the page-arrow clicks) has updated CURRENT_ACTIONBAR_PAGE,
--- so RefreshDefaultBarSlots always reads the new value. Registered once at
--- file load since FrameXML's ChangeActionBarPage is already defined by
--- the time addon Lua files load.
+-- Hooks vanilla's ChangeActionBarPage so RefreshDefaultBarSlots reruns after CURRENT_ACTIONBAR_PAGE updates.
 if hooksecurefunc and ChangeActionBarPage then
 	hooksecurefunc("ChangeActionBarPage", function()
 		ACAB:RefreshDefaultBarSlots()
 	end)
 end
 
--- UPDATE_BONUS_ACTIONBAR fires whenever the player's stance/form/stealth
--- state changes. BonusActionBarFrame is a separate native frame from
--- ActionButton1-12 that Blizzard shows as an overlay any time bonus/
--- stance content becomes active - hiding ActionButton1-12 does nothing to
--- suppress it. Hidden and Show()-neutered unconditionally here (not gated
--- on defaultBarStanceSwapEnabled), since ACAB' own replica buttons are
--- the sole visual representation of bar 1 regardless of that toggle.
+-- BonusActionBarFrame is a separate overlay frame shown on stance/bonus-bar changes; hidden+neutered unconditionally.
 function ACAB:HideBonusActionBarFrame()
 	self:NeuterFrameShow(BonusActionBarFrame)
 end
@@ -283,8 +235,6 @@ function ACAB:ApplyBlizzardArtVisibility()
 	self:EnsureDB()
 
 	artFrame:SetFrameStrata("MEDIUM")
-
-	-- See this section's header comment for why level 5 specifically.
 	artFrame:SetFrameLevel(5)
 
 	local hide = ACABDB.disableBlizzardArt
@@ -306,10 +256,7 @@ function ACAB:ApplyBlizzardArtVisibility()
 end
 
 -------------------------------------------------------------------------
--- Position + grid reflow: reuses the same 1-based-index -> col/row math
--- as Bar.lua's ButtonIndexToGridPos/LayoutButtons, applied to the real
--- Blizzard frames instead of a custom bar's own button pool. Re-derived
--- here (rather than shared) since it's local to Bar.lua.
+-- Position + grid reflow: mirrors Bar.lua's ButtonIndexToGridPos math for real Blizzard frames.
 -------------------------------------------------------------------------
 
 local function ButtonIndexToGridPos(index, cols)
@@ -319,10 +266,7 @@ local function ButtonIndexToGridPos(index, cols)
 	return col, row
 end
 
--- PixelUtil.SetPoint requires GetEffectiveScale() on both region and its
--- relativeTo anchor - FontString/Texture regions lack it. Falls back to
--- plain SetPoint when either side lacks GetEffectiveScale instead of
--- erroring (e.g. Page Indicator's MainMenuBarPageNumber FontString).
+-- Falls back to plain SetPoint when region/relativeTo lacks GetEffectiveScale (FontString/Texture regions).
 function ACAB:PixelSetPoint(region, ...)
 	local relativeTo = arg[2]
 	local canPixelSnap = region and region.GetEffectiveScale
@@ -344,17 +288,9 @@ function ACAB:PixelSetSize(region, width, height)
 	end
 end
 
--- Default bars 1-5 share Bar.lua's EnsureBarOverlay with every other bar
--- for their edit-mode overlay. The Stance Bar uses the chain-anchored-
--- container technique (BuildChainAnchoredContainer/ApplyChainAnchoredShape/
--- EnsureContainerOverlay) shared with Bag Bar/Micro Menu - see the
--- "Stance Bar" section further below in this file.
+-- Bars 1-5 share Bar.lua's EnsureBarOverlay for edit-mode overlay; Stance Bar uses the chain-anchored-container technique instead (see below).
 
--- Positions and grid-reflows default bar `id`'s 12 real Blizzard buttons
--- per its saved config (point/relativePoint/x/y/cols/rows/buttonSize).
--- Delegates to Bar.lua's own ApplyBarPosition/ApplyBarShape against this
--- bar's real Bar.lua bar object (self.bars[id]), including this bar's own
--- dynamic per-button slot resolution (cfg.dynamicDefaultBar).
+-- Positions and grid-reflows default bar `id`'s real buttons per its saved config, via Bar.lua's ApplyBarPosition/ApplyBarShape.
 function ACAB:ApplyDefaultBarShape(id)
 	self:EnsureDB()
 
@@ -372,9 +308,7 @@ function ACAB:ApplyDefaultBarShape(id)
 	end
 end
 
--- Resizes the 12 real Blizzard buttons for default bar `id`, delegating
--- to Bar.lua's own SetBarButtonSize (clamp rule plus equip-ring/glow/
--- backdrop scaling).
+-- Resizes default bar `id`'s real buttons via Bar.lua's SetBarButtonSize.
 function ACAB:SetDefaultBarButtonSize(id, size)
 	self:EnsureDB()
 
@@ -391,10 +325,7 @@ function ACAB:SetDefaultBarButtonSize(id, size)
 	end
 end
 
--- Mirrors SetDefaultBarButtonSize's structure (clamp, write, reapply) for
--- the Spacing slider. Writes cfg.spacing directly (bar.config IS this same
--- ACABDB.defaultBars[id] table) then reapplies via Bar.lua's own
--- ApplyBarShape.
+-- Spacing slider equivalent of SetDefaultBarButtonSize; writes cfg.spacing then reapplies via ApplyBarShape.
 function ACAB:SetDefaultBarSpacing(id, spacing)
 	self:EnsureDB()
 
@@ -404,8 +335,7 @@ function ACAB:SetDefaultBarSpacing(id, spacing)
 		return
 	end
 
-	-- Vanilla-only real minimum spacing - see Bar.lua's SetBarSpacing
-	-- for why. Mirrors that clamp exactly.
+	-- Vanilla-only minimum spacing clamp, mirrors Bar.lua's SetBarSpacing.
 	local minSpacing = self:IsVanillaBorderStyle() and self.VANILLA_SPACING_FLOOR or 0
 
 	spacing = self:ClampSpacingSetting(spacing, minSpacing, 20)
@@ -422,18 +352,14 @@ function ACAB:SetDefaultBarSpacing(id, spacing)
 		self:ApplyBarShape(bar)
 	end
 
-	-- Vanilla-style grid spacing (ACAB:GetLayoutGridSpacing, Core.lua)
-	-- includes Main Bar's real configured spacing, not just its
-	-- buttonSize - see that function's own comment.
+	-- Vanilla-style grid spacing includes Main Bar's configured spacing, not just buttonSize (Core.lua GetLayoutGridSpacing).
 	if id == 1 and self:IsEditMode() then
 		self:RebuildLayoutGrid()
 	end
 end
 
 -------------------------------------------------------------------------
--- Position (live). Default bars only move via x/y (point/relativePoint
--- stay whatever seedDefaultBars chose) - dragging isn't supported since
--- they're real Blizzard frames, not ACAB' own draggable bar frame.
+-- Position (live). Default bars move via x/y only - dragging unsupported (real Blizzard frames, not ACAB's own).
 -------------------------------------------------------------------------
 
 -- Delegates to Bar.lua's own SetBarPosition.
@@ -455,20 +381,11 @@ end
 
 -------------------------------------------------------------------------
 -- Reset to Vanilla Layout (position, spacing, grid shape, size)
---
--- Restores position/spacing from cfg.nativeAnchor/cfg.nativeSpacing, the
--- pristine snapshots Core.lua's seedDefaultBars captured once before
--- ACAB ever touched this bar - never re-read from the live frame,
--- which by reset time reflects wherever the user last dragged it.
--- Grid shape/button size restore from the fixed ACAB.DEFAULT_BAR_GRID/
--- ACAB.BUTTON_SIZE constants instead.
+-- Restores position/spacing from cfg.nativeAnchor/nativeSpacing (pristine snapshot from Core.lua's seedDefaultBars).
+-- Grid shape/button size restore from ACAB.DEFAULT_BAR_GRID/BUTTON_SIZE constants.
 -------------------------------------------------------------------------
 
--- Restores position, grid shape, and button size for default bar `id`,
--- applied through Bar.lua's own ApplyBarPosition/SetBarLayout/
--- SetBarButtonSize. ApplyBarShape is called explicitly afterward so the
--- restored spacing takes visual effect even if SetBarLayout was skipped
--- (e.g. no grid entry for this id).
+-- Restores position/grid shape/button size for default bar `id` via Bar.lua's Apply/Set functions.
 function ACAB:ResetDefaultBarLayout(id)
 	self:EnsureDB()
 
@@ -503,40 +420,24 @@ function ACAB:ResetDefaultBarLayout(id)
 
 	self:SetBarButtonSize(bar, self.BUTTON_SIZE)
 
-	-- Guarantees the restored spacing is reflected even if SetBarLayout
-	-- above didn't run (e.g. grid is nil for this id).
+	-- Ensures restored spacing applies even if SetBarLayout was skipped.
 	self:ApplyBarShape(bar)
 end
 
 -------------------------------------------------------------------------
 -- Modern Layout geometry - live sequential measurement
---
--- Shared by the Setup Wizard's Modern Layout choice and every per-element
--- "Reset to Modern Layout Default" button, so they can never drift apart.
--- Every position below is read off the REAL rendered edge of whichever
--- bar it stacks against (ACAB:GetElementRealEdges), by actually applying
--- that bar for real first and measuring it back - never a buttonSize*N
--- formula - so a real border-style visual footprint
--- (ACAB:GetElementVisualInset) is always accounted for, and this stays
--- correct even if the referenced bar's own buttonSize/border style
--- differs from what a fixed constant would have assumed.
+-- Shared by the Setup Wizard's Modern Layout choice and every "Reset to Modern Layout Default" button.
+-- Positions are read off the real rendered edge of the referenced bar (ACAB:GetElementRealEdges) after
+-- applying it for real - never computed via a buttonSize*N formula, or border-style insets go stale.
 -------------------------------------------------------------------------
 
--- Effective button size/spacing the Modern Layout preset uses everywhere -
--- the same globalButtonSizeEnabled/globalSpacingEnabled override every
--- other per-bar control already respects (mirrors the wizard's own
--- resolution of state.globalButtonSizeValue/globalSpacingValue).
+-- Effective button size/spacing Modern Layout uses everywhere, via the same global size/spacing overrides every bar respects.
 function ACAB:GetModernLayoutSizing()
 	self:EnsureDB()
 
 	local buttonSize = (ACABDB.globalButtonSizeEnabled and ACABDB.globalButtonSizeValue) or self.BUTTON_SIZE
 
-	-- Mirrors ACAB:ApplyGlobalSpacingToBar's real formula exactly (Bar.lua)
-	-- - vanilla border style's real button art always overhangs by
-	-- VANILLA_SPACING_FLOOR, ADDED on top of the global slider's own
-	-- displayed (never itself offset) value, not just a floor/clamp - a
-	-- slider left at its default 0 already means real spacing 4 in
-	-- vanilla style, same as every bar this override applies to elsewhere.
+	-- Mirrors Bar.lua's ApplyGlobalSpacingToBar formula: vanilla border floor is ADDED to the slider value, not clamped.
 	local floor = self:IsVanillaBorderStyle() and self.VANILLA_SPACING_FLOOR or 0
 	local spacing = floor + ((ACABDB.globalSpacingEnabled and ACABDB.globalSpacingValue) or 0)
 
@@ -590,19 +491,13 @@ function ACAB:GetModernBaseExpBarClearance()
 	local frame = getglobal(self.EXP_BAR_FRAME_NAME)
 	local height = (frame and frame:GetHeight()) or 20
 
-	-- Same rowGap Modern Layout's own preset uses between stacked rows
-	-- (ACAB:ApplyModernMainActionBarsLayout below).
+	-- Same rowGap Modern Layout's own preset uses between stacked rows.
 	return height + 6
 end
 
--- Stacks Main Bar (1) -> Action Bar 1 (2) -> Action Bar 2 (3) with zero
--- gap - each bar's Y is read off the REAL rendered top edge of the bar
--- directly below it (applied for real first, then measured back via
--- ACAB:GetElementRealEdges), not a buttonSize*N formula. Shared by the
--- Setup Wizard's Modern Layout choice and each of these 3 bars' own
--- "Reset to Modern Layout Default" button - all 3 always resolve to the
--- same result regardless of which one triggered it (matches the old
--- formula-based behavior, which was self-consistent the same way).
+-- Stacks Main Bar (1) -> Action Bar 1 (2) -> Action Bar 2 (3) with zero gap - each bar's Y is read off
+-- the real rendered top edge of the bar below it (ACAB:GetElementRealEdges), not a buttonSize*N formula.
+-- Shared by the Setup Wizard's Modern Layout choice and each bar's own "Reset to Modern Layout Default" button.
 function ACAB:ApplyModernMainActionBarsLayout()
 	self:EnsureDB()
 
@@ -658,13 +553,8 @@ function ACAB:ApplyModernMainActionBarsLayout()
 	self:SetDefaultBarEnabled(3, true)
 end
 
--- The Y that vertically centers a 12-row, 1-col Modern Layout vertical bar
--- of this buttonSize/spacing (ACAB:GetModernLayoutSizing - the SAME
--- values every other Modern Layout bar uses, so the whole cluster stays
--- visually consistent) on screen - shared by Right Action Bar 1/2 and
--- Extra Bar 1-4, so the six-bar cluster centers as one row instead of
--- sitting wherever Right Action Bar 2's real vanilla native anchor
--- happened to be (near the top, by the minimap).
+-- The Y that vertically centers a 12-row, 1-col Modern Layout vertical bar on screen.
+-- Shared by Right Action Bar 1/2 and Extra Bar 1-4 so the six-bar cluster centers as one row.
 function ACAB:GetModernVerticalBarCenteredY(buttonSize, spacing)
 	local screenHeight = UIParent:GetHeight() or 0
 	local clusterHeight = (buttonSize * 12) + (spacing * 11)
@@ -672,23 +562,12 @@ function ACAB:GetModernVerticalBarCenteredY(buttonSize, spacing)
 	return (screenHeight - clusterHeight) / 2
 end
 
--- Reshapes an Extra Bar to a 1-col/12-row vertical grid for Modern
--- Layout's vertical clusters below (its own default/vanilla shape
--- elsewhere in the addon is unaffected - this reshaping only applies
--- here) and positions its real edge flush against `anchorRealEdge`
--- (UIParent-relative units).
--- anchorSide "left" means `bar` sits to the LEFT of anchorRealEdge (its
--- own right edge touches it); "right" means `bar` sits to the RIGHT of it
--- (its own left edge touches it). Both sides measure the resulting real
--- edge straight off the bar frame itself right after positioning it -
--- same pattern as Right Action Bar 1/2's own chain below, which never
--- overlapped live. (A prior attempt measured via this bar's edit-mode
--- overlay instead and re-shifted cfg.x from that reading - the overlay's
--- own anchors were just re-cleared/re-set that same call, so its rect
--- hadn't resolved yet on this client's lazy frame layout, and each bar
--- chained off a stale reading of the one before it.)
--- Returns bar's own resulting real right edge, so the next bar in the
--- same cluster can chain off it.
+-- Reshapes an Extra Bar to a 1-col/12-row vertical grid for Modern Layout's vertical clusters, and
+-- positions its real edge flush against `anchorRealEdge` (UIParent-relative units).
+-- anchorSide "left": `bar` sits left of anchorRealEdge (its right edge touches it). "right": vice versa.
+-- Measures the resulting real edge off the bar frame itself after positioning (not the edit-mode overlay,
+-- whose rect hasn't resolved yet on this client's lazy frame layout).
+-- Returns bar's own resulting real right edge, so the next bar in the same cluster can chain off it.
 function ACAB:ApplyModernVerticalExtraBarSlot(bar, buttonSize, spacing, anchorRealEdge, y, anchorSide)
 	if not bar or not bar.config then
 		return anchorRealEdge
@@ -729,16 +608,10 @@ function ACAB:ApplyModernVerticalExtraBarSlot(bar, buttonSize, spacing, anchorRe
 	return realRight or (cfg.x + buttonSize + insetRight)
 end
 
--- Modern Layout's right/left vertical bar clusters: Right Action Bar 1/2
--- (id 4/5) plus Extra Bar 1 (right cluster, flush against the screen's
--- right edge), mirrored by Extra Bar 2/3/4 (left cluster, flush against
--- the screen's left edge) - shared by the Setup Wizard and Right Action
--- Bar 1/2's own "Reset to Modern Layout Default" buttons (id 4/5) as well
--- as every Extra Bar's own one, so any of the six always recomputes the
--- same coherent row. id 4 (outermost right) and Extra Bar 2 (outermost
--- left) anchor straight off UIParent's own width; every other bar in
--- each cluster chains zero-gap off the real rendered edge of whichever
--- bar sits just outside it.
+-- Modern Layout's right/left vertical bar clusters: Right Action Bar 1/2 (id 4/5) plus Extra Bar 1
+-- (right cluster, flush against the screen's right edge), mirrored by Extra Bar 2/3/4 (left cluster).
+-- id 4 (outermost right) and Extra Bar 2 (outermost left) anchor off UIParent's width; every other
+-- bar in each cluster chains zero-gap off the real rendered edge of the bar just outside it.
 function ACAB:ApplyModernVerticalBarClusterLayout()
 	self:EnsureDB()
 
@@ -764,20 +637,13 @@ function ACAB:ApplyModernVerticalBarClusterLayout()
 	cfg4.buttonSize = buttonSize
 	cfg4.spacing = spacing
 
-	-- Shared row Y for the whole six-bar cluster - vertically centers a
-	-- 12-row bar of this buttonSize/spacing on screen (ACAB:
-	-- GetModernVerticalBarCenteredY), not wherever Right Action Bar 2's
-	-- real vanilla native anchor happened to be.
+	-- Shared row Y for the whole six-bar cluster.
 	local rowY = self:GetModernVerticalBarCenteredY(buttonSize, spacing)
 
 	local _, insetRight4 = self:GetElementVisualInset(bar4)
 
-	-- id 4: outermost, flush against the screen's right edge - anchored
-	-- via BOTTOMRIGHT/BOTTOMRIGHT (same as every other flush-corner
-	-- element in this file: Bag Bar/Key Ring/Micro Menu/Latency Bar), so
-	-- this is exact regardless of UIParent's own real width. A
-	-- screenWidth-minus-buttonSize formula (via UIParent:GetWidth()) was
-	-- landing this bar way too far inward.
+	-- id 4: outermost, flush against the screen's right edge - BOTTOMRIGHT/BOTTOMRIGHT (same as every
+	-- other flush-corner element in this file: Bag Bar/Key Ring/Micro Menu/Latency Bar).
 	cfg4.point = "BOTTOMRIGHT"
 	cfg4.relativePoint = "BOTTOMRIGHT"
 	cfg4.x = -insetRight4
@@ -848,11 +714,8 @@ function ACAB:ApplyModernSingleMainBar()
 	self:ApplyBarShape(bar1)
 end
 
--- Applies `bar`'s own modern position/shape only, stacked zero-gap above
--- `belowBar`'s CURRENT real top edge - never touches belowBar itself, so
--- resetting one bar in the 1-2-3 stack doesn't drag its neighbor along
--- (ACAB:ApplyModernMainActionBarsLayout above is still what the Setup
--- Wizard uses for the initial full stack).
+-- Applies `bar`'s own modern position/shape only, stacked zero-gap above `belowBar`'s current real top
+-- edge - never touches belowBar itself, so resetting one bar in the 1-2-3 stack doesn't move its neighbor.
 function ACAB:ApplyModernSingleStackedActionBar(bar, belowBar)
 	if not bar or not belowBar then
 		return
@@ -880,11 +743,8 @@ function ACAB:ApplyModernSingleStackedActionBar(bar, belowBar)
 	self:ApplyBarShape(bar)
 end
 
--- Applies bar `id`'s (4 or 5) own modern position/shape only - never moves
--- its neighbor. id 4 is independent (flush against the screen's right
--- edge); id 5 reads id 4's CURRENT real left edge without moving it
--- (ACAB:ApplyModernVerticalBarClusterLayout above is still what the Setup
--- Wizard uses for the initial full cluster).
+-- Applies bar `id`'s (4 or 5) own modern position/shape only - never moves its neighbor.
+-- id 4 is independent (flush against the screen's right edge); id 5 reads id 4's current real left edge.
 function ACAB:ApplyModernSingleVerticalBar(id)
 	self:EnsureDB()
 
@@ -902,9 +762,7 @@ function ACAB:ApplyModernSingleVerticalBar(id)
 	cfg.y = self:GetModernVerticalBarCenteredY(buttonSize, spacing)
 
 	if id == 4 then
-		-- Flush against the screen's right edge - same BOTTOMRIGHT/
-		-- BOTTOMRIGHT anchor every other flush-corner element uses, exact
-		-- regardless of UIParent's own real width.
+		-- Flush against the screen's right edge - same BOTTOMRIGHT/BOTTOMRIGHT anchor as other flush-corner elements.
 		local _, insetRight = self:GetElementVisualInset(bar)
 
 		cfg.point = "BOTTOMRIGHT"
@@ -930,11 +788,8 @@ function ACAB:ApplyModernSingleVerticalBar(id)
 	self:SetDefaultBarEnabled(id, true)
 end
 
--- Settings.lua's "Reset to Modern Layout Default" button for Main Bar/
--- Action Bar 1/Action Bar 2 (id 1-3) and Right Action Bar 1/2 (id 4-5) -
--- each id only ever touches its own bar (see the Apply*Single* functions
--- above), never its neighbors, so bars only end up stacked together when
--- each one is individually reset in order, not every time any one of them is.
+-- Settings.lua's "Reset to Modern Layout Default" button for Main Bar/Action Bar 1/Action Bar 2 (id 1-3)
+-- and Right Action Bar 1/2 (id 4-5) - each id only ever touches its own bar, never its neighbors.
 function ACAB:ResetBarLayoutToModernBase(id)
 	self:EnsureDB()
 
@@ -974,16 +829,11 @@ end
 
 -------------------------------------------------------------------------
 -- Enable / disable (bars 2-5 only - bar 1 is always active, no UI)
---
--- Bars 2-5's real Blizzard buttons are permanently hidden regardless of
--- state (CreateFixedSlotDefaultBars below); cfg.enabled + Show()/Hide()
+-- Bars 2-5's real Blizzard buttons are permanently hidden regardless of state; cfg.enabled + Show()/Hide()
 -- on this addon's own Bar.lua bar frame is the sole visibility mechanism.
 -------------------------------------------------------------------------
 
--- Toggling bar 2 (Bottom Left) also reflows the Stance Bar's position
--- (ReflowStanceBarForBar2Toggle below) to avoid overlap - real vanilla's
--- own ShapeshiftBar_UpdatePosition() no longer has any effect once the
--- Stance Bar's buttons are reparented into their own synthetic container.
+-- Toggling bar 2 (Bottom Left) also reflows the Stance Bar's position to avoid overlap.
 function ACAB:SetDefaultBarEnabled(id, enabled)
 	if id == 1 then
 		-- Bar 1 (Main) has no enable/disable - always active.
@@ -1007,9 +857,7 @@ function ACAB:SetDefaultBarEnabled(id, enabled)
 
 	cfg.enabled = enabled
 
-	-- Pet Bar in native mode has no self.bars[id] pool bar (see
-	-- CreateFixedSlotDefaultBars) - the chain-anchored container is its
-	-- visibility target instead.
+	-- Pet Bar in native mode has no self.bars[id] pool bar - the chain-anchored container is its visibility target instead.
 	local bar = self.bars and self.bars[id]
 	local isNativePetBar = id == self.PET_BAR_ID and self:IsPetBarNativeModeEffective()
 
@@ -1017,16 +865,11 @@ function ACAB:SetDefaultBarEnabled(id, enabled)
 		bar = self.petBarNativeContainer
 	end
 
-	-- Stance Bar native mode has no self.bars[id] pool bar - `bar` stays nil,
-	-- a no-op below. Its native visibility uses the separate
-	-- ACABDB.stanceBarEnabled flag instead of this function's
-	-- cfg.enabled (styled mode only) - intentionally separate, do not merge.
+	-- Stance Bar native mode has no self.bars[id] pool bar - `bar` stays nil, a no-op below.
+	-- Its native visibility uses ACABDB.stanceBarEnabled instead of cfg.enabled (styled mode only) - do not merge.
 
 	if bar then
-		-- Pet Bar additionally requires a real controllable pet action bar
-		-- right now (PetHasActionBar) on top of the user's own enabled
-		-- toggle - re-evaluated every call, including the reactive
-		-- PET_BAR_UPDATE/UNIT_PET refresh below.
+		-- Pet Bar additionally requires a real controllable pet action bar right now (PetHasActionBar).
 		local shouldShow = enabled
 
 		if enabled and id == self.PET_BAR_ID then
@@ -1038,8 +881,7 @@ function ACAB:SetDefaultBarEnabled(id, enabled)
 		else
 			bar:Hide()
 
-			-- Container's overlay is parented to UIParent, not the
-			-- container - hiding the container doesn't cascade to it.
+			-- Container's overlay is parented to UIParent, not the container - hiding the container doesn't cascade to it.
 			if isNativePetBar and bar.ACABOverlay then
 				bar.ACABOverlay:Hide()
 				bar.ACABOverlay:EnableMouse(false)
@@ -1055,45 +897,34 @@ function ACAB:SetDefaultBarEnabled(id, enabled)
 		self:ReflowPetBarForBar3Toggle(enabled)
 	end
 
-	-- Cast Bar independently stacks above an actually-shown Pet Bar
-	-- (GetCastBarBaselineY, NativeElements.lua) - re-evaluated on every
-	-- Pet Bar call since its real shown state can change reactively
-	-- (PetHasActionBar above) without cfg.enabled itself changing.
+	-- Cast Bar independently stacks above an actually-shown Pet Bar (GetCastBarBaselineY, NativeElements.lua).
 	if id == self.PET_BAR_ID and ACABDB.useDefaultLayout ~= false and self.ReflowCastBarForStackToggle then
 		self:ReflowCastBarForStackToggle()
 	end
 
-	-- Matches native's own dependency (bar 5 requires bar 4 - see
-	-- FixRightActionBar2Checkbox) - user can opt out via the General tab.
+	-- Matches native's own dependency (bar 5 requires bar 4) - user can opt out via the General tab.
 	if id == 4 then
 		if enabled ~= wasEnabled and not enabled and not ACABDB.bypassRightActionBar2Dependency then
 			self:SetDefaultBarEnabled(5, false)
 		end
 
-		-- Refreshes bar 5's own Settings UI (sidebar + page checkbox) since
-		-- it locks/unlocks based on bar 4's state.
+		-- Refreshes bar 5's own Settings UI (sidebar + page checkbox) since it locks/unlocks based on bar 4's state.
 		if enabled ~= wasEnabled and ACAB:IsSettingsFrameCreated() then
 			ACAB:RefreshBarList()
 			ACAB:RefreshBarSettingsPage(5)
 		end
 	end
 
-	-- Mirrors state into the native "Show ... ActionBar" global just so
-	-- the Interface Options checkbox doesn't look stuck - cfg.enabled
-	-- above remains the sole visual authority.
+	-- Mirrors state into the native "Show ... ActionBar" global so the Interface Options checkbox
+	-- doesn't look stuck - cfg.enabled above remains the sole visual authority.
 	local nativeGlobal = ACAB.SHOW_MULTI_ACTIONBAR_GLOBAL[id]
 
 	if nativeGlobal then
 		-- Stored/compared as string "1"/"0" (LOCK_ACTIONBAR convention).
-		-- Do NOT call MultiActionBar_Update() here - it got "Right
-		-- ActionBar 2" (bar 5) stuck permanently disabled after bar 4 was
-		-- toggled off once. Setting the global alone is enough for the
-		-- real Options panel checkbox to read correctly next time it's shown.
+		-- Do NOT call MultiActionBar_Update() here - it gets "Right ActionBar 2" (bar 5) stuck disabled.
 		setglobal(nativeGlobal, enabled and "1" or nil)
 
-		-- This custom Options framework only reads the global at panel-show
-		-- time, not reactively - set the control directly too so an
-		-- already-open panel stays synced.
+		-- This options framework only reads the global at panel-show time - set the control directly too.
 		local control = getglobal("OptionsFrameCheckButton" .. tostring(id) .. "Control")
 
 		if control and control.SetChecked then
@@ -1106,12 +937,7 @@ end
 
 -------------------------------------------------------------------------
 -- Pet Bar auto-hide (no controllable pet action bar right now)
---
--- Re-evaluates through SetDefaultBarEnabled above (the single Show/Hide
--- authority for this id) rather than calling bar:Show()/:Hide() directly.
--- Event names (PET_BAR_UPDATE, UNIT_PET, PLAYER_CONTROL_LOST/GAINED)
--- still need live confirmation on this client - if one doesn't fire, Pet
--- Bar just re-checks visibility on login/target-change instead of erroring.
+-- Re-evaluates through SetDefaultBarEnabled above rather than calling bar:Show()/:Hide() directly.
 -------------------------------------------------------------------------
 
 function ACAB:RefreshPetBarVisibility()
@@ -1121,19 +947,14 @@ function ACAB:RefreshPetBarVisibility()
 		self:SetDefaultBarEnabled(self.PET_BAR_ID, cfg.enabled)
 	end
 
-	-- Re-chain-anchors the real buttons back into our container - native
-	-- code re-anchors them directly on these same events, same as
-	-- RebuildStanceBarContainer's treatment of ShapeshiftBar_Update.
+	-- Re-chain-anchors the real buttons back into our container.
 	if self.petBarNativeContainer then
 		self:ApplyPetBarNativeShape()
 	end
 end
 
--- Reconciles our own cfg.enabled (bars 2-5) from the native
--- SHOW_MULTI_ACTIONBAR_1-4 globals whenever MultiActionBar_Update runs
--- (e.g. the real Interface Options checkbox's own OnClick). Only trusted
--- reactively within the current session - these globals don't survive a
--- real logout on this fork (see ACAB.SHOW_MULTI_ACTIONBAR_GLOBAL).
+-- Reconciles our own cfg.enabled (bars 2-5) from the native SHOW_MULTI_ACTIONBAR_1-4 globals whenever
+-- MultiActionBar_Update runs. Only trusted reactively - these globals don't survive a real logout.
 function ACAB:ReconcileDefaultBarEnabledFromNative()
 	if not (ACABDB and ACABDB.defaultBars) then
 		return
@@ -1150,14 +971,10 @@ function ACAB:ReconcileDefaultBarEnabledFromNative()
 			local currentEnabled = cfg.enabled and true or false
 
 			if nativeEnabled ~= currentEnabled then
-				-- Re-enters SetDefaultBarEnabled, which re-fires this same
-				-- hook once more, but by then nativeEnabled ==
-				-- currentEnabled already, so it's a harmless one-level
-				-- no-op re-entry, not a loop.
+				-- Re-enters SetDefaultBarEnabled; harmless one-level no-op re-entry once values match, not a loop.
 				self:SetDefaultBarEnabled(id, nativeEnabled)
 
-				-- Keep the Settings window's checkboxes in sync too, only if
-				-- it's actually been built this session already.
+				-- Keep the Settings window's checkboxes in sync too, if built this session.
 				if ACAB:IsSettingsFrameCreated() then
 					ACAB:RefreshBarList()
 					ACAB:RefreshBarSettingsPage(id)
@@ -1169,16 +986,11 @@ function ACAB:ReconcileDefaultBarEnabledFromNative()
 	self:FixRightActionBar2Checkbox()
 end
 
--- This fork's Options -> Action Bars panel is a custom framework (not
--- stock FrameXML): "Show Right ActionBar 2" (bar 5) gets stuck disabled
--- instead of following "Show Right ActionBar" (bar 4) reactively. Bar 4's
--- state is mirrored onto it directly whenever bar 4/5 state changes, and
--- bar 4's checkbox click is hooked once since this framework doesn't call
--- native MultiActionBar_Update() on its own clicks.
+-- This fork's Options -> Action Bars panel is a custom framework: "Show Right ActionBar 2" (bar 5) gets
+-- stuck disabled instead of following "Show Right ActionBar" (bar 4) reactively - mirrored here instead.
 local hookedBar4Checkbox = false
 
--- Enabled label color (1, 0.82, 0) - only forced when enabled; native
--- handles the disabled grey color on its own.
+-- Enabled label color (1, 0.82, 0) - only forced when enabled; native handles the disabled grey color.
 local RIGHT_ACTIONBAR2_LABEL_ENABLED_COLOR = { 1, 0.82, 0 }
 
 local function SetCheckbox5LabelEnabledColor()
@@ -1234,22 +1046,15 @@ function ACAB:FixRightActionBar2Checkbox()
 	end
 end
 
--- hooksecurefunc runs AFTER the real MultiActionBar_Update has already
--- applied whatever the native checkbox/globals currently say, so the
--- reconcile above always reads the new value, never the stale one. Same
--- top-level "register once at file load" convention as
--- ChangeActionBarPage's own hook elsewhere in this file.
+-- hooksecurefunc runs after MultiActionBar_Update applies the native checkbox/global state, so the
+-- reconcile above always reads the new value.
 if hooksecurefunc and MultiActionBar_Update then
 	hooksecurefunc("MultiActionBar_Update", function()
 		ACAB:ReconcileDefaultBarEnabledFromNative()
 	end)
 end
 
--- Every default bar (1-5) delegates to Bar.lua's own SetBarLayout (which
--- also re-clamps buttonCount - always a no-op here in practice, since
--- every grid preset totals exactly 12 and default bars have no
--- buttons-shown stepper, but keeping the exact same call custom bars use
--- costs nothing and stays consistent).
+-- Every default bar (1-5) delegates to Bar.lua's own SetBarLayout (also re-clamps buttonCount, same as custom bars).
 function ACAB:SetDefaultBarLayout(id, cols, rows)
 	self:EnsureDB()
 
@@ -1262,27 +1067,14 @@ end
 
 -------------------------------------------------------------------------
 -- Builds every default bar (1-5) as a Bar.lua bar object.
---
--- Must run once at PLAYER_LOGIN before ApplyAllDefaultBars - every
--- function above reads self.bars[id], which this creates. For each bar:
--- permanently hides its 12 real Blizzard buttons (Show neutered to a
--- no-op; native keybind dispatch keeps working) and builds this bar's
--- own Bar.lua/Button.lua button pool into self.bars[id], the same table
--- custom bars (id 6+) live in.
---
--- If discovery failed for one of bars 2-5, that bar is skipped and keeps
--- its real Blizzard buttons visible until a later login succeeds.
+-- Must run once at PLAYER_LOGIN before ApplyAllDefaultBars - every function above reads self.bars[id].
+-- Permanently hides each bar's 12 real Blizzard buttons and builds its own Button.lua pool into self.bars[id].
+-- If discovery failed for one of bars 2-5, that bar is skipped and keeps its real buttons visible.
 -------------------------------------------------------------------------
 
--- Real vanilla's ShapeshiftBar_Update() reads MultiBarBottomLeft:IsShown()
--- to decide whether the Stance Bar can expand its border into that space,
--- swapping ShapeshiftButtonN's NormalTexture bigger when it thinks the
--- space is empty (confirmed live: 50x50 border when shown, 64x64 when
--- hidden, on an unchanged 30x30 button). Since ACAB permanently
--- hides bar 2's own 12 buttons regardless of the checkbox, vanilla would
--- otherwise wrongly inflate the Stance Bar's border - forcing this parent
--- frame permanently shown (Hide neutered, same as HideBonusActionBarFrame)
--- keeps ShapeshiftBar_Update() on the correct compact branch instead.
+-- ShapeshiftBar_Update() reads MultiBarBottomLeft:IsShown() to decide whether the Stance Bar can expand
+-- its border into that space (50x50 vs 64x64 on an unchanged 30x30 button). Since ACAB permanently hides
+-- bar 2's buttons, this parent frame is forced permanently shown to keep it on the compact branch.
 local hasNeuteredMultiBarBottomLeft = false
 
 local function ForceShowMultiBarBottomLeft(parent)
@@ -1298,31 +1090,21 @@ local function ForceShowMultiBarBottomLeft(parent)
 	end
 end
 
--- Each real button's Show method is permanently overridden to a no-op
--- once hidden, so any later native call (e.g. ACTIONBAR_SHOWGRID's sweep)
--- can't make it visible again.
--- Creates default-bar `id`'s pool-button bar (self.bars[id]) if it isn't
--- built yet - shared by CreateFixedSlotDefaultBars' login-time loop below
--- and by ResetPetBarLayoutToModernBase/ResetStanceBarShapeToModernBase
--- (PetStanceBars.lua), which need this bar to exist even when the mode
--- effective at THIS session's login (always native on a first-ever login,
--- since useDefaultLayout defaults true) no longer matches what the Setup
--- Wizard just switched this profile to mid-session - without this, the
--- reset function's self.bars[id] lookup finds nothing and silently no-ops.
+-- Each real button's Show method is permanently overridden to a no-op once hidden, so a later native
+-- call (e.g. ACTIONBAR_SHOWGRID's sweep) can't make it visible again.
+-- Creates default-bar `id`'s pool-button bar (self.bars[id]) if not built yet - shared by
+-- CreateFixedSlotDefaultBars' login-time loop and PetStanceBars.lua's Reset*ToModernBase functions.
 function ACAB:EnsureFixedSlotBarCreated(id)
 	self:EnsureDB()
 
 	local cfg = ACABDB.defaultBars[id]
 
-	-- Pet Bar in native mode skips the pool-button replica entirely -
-	-- CreatePetBarNativeContainer builds its own chain-anchored
-	-- container from the real PetActionButton1-10 frames instead, and
-	-- those must stay genuinely shown/clickable, not neutered below.
+	-- Pet Bar in native mode skips the pool-button replica - CreatePetBarNativeContainer builds its
+	-- own chain-anchored container from the real PetActionButton1-10 frames, which stay clickable.
 	if id == self.PET_BAR_ID and cfg and self:IsPetBarNativeModeEffective() then
 		return
 	elseif id == self.STANCE_BAR_ID and cfg and self:IsStanceBarNativeModeEffective() then
-		-- Handled by CreateStanceBarContainer - the pre-existing native
-		-- machinery, entirely separate from this pool-button path.
+		-- Handled by CreateStanceBarContainer instead.
 		return
 	end
 
@@ -1347,11 +1129,8 @@ function ACAB:EnsureFixedSlotBarCreated(id)
 		if id == 2 then
 			ForceShowMultiBarBottomLeft(nativeButtons[1]:GetParent())
 
-			-- Forces an immediate recompute for a login that
-			-- already ran ShapeshiftBar_Update() against the
+			-- Forces an immediate recompute in case ShapeshiftBar_Update() already ran against the
 			-- wrong (hidden) state above, before this fix ran.
-			-- Native code re-runs this itself on every later
-			-- UPDATE_SHAPESHIFT_FORMS regardless.
 			if ShapeshiftBar_Update then
 				ShapeshiftBar_Update()
 			end
@@ -1360,8 +1139,7 @@ function ACAB:EnsureFixedSlotBarCreated(id)
 
 	self.bars[id] = self:CreateBarFromConfig(cfg)
 
-	-- Bar 1 has no cfg.enabled key (always nil), so it must be
-	-- shown explicitly here - nothing else ever calls :Show() on it.
+	-- Bar 1 has no cfg.enabled key (always nil), so it must be shown explicitly here.
 	if id == 1 or cfg.enabled then
 		self.bars[id]:Show()
 	else
@@ -1394,15 +1172,12 @@ function ACAB:ApplyAllDefaultBars()
 
 		if cfg then
 			if id ~= 1 then
-				-- Bars 2-5: cfg.enabled is the sole visibility source now
-				-- that their real Blizzard buttons are permanently hidden.
+				-- Bars 2-5: cfg.enabled is the sole visibility source now that their real buttons are permanently hidden.
 				self:SetDefaultBarEnabled(id, cfg.enabled)
 			end
 
-			-- Always reapply shape/overlay regardless of enabled state -
-			-- vanilla anchors extra multibars relative to each other, not
-			-- UIParent, so a skipped bar would stay on that native anchor
-			-- chain instead of getting its own independent overlay.
+			-- Always reapply shape/overlay regardless of enabled state - vanilla anchors extra multibars
+			-- relative to each other, not UIParent, so a skipped bar needs its own independent overlay.
 			self:ApplyDefaultBarShape(id)
 		end
 	end
@@ -1458,11 +1233,8 @@ function ACAB:ApplyDragSnap(frame, pos, centerSnap)
 		return
 	end
 
-	-- Inflates the dragged box by its visual inset (Core.lua's
-	-- GetElementVisualInset - nonzero only for default bars 1-5, and NOT
-	-- symmetric top vs. bottom) so it compares border-edge-to-border-edge
-	-- against every target's own inset-adjusted box. Deflated back out
-	-- before writing to pos.x/pos.y.
+	-- Inflates the dragged box by its visual inset (Core.lua's GetElementVisualInset, nonzero only for
+	-- default bars 1-5) so it compares border-edge-to-border-edge. Deflated back out before writing to pos.
 	local il, ir, it, ib = ACAB:GetElementVisualInset(frame)
 	local ilPx, irPx, itPx, ibPx = il * scale, ir * scale, it * scale, ib * scale
 
@@ -1472,8 +1244,7 @@ function ACAB:ApplyDragSnap(frame, pos, centerSnap)
 	local boxWidth = width * scale + ilPx + irPx
 	local boxHeight = height * scale + itPx + ibPx
 
-	-- Snap to Adjacent Elements takes priority per axis - Snap to Grid
-	-- only fills in whichever axis Adjacent Elements left unresolved.
+	-- Snap to Adjacent Elements takes priority per axis - Snap to Grid fills in whichever axis is left.
 	local adjLeft, adjTop = ACAB:ComputeSnapAdjustment(
 		proposedLeft,
 		proposedTop,
@@ -1514,9 +1285,7 @@ function ACAB:ApplyDragSnap(frame, pos, centerSnap)
 	end
 end
 
--- Shared OnUpdate body for both drag kinds - `this` is dragFrame itself
--- (an engine-invoked handler, so `this` per the file-level convention
--- noted throughout this addon, e.g. Button.lua's header comment).
+-- Shared OnUpdate body for every drag kind - `this` is dragFrame itself (engine-invoked handler).
 function ACAB:DefaultBarDrag_OnUpdate()
 	local cx, cy = ACAB:GetCursorPositionUIScale()
 	local dx = cx - this.dragStartCursorX
@@ -1622,9 +1391,8 @@ function ACAB:DefaultBarDrag_OnUpdate()
 			ACAB:ApplyTooltipPosition()
 		end
 	elseif this.dragKind == "petBarNative" then
-		-- Writes straight into the shared ACABDB.defaultBars[PET_BAR_ID]
-		-- cfg (see ACAB:StartPetBarNativeDrag) so position stays in sync with
-		-- the custom-styled Pet Bar's own x/y regardless of active mode.
+		-- Writes straight into the shared ACABDB.defaultBars[PET_BAR_ID] cfg so position stays in sync
+		-- with the custom-styled Pet Bar's own x/y regardless of active mode.
 		local cfg = ACABDB.defaultBars[ACAB.PET_BAR_ID]
 
 		if cfg then
@@ -1636,10 +1404,8 @@ function ACAB:DefaultBarDrag_OnUpdate()
 			ACAB:ApplyPetBarNativePosition()
 		end
 	elseif this.dragKind == "bar" then
-		-- Bars 1-9: position lives directly on bar.config.x/y, read/written
-		-- in place. ApplyBarPosition (not ApplyBarShape) is the minimal
-		-- correct call - ApplyBarShape would also re-bind every button's
-		-- action slot and re-run LayoutButtons on every tick.
+		-- Bars 1-9: position lives on bar.config.x/y. ApplyBarPosition (not ApplyBarShape) is the
+		-- minimal correct call - ApplyBarShape would also re-bind every button's action slot per tick.
 		local bar = ACAB.bars and ACAB.bars[this.dragId]
 
 		if bar and bar.config then
@@ -1668,12 +1434,8 @@ function ACAB:EnsureDragFrame()
 end
 
 -------------------------------------------------------------------------
--- Generic start/stop seam onto the shared cursor-tracking drag frame
--- above (dragFrame stays file-local to this file; EnsureDragFrame/
--- DefaultBarDrag_OnUpdate/GetCursorPositionUIScale are ACAB: methods so
--- other files can reach them post-split), exposed as ACAB methods so
--- Bar.lua's own StartBarDrag/StopBarDrag (bars 1-9) can initiate/finalize
--- a drag through this same mechanism.
+-- Generic start/stop seam onto the shared cursor-tracking drag frame above.
+-- Exposed as ACAB methods so Bar.lua's own StartBarDrag/StopBarDrag (bars 1-9) share this mechanism.
 -------------------------------------------------------------------------
 
 function ACAB:StartSharedDrag(dragKind, dragId, startX, startY)
@@ -1701,35 +1463,22 @@ function ACAB:StopSharedDrag()
 	dragFrame:Hide()
 end
 
--- True only while both Edit Layout mode AND useDefaultLayout == false are
--- active - the single shared gate every default-bar-button/stance-bar
--- drag hook below checks before doing anything, mirroring
--- ACAB:IsEditMode()'s own nil-safety (this can in principle be queried
--- before EnsureDB has ever run).
+-- True only while both Edit Layout mode AND useDefaultLayout == false are active - shared gate every
+-- default-bar-button/stance-bar drag hook checks before doing anything.
 function ACAB:CanDragDefaultLayout()
 	return self:IsEditMode() and ACABDB and ACABDB.useDefaultLayout == false
 end
 
--- Stance Bar position/spacing/scale/orientation/enable/drag: see the
--- "Stance Bar (chain-anchored container)" section further below, which
--- shares the BuildChainAnchoredContainer/ApplyChainAnchoredShape/
--- EnsureContainerOverlay machinery with Bag Bar/Micro Menu/Key Ring/
--- Latency Bar.
+-- Stance Bar position/spacing/scale/orientation/enable/drag: see the "Stance Bar (chain-anchored
+-- container)" section below, which shares this container/overlay machinery with Bag Bar/Micro Menu/
+-- Key Ring/Latency Bar.
 
 -------------------------------------------------------------------------
--- Bag Bar / Micro Menu button-name constants, feeding the shared
--- chain/grid-anchored container engine below (BuildChainAnchoredContainer/
--- ApplyChainAnchoredShape/ApplyGridAnchoredShape/EnsureContainerOverlay).
--- The Bag Bar/Micro Menu position/shape/enable functions themselves live
--- in NativeElements.lua, which loads after this file.
---
--- Neither element has a single native container frame on real vanilla
--- 1.12.1, so each builds a synthetic container and reparents its real
--- buttons into it, chain-anchored button-to-button (Bartender2's own
--- pattern on this client generation).
---
--- Bag Bar = the 5 real vanilla bag buttons (no Key Ring). Micro Menu =
--- the 8 real micro-menu buttons ("Socials", not "Social" - real name).
+-- Bag Bar / Micro Menu button-name constants, feeding the shared chain/grid-anchored container engine
+-- below. Their own position/shape/enable functions live in NativeElements.lua.
+-- Neither element has a single native container frame on real vanilla 1.12.1, so each builds a synthetic
+-- container and reparents its real buttons into it, chain-anchored button-to-button (Bartender2's pattern).
+-- Bag Bar = the 5 real vanilla bag buttons (no Key Ring). Micro Menu = the 8 real micro-menu buttons.
 -------------------------------------------------------------------------
 
 ACAB.BAG_BAR_BUTTON_NAMES = {
@@ -1751,10 +1500,7 @@ ACAB.MICRO_MENU_BUTTON_NAMES = {
 	"HelpMicroButton",
 }
 
--- Resolves a fixed list of real global frame names into an ordered
--- table, skipping (not erroring on) any name that doesn't exist on this
--- client - same defensive tolerance as GetDefaultBarButtons/
--- GetStanceBarButtons.
+-- Resolves a fixed list of real global frame names into an ordered table, skipping any that don't exist.
 function ACAB:GetButtonsByName(names)
 	local buttons = {}
 	local n = 0
@@ -1776,10 +1522,7 @@ function ACAB:GetButtonsByName(names)
 	return buttons
 end
 
--- Sorts a button list left-to-right by each frame's real, current
--- on-screen GetLeft() - must be called before any of these frames are
--- reparented/repositioned. Does not assume the name-list order above is
--- already the true native visual order.
+-- Sorts a button list left-to-right by each frame's real on-screen GetLeft() - call before reparenting.
 function ACAB:SortButtonsByNativeLeft(buttons)
 	table.sort(buttons, function(a, b)
 		local aLeft = a:GetLeft() or 0
@@ -1789,10 +1532,8 @@ function ACAB:SortButtonsByNativeLeft(buttons)
 	end)
 end
 
--- Computes the per-pair gap across a chain of native button positions/
--- widths - used once at container-build time to seed this element's
--- permanent nativeSpacing baseline, never re-derived afterward. Uses the
--- median of the raw gaps for robustness against outliers.
+-- Computes the per-pair gap across a chain of native button positions/widths, used once at
+-- container-build time to seed nativeSpacing. Uses the median of the raw gaps to resist outliers.
 local function ComputeMajorityGap(lefts, widths)
 	local gaps = {}
 	local n = 0
@@ -1829,19 +1570,11 @@ local function ComputeMajorityGap(lefts, widths)
 	return math.floor(median + 0.5)
 end
 
--- Builds one synthetic container frame and reparents `buttons` (already
--- sorted left-to-right by SortButtonsByNativeLeft) into it. Chain-
--- anchoring itself is factored out into ApplyChainAnchoredShape below, so
--- it can be re-run any time spacing/orientation/scale changes.
---
--- HIGH strata: without it this frame would render behind
--- MainMenuBarArtFrame's background art, not just during edit mode.
---
--- Returns the container plus button 1's captured native GetLeft()/
--- GetTop() (UIParent-absolute) and the chain's majority native gap
--- (ComputeMajorityGap) - the caller seeds nativeAnchor/nativeSpacing from
--- these, since the buttons' original positions aren't readable once
--- reparented.
+-- Builds one synthetic container frame and reparents `buttons` (already sorted left-to-right) into it.
+-- Chain-anchoring itself is factored into ApplyChainAnchoredShape below, re-runnable on any shape change.
+-- HIGH strata: without it this frame would render behind MainMenuBarArtFrame's background art.
+-- Returns the container plus button 1's captured native GetLeft()/GetTop() and the chain's majority
+-- native gap - the caller seeds nativeAnchor/nativeSpacing from these before the buttons are reparented.
 function ACAB:BuildChainAnchoredContainer(frameName, buttons)
 	local lefts, tops, widths, heights = {}, {}, {}, {}
 	local i
@@ -1890,24 +1623,14 @@ function ACAB:BuildChainAnchoredContainer(frameName, buttons)
 	return container, nativeX, nativeY, nativeSpacing
 end
 
--- Re-chain-anchors a container's buttons from its current spacing/
--- orientation and applies its current scale - shared by ApplyBagBarShape/
--- ApplyStanceBarShape. Micro Menu uses the separate fixed-grid
--- ApplyGridAnchoredShape instead (compacts into cols x rows cells).
---
--- horizontal (orientation == false): each button's TOPLEFT anchors to
--- the previous button's TOPRIGHT, offset by `spacing`.
--- vertical (orientation == true): TOPLEFT anchors to the previous
--- button's BOTTOMLEFT, offset downward by `spacing`.
---
--- Chains only currently-shown buttons (live IsShown() check every call,
--- not cached) - a hidden button must not reserve a chain slot.
+-- Re-chain-anchors a container's buttons from its current spacing/orientation and applies its current
+-- scale - shared by ApplyBagBarShape/ApplyStanceBarShape. Micro Menu uses ApplyGridAnchoredShape instead.
+-- horizontal: each button's TOPLEFT anchors to the previous button's TOPRIGHT, offset by `spacing`.
+-- vertical: TOPLEFT anchors to the previous button's BOTTOMLEFT, offset downward by `spacing`.
+-- Chains only currently-shown buttons (live IsShown() check every call) - a hidden button reserves no slot.
 
--- Finds the first and last currently-shown button in a chain (shared by
--- ApplyChainAnchoredShape and EnsureContainerOverlay's initial anchor).
--- Returns first, last (both nil if every button is hidden).
--- forceAllShown treats every button as shown - used by Pet Bar's native
--- container when condense is off, so all 10 slots stay in a fixed chain.
+-- Finds the first and last currently-shown button in a chain. Returns first, last (nil if all hidden).
+-- forceAllShown treats every button as shown (Pet Bar's native container with condense off).
 function ACAB:GetChainShownEndpoints(container, forceAllShown)
 	if not container or not container.chainButtons then
 		return nil, nil
@@ -1930,11 +1653,9 @@ function ACAB:GetChainShownEndpoints(container, forceAllShown)
 	return first, last
 end
 
--- GetHitRectInsets() returns (left, right, top, bottom) trimming a
--- button's actual clickable/visible area inward from its frame edges.
--- Every Micro Menu button reports a 58px-tall frame but a (0,0,18,0)
--- inset - only the bottom 40px is real content, the top 18px is a
--- decorative flare. Returns 0 for frames without the API.
+-- GetHitRectInsets() returns (left, right, top, bottom) trimming a button's clickable/visible area
+-- inward from its frame edges (e.g. Micro Menu buttons: 58px frame, but only the bottom 40px is content).
+-- Returns 0 for frames without the API.
 function ACAB:GetHitInsets(frame)
 	if not frame or not frame.GetHitRectInsets then
 		return 0, 0, 0, 0
@@ -1945,10 +1666,8 @@ function ACAB:GetHitInsets(frame)
 	return left or 0, right or 0, top or 0, bottom or 0
 end
 
--- GetHitInsets' values are in `frame`'s own local unit system, unaffected
--- by the container's SetScale. `overlay` (parented straight to UIParent)
--- has a fixed effective scale that doesn't track the container's scale -
--- this converts a value from `frame`'s local units into `overlay`'s.
+-- Converts a value from `frame`'s local unit system into `overlay`'s (overlay is parented to UIParent
+-- and doesn't track the container's own SetScale).
 function ACAB:ScaleRatio(frame, overlay)
 	local frameScale = frame and frame.GetEffectiveScale and frame:GetEffectiveScale()
 	local overlayScale = overlay and overlay.GetEffectiveScale and overlay:GetEffectiveScale()
@@ -1960,15 +1679,9 @@ function ACAB:ScaleRatio(frame, overlay)
 	return frameScale / overlayScale
 end
 
--- A frame's SetPoint offset is multiplied by its own SetScale() when
--- resolved against its parent, so a fixed pos.x/pos.y would visibly
--- drift as scale increases. Called BEFORE writing a changed scale, this
--- adjusts pos.x/pos.y so `corner` (one of TOPLEFT/TOPRIGHT/BOTTOMLEFT/
--- BOTTOMRIGHT) stays exactly where it was on screen. `localWidth`/
--- `localHeight` are the frame's scale-invariant design size
--- (frame:GetWidth()/GetHeight()) - localWidth is only read for a RIGHT
--- corner, localHeight only for a BOTTOM corner, so either may be omitted
--- when the caller's corner doesn't need it.
+-- Call before writing a changed scale: adjusts pos.x/pos.y so `corner` (TOPLEFT/TOPRIGHT/BOTTOMLEFT/
+-- BOTTOMRIGHT) stays exactly where it was on screen (a SetPoint offset scales with the frame's own scale).
+-- `localWidth`/`localHeight` are the frame's design size; only needed for a RIGHT/BOTTOM corner respectively.
 function ACAB:CompensateScaleKeepingCornerFixed(pos, oldScale, newScale, corner, localWidth, localHeight)
 	if not pos or not oldScale or not newScale then
 		return
@@ -1997,9 +1710,7 @@ function ACAB:CompensateScaleKeepingCornerFixed(pos, oldScale, newScale, corner,
 	pos.y = ((pos.y or 0) + offsetY) * ratio - offsetY
 end
 
--- forceAllShown (Pet Bar native container, condense off) skips every
--- IsShown() check below so all 10 slots stay chained at a fixed position
--- regardless of whether a pet ability is currently assigned to them.
+-- forceAllShown (Pet Bar native container, condense off) skips IsShown() checks so all 10 slots stay chained.
 function ACAB:ApplyChainAnchoredShape(container, spacing, orientation, scale, forceAllShown)
 	if not container or not container.chainButtons then
 		return
@@ -2009,12 +1720,8 @@ function ACAB:ApplyChainAnchoredShape(container, spacing, orientation, scale, fo
 	local widths = container.chainWidths
 	local heights = container.chainHeights
 
-	-- Flag consumed by InstallReanchorGuard, when the caller installed one
-	-- on this container's own buttons (CreateBagBarAndMicroMenu's Bag Bar
-	-- branch) - lets our own ClearAllPoints/SetPoint calls below through
-	-- while swallowing anything else (native code re-anchoring a real
-	-- Blizzard button, e.g. MainMenuBarBackpackButton, back toward its own
-	-- default position) that touches these frames outside this function.
+	-- Flag consumed by InstallReanchorGuard (when installed on this container's buttons): lets our own
+	-- ClearAllPoints/SetPoint calls below through while swallowing native re-anchor attempts.
 	local guardFlag = container.reanchorGuardFlag
 
 	spacing = spacing or 0
@@ -2032,9 +1739,7 @@ function ACAB:ApplyChainAnchoredShape(container, spacing, orientation, scale, fo
 	end
 
 	if not first then
-		-- Every button in this chain is currently hidden (e.g. a class
-		-- with zero active stance forms) - collapse the container instead
-		-- of leaving it at its last real size.
+		-- Every button in this chain is currently hidden - collapse the container instead of leaving it at its last real size.
 		self:PixelSetSize(container, 1, 1)
 		container:SetScale(scale or 1)
 
@@ -2046,24 +1751,16 @@ function ACAB:ApplyChainAnchoredShape(container, spacing, orientation, scale, fo
 		return
 	end
 
-	-- `first`'s frame TOPLEFT must stay at container's TOPLEFT with no
-	-- hit-rect trim - container's saved position (ACABDB.*Position)
-	-- was captured against `first`'s raw frame corner
-	-- (BuildChainAnchoredContainer's nativeLeft/nativeTop), so trimming
-	-- here would shift every existing user's saved position. The overlay
-	-- below has no such dependency, so it gets full trimming on every side.
+	-- `first`'s frame TOPLEFT must stay at container's TOPLEFT with no hit-rect trim - container's saved
+	-- position was captured against `first`'s raw frame corner, so trimming here would shift saved positions.
+	-- The overlay below has no such dependency and gets full trimming on every side.
 	if guardFlag then first[guardFlag] = true end
 	first:ClearAllPoints()
 	self:PixelSetPoint(first, "TOPLEFT", container, "TOPLEFT", 0, 0)
 	if guardFlag then first[guardFlag] = nil end
 
-	-- Main-axis seed (width for horizontal, height for vertical) stays
-	-- `first`'s raw frame size, matching its untrimmed leading edge above.
-	-- Cross-axis seed is seeded already-trimmed by `first`'s own hit-rect
-	-- inset on that axis, so the loop below's visibleW/visibleH
-	-- comparisons can shrink it below `first`'s untrimmed size when other
-	-- buttons' real visible size is smaller (e.g. Micro Menu: 58 vs the
-	-- real 40).
+	-- Main-axis seed stays `first`'s raw frame size. Cross-axis seed is pre-trimmed by `first`'s own
+	-- hit-rect inset, so the loop below can still shrink it if another button's visible size is smaller.
 	local firstLeftSeed, firstRightSeed, firstTopSeed, firstBottomSeed = self:GetHitInsets(first)
 
 	local totalWidth = widths[firstIndex] or 0
@@ -2092,14 +1789,8 @@ function ACAB:ApplyChainAnchoredShape(container, spacing, orientation, scale, fo
 				btn:ClearAllPoints()
 
 				if orientation then
-					-- Real visible bottom of prevBtn = its frame bottom +
-					-- prevBottom (a bottom inset trims UPWARD from the
-					-- bottom edge); real visible top of btn = its frame
-					-- top - btnTop. Solving for the TOPLEFT->BOTTOMLEFT
-					-- offset that makes those two real edges exactly
-					-- `spacing` apart (instead of the raw frames) gives
-					-- this formula - reduces to the original bare
-					-- `-spacing` when both insets are 0.
+					-- Offsets by real visible edges (frame edge + hit-rect inset), not raw frame edges,
+					-- so `spacing` measures the real visible gap; reduces to bare `-spacing` when insets are 0.
 					self:PixelSetPoint(btn, "TOPLEFT", prevBtn, "BOTTOMLEFT", 0, prevBottom - spacing + btnTop)
 
 					totalHeight = totalHeight + spacing + h - prevBottom - btnTop
@@ -2110,9 +1801,7 @@ function ACAB:ApplyChainAnchoredShape(container, spacing, orientation, scale, fo
 						totalWidth = visibleW
 					end
 				else
-					-- Same reasoning, horizontal axis: real visible right
-					-- of prevBtn = frame right - prevRight; real visible
-					-- left of btn = frame left + btnLeft.
+					-- Same reasoning, horizontal axis.
 					self:PixelSetPoint(btn, "TOPLEFT", prevBtn, "TOPRIGHT", spacing - prevRight - btnLeft, 0)
 
 					totalWidth = totalWidth + spacing + w - prevRight - btnLeft
@@ -2128,10 +1817,7 @@ function ACAB:ApplyChainAnchoredShape(container, spacing, orientation, scale, fo
 
 				prevBtn = btn
 			else
-				-- Hidden - parked at the last visible button's own TOPLEFT
-				-- (harmless overlap, since a hidden frame renders/receives
-				-- no mouse events either way) rather than left dangling on
-				-- a stale anchor or consuming a chain slot.
+				-- Hidden - parked at the last visible button's own TOPLEFT (harmless overlap) rather than left on a stale anchor.
 				if guardFlag then btn[guardFlag] = true end
 				btn:ClearAllPoints()
 				self:PixelSetPoint(btn, "TOPLEFT", prevBtn, "TOPLEFT", 0, 0)
@@ -2140,11 +1826,8 @@ function ACAB:ApplyChainAnchoredShape(container, spacing, orientation, scale, fo
 		end
 	end
 
-	-- Container's own size trims only the TRAILING edge (prevBtn's own
-	-- hit-rect inset on whichever side it ends the chain) - shrinking from
-	-- the far end never touches container's TOPLEFT origin, so this part
-	-- is safe to always apply in full, unlike `first`'s own leading inset
-	-- above.
+	-- Container's own size trims only the trailing edge - shrinking from the far end never touches
+	-- container's TOPLEFT origin, unlike `first`'s own leading inset above.
 	do
 		local prevLeft, prevRight, prevTop, prevBottom = self:GetHitInsets(prevBtn)
 
@@ -2158,13 +1841,8 @@ function ACAB:ApplyChainAnchoredShape(container, spacing, orientation, scale, fo
 	self:PixelSetSize(container, totalWidth, totalHeight)
 	container:SetScale(scale or 1)
 
-	-- The overlay has no saved-position dependency (unlike `container`'s
-	-- own TOPLEFT above), so it gets full trimming on every side -
-	-- `first`'s own leading (left/top) inset and `prevBtn`'s (the last
-	-- currently-shown button, tracked through the loop above) trailing
-	-- (right/bottom) inset - re-applied every time this function runs
-	-- (spacing/orientation/scale change, or a button's shown state
-	-- changing, e.g. Talent unlocking).
+	-- The overlay has no saved-position dependency, so it gets full trimming: `first`'s leading inset
+	-- and `prevBtn`'s (last shown button) trailing inset, re-applied every time this function runs.
 	if container.ACABOverlay then
 		local firstLeft, firstRight, firstTop, firstBottom = self:GetHitInsets(first)
 		local lastLeft, lastRight, lastTop, lastBottom = self:GetHitInsets(prevBtn)
@@ -2178,14 +1856,10 @@ function ACAB:ApplyChainAnchoredShape(container, spacing, orientation, scale, fo
 	end
 end
 
--- Fixed-grid layout for Micro Menu only (Bag Bar/Stance Bar keep using
--- ApplyChainAnchoredShape). cols x rows stays exactly as configured - a
--- currently-hidden button (e.g. TalentMicroButton below level 10) does not
--- reserve its own cell though: every currently-shown button compacts back
--- to fill grid cells in order, same "collapse empty slots" idea as the Pet
--- Bar's condense option, leaving any leftover cells empty at the end of the
--- grid instead of resizing cols/rows. Re-run by the UpdateMicroButtons hook
--- below whenever Blizzard shows/hides a button.
+-- Fixed-grid layout for Micro Menu only (Bag Bar/Stance Bar use ApplyChainAnchoredShape). cols x rows
+-- stays as configured; a hidden button (e.g. TalentMicroButton below level 10) doesn't reserve its cell -
+-- shown buttons compact to fill cells in order, leaving leftover cells empty at the end.
+-- Re-run by the UpdateMicroButtons hook whenever Blizzard shows/hides a button.
 function ACAB:ApplyGridAnchoredShape(container, cols, rows, spacing, scale)
 	if not container or not container.chainButtons then
 		return
@@ -2197,12 +1871,8 @@ function ACAB:ApplyGridAnchoredShape(container, cols, rows, spacing, scale)
 
 	spacing = spacing or 0
 
-	-- Uniform cell size (largest button on each axis), plus each axis' own
-	-- hit-rect inset (GetHitInsets' comment above explains why: Micro Menu's
-	-- real button frames are much taller than their visible content) - the
-	-- row/column pitch below is measured edge-to-edge on real visible
-	-- content, not raw frame size, or vertical spacing would show a big
-	-- empty gap sized by that invisible padding.
+	-- Uniform cell size (largest button on each axis) plus each axis' hit-rect inset, so row/column
+	-- pitch is measured edge-to-edge on real visible content, not raw frame size.
 	local cellWidth, cellHeight = 0, 0
 	local leftInset, rightInset, topInset, bottomInset = 0, 0, 0, 0
 	local shown = {}
@@ -2240,20 +1910,15 @@ function ACAB:ApplyGridAnchoredShape(container, cols, rows, spacing, scale)
 			shownCount = shownCount + 1
 			shown[shownCount] = buttons[i]
 		else
-			-- Flag consumed by InstallReanchorGuard (installed on every
-			-- Micro Menu button in CreateBagBarAndMicroMenu) - lets our own
-			-- ClearAllPoints through while swallowing anything else that
-			-- touches this frame.
+			-- Flag consumed by InstallReanchorGuard: lets our own ClearAllPoints through while swallowing anything else.
 			buttons[i].ACABApplyingMicroMenuPosition = true
 			buttons[i]:ClearAllPoints()
 			buttons[i].ACABApplyingMicroMenuPosition = nil
 		end
 	end
 
-	-- container.overlayTopFudge (Micro Menu only, ACAB.MICRO_MENU_OVERLAY_TOP_FUDGE
-	-- - Core.lua) is the same extra top trim the edit-mode overlay's own
-	-- anchor applies beyond GetHitRectInsets() - folded in here too so row
-	-- pitch lines up with where the overlay actually shows the button ending.
+	-- container.overlayTopFudge (Micro Menu only) is the extra top trim the edit-mode overlay applies
+	-- beyond GetHitRectInsets() - folded in here so row pitch matches where the overlay shows the button ending.
 	local rowTopInset = topInset + (container.overlayTopFudge or 0)
 
 	local colStep = cellWidth - leftInset - rightInset + spacing
@@ -2264,7 +1929,7 @@ function ACAB:ApplyGridAnchoredShape(container, cols, rows, spacing, scale)
 		local xOff = col * colStep
 		local yOff = -row * rowStep
 
-		-- Same flag/reasoning as the hidden-button branch above.
+		-- Same flag as the hidden-button branch above.
 		shown[i].ACABApplyingMicroMenuPosition = true
 		shown[i]:ClearAllPoints()
 		self:PixelSetPoint(shown[i], "TOPLEFT", container, "TOPLEFT", xOff, yOff)
@@ -2369,10 +2034,8 @@ function ACAB:EnsureContainerOverlay(container, startDragFn, stopDragFn, setting
 	tex:SetVertexColor(0.35, 0.65, 1.0, 0.45)
 	tex:SetAllPoints(overlay)
 
-	-- Hover border + centered element-name label, mirroring Bar.lua's own
-	-- EnsureBarOverlay. displayName is passed explicitly per call site
-	-- since settingsKey doesn't uniquely identify an element (e.g. Key
-	-- Ring shares Bag Bar's settingsKey "bagbar").
+	-- Hover border + centered element-name label, mirroring Bar.lua's own EnsureBarOverlay.
+	-- displayName is passed explicitly since settingsKey doesn't uniquely identify an element.
 	overlay:SetBackdrop({
 		edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
 		edgeSize = 8,
@@ -2406,12 +2069,8 @@ function ACAB:EnsureContainerOverlay(container, startDragFn, stopDragFn, setting
 		end
 	end)
 
-	-- Scroll-to-scale. Gated on the overlay's own mouse-enabled state
-	-- (set by ApplyContainerOverlayVisual/ApplyDefaultLayoutEditVisual per
-	-- element - CanDragDefaultLayout() for most elements, edit-mode-only
-	-- for the skipLayoutLock group) instead of hardcoding
-	-- CanDragDefaultLayout(), so drag and scroll always agree on when this
-	-- overlay is actually interactive.
+	-- Scroll-to-scale. Gated on the overlay's own mouse-enabled state (set by ApplyContainerOverlayVisual/
+	-- ApplyDefaultLayoutEditVisual per element) so drag and scroll always agree on when it's interactive.
 	overlay:EnableMouseWheel(true)
 	overlay:SetScript("OnMouseWheel", function()
 		if not scaleSetFn then
@@ -2437,14 +2096,8 @@ function ACAB:EnsureContainerOverlay(container, startDragFn, stopDragFn, setting
 	return overlay
 end
 
--- Shows/hides + toggles mouse on a Bag Bar/Micro Menu overlay - called
--- from ApplyDefaultLayoutEditVisual below. `enabledFlag` is the
--- element's own ACABDB.bagBarEnabled/microMenuEnabled (unlike the
--- stance bar/bar 1, these CAN be meaningfully disabled - see
--- SetBagBarEnabled/SetMicroMenuEnabled below), `show` is
--- ACAB:CanDragDefaultLayout()'s result - mirrors the same
--- enabled-AND-shown gating `ApplyDefaultLayoutEditVisual` applies to
--- default bars 2-5 directly.
+-- Shows/hides + toggles mouse on a Bag Bar/Micro Menu overlay - called from ApplyDefaultLayoutEditVisual
+-- below. `enabledFlag` is the element's own enable flag; `show` is ACAB:CanDragDefaultLayout()'s result.
 function ACAB:ApplyContainerOverlayVisual(container, enabledFlag, show)
 	if not container or not container.ACABOverlay then
 		return
@@ -2458,26 +2111,19 @@ function ACAB:ApplyContainerOverlayVisual(container, enabledFlag, show)
 	if interactive then
 		overlay:Show()
 
-		-- Resets the hover border every time the overlay is (re-)shown,
-		-- matching Bar.lua's own ApplyEditModeVisual.
+		-- Resets the hover border every time the overlay is (re-)shown.
 		overlay:SetBackdropBorderColor(0, 0, 0, 0)
 	else
 		overlay:Hide()
 	end
 end
 
--- Swallows SetPoint/ClearAllPoints on `frame` unless flagged via
--- frame[flagName] (set by the element's own Apply*Position call). Must
--- stay in place - native code re-anchors these frames without clearing
+-- Swallows SetPoint/ClearAllPoints on `frame` unless flagged via frame[flagName] (set by the element's
+-- own Apply*Position call). Must stay in place - native code re-anchors these frames without clearing
 -- the existing point first, corrupting their position.
---
--- Every swallowed SetPoint attempt is recorded into
--- frame.ACABSwallowedAnchor instead of discarded - native code can
--- repeatedly try to re-anchor a frame (e.g. Latency Bar to MainMenuBar)
--- and the true final anchor can differ from what a synchronous GetPoint(1)
--- observes at login. Core.lua's WaitForWrappedFrameAnchorSettle polls
--- this field for stability; Reset*Layout below also re-checks it
--- directly at click-time as a backstop for a later re-anchor.
+-- Every swallowed SetPoint attempt is recorded into frame.ACABSwallowedAnchor instead of discarded, since
+-- native code can retry repeatedly and the true final anchor can differ from a synchronous GetPoint(1)
+-- read at login. Core.lua's WaitForWrappedFrameAnchorSettle polls this field for stability.
 function ACAB:InstallReanchorGuard(frame, flagName)
 	if not frame or frame.ACABReanchorGuarded then
 		return
@@ -2491,11 +2137,8 @@ function ACAB:InstallReanchorGuard(frame, flagName)
 			return nativeSetPoint(self, unpack(arg))
 		end
 
-		-- arg[2] (relativeTo) is whatever native code itself passed to
-		-- SetPoint - a real frame reference OR a plain string name, both
-		-- valid per the SetPoint API. Indexing a string with .GetName
-		-- errors outright on this client (no string-method metatable),
-		-- so the string case must be checked first, never indexed.
+		-- arg[2] (relativeTo) may be a real frame reference or a plain string name; indexing a string
+		-- with .GetName errors on this client (no string-method metatable), so check the string case first.
 		local relTo = arg[2]
 		local relName = "UIParent"
 
@@ -2523,26 +2166,17 @@ function ACAB:InstallReanchorGuard(frame, flagName)
 	frame.ACABReanchorGuarded = true
 end
 
--- Applies `native` (a true relative anchor - point/relativeTo/
--- relativePoint/x/y, captured via GetPoint(1)) directly to `frame`, then
--- re-reads its now-correct GetLeft()/GetTop() to build a normal
--- UIParent-relative absolute anchor table. Used by every Reset*Position/
--- Reset*Layout below instead of copying `native`'s fields directly,
--- since the live position/Settings.lua sliders are always
--- UIParent-relative. guardFlagName (optional) must be set for elements
--- with an InstallReanchorGuard (Latency Bar/Cast Bar), or this SetPoint
--- would be silently swallowed by the frame's own guard.
+-- Applies `native` (a relative anchor captured via GetPoint(1)) to `frame`, then re-reads its now-correct
+-- GetLeft()/GetTop() to build a normal UIParent-relative absolute anchor table, since the live
+-- position/Settings.lua sliders are always UIParent-relative.
+-- guardFlagName must be set for elements with an InstallReanchorGuard, or this SetPoint is swallowed.
 function ACAB:ResolveNativeAnchorToAbsolute(frame, native, guardFlagName)
 	if not frame then
 		return nil
 	end
 
-	-- Prefer whatever native code most recently, actually tried to
-	-- re-anchor this frame to (InstallReanchorGuard's swallow tracking)
-	-- over the possibly-stale/never-settled `native` snapshot passed in -
-	-- see InstallReanchorGuard's own comment for why. No-op (falls
-	-- through to `native`) for frames with no guard installed at all
-	-- (Key Ring/Exp Bar currently), or if nothing's been observed yet.
+	-- Prefer whatever native code most recently tried to re-anchor this frame to (InstallReanchorGuard's
+	-- swallow tracking) over the possibly-stale `native` snapshot passed in.
 	native = frame.ACABSwallowedAnchor or native
 
 	if not native then
@@ -2600,97 +2234,59 @@ end
 
 -------------------------------------------------------------------------
 -- Default-layout / stance-bar edit-mode overlay refresh
---
--- Mirrors Bar.lua's ApplyEditModeVisual, but gated on
--- ACAB:CanDragDefaultLayout() (edit mode AND useDefaultLayout == false)
--- rather than edit mode alone - a "draggable" cue would be misleading
--- when dragging isn't actually possible. Called from Bar.lua's own
--- ApplyEditModeVisual and from Settings.lua's General panel checkbox
--- handler.
+-- Mirrors Bar.lua's ApplyEditModeVisual, but gated on ACAB:CanDragDefaultLayout() rather than edit mode
+-- alone, so a "draggable" cue isn't shown when dragging isn't actually possible.
 -------------------------------------------------------------------------
 
 function ACAB:ApplyDefaultLayoutEditVisual()
 	local show = self:CanDragDefaultLayout()
 
-	-- Stance Bar/Pet Bar/Cast Bar are draggable in edit mode even on
-	-- useDefaultLayout == true (Default Layout/Default Profile) - their own
-	-- baseline reflow (ReflowStanceBarForBar2Toggle/ReflowPetBarForBar3Toggle/
-	-- ReflowCastBarForStackToggle) still re-asserts Y on the next relevant
-	-- toggle, same as every other useDefaultLayout == true position.
+	-- Stance Bar/Pet Bar/Cast Bar are draggable in edit mode even on useDefaultLayout == true - their
+	-- own baseline reflow still re-asserts Y on the next relevant toggle.
 	local showAlwaysEditable = self:IsEditMode()
 
-	-- Default bars 1-5 have no bar-level overlay loop here - they share
-	-- Bar.lua's EnsureBarOverlay/ApplyEditModeVisual with every other
-	-- bar, which already handles their show/hide and mouse-enable gating
-	-- (including the useDefaultLayout == false requirement via
-	-- isDefaultBar1to5's canEdit check there). This function only drives
-	-- the chain-anchored containers and native-wrapped elements below.
+	-- Default bars 1-5 share Bar.lua's own EnsureBarOverlay/ApplyEditModeVisual; this function only
+	-- drives the chain-anchored containers and native-wrapped elements below.
 
-	-- Stance Bar / Bag Bar / Micro Menu - all three are now the same kind
-	-- of ACAB-owned chain-anchored container (BuildChainAnchoredContainer/
-	-- ApplyChainAnchoredShape), so they share the exact same
-	-- ApplyContainerOverlayVisual treatment: overlay visibility gated on
-	-- both edit-mode/useDefaultLayout (`show`) AND this element's own
-	-- enable flag.
+	-- Stance Bar / Bag Bar / Micro Menu are ACAB-owned chain-anchored containers, gated on both
+	-- edit-mode/useDefaultLayout (`show`) AND this element's own enable flag.
 	self:ApplyContainerOverlayVisual(self.stanceBarContainer, ACABDB.stanceBarEnabled, showAlwaysEditable)
 	self:ApplyContainerOverlayVisual(self.bagBarContainer, ACABDB.bagBarEnabled, show)
 	self:ApplyContainerOverlayVisual(self.microMenuContainer, ACABDB.microMenuEnabled, show)
 
-	-- Pet Bar native container (cfg.useNativePetBar) - same treatment,
-	-- gated on the SAME cfg.enabled the custom-styled mode uses.
+	-- Pet Bar native container - gated on the same cfg.enabled the custom-styled mode uses.
 	do
 		local petCfg = ACABDB.defaultBars and ACABDB.defaultBars[self.PET_BAR_ID]
 
 		self:ApplyContainerOverlayVisual(self.petBarNativeContainer, petCfg and petCfg.enabled, showAlwaysEditable)
 	end
 
-	-- Key Ring / Latency Bar - same generic ApplyContainerOverlayVisual
-	-- treatment as Bag Bar/Micro Menu above; EnsureContainerOverlay is
-	-- equally generic over a single real button/frame as it is over a
-	-- synthetic container, so no separate helper is needed here. Looked
-	-- up by name each call (rather than cached) since this only runs on
+	-- Key Ring / Latency Bar / Experience Bar - looked up by name each call, since this only runs on
 	-- edit-mode/useDefaultLayout toggles, not per frame.
 	self:ApplyContainerOverlayVisual(getglobal(self.KEYRING_BUTTON_NAME), ACABDB.keyRingEnabled, show)
 	self:ApplyContainerOverlayVisual(getglobal(self.LATENCY_BAR_FRAME_NAME), ACABDB.latencyBarEnabled, show)
-
-	-- Experience Bar - same generic ApplyContainerOverlayVisual treatment
-	-- as Key Ring/Latency Bar above.
 	self:ApplyContainerOverlayVisual(getglobal(self.EXP_BAR_FRAME_NAME), ACABDB.expBarEnabled, show)
 
 	self:ApplyContainerOverlayVisual(getglobal(self.CAST_BAR_FRAME_NAME), true, showAlwaysEditable)
 
-	-- Page Indicator (Part 4) - same generic ApplyContainerOverlayVisual
-	-- treatment, gated on defaultBarPaginationEnabled instead of an
-	-- independent enable flag (this element has none of its own - see
-	-- ApplyPageIndicatorVisibility's comment).
+	-- Page Indicator gated on defaultBarPaginationEnabled - this element has no enable flag of its own.
 	self:ApplyContainerOverlayVisual(
 		self.pageIndicatorContainer,
 		ACABDB.defaultBarPaginationEnabled,
 		show
 	)
 
-	-- Tooltip - independent of action-bar layout mode, same reasoning as
-	-- Cast Bar above (showAlwaysEditable, not show).
+	-- Tooltip - independent of action-bar layout mode, same reasoning as Cast Bar above.
 	self:ApplyContainerOverlayVisual(self.tooltipFrame, ACABDB.tooltipEnabled, showAlwaysEditable)
 end
 
 -------------------------------------------------------------------------
 -- Position reassert after combat / looting
---
--- Latency Bar and Key Ring wrap a single real native frame directly, so
--- if any native FrameXML code re-anchors that frame on its own, our
--- last-applied position is silently discarded with nothing to notice it.
--- Bag Bar/Micro Menu/Stance Bar/Page Indicator's buttons are also real
--- native frames reparented into our own synthetic containers, so the
--- same risk applies to them.
---
--- Every Apply* call below is idempotent and no-ops if that element was
--- never built this session. Triggered on PLAYER_REGEN_ENABLED (leaving
--- combat) and LOOT_CLOSED, chosen over CHAT_MSG_LOOT (fires once per
--- looted item) and LOOT_OPENED (fires too early).
---
--- Default bars 1-5 are excluded: their real buttons are permanently
--- hidden and Show()-neutered at login, so native code can't move them.
+-- Latency Bar/Key Ring wrap a single real native frame directly; Bag Bar/Micro Menu/Stance Bar/Page
+-- Indicator's buttons are real native frames reparented into our own containers - both groups risk
+-- native FrameXML code silently re-anchoring them on its own.
+-- Every Apply* call below is idempotent and no-ops if unbuilt. Triggered on PLAYER_REGEN_ENABLED and
+-- LOOT_CLOSED. Default bars 1-5 excluded: their real buttons are permanently hidden at login.
 -------------------------------------------------------------------------
 
 function ACAB:ReassertNativeElementPositions()
@@ -2707,9 +2303,7 @@ function ACAB:ReassertNativeElementPositions()
 
 	self:ApplyLatencyBarPosition()
 
-	-- Experience Bar: same single-native-frame risk class as the Latency
-	-- Bar/Key Ring above (MainMenuExpBar isn't reparented into a
-	-- ACAB-owned container) - reasserted here for the same reason.
+	-- Experience Bar: same single-native-frame risk class as Latency Bar/Key Ring above.
 	self:ApplyExpBarPosition()
 
 	self:ApplyCastBarPosition()
