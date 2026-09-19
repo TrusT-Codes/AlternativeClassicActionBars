@@ -1,4 +1,7 @@
 <Bindings>
+  <Binding name='ACABEDITMODEESCAPE'>
+    ACAB_EditModeEscapeFire()
+  </Binding>
   <Binding name='ACABBIND1'>
     ACAB_HoverBindFire(1)
   </Binding>

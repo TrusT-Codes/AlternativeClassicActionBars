@@ -1,14 +1,7 @@
 -- SettingsGeneral.lua
--- General/Profiles/Edit Mode tab panels split out of Settings.lua
--- (GetOrCreateGeneralPanel/RefreshGeneralPanel, GetOrCreateProfilesPanel/
--- RefreshProfilesPanel, GetOrCreateEditModePanel/RefreshEditModePanel), the
--- tab/view switchers (ShowBarsView/ShowGeneralView/ShowProfilesView/
--- ShowEditModeView/RefreshActiveTabHighlight), and the General tab's
--- dynamic checkbox/slider reflow helpers (ReflowStack/
--- ReflowGeneralOverrideSliders/ReflowGeneralHotkeySection).
---
--- Engine-invoked script handlers (OnClick, OnEvent, OnEnter, OnLeave, ...)
--- receive the frame via the global `this`, never as a `self` parameter.
+-- General/Profiles/Edit Mode tab panels split out of Settings.lua, the tab/view switchers, and the
+-- General tab's dynamic checkbox/slider reflow helpers.
+-- Engine-invoked script handlers receive the frame via the global `this`, never as a `self` parameter.
 
 local ACAB = AlternativeClassicActionBars
 
@@ -21,9 +14,7 @@ function ACAB:GetOrCreateGeneralPanel()
 		return ACAB.settingsFrame.generalPanel
 	end
 
-	-- Own dedicated scrollframe+scrollchild pair (ACAB:CreateWideContentScrollFrame)
-	-- - see CreateSettingsFrame's own comment on why this doesn't share
-	-- the Bars view's contentScrollFrame.
+	-- Own dedicated scrollframe+scrollchild pair - doesn't share the Bars view's contentScrollFrame.
 	local scrollFrame, panel = ACAB:CreateWideContentScrollFrame("ACABSettingsGeneralScrollFrame")
 
 	ACAB.settingsFrame.generalScrollFrame = scrollFrame
@@ -45,17 +36,16 @@ function ACAB:GetOrCreateGeneralPanel()
 
 	title:SetText("General Settings")
 
-	-- OnClick is wired separately below, since its dialog's "OK" button
-	-- closes over this same `checkbox` local - inlined into the factory
-	-- call's own config table, that reference would resolve before the
-	-- local exists.
+	-- OnClick is wired separately below, since its dialog's "OK" button closes over this same
+	-- `checkbox` local - inlined into the factory call's own config table, that reference would
+	-- resolve before the local exists.
 	local checkbox = ACAB:CreateLabeledCheckbox(panel, "ACABGeneralUseDefaultLayoutCheckbox", {
 		anchor = { "TOPLEFT", panel, "TOPLEFT", ACAB.INDENT_SECTION, -52 },
-		label = "Use Default Blizzard Layout",
+		label = "Force Vanilla Layout Mode",
 		tooltip = {
-			title = "Use Default Blizzard Layout",
+			title = "Force Vanilla Layout Mode",
 			lines = {
-				"When enabled, default action bars keep Blizzard's native " ..
+				"When enabled, default action bars keep their native vanilla " ..
 				"position, size, and layout, and can only be shown/hidden - " ..
 				"dragging and resizing them is disabled.",
 				"Disable this to freely reposition, resize, and drag default " ..
@@ -70,18 +60,16 @@ function ACAB:GetOrCreateGeneralPanel()
 			local checked = this:GetChecked() and true or false
 			local wasDefault = ACABDB.useDefaultLayout == true
 
-			-- Turning ON resets every bar to Blizzard default - warn and
-			-- confirm before that cascade runs. Revert the checkbox's own
-			-- visual state immediately so it stays unchecked while the
-			-- dialog is open; ApplyUseDefaultLayoutChange re-checks it
-			-- only if the user accepts.
+			-- Turning ON resets every bar to Vanilla Layout default - warn and confirm before that
+			-- cascade runs. Revert the checkbox's visual state immediately so it stays unchecked while
+			-- the dialog is open; ApplyUseDefaultLayoutChange re-checks it only if accepted.
 			if checked and not wasDefault then
 				this:SetChecked(false)
 
 				ACAB:ShowDialog({
-					title = "Use Default Blizzard Layout",
+					title = "Force Vanilla Layout Mode",
 					message = "Enabling this will reset ALL bars to their " ..
-						"default Blizzard position.",
+						"default Vanilla Layout position.",
 					warningText = "This action cannot be undone.",
 					mode = "confirm",
 					buttons = {
@@ -111,11 +99,8 @@ function ACAB:GetOrCreateGeneralPanel()
 	panel.useDefaultLayoutCheckbox = checkbox
 
 	-------------------------------------------------------------------------
-	-- Tint whole button on out of range: real Blizzard buttons only tint
-	-- the hotkey text red, never the whole icon - this addon has always
-	-- tinted the whole icon (ACABDB.tintWholeButtonOnRange, default
-	-- true), so this checkbox opts into the native-accurate hotkey-only
-	-- behavior.
+	-- Tint whole button on out of range: real Blizzard buttons only tint the hotkey text red, never
+	-- the whole icon - this checkbox opts into the native-accurate hotkey-only behavior.
 	-------------------------------------------------------------------------
 
 	local tintWholeButtonCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABGeneralTintWholeButtonCheckbox", {
@@ -126,13 +111,8 @@ function ACAB:GetOrCreateGeneralPanel()
 
 			ACABDB.tintWholeButtonOnRange = checked
 
-			-- Live: immediately re-sweeps every live button's range/
-			-- usability tint rather than waiting on the next natural
-			-- UpdateRange trigger (the 0.2s self-healing ticker or the
-			-- next real event) - mirrors ACAB:ToggleAlwaysShowMultibars'
-			-- own immediate-sweep pattern (Button.lua) rather than this
-			-- toggle silently doing nothing until something else happens
-			-- to re-run UpdateRange.
+			-- Live: immediately re-sweeps every live button's range/usability tint rather than waiting
+			-- on the next natural UpdateRange trigger.
 			ACAB:SweepAllButtonRangeTint()
 		end,
 	})
@@ -140,12 +120,7 @@ function ACAB:GetOrCreateGeneralPanel()
 	panel.tintWholeButtonCheckbox = tintWholeButtonCheckbox
 
 	-------------------------------------------------------------------------
-	-- Disable Blizzard Art
-	--
-	-- Hides MainMenuBarArtFrame (DefaultBars.lua's
-	-- ApplyBlizzardArtVisibility) - styled/positioned exactly like the two
-	-- checkboxes above, anchored off tintWholeButtonCheckbox the same
-	-- BOTTOMLEFT-chain way.
+	-- Disable Blizzard Art - hides MainMenuBarArtFrame, styled/positioned like the checkboxes above.
 	-------------------------------------------------------------------------
 
 	local disableBlizzardArtCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABGeneralDisableBlizzardArtCheckbox", {
@@ -163,37 +138,33 @@ function ACAB:GetOrCreateGeneralPanel()
 	panel.disableBlizzardArtCheckbox = disableBlizzardArtCheckbox
 
 	-------------------------------------------------------------------------
-	-- Main Bar pagination / stance-swap
-	--
-	-- Both default true (Core.lua's EnsureDB), matching real vanilla bar
-	-- 1's own always-on behavior unless the user explicitly opts out here.
-	-- Styled/positioned exactly like the three checkboxes above, chained
-	-- off disableBlizzardArtCheckbox the same BOTTOMLEFT way.
+	-- Default bar (1-5) pagination / stance-swap
+	-- Both default true, matching real vanilla bar 1's always-on behavior unless opted out here.
 	-------------------------------------------------------------------------
 
 	local mainBarPaginationCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABGeneralMainBarPaginationCheckbox", {
 		anchor = { "TOPLEFT", disableBlizzardArtCheckbox, "BOTTOMLEFT", 0, -14 },
-		label = "Main Bar: Shift/Ctrl Page Swapping",
+		label = "Enable Page Bar-Changes",
 		tooltip = {
-			title = "Main Bar: Shift/Ctrl Page Swapping",
+			title = "Enable Page Bar-Changes",
 			lines = {
-				"When enabled, shows new Options inside MainBar on Bars " ..
-				"Settings Page. You will be able to freely assign any Extra " ..
-				"Bar to your Pageing Function of Mainbar. Enabling it will " ..
-				"also enable the Paging UI Element.",
-				"When disabled, your MainBar will always stay the same and " ..
-				"the Paging UI Element is hidden.",
+				"When enabled, shows a Page 2 Content Source option on every " ..
+				"default bar's (1-5) own Bars Settings Page. You will be " ..
+				"able to freely assign any Extra Bar as that bar's content " ..
+				"while Shift/Ctrl page 2 is held. Enabling it will also " ..
+				"enable the Paging UI Element.",
+				"When disabled, every default bar will always stay the same " ..
+				"and the Paging UI Element is hidden.",
 			},
 		},
 		onClick = function()
 			local checked = this:GetChecked() and true or false
 
-			ACAB:SetMainBarPaginationEnabled(checked)
+			ACAB:SetDefaultBarPaginationEnabled(checked)
 
-			-- The Page Bar assignment row (only meaningful while pagination
-			-- is on) and bar 1's own Page Indicator Scale slider both
-			-- appear/disappear live the instant this checkbox is clicked.
-			ACAB:RebuildMainBarAssignmentRows()
+			-- Page Bar assignment row and Page Indicator Scale slider appear/disappear live on every
+			-- default bar's (1-5) page.
+			ACAB:RebuildAllDefaultBarAssignmentRows()
 			ACAB:RefreshMainBarPageIndicatorControlsVisibility()
 		end,
 	})
@@ -202,38 +173,32 @@ function ACAB:GetOrCreateGeneralPanel()
 
 	local mainBarStanceSwapCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABGeneralMainBarStanceSwapCheckbox", {
 		anchor = { "TOPLEFT", mainBarPaginationCheckbox, "BOTTOMLEFT", 0, -14 },
-		label = "Main Bar: Stance/Form/Stealth Swapping",
+		label = "Enable Stance/Form/Stealth Bar-Changes",
 		tooltip = {
-			title = "Main Bar: Stance/Form/Stealth Swapping",
+			title = "Enable Stance/Form/Stealth Bar-Changes",
 			lines = {
-				"When enabled, shows new Options inside MainBar on Bars " ..
-				"Settings Page. You will be able to freely assign any Extra " ..
-				"Bar to your different Shapes / Forms to swap the contents " ..
-				"of Mainbar with automatically.",
-				"When disabled, your MainBar will always stay the same.",
+				"When enabled, shows a stance-assignment option per active " ..
+				"form on every default bar's (1-5) own Bars Settings Page. " ..
+				"You will be able to freely assign any Extra Bar to any of " ..
+				"your different Shapes / Forms to swap that bar's contents " ..
+				"with automatically.",
+				"When disabled, every default bar will always stay the same.",
 			},
 		},
 		onClick = function()
 			local checked = this:GetChecked() and true or false
 
-			ACAB:SetMainBarStanceSwapEnabled(checked)
+			ACAB:SetDefaultBarStanceSwapEnabled(checked)
 
-			-- The per-stance assignment rows (bar 1's own settings page)
-			-- appear/disappear live the instant this checkbox is clicked,
-			-- exactly like the pagination checkbox above does for the Page
-			-- Bar row.
-			ACAB:RebuildMainBarAssignmentRows()
+			-- Per-stance assignment rows appear/disappear live, like the pagination checkbox above.
+			ACAB:RebuildAllDefaultBarAssignmentRows()
 		end,
 	})
 
 	panel.mainBarStanceSwapCheckbox = mainBarStanceSwapCheckbox
 
-	-- Stance / Page Bar Assignment rows live on bar 1's own settings page
-	-- (GetOrCreateBarPage/RebuildMainBarAssignmentRows) alongside that
-	-- page's Page Indicator Scale slider, since they're bar 1-specific
-	-- rather than general addon-wide settings. The two checkboxes above
-	-- still live on this General tab and drive those rows via
-	-- ACAB:RebuildMainBarAssignmentRows.
+	-- Stance / Page Bar Assignment rows live on each default bar's (1-5) own
+	-- settings page; these two checkboxes drive them via RebuildAllDefaultBarAssignmentRows.
 
 	-------------------------------------------------------------------------
 	-- Macro text toggle + font size (both bars, live)
@@ -271,13 +236,11 @@ function ACAB:GetOrCreateGeneralPanel()
 		" to " .. tostring(ACAB.FONT_SIZE_MAX) .. ")"
 	)
 
-	-- Exposed so ApplySettingsHeightFromCandidates' warm-up read pass can
-	-- reach this static anchor - see its own comment for why.
+	-- Exposed so ApplySettingsHeightFromCandidates' warm-up read pass can reach this static anchor.
 	panel.macroTitle = macroTitle
 
-	-- Placeholder initial text only - RefreshGeneralPanel (called by
-	-- ShowGeneralView every time this view is shown) overwrites this with
-	-- the real saved value before the panel is ever visible.
+	-- Placeholder initial text only - RefreshGeneralPanel overwrites this with the real saved value
+	-- before the panel is ever visible.
 	local macroSlider, macroValueText = ACAB:CreateLabeledSlider(
 		panel,
 		"ACABGeneralMacroFontSizeSlider",
@@ -327,16 +290,11 @@ function ACAB:GetOrCreateGeneralPanel()
 	panel.macroResetButton = macroResetButton
 
 	-------------------------------------------------------------------------
-	-- Hotkey / Count text font size (both bars, live sliders). Global, not
-	-- per-button - one setting governs every button's hotkey/count text.
-	-- Mirrors a bar page's Button Size slider: live value readout, integer
-	-- min/max captions, immediate OnValueChanged, "Reset to Default"
-	-- restores the captured native size (Button.lua's NATIVE_HOTKEY_FONT/
-	-- NATIVE_COUNT_FONT).
-	--
-	-- Anchored via a real anchor chain off the tint-whole-button checkbox
-	-- (BOTTOMLEFT -> TOPLEFT), not a computed pixel-Y offset, so it follows
-	-- wherever the checkbox's real bottom edge lands.
+	-- Hotkey / Count text font size (both bars, live sliders). Global, not per-button. Mirrors a bar
+	-- page's Button Size slider: live value readout, integer min/max captions, immediate
+	-- OnValueChanged, "Reset to Default" restores the captured native size.
+	-- Anchored via a real anchor chain off the tint-whole-button checkbox, not a computed pixel-Y
+	-- offset, so it follows wherever the checkbox's real bottom edge lands.
 	-------------------------------------------------------------------------
 
 	local hotkeyTitle = panel:CreateFontString(
@@ -345,8 +303,8 @@ function ACAB:GetOrCreateGeneralPanel()
 		"GameFontNormal"
 	)
 
-	-- Placeholder anchor - ACAB:ReflowGeneralHotkeySection re-anchors this
-	-- live once the macro section's Shown state is known.
+	-- Placeholder anchor - ReflowGeneralHotkeySection re-anchors this live once the macro section's
+	-- Shown state is known.
 	hotkeyTitle:SetPoint(
 		"TOPLEFT",
 		macroTextCheckbox,
@@ -360,13 +318,11 @@ function ACAB:GetOrCreateGeneralPanel()
 		" to " .. tostring(ACAB.FONT_SIZE_MAX) .. ")"
 	)
 
-	-- Exposed so ApplySettingsHeightFromCandidates' warm-up read pass can
-	-- reach this static anchor - see its own comment for why.
+	-- Exposed so ApplySettingsHeightFromCandidates' warm-up read pass can reach this static anchor.
 	panel.hotkeyTitle = hotkeyTitle
 
-	-- Placeholder initial text only - RefreshGeneralPanel (called by
-	-- ShowGeneralView every time this view is shown) overwrites this with
-	-- the real saved/native value before the panel is ever visible.
+	-- Placeholder initial text only - RefreshGeneralPanel overwrites this with the real saved/native
+	-- value before the panel is ever visible.
 	local hotkeySlider, hotkeyValueText = ACAB:CreateLabeledSlider(
 		panel,
 		"ACABGeneralHotkeyFontSizeSlider",
@@ -398,8 +354,7 @@ function ACAB:GetOrCreateGeneralPanel()
 		maxWidth = 90,
 		text = "Reset",
 		onClick = function()
-			-- Nothing captured yet (no button created this session) - no
-			-- native size to restore to, so this is a no-op rather than a
+			-- Nothing captured yet - no native size to restore to, so this is a no-op rather than a
 			-- guessed fallback value.
 			if not ACAB.NATIVE_HOTKEY_FONT then
 				return
@@ -450,8 +405,7 @@ function ACAB:GetOrCreateGeneralPanel()
 		" to " .. tostring(ACAB.FONT_SIZE_MAX) .. ")"
 	)
 
-	-- Exposed so ApplySettingsHeightFromCandidates' warm-up read pass can
-	-- reach this static anchor - see its own comment for why.
+	-- Exposed so ApplySettingsHeightFromCandidates' warm-up read pass can reach this static anchor.
 	panel.countTitle = countTitle
 
 	local countSlider, countValueText = ACAB:CreateLabeledSlider(
@@ -489,8 +443,7 @@ function ACAB:GetOrCreateGeneralPanel()
 				return
 			end
 
-			-- ClampFontSize rounds as well as clamps - see the Hotkey
-			-- Reset button's matching comment above.
+			-- ClampFontSize rounds as well as clamps.
 			local size = ACAB:ClampFontSize(ACAB.NATIVE_COUNT_FONT.size)
 
 			ACAB:SetCountFontSize(size)
@@ -505,19 +458,14 @@ function ACAB:GetOrCreateGeneralPanel()
 	panel.countResetButton = countResetButton
 
 	-------------------------------------------------------------------------
-	-- Global border/spacing style: one checkbox choosing the button border
-	-- for ALL bars (default 1-5 AND extra 6-9) - "modern" (backdrop
-	-- border) or "vanilla" (native Blizzard border). Also shifts every
-	-- bar's button size (and spacing, opposite direction) to keep
-	-- default/extra bars aligned - see ACAB:ApplyGlobalButtonStyle
-	-- (Bar.lua). Locked to vanilla while "Use Default Blizzard Layout" is on.
+	-- Global border/spacing style: one checkbox choosing the button border for all bars - "modern"
+	-- (backdrop border) or "vanilla" (native Blizzard border). Also shifts every bar's button size (and
+	-- spacing, opposite direction) to keep default/extra bars aligned. Locked to vanilla while "Force
+	-- Vanilla Layout Mode" is on.
 	-------------------------------------------------------------------------
 
-	-- Anchors off countTitle (a fixed-X FontString) with the exact offset
-	-- the removed Snap to Adjacent Elements checkbox used to occupy (now
-	-- on the Edit Mode tab's own panel) - same reasoning as that anchor's
-	-- own comment: countValueText's "TOP" anchor shifts with the displayed
-	-- digit count/width, so it can't be anchored off directly.
+	-- Anchors off countTitle (a fixed-X FontString), not countValueText - that FontString's "TOP"
+	-- anchor shifts with the displayed digit count/width, so it can't be anchored off directly.
 	local modernBorderStyleCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABGeneralModernBorderStyleCheckbox", {
 		anchor = { "TOPLEFT", countTitle, "BOTTOMLEFT", 0, -12 - countSlider:GetHeight() - 2 - countValueText:GetHeight() - 18 },
 		label = "Use Modern Button Style",
@@ -527,16 +475,13 @@ function ACAB:GetOrCreateGeneralPanel()
 				"Choose the button border style used by ALL bars. When " ..
 				"enabled use a slick and thin modern rectangular Border, " ..
 				"when disabled use the default vanilla UI border.",
-				"Locked to vanilla UI Border while 'Use Default Blizzard " ..
-				"Layout' is enabled",
+				"Locked to vanilla UI Border while 'Force Vanilla Layout " ..
+				"Mode' is enabled",
 			},
 		},
 		onClick = function()
-			-- Belt-and-suspenders re-check, mirrors this addon's existing
-			-- convention (e.g. Button.lua's OnMouseWheel re-checking
-			-- useDefaultLayout) - RefreshGeneralPanel's own gating below
-			-- is what actually prevents this OnClick from firing in the
-			-- normal case (EnableMouse(false) while locked).
+			-- Belt-and-suspenders re-check - RefreshGeneralPanel's own gating below is what actually
+			-- prevents this OnClick from firing in the normal case.
 			if ACABDB.useDefaultLayout ~= false then
 				this:SetChecked(false)
 				return
@@ -546,19 +491,14 @@ function ACAB:GetOrCreateGeneralPanel()
 
 			ACAB:ApplyGlobalButtonStyle()
 
-			-- The global spacing/buttonSize overrides' last-applied real
-			-- value was computed under whatever style was active at the
-			-- time - re-run them now so a switch immediately recomputes
-			-- for the new style's floor, instead of staying stale until
-			-- the global slider itself is next touched.
+			-- The global spacing/buttonSize overrides' last-applied value was computed under whatever
+			-- style was active at the time - re-run them now to recompute for the new style's floor.
 			ACAB:ApplyGlobalSpacing()
 			ACAB:ApplyGlobalButtonSize()
 
 			ACAB:RefreshDefaultLayoutGatingOnAllPages()
 
-			-- Re-syncs the global spacing slider's displayed value/range/
-			-- labels to the new floor (RefreshGeneralPanel wasn't
-			-- otherwise called from this handler).
+			-- Re-syncs the global spacing slider's displayed value/range/labels to the new floor.
 			ACAB:RefreshGeneralPanel()
 		end,
 	})
@@ -566,18 +506,13 @@ function ACAB:GetOrCreateGeneralPanel()
 	panel.modernBorderStyleCheckbox = modernBorderStyleCheckbox
 
 	-------------------------------------------------------------------------
-	-- Global Spacing / global ButtonSize overrides: unlike other controls
-	-- in this panel, these sliders are Shown/Hidden per the checkbox's
-	-- checked state. Applies to every bar (default 1-5, extra 6-9, Pet Bar,
-	-- Stance Bar), never simple/native-backed pages - see
-	-- ACAB:ApplyGlobalSpacing/ApplyGlobalButtonSize (Bar.lua). Both also
-	-- lock (dim) whenever useDefaultLayout forces vanilla styling. Any bar
-	-- can opt out individually via its own lock icon next to its Spacing/
-	-- ButtonSize slider (SettingsBars.lua's per-bar lock toggle).
+	-- Global Spacing / global ButtonSize overrides: unlike other controls in this panel, these
+	-- sliders are Shown/Hidden per the checkbox's checked state. Applies to every bar, never
+	-- simple/native-backed pages. Both also lock (dim) whenever useDefaultLayout forces vanilla
+	-- styling. Any bar can opt out individually via its own lock icon.
 	-------------------------------------------------------------------------
 
-	-- OnClick is wired further below - it closes over the slider/labels
-	-- this function creates next.
+	-- OnClick is wired further below - it closes over the slider/labels this function creates next.
 	local globalSpacingCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABGeneralGlobalSpacingCheckbox", {
 		anchor = { "TOPLEFT", modernBorderStyleCheckbox, "BOTTOMLEFT", 0, -14 },
 		label = "Toggle global Spacing",
@@ -592,9 +527,8 @@ function ACAB:GetOrCreateGeneralPanel()
 		},
 	})
 
-	-- Min/max/end-labels aren't set here - RefreshGeneralPanel recomputes
-	-- and applies them live, since the border-style offset they depend on
-	-- can change after this panel is built.
+	-- Min/max/end-labels aren't set here - RefreshGeneralPanel recomputes and applies them live, since
+	-- the border-style offset they depend on can change after this panel is built.
 	local globalSpacingSlider, globalSpacingValueText, globalSpacingSliderLow, globalSpacingSliderHigh = ACAB:CreateLabeledSlider(
 		panel,
 		"ACABGeneralGlobalSpacingSlider",
@@ -643,14 +577,10 @@ function ACAB:GetOrCreateGeneralPanel()
 	panel.globalSpacingSliderHigh = globalSpacingSliderHigh
 	panel.globalSpacingValueText = globalSpacingValueText
 
-	-- OnClick is wired further below - it closes over the slider/labels
-	-- this function creates next. Anchor must target globalSpacingSlider
-	-- itself (a reliable left edge), not globalSpacingValueText - that
-	-- FontString only has a bare "TOP" anchor, so it auto-centers under
-	-- the slider and its BOTTOMLEFT sits near the slider's horizontal
-	-- center, not its left edge. The -20 x-offset cancels
-	-- globalSpacingSlider's own +20 offset from its checkbox, landing
-	-- this checkbox back in the same left column.
+	-- OnClick is wired further below - it closes over the slider/labels this function creates next.
+	-- Anchor must target globalSpacingSlider itself, not globalSpacingValueText - that FontString only
+	-- has a bare "TOP" anchor and auto-centers under the slider, not sitting at its left edge. The -20
+	-- x-offset cancels globalSpacingSlider's own +20 offset, landing this checkbox in the same column.
 	local globalButtonSizeCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABGeneralGlobalButtonSizeCheckbox", {
 		anchor = { "TOPLEFT", globalSpacingSlider, "BOTTOMLEFT", -20, -26 },
 		label = "Toggle global Button size",
@@ -715,14 +645,10 @@ function ACAB:GetOrCreateGeneralPanel()
 	panel.globalButtonSizeSlider = globalButtonSizeSlider
 	panel.globalButtonSizeValueText = globalButtonSizeValueText
 
-	-- Right ActionBar 2 dependency bypass (DefaultBars.lua's
-	-- SetDefaultBarEnabled/FixRightActionBar2Checkbox) - lets bar 5 toggle
-	-- independent of bar 4.
-	-- WARNING: anchor off globalButtonSizeSlider itself, not
-	-- globalButtonSizeValueText - value-text FontStrings only have a bare
-	-- "TOP" anchor and center under their slider, not sitting at its left
-	-- edge. Always anchor new General-tab controls off a slider/
-	-- checkbox's own edge, never a *ValueText FontString.
+	-- Right ActionBar 2 dependency bypass - lets bar 5 toggle independent of bar 4.
+	-- WARNING: anchor off globalButtonSizeSlider itself, not globalButtonSizeValueText - value-text
+	-- FontStrings only have a bare "TOP" anchor and center under their slider. Always anchor new
+	-- General-tab controls off a slider/checkbox's own edge, never a *ValueText FontString.
 	local bypassBar2DepCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABGeneralBypassBar2DepCheckbox", {
 		anchor = { "TOPLEFT", globalButtonSizeSlider, "BOTTOMLEFT", -20, -28 },
 		label = "Allow Right ActionBar 2 independent of Right ActionBar 1",
@@ -735,9 +661,8 @@ function ACAB:GetOrCreateGeneralPanel()
 
 	panel.bypassBar2DepCheckbox = bypassBar2DepCheckbox
 
-	-- "Enable Better Experience Bar" lives on the Experience Bar's own
-	-- settings page (CreateSimpleBarPage's "if key == 'expbar'" block)
-	-- alongside its text-toggle checkboxes and color pickers.
+	-- "Enable Better Experience Bar" lives on the Experience Bar's own settings page alongside its
+	-- text-toggle checkboxes and color pickers.
 
 	panel:Hide()
 
@@ -748,15 +673,12 @@ end
 
 -------------------------------------------------------------------------
 -- Profiles tab panel
---
--- Built lazily on first use, exactly like GetOrCreateGeneralPanel -
--- anchored the same way, spanning the combined listPanel+contentPanel
--- area since the bar list has no meaning here either.
+-- Built lazily on first use, exactly like GetOrCreateGeneralPanel - spanning the combined
+-- listPanel+contentPanel area since the bar list has no meaning here either.
 -------------------------------------------------------------------------
 
--- Sentinel dropdown entry - not a real profile name, so a normal profile
--- can never collide with it. Chosen when the user wants to open the
--- create-new-profile dialog straight from the profile dropdown.
+-- Sentinel dropdown entry - not a real profile name, so a normal profile can never collide with it.
+-- Chosen when the user wants to open the create-new-profile dialog straight from the dropdown.
 local CREATE_NEW_PROFILE_SENTINEL = "+ Create new profile"
 
 function ACAB:GetOrCreateProfilesPanel()
@@ -768,9 +690,7 @@ function ACAB:GetOrCreateProfilesPanel()
 		return ACAB.settingsFrame.profilesPanel
 	end
 
-	-- Own dedicated scrollframe+scrollchild pair (ACAB:CreateWideContentScrollFrame)
-	-- - see CreateSettingsFrame's own comment on why this doesn't share
-	-- the Bars view's contentScrollFrame.
+	-- Own dedicated scrollframe+scrollchild pair - doesn't share the Bars view's contentScrollFrame.
 	local scrollFrame, panel = ACAB:CreateWideContentScrollFrame("ACABSettingsProfilesScrollFrame")
 
 	ACAB.settingsFrame.profilesScrollFrame = scrollFrame
@@ -786,11 +706,9 @@ function ACAB:GetOrCreateProfilesPanel()
 	label:SetText("Active Profile:")
 	panel.label = label
 
-	-- Same row as the label (label left-aligned, dropdown right-aligned) -
-	-- anchored to panel's own TOPRIGHT (for the wide page's real right
-	-- edge) with a Y offset computed to match label's own TOP, since a
-	-- fixed-size frame can't take X from one anchor and Y from another
-	-- without the two anchors' redundant axes conflicting.
+	-- Same row as the label (label left-aligned, dropdown right-aligned) - anchored to panel's own
+	-- TOPRIGHT with a Y offset computed to match label's own TOP, since a fixed-size frame can't take
+	-- X from one anchor and Y from another.
 	local labelRowTopY = -(14 + title:GetHeight() + 20)
 
 	local dropdown = ACAB:CreateInlineDropdown(panel, 220, "ACABProfilesDropdown")
@@ -801,10 +719,8 @@ function ACAB:GetOrCreateProfilesPanel()
 	dropdown.onSelect = function(value)
 		if value == CREATE_NEW_PROFILE_SENTINEL then
 			ACAB:ShowCreateProfileDialog(function()
-				-- On validation failure the dialog already stayed on the
-				-- old profile (CreateProfile/SwitchProfile only reload on
-				-- success) - re-sync the dropdown text either way so it
-				-- never shows the sentinel as if it were a real selection.
+				-- On validation failure the dialog already stayed on the old profile - re-sync the
+				-- dropdown text either way so it never shows the sentinel as if it were a real selection.
 				ACAB:RefreshProfilesPanel()
 			end)
 
@@ -818,9 +734,48 @@ function ACAB:GetOrCreateProfilesPanel()
 
 	local PROFILE_BUTTON_GAP_X = 12
 
+	local wizardButton = CreateFrame("Button", nil, panel)
+	wizardButton:SetHeight(22)
+	wizardButton:SetPoint("TOPLEFT", dropdown, "BOTTOMLEFT", 16, -14)
+	ACAB:StyleModernButton(wizardButton, 0, 0)
+	ACAB:ApplyProminentButtonHighlight(wizardButton)
+	wizardButton:SetText("Run Setup Wizard")
+	panel.wizardButton = wizardButton
+
+	-- Default is locked/uneditable - the normal overwrite-confirm flow below would permanently
+	-- overwrite the shared template every new profile is deep-copied from. While Default is active,
+	-- this instead launches the "create a new profile" flow - nothing to overwrite, no confirm needed.
+	wizardButton:SetScript("OnClick", function()
+		if ACABCharDB and ACABCharDB.activeProfile == ACAB.DEFAULT_PROFILE_NAME then
+			ACAB:ShowSetupWizard()
+			return
+		end
+
+		ACAB:ShowDialog({
+			title = "Run Setup Wizard",
+			message = "This walks you back through the initial setup choices " ..
+				"(Force Vanilla Layout Mode, button style, global spacing/size).",
+			warningText = "ATTENTION: Continuing will overwrite these settings " ..
+				"on your current profile and is not reversible.",
+			mode = "confirm",
+			buttons = {
+				{
+					text = "Continue",
+					onClick = function()
+						ACAB:ShowSetupWizard({
+							overwriteExisting = true,
+							profileName = ACABCharDB.activeProfile,
+						})
+					end,
+				},
+				{ text = "Cancel", onClick = function() end },
+			},
+		})
+	end)
+
 	local exportButton = CreateFrame("Button", nil, panel)
 	exportButton:SetHeight(22)
-	exportButton:SetPoint("TOPLEFT", dropdown, "BOTTOMLEFT", 16, -14)
+	exportButton:SetPoint("TOPLEFT", wizardButton, "TOPRIGHT", PROFILE_BUTTON_GAP_X, 0)
 	ACAB:StyleModernButton(exportButton, 0, 0)
 	exportButton:SetText("Export Profile")
 	panel.exportButton = exportButton
@@ -935,19 +890,17 @@ function ACAB:GetOrCreateProfilesPanel()
 	ACAB:ApplyDangerButtonHighlight(deleteButton)
 	panel.deleteButton = deleteButton
 
-	-- Centers the whole 4-button row under the Active Profile row instead
-	-- of left-anchoring it under the dropdown - only exportButton's own
-	-- anchor needs resetting, since copy/import/delete are already chained
-	-- off their left neighbor's TOPRIGHT and follow automatically. Widths
-	-- are only known now that every button's SetText above has run.
+	-- Centers the whole 5-button row under the Active Profile row instead of left-anchoring it under
+	-- the dropdown - only wizardButton's own anchor needs resetting, since export/copy/import/delete
+	-- are already chained off their left neighbor's TOPRIGHT.
 	local buttonRowY = labelRowTopY - math.max(label:GetHeight(), dropdown:GetHeight()) - 14
-	local totalRowWidth = exportButton:GetWidth() + copyButton:GetWidth()
-		+ importButton:GetWidth() + deleteButton:GetWidth() + (PROFILE_BUTTON_GAP_X * 3)
+	local totalRowWidth = wizardButton:GetWidth() + exportButton:GetWidth() + copyButton:GetWidth()
+		+ importButton:GetWidth() + deleteButton:GetWidth() + (PROFILE_BUTTON_GAP_X * 4)
 
-	exportButton:ClearAllPoints()
-	exportButton:SetPoint(
+	wizardButton:ClearAllPoints()
+	wizardButton:SetPoint(
 		"TOP", panel, "TOP",
-		-(totalRowWidth / 2) + (exportButton:GetWidth() / 2),
+		-(totalRowWidth / 2) + (wizardButton:GetWidth() / 2),
 		buttonRowY
 	)
 
@@ -977,11 +930,9 @@ function ACAB:GetOrCreateProfilesPanel()
 	return panel
 end
 
--- Refreshes the dropdown's option list/current selection and all 4
--- action buttons' visibility (only shown while a non-Default profile is
--- active, since Default is locked/uneditable) - called whenever the
--- Profiles view is (re)shown and after any profile CRUD action that
--- doesn't already trigger a ReloadUI.
+-- Refreshes the dropdown's option list/current selection and the action buttons' visibility - called
+-- whenever the Profiles view is (re)shown and after any profile CRUD action that doesn't already
+-- trigger a ReloadUI. wizardButton is always shown; the other 4 stay Default-only.
 function ACAB:RefreshProfilesPanel()
 	local panel = self:GetOrCreateProfilesPanel()
 
@@ -1000,6 +951,8 @@ function ACAB:RefreshProfilesPanel()
 	panel.profileDropdown:SetOptions(dropdownOptions)
 	panel.profileDropdown:SetSelected(ACABCharDB.activeProfile)
 
+	panel.wizardButton:Show()
+
 	if ACABCharDB.activeProfile ~= self.DEFAULT_PROFILE_NAME then
 		panel.exportButton:Show()
 		panel.copyButton:Show()
@@ -1013,11 +966,8 @@ function ACAB:RefreshProfilesPanel()
 	end
 end
 -------------------------------------------------------------------------
--- Edit Mode panel (ACABDB.snapToAdjacentElements/showLayoutGrid/
--- snapToGrid)
---
--- Own dedicated scrollframe+scrollchild pair, same pattern as
--- GetOrCreateProfilesPanel/GetOrCreateGeneralPanel above.
+-- Edit Mode panel (ACABDB.snapToAdjacentElements/showLayoutGrid/snapToGrid)
+-- Own dedicated scrollframe+scrollchild pair, same pattern as the panels above.
 -------------------------------------------------------------------------
 
 function ACAB:GetOrCreateEditModePanel()
@@ -1040,11 +990,8 @@ function ACAB:GetOrCreateEditModePanel()
 	panel.title = title
 
 	-------------------------------------------------------------------------
-	-- Snap to Adjacent Elements: ACABDB.snapToAdjacentElements
-	-- (default true) gates both snap injection points (Bar.lua's
-	-- StopBarDrag drop-time snap, DefaultBars.lua's live OnUpdate snap)
-	-- via the shared ACAB:ComputeSnapAdjustment utility - only affects the
-	-- NEXT drag.
+	-- Snap to Adjacent Elements: ACABDB.snapToAdjacentElements (default true) gates both snap
+	-- injection points via the shared ACAB:ComputeSnapAdjustment utility - only affects the next drag.
 	-------------------------------------------------------------------------
 
 	local snapToAdjacentCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABEditModeSnapToAdjacentCheckbox", {
@@ -1068,11 +1015,8 @@ function ACAB:GetOrCreateEditModePanel()
 	panel.snapToAdjacentCheckbox = snapToAdjacentCheckbox
 
 	-------------------------------------------------------------------------
-	-- Show Layout Grid: ACABDB.showLayoutGrid (default true) - a
-	-- reference grid spanning the screen in Edit Layout Mode, spaced to
-	-- match the current action-button footprint (ACAB:GetLayoutGridSpacing()),
-	-- with a darker line through screen center on each axis (Bar.lua's
-	-- RebuildLayoutGrid). Ctrl temporarily flips this on/off.
+	-- Show Layout Grid: ACABDB.showLayoutGrid (default true) - a reference grid spanning the screen in
+	-- Edit Layout Mode, spaced to match the current action-button footprint. Ctrl temporarily flips this.
 	-------------------------------------------------------------------------
 
 	local showLayoutGridCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABEditModeShowLayoutGridCheckbox", {
@@ -1099,13 +1043,8 @@ function ACAB:GetOrCreateEditModePanel()
 	panel.showLayoutGridCheckbox = showLayoutGridCheckbox
 
 	-------------------------------------------------------------------------
-	-- Snap to Grid
-	--
-	-- ACABDB.snapToGrid (default true, Core.lua's EnsureDB) - like
-	-- Snap to Adjacent Elements above, only ever affects the NEXT drag
-	-- (Core.lua's ACAB:ComputeGridSnapAdjustment, wired into
-	-- DefaultBars.lua's ApplyDragSnap ahead of the adjacent-elements
-	-- snap), so no separate Apply/refresh call is needed here.
+	-- Snap to Grid: ACABDB.snapToGrid (default true) - like Snap to Adjacent Elements above, only ever
+	-- affects the next drag, so no separate Apply/refresh call is needed here.
 	-------------------------------------------------------------------------
 
 	local snapToGridCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABEditModeSnapToGridCheckbox", {
@@ -1127,15 +1066,12 @@ function ACAB:GetOrCreateEditModePanel()
 	panel.snapToGridCheckbox = snapToGridCheckbox
 
 	-------------------------------------------------------------------------
-	-- Use custom Grid Size: ACABDB.useCustomGridSize (default false) -
-	-- overrides ACAB:GetLayoutGridSpacing()'s normal behavior (tracking Main
-	-- Bar's live buttonSize) with a flat ACABDB.customGridSize value.
-	-- Slider is SetShown()-toggled by this checkbox, same as the General
-	-- tab's Global Spacing/Button Size sliders.
+	-- Use custom Grid Size: ACABDB.useCustomGridSize (default false) - overrides
+	-- GetLayoutGridSpacing()'s normal Main-Bar-tracking behavior with a flat customGridSize value.
+	-- Slider is SetShown()-toggled by this checkbox, same as the General tab's global sliders.
 	-------------------------------------------------------------------------
 
-	-- OnClick is wired further below - it closes over the slider this
-	-- function creates next.
+	-- OnClick is wired further below - it closes over the slider this function creates next.
 	local useCustomGridSizeCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABEditModeUseCustomGridSizeCheckbox", {
 		anchor = { "TOPLEFT", snapToGridCheckbox, "BOTTOMLEFT", 0, -14 },
 		label = "Use custom Grid Size",
@@ -1185,12 +1121,8 @@ function ACAB:GetOrCreateEditModePanel()
 			local checked = this:GetChecked() and true or false
 
 			if checked and not ACABDB.useCustomGridSize then
-				-- Seeds the slider with whatever the dynamic (Main-Bar-
-				-- tracking) spacing currently evaluates to - read BEFORE
-				-- flipping the flag below, since GetLayoutGridSpacing
-				-- itself branches on useCustomGridSize. Rounded since the
-				-- border-inset math can yield a fractional value but the
-				-- slider only steps by whole numbers.
+				-- Seeds the slider with the dynamic (Main-Bar-tracking) spacing's current value - read
+				-- before flipping the flag below, since GetLayoutGridSpacing itself branches on it.
 				ACABDB.customGridSize = math.floor(ACAB:GetLayoutGridSpacing() + 0.5)
 			end
 
@@ -1228,8 +1160,7 @@ function ACAB:GetOrCreateEditModePanel()
 	return panel
 end
 
--- First three default true, useCustomGridSize defaults false (Core.lua's
--- EnsureDB).
+-- First three default true, useCustomGridSize defaults false.
 function ACAB:RefreshEditModePanel()
 	local panel = self:GetOrCreateEditModePanel()
 
@@ -1259,14 +1190,11 @@ function ACAB:RefreshEditModePanel()
 	end
 end
 -------------------------------------------------------------------------
--- General panel: dynamic reflow for the Global Spacing / Global
--- ButtonSize sliders. Both are SetShown()-toggled by their own checkbox,
--- but Hide() doesn't remove a frame from its neighbors' fixed-offset
--- anchor math, so the gap stays reserved while hidden. This walks the
--- checkbox/slider stack and re-anchors each entry to sit flush against
--- whichever entry above it is actually SHOWN, collapsing/restoring the
--- gap live. Column = the stack's two indent levels (checkboxes at base
--- indent, sliders 20px further right - hand-tuned offsets below).
+-- General panel: dynamic reflow for the Global Spacing / Global ButtonSize sliders. Both are
+-- SetShown()-toggled by their own checkbox, but Hide() doesn't remove a frame from its neighbors'
+-- fixed-offset anchor math, so the gap stays reserved while hidden. This walks the checkbox/slider
+-- stack and re-anchors each entry to sit flush against whichever entry above it is actually shown.
+-- Column = the stack's two indent levels (checkboxes at base indent, sliders 20px further right).
 -------------------------------------------------------------------------
 
 local REFLOW_COLUMN_CHECKBOX = 0
@@ -1275,9 +1203,8 @@ local REFLOW_GAP_CHECKBOX_TO_SLIDER = -28
 local REFLOW_GAP_SLIDER_TO_CHECKBOX = -26
 local REFLOW_GAP_CHECKBOX_TO_CHECKBOX = -14
 
--- entries: ordered array of { frame = <Frame>, column = REFLOW_COLUMN_*,
--- isOptional = true|nil }. The first entry's own anchor is never touched -
--- callers set that once, outside this list, to whatever fixed frame it
+-- entries: ordered array of { frame = <Frame>, column = REFLOW_COLUMN_*, isOptional = true|nil }. The
+-- first entry's own anchor is never touched - callers set that once, outside this list, to whatever fixed frame it
 -- should follow. An `isOptional` entry that's currently Hidden is skipped
 -- entirely (neither re-anchored nor used as the next entry's anchor
 -- source), so hiding it collapses its slot rather than leaving a gap.
@@ -1332,16 +1259,13 @@ function ACAB:ReflowGeneralOverrideSliders(panel)
 		{ frame = panel.bypassBar2DepCheckbox, column = REFLOW_COLUMN_CHECKBOX },
 	})
 
-	-- Revealing/hiding either slider changes how tall this panel's content
-	-- is, so the window (and its scrollchild) has to be re-measured -
-	-- otherwise turning a toggle ON grows the content past the viewport
-	-- with no matching scroll range, leaving the bottom unreachable.
+	-- Revealing/hiding either slider changes how tall this panel's content is, so the window has to be
+	-- re-measured - otherwise turning a toggle on grows the content past the viewport unreachably.
 	RefitGeneralViewSoon()
 end
 
--- Re-anchors hotkeyTitle below the macro text section's real bottom edge.
--- Anchors off macroTitle, not macroValueText - macroValueText uses a "TOP"
--- anchor, so its LEFT edge drifts with the displayed digit count/width.
+-- Re-anchors hotkeyTitle below the macro text section's real bottom edge. Anchors off macroTitle, not
+-- macroValueText - that uses a "TOP" anchor, so its LEFT edge drifts with the displayed digit count.
 function ACAB:ReflowGeneralHotkeySection(panel)
 	panel.hotkeyTitle:ClearAllPoints()
 
@@ -1373,11 +1297,8 @@ function ACAB:RefreshGeneralPanel()
 		ACABDB.useDefaultLayout == true
 	)
 
-	-- Locked to unchecked+non-interactive while useDefaultLayout forces
-	-- vanilla styling (ACAB:IsVanillaBorderStyle, Core.lua) - reuses the
-	-- established EnableMouse(false)+SetAlpha(0.5) gating idiom
-	-- (ApplyDefaultLayoutGating) rather than :Disable(), matching every
-	-- other gated control in this file.
+	-- Locked to unchecked+non-interactive while useDefaultLayout forces vanilla styling - reuses the
+	-- established EnableMouse(false)+SetAlpha(0.5) gating idiom rather than :Disable().
 	local vanillaBorderStyleLocked = ACABDB.useDefaultLayout ~= false
 
 	panel.modernBorderStyleCheckbox:SetChecked(
@@ -1386,11 +1307,8 @@ function ACAB:RefreshGeneralPanel()
 	panel.modernBorderStyleCheckbox:EnableMouse(not vanillaBorderStyleLocked)
 	panel.modernBorderStyleCheckbox:SetAlpha(vanillaBorderStyleLocked and 0.5 or 1)
 
-	-- Global Spacing / global ButtonSize overrides: same
-	-- vanillaBorderStyleLocked lock as modernBorderStyleCheckbox above,
-	-- plus their own checked/value sync and the Show/Hide reveal of their
-	-- sliders. The displayed range (spacing only) is recomputed here too,
-	-- same reason as the per-bar slider.
+	-- Global Spacing / global ButtonSize overrides: same vanillaBorderStyleLocked lock as
+	-- modernBorderStyleCheckbox above, plus their own checked/value sync and slider reveal.
 	local spacingDisplayed = ACABDB.globalSpacingEnabled == true and
 		not vanillaBorderStyleLocked
 
@@ -1439,35 +1357,27 @@ function ACAB:RefreshGeneralPanel()
 	panel.globalButtonSizeSlider:EnableMouse(not vanillaBorderStyleLocked)
 	panel.globalButtonSizeSlider:SetAlpha(vanillaBorderStyleLocked and 0.5 or 1)
 
-	-- Both sliders' Shown state is now final for this refresh - collapse/
-	-- restore the gap below each one accordingly.
+	-- Both sliders' Shown state is now final for this refresh - collapse/restore the gap below each.
 	ACAB:ReflowGeneralOverrideSliders(panel)
 
 	panel.bypassBar2DepCheckbox:SetChecked(ACABDB.bypassRightActionBar2Dependency == true)
 
-	-- Default true (Core.lua's EnsureDB) - only an explicit false ever
-	-- unchecks this.
 	panel.tintWholeButtonCheckbox:SetChecked(
 		ACABDB.tintWholeButtonOnRange ~= false
 	)
 
-	-- Default false (Core.lua's EnsureDB) - only an explicit true ever
-	-- checks this.
 	panel.disableBlizzardArtCheckbox:SetChecked(
 		ACABDB.disableBlizzardArt == true
 	)
 
-	-- Both default true (Core.lua's EnsureDB) - only an explicit false
-	-- ever unchecks either.
 	panel.mainBarPaginationCheckbox:SetChecked(
-		ACABDB.mainBarPaginationEnabled ~= false
+		ACABDB.defaultBarPaginationEnabled ~= false
 	)
 
-	-- Stance/Page Bar Assignment rows themselves live on bar 1's own
-	-- settings page; refreshed from RefreshBarSettingsPage(1).
+	-- Stance/Page Bar Assignment rows themselves live on each default bar's (1-5) own settings page.
 
 	panel.mainBarStanceSwapCheckbox:SetChecked(
-		ACABDB.mainBarStanceSwapEnabled ~= false
+		ACABDB.defaultBarStanceSwapEnabled ~= false
 	)
 
 	-------------------------------------------------------------------------
@@ -1495,10 +1405,7 @@ function ACAB:RefreshGeneralPanel()
 
 	-------------------------------------------------------------------------
 	-- Hotkey / Count text font size
-	--
-	-- nil (never yet touched by the user) falls back to the captured
-	-- native default - see Core.lua's EnsureDB comment on why these two
-	-- fields are deliberately left unseeded.
+	-- nil (never yet touched by the user) falls back to the captured native default.
 	-------------------------------------------------------------------------
 
 	local hotkeyDefault = ACAB.NATIVE_HOTKEY_FONT and ACAB.NATIVE_HOTKEY_FONT.size
@@ -1517,18 +1424,15 @@ function ACAB:RefreshGeneralPanel()
 	panel.countValueText:SetText(tostring(countSize))
 	panel.countSlider.suppressApply = nil
 
-	-- "Enable Better Experience Bar" lives on the Experience Bar's own
-	-- settings page; refreshed from RefreshSimpleBarPage("expbar").
+	-- "Enable Better Experience Bar" lives on the Experience Bar's own settings page.
 end
 
 -------------------------------------------------------------------------
 -- View switching ("Bars" / "General" tabs)
 -------------------------------------------------------------------------
 
--- Syncs each top nav tab's persistent gold selectStrip (CreateSettingsFrame's
--- ApplyTabFadeHighlight) to ACAB.settingsFrame.currentView - called after every
--- place that assigns ACAB.settingsFrame.currentView, so whichever tab matches
--- the now-active view is the only one highlighted.
+-- Syncs each top nav tab's persistent gold selectStrip to ACAB.settingsFrame.currentView - called
+-- after every place that assigns currentView, so whichever tab matches is the only one highlighted.
 function ACAB:RefreshActiveTabHighlight()
 	if not ACAB.settingsFrame or not ACAB.settingsFrame.tabButtonsByView then
 		return
@@ -1574,8 +1478,7 @@ function ACAB:ShowGeneralView()
 	ACAB.settingsFrame.currentView = "general"
 	ACAB:RefreshActiveTabHighlight()
 
-	-- Ensure the General panel (and its own dedicated scrollframe) exist
-	-- before trying to Show() the scrollframe below.
+	-- Ensure the General panel (and its own dedicated scrollframe) exist before Show() below.
 	self:GetOrCreateGeneralPanel()
 
 	if ACAB.settingsFrame.profilesScrollFrame then
@@ -1599,11 +1502,45 @@ function ACAB:ShowGeneralView()
 	self:RefreshGeneralPanel()
 	self:GetOrCreateGeneralPanel():Show()
 
-	-- Same reasoning as ShowBarPage's call - has to run after
-	-- :Show() so GetBottom() reads real values. Deferred one frame
-	-- (DeferFit) so its own candidates' positions have settled before
-	-- anything measures them.
+	-- Same reasoning as ShowBarPage's call - has to run after :Show() so GetBottom() reads real values.
 	ACAB:DeferFit(function() ACAB:FitSettingsWindowToGeneralView() end)
+end
+
+-- Brief gold pulse behind the "Force Vanilla Layout Mode" checkbox row - called after the layout-lock
+-- warning banner navigates here via /acab settings general, so the eye lands on the control to change.
+function ACAB:HighlightGeneralLayoutCheckbox()
+	local panel = ACAB.settingsFrame and ACAB.settingsFrame.generalPanel
+	local checkbox = panel and panel.useDefaultLayoutCheckbox
+
+	if not checkbox then
+		return
+	end
+
+	if not checkbox.acabHighlightStrip then
+		local label = getglobal(checkbox:GetName() .. "Text")
+		local labelWidth = (label and label:GetStringWidth()) or 200
+		local strip = ACAB:CreateFadeStrip(panel, checkbox:GetWidth() + labelWidth + 16, checkbox:GetHeight() + 10, { edgeFraction = 0.15 })
+
+		strip:SetPoint("LEFT", checkbox, "LEFT", -8, 0)
+		strip:SetFadeColor(ACAB.UI_ACCENT_COLOR[1], ACAB.UI_ACCENT_COLOR[2], ACAB.UI_ACCENT_COLOR[3])
+		strip:SetPeakAlpha(0.55)
+		strip:Hide()
+
+		checkbox.acabHighlightStrip = strip
+	end
+
+	local strip = checkbox.acabHighlightStrip
+
+	strip:Show()
+
+	-- Three pulses via C_Timer.After rather than a hand-rolled OnUpdate ticker.
+	if C_Timer then
+		C_Timer.After(0.45, function() strip:Hide() end)
+		C_Timer.After(0.75, function() strip:Show() end)
+		C_Timer.After(1.2, function() strip:Hide() end)
+		C_Timer.After(1.5, function() strip:Show() end)
+		C_Timer.After(1.95, function() strip:Hide() end)
+	end
 end
 
 function ACAB:ShowProfilesView()
@@ -1624,8 +1561,7 @@ function ACAB:ShowProfilesView()
 	ACAB.settingsFrame.currentView = "profiles"
 	ACAB:RefreshActiveTabHighlight()
 
-	-- Ensure the Profiles panel (and its own dedicated scrollframe) exist
-	-- before trying to Show() the scrollframe below.
+	-- Ensure the Profiles panel (and its own dedicated scrollframe) exist before Show() below.
 	self:GetOrCreateProfilesPanel()
 
 	if ACAB.settingsFrame.generalScrollFrame then
@@ -1649,10 +1585,7 @@ function ACAB:ShowProfilesView()
 	self:RefreshProfilesPanel()
 	self:GetOrCreateProfilesPanel():Show()
 
-	-- Same reasoning as ShowBarPage's call - has to run after
-	-- :Show() so GetBottom() reads real values. Deferred one frame
-	-- (DeferFit) so its own candidates' positions have settled before
-	-- anything measures them.
+	-- Same reasoning as ShowBarPage's call - has to run after :Show() so GetBottom() reads real values.
 	ACAB:DeferFit(function() ACAB:FitSettingsWindowToProfilesView() end)
 end
 
@@ -1674,8 +1607,7 @@ function ACAB:ShowEditModeView()
 	ACAB.settingsFrame.currentView = "editmode"
 	ACAB:RefreshActiveTabHighlight()
 
-	-- Ensure the Edit Mode panel (and its own dedicated scrollframe) exist
-	-- before trying to Show() the scrollframe below.
+	-- Ensure the Edit Mode panel (and its own dedicated scrollframe) exist before Show() below.
 	self:GetOrCreateEditModePanel()
 
 	if ACAB.settingsFrame.generalScrollFrame then
@@ -1699,9 +1631,6 @@ function ACAB:ShowEditModeView()
 	self:RefreshEditModePanel()
 	self:GetOrCreateEditModePanel():Show()
 
-	-- Same reasoning as ShowBarPage's call - has to run after
-	-- :Show() so GetBottom() reads real values. Deferred one frame
-	-- (DeferFit) so its own candidates' positions have settled before
-	-- anything measures them.
+	-- Same reasoning as ShowBarPage's call - has to run after :Show() so GetBottom() reads real values.
 	ACAB:DeferFit(function() ACAB:FitSettingsWindowToEditModeView() end)
 end
