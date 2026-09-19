@@ -2008,7 +2008,8 @@ local function CreateSimpleBarPage(key)
 	if config.getElementFrame then
 		local initialPos = config.getPosition and config.getPosition()
 		local initialIsRightAnchored = ACAB:IsRightAnchoredPoint(initialPos and initialPos.point)
-		minX, maxX, minY, maxY = ACAB:GetSimpleElementCoordinateRange(config.getElementFrame(), config.extraMaxYPixels, initialIsRightAnchored)
+		local initialIsBottomAnchored = ACAB:IsBottomAnchoredPoint(initialPos and initialPos.point)
+		minX, maxX, minY, maxY = ACAB:GetSimpleElementCoordinateRange(config.getElementFrame(), config.extraMaxYPixels, initialIsRightAnchored, initialIsBottomAnchored)
 	else
 		minX, maxX, minY, maxY = ACAB:GetScreenCoordinateRange()
 	end
@@ -2696,7 +2697,8 @@ function ACAB:RefreshSimpleBarPage(key)
 		if frame then
 			local rawPos = config.getPosition()
 			local isRightAnchored = ACAB:IsRightAnchoredPoint(rawPos and rawPos.point)
-			local minX, maxX, minY, maxY = ACAB:GetSimpleElementCoordinateRange(frame, config.extraMaxYPixels, isRightAnchored)
+			local isBottomAnchored = ACAB:IsBottomAnchoredPoint(rawPos and rawPos.point)
+			local minX, maxX, minY, maxY = ACAB:GetSimpleElementCoordinateRange(frame, config.extraMaxYPixels, isRightAnchored, isBottomAnchored)
 
 			page.xSlider:SetMinMaxValues(minX, maxX)
 			page.ySlider:SetMinMaxValues(minY, maxY)
