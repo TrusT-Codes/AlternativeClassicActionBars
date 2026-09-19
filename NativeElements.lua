@@ -1749,29 +1749,22 @@ function ACAB:ResetPageIndicatorToModernBase()
 	self:SetPageIndicatorScale(1)
 end
 
--- Modern Layout's bottom-right corner cluster: Bag Bar flush in the corner, Micro Menu stacked on top
--- of it, Key Ring to Bag Bar's left, Latency Bar to Micro Menu's left (top-aligned). Shared by the Setup
--- Wizard's Modern Layout choice and each of these 4 elements' own "Reset to Modern Layout Default" button.
--- Every gap is flush (0), reading each container's real live GetWidth()/GetHeight() rather than a formula.
-function ACAB:ApplyModernCornerClusterLayout()
-	self:EnsureDB()
+-- Bag Bar's real live width/height (or a formula-based fallback before its container exists).
+local function MeasureBagBarFootprint(self, buttonSize, spacing)
+	local width = (self.bagBarContainer and self.bagBarContainer:GetWidth()) or (5 * (buttonSize + spacing))
+	local height = (self.bagBarContainer and self.bagBarContainer:GetHeight()) or buttonSize
 
-	local buttonSize, spacing = self:GetModernLayoutSizing()
+	return width, height
+end
 
-	-- Every measurement below reads each element's CURRENT container/overlay, before writing any new
-	-- position - measuring right after an ApplyXPosition() call can read a just-recreated overlay before
-	-- its geometry has settled on this client.
-
-	-- Bag Bar: flush against the screen's bottom-right corner - exact regardless of its real size.
-	local bagBarWidth = (self.bagBarContainer and self.bagBarContainer:GetWidth()) or (5 * (buttonSize + spacing))
-	local bagBarHeight = (self.bagBarContainer and self.bagBarContainer:GetHeight()) or buttonSize
-
+-- Micro Menu's stack anchors: microMenuOverlayTop (Y to stack Latency Bar's own top against, given
+-- bagBarHeight) and microMenuOverlayLeftOffset (X to stack Latency Bar's own right against), both
+-- netting out the gap between Micro Menu's container and its trimmed overlay hitbox.
+local function MeasureMicroMenuStackAnchors(self, buttonSize, spacing, bagBarHeight)
 	local microMenuWidth = (self.microMenuContainer and self.microMenuContainer:GetWidth())
 		or ((ACABDB.microMenuCols or 8) * (buttonSize + spacing))
 	local microMenuHeight = (self.microMenuContainer and self.microMenuContainer:GetHeight()) or buttonSize
 
-	-- Micro Menu's own overlay hitbox sits inset from its container by a fixed pixel gap - read live and
-	-- netted out below.
 	local microMenuOverlayTopGap = 0
 	local microMenuOverlay = self.microMenuContainer and self.microMenuContainer.ACABOverlay
 
@@ -1803,9 +1796,13 @@ function ACAB:ApplyModernCornerClusterLayout()
 		end
 	end
 
-	-- Micro Menu's overlay left edge, expressed as an offset from the screen's right edge.
 	local microMenuOverlayLeftOffset = -(microMenuRightGap + microMenuOverlayWidth)
 
+	return microMenuOverlayTop, microMenuOverlayLeftOffset
+end
+
+-- Latency Bar's own real height and the gap between its frame and its trimmed overlay hitbox.
+local function MeasureLatencyBarOwnOverlay(self, buttonSize)
 	local latencyBarFrame = getglobal(self.LATENCY_BAR_FRAME_NAME)
 	local latencyBarOverlay = latencyBarFrame and latencyBarFrame.ACABOverlay
 	local latencyBarHeight = (latencyBarFrame and latencyBarFrame:GetHeight()) or (buttonSize * 0.5)
@@ -1833,6 +1830,26 @@ function ACAB:ApplyModernCornerClusterLayout()
 			latencyBarOverlayRightGap = frameRight - overlayRight
 		end
 	end
+
+	return latencyBarHeight, latencyBarOverlayBottomGap, latencyBarOverlayRightGap
+end
+
+-- Modern Layout's bottom-right corner cluster: Bag Bar flush in the corner, Micro Menu stacked on top
+-- of it, Key Ring to Bag Bar's left, Latency Bar to Micro Menu's left (top-aligned). Used by the Setup
+-- Wizard's Modern Layout choice to set up all 4 together - each element's own "Reset to Modern Layout
+-- Default" button instead calls its own ApplyModernSingle* below, so resetting one never moves the
+-- others. Every gap is flush (0), reading each container's real live GetWidth()/GetHeight().
+function ACAB:ApplyModernCornerClusterLayout()
+	self:EnsureDB()
+
+	local buttonSize, spacing = self:GetModernLayoutSizing()
+
+	-- Every measurement below reads each element's CURRENT container/overlay, before writing any new
+	-- position - measuring right after an ApplyXPosition() call can read a just-recreated overlay before
+	-- its geometry has settled on this client.
+	local bagBarWidth, bagBarHeight = MeasureBagBarFootprint(self, buttonSize, spacing)
+	local microMenuOverlayTop, microMenuOverlayLeftOffset = MeasureMicroMenuStackAnchors(self, buttonSize, spacing, bagBarHeight)
+	local latencyBarHeight, latencyBarOverlayBottomGap, latencyBarOverlayRightGap = MeasureLatencyBarOwnOverlay(self, buttonSize)
 
 	-- All measurements taken - now write every target position and apply them in one final pass, so
 	-- nothing above ever reads a frame this same call already repositioned.
@@ -1864,6 +1881,63 @@ function ACAB:ApplyModernCornerClusterLayout()
 	self:ApplyBagBarPosition()
 	self:ApplyKeyRingPosition()
 	self:ApplyMicroMenuPosition()
+	self:ApplyLatencyBarPosition()
+end
+
+-- Settings.lua's Bag Bar page "Reset to Modern Layout Default" button - Bag Bar and Key Ring only
+-- (Key Ring has no settings page of its own), independent of Micro Menu/Latency Bar.
+function ACAB:ApplyModernSingleBagBar()
+	self:EnsureDB()
+
+	local buttonSize, spacing = self:GetModernLayoutSizing()
+	local bagBarWidth = MeasureBagBarFootprint(self, buttonSize, spacing)
+
+	ACABDB.bagBarPosition = {
+		point = "BOTTOMRIGHT", relativePoint = "BOTTOMRIGHT",
+		x = 0, y = 0,
+	}
+
+	ACABDB.keyRingPosition = {
+		point = "BOTTOMRIGHT", relativePoint = "BOTTOMRIGHT",
+		x = -bagBarWidth, y = 0,
+	}
+
+	self:ApplyBagBarPosition()
+	self:ApplyKeyRingPosition()
+end
+
+-- Settings.lua's Micro Menu page "Reset to Modern Layout Default" button - stacks on Bag Bar's current
+-- real height without moving Bag Bar itself, independent of Latency Bar.
+function ACAB:ApplyModernSingleMicroMenu()
+	self:EnsureDB()
+
+	local buttonSize, spacing = self:GetModernLayoutSizing()
+	local _, bagBarHeight = MeasureBagBarFootprint(self, buttonSize, spacing)
+
+	ACABDB.microMenuPosition = {
+		point = "BOTTOMRIGHT", relativePoint = "BOTTOMRIGHT",
+		x = 0, y = bagBarHeight,
+	}
+
+	self:ApplyMicroMenuPosition()
+end
+
+-- Settings.lua's Latency Bar page "Reset to Modern Layout Default" button - stacks against Micro
+-- Menu's/Bag Bar's current real geometry without moving either, independent of them.
+function ACAB:ApplyModernSingleLatencyBar()
+	self:EnsureDB()
+
+	local buttonSize, spacing = self:GetModernLayoutSizing()
+	local _, bagBarHeight = MeasureBagBarFootprint(self, buttonSize, spacing)
+	local microMenuOverlayTop, microMenuOverlayLeftOffset = MeasureMicroMenuStackAnchors(self, buttonSize, spacing, bagBarHeight)
+	local latencyBarHeight, latencyBarOverlayBottomGap, latencyBarOverlayRightGap = MeasureLatencyBarOwnOverlay(self, buttonSize)
+
+	ACABDB.latencyBarPosition = {
+		point = "BOTTOMRIGHT", relativePoint = "BOTTOMRIGHT",
+		x = microMenuOverlayLeftOffset + latencyBarOverlayRightGap,
+		y = ((microMenuOverlayTop - latencyBarHeight) - latencyBarOverlayBottomGap) - 5,
+	}
+
 	self:ApplyLatencyBarPosition()
 end
 

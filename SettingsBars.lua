@@ -3056,12 +3056,8 @@ ACAB.simpleBarPageConfigs["bagbar"] = {
 			end
 		end
 	end,
-	-- Bag Bar/Key Ring/Micro Menu/Latency Bar all move together as one
-	-- coherent corner cluster (ACAB:ApplyModernCornerClusterLayout,
-	-- NativeElements.lua) - same shared function the Setup Wizard's
-	-- Modern Layout choice calls, so any of their 4 buttons always
-	-- recomputes the same result.
-	resetModern = function() ACAB:ApplyModernCornerClusterLayout() end,
+	-- Bag Bar and Key Ring only - Micro Menu/Latency Bar reset independently via their own buttons.
+	resetModern = function() ACAB:ApplyModernSingleBagBar() end,
 	getEnabled = function() return ACABDB.bagBarEnabled end,
 	setEnabled = function(v) ACAB:SetBagBarEnabled(v) end,
 	hasSpacing = true,
@@ -3133,8 +3129,7 @@ ACAB.simpleBarPageConfigs["latencybar"] = {
 	reset = function()
 		ACAB:ResetLatencyBarLayout()
 	end,
-	-- Same shared corner-cluster function Bag Bar's own resetModern above uses.
-	resetModern = function() ACAB:ApplyModernCornerClusterLayout() end,
+	resetModern = function() ACAB:ApplyModernSingleLatencyBar() end,
 	getEnabled = function() return ACABDB.latencyBarEnabled end,
 	setEnabled = function(v) ACAB:SetLatencyBarEnabled(v) end,
 	hasScale = true,
@@ -3233,8 +3228,7 @@ ACAB.simpleBarPageConfigs["micromenu"] = {
 		ACAB:ResetMicroMenuLayout()
 		ACAB:ResetMicroMenuPosition()
 	end,
-	-- Same shared corner-cluster function Bag Bar's own resetModern above uses.
-	resetModern = function() ACAB:ApplyModernCornerClusterLayout() end,
+	resetModern = function() ACAB:ApplyModernSingleMicroMenu() end,
 	getEnabled = function() return ACABDB.microMenuEnabled end,
 	setEnabled = function(v) ACAB:SetMicroMenuEnabled(v) end,
 	hasSpacing = true,
