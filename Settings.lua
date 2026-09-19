@@ -1,21 +1,12 @@
 -- Settings.lua
--- AlternativeClassicActionBars unified settings window: default bars (1-5), Extra Bars (6-9),
--- and native-frame "simple" pages (Stance/Bag/Micro Menu/Latency/Experience
--- Bar) share one bar list and a "Bars" view, plus a "General" view for
--- addon-wide settings. Every control is live: no pending/Apply state.
---
--- Per-bar editable settings (default bars 1-5, Extra Bars 6-9): x/y,
--- buttonSize, spacing, cols/rows (grid presets), buttonCount (Extra Bars
--- only), enabled (bars 2-5 and 6-9 only).
---
--- point/relativePoint and slotStart are not exposed in the UI.
---
--- Grid shape is one of 6 fixed presets (1x12, 2x6, 3x4, 4x3, 6x2, 12x1),
--- not free-form rows/cols sliders. Button size steps in 2px increments.
---
--- CreateSimpleBarPage builds the narrower simple-bar pages (Position plus
--- optional Enable/Spacing/Scale/Orientation/Reset). GetOrCreateGeneralPanel
--- builds the General tab of addon-wide toggles.
+-- Unified settings window: default bars (1-5), Extra Bars (6-9), and native-frame "simple" pages
+-- (Stance/Bag/Micro Menu/Latency/Experience Bar) share one bar list and a "Bars" view, plus a "General"
+-- view for addon-wide settings. Every control is live: no pending/Apply state.
+-- Per-bar editable settings (default bars 1-5, Extra Bars 6-9): x/y, buttonSize, spacing, cols/rows
+-- (grid presets), buttonCount (Extra Bars only), enabled (bars 2-5 and 6-9 only).
+-- point/relativePoint and slotStart are not exposed in the UI. Grid shape is one of 6 fixed presets
+-- (1x12, 2x6, 3x4, 4x3, 6x2, 12x1), not free-form rows/cols sliders. Button size steps in 2px increments.
+-- CreateSimpleBarPage builds the narrower simple-bar pages. GetOrCreateGeneralPanel builds the General tab.
 
 local ACAB = AlternativeClassicActionBars
 
@@ -27,20 +18,13 @@ ACAB.BUTTON_SIZE_MIN = 16
 ACAB.BUTTON_SIZE_MAX = 64
 ACAB.BUTTON_SIZE_STEP = 2
 
--- General tab's hotkey/count text font size sliders (Button.lua's
--- self.hotkey/self.count FontStrings).
+-- General tab's hotkey/count text font size sliders.
 ACAB.FONT_SIZE_MIN = 6
 ACAB.FONT_SIZE_MAX = 24
 ACAB.FONT_SIZE_STEP = 1
 
--- Clamps a saved/native font size into the sliders' fixed [MIN, MAX] range,
--- rounding via math.floor(value + 0.5) - a captured native default
--- (GetFont() off a real FontString) can come back with float imprecision
--- (e.g. 11.999999726451 instead of 12) on this client. Every display path
--- that shows a font size funnels it through here first.
---
--- A ACAB: method (not a file-local) since both Settings.lua's shell and
--- SettingsGeneral.lua's font-size sliders call it.
+-- Clamps a saved/native font size into the sliders' fixed [MIN, MAX] range, rounding via
+-- math.floor(value + 0.5) - GetFont() can come back with float imprecision on this client.
 function ACAB:ClampFontSize(size)
 	if not size then
 		return ACAB.FONT_SIZE_MIN
@@ -64,38 +48,24 @@ ACAB.SPACING_MIN = 0
 ACAB.SPACING_MAX = 20
 ACAB.SPACING_STEP = 1
 
--- Real-to-displayed spacing offset for the per-bar (1-9) spacing slider
--- only - not the simple-bar sliders, and not the global-spacing slider
--- (which shows ACABDB.globalSpacingValue raw, un-offset; see Bar.lua's
--- ApplyGlobalSpacing). ACAB:ApplyGlobalButtonStyle (Bar.lua) converts the
--- real spacing value by this same offset on every style transition, so the
--- displayed number stays constant. Real values are only ever written at
--- the OnValueChanged/refresh boundary; the slider's on-screen value is
--- always in displayed space.
+-- Real-to-displayed spacing offset for the per-bar (1-9) spacing slider only - not the simple-bar
+-- sliders or the global-spacing slider. Real values are only ever written at the OnValueChanged/
+-- refresh boundary; the slider's on-screen value is always in displayed space.
 function ACAB:GetSpacingDisplayOffset()
 	return ACAB:IsVanillaBorderStyle() and ACAB.VANILLA_SPACING_FLOOR or 0
 end
--- Populated later in this file (CreateSimpleBarPage) once
--- ACAB:SetStanceBarPosition/SetBagBarPosition/etc. (DefaultBars.lua) exist.
--- A ACAB field (not a file-local) since both Settings.lua's own
--- RefreshSimplePositionSliderRange and SettingsBars.lua's page builders
--- need to read/write it regardless of file/definition order.
+-- Populated later in this file (CreateSimpleBarPage). A ACAB field since both this file and
+-- SettingsBars.lua's page builders need to read/write it regardless of file/definition order.
 ACAB.simpleBarPageConfigs = {}
 
--- Layout indent constants, used instead of scattering magic numbers
--- through every page-building call below.
+-- Layout indent constants, used instead of scattering magic numbers through every page-building call.
 ACAB.INDENT_SECTION = 18
 ACAB.INDENT_CONTROL = 22
 ACAB.INDENT_INPUT   = 85
 
--- Defers `fn` to the next frame via C_Timer.After(0, ...), falling back to
--- calling fn immediately if C_Timer isn't available. Wraps every Fit*View
--- call below: GetBottom() on a panel just Show()'n/populated this same
--- tick has not resolved to real values yet, so measuring must wait one
--- frame.
---
--- A ACAB: method (not a file-local) since SettingsBars.lua/SettingsGeneral.lua
--- call it too, not just this file's own Fit*View functions.
+-- Defers `fn` to the next frame via C_Timer.After(0, ...), falling back to calling fn immediately if
+-- C_Timer isn't available. Wraps every Fit*View call: GetBottom() on a panel just Show()'n/populated
+-- this same tick has not resolved to real values yet.
 function ACAB:DeferFit(fn)
 	if C_Timer and C_Timer.After then
 		C_Timer.After(0, fn)
@@ -104,21 +74,16 @@ function ACAB:DeferFit(fn)
 	end
 end
 
--- Width reserved for each content viewport's scrollbar (anchored just
--- outside the scrollframe's right edge), reserved unconditionally so
--- nothing reflows when scrolling toggles on/off. Shared by
--- CreateSettingsFrame and ACAB:CreateWideContentScrollFrame.
+-- Width reserved for each content viewport's scrollbar, reserved unconditionally so nothing reflows
+-- when scrolling toggles on/off.
 local SETTINGS_SCROLLBAR_RESERVED_WIDTH = 28
 
--- Fixed vertical band reserved for the Default-profile-lock warning banner
--- (CreateProfileLockWarning), anchored under each page's title, above its
--- first control. Reserved unconditionally so nothing reflows when the
--- banner toggles.
+-- Fixed vertical band reserved for the Default-profile-lock warning banner, reserved unconditionally
+-- so nothing reflows when the banner toggles.
 local PROFILE_LOCK_BANNER_TOP = -34
 
--- Safety-margin reserve for the longer of the two lock messages, wrapped
--- at the narrowest page width the banner appears at. Real height is still
--- recomputed dynamically from wrapped text (ACAB:ApplyProfileLockGating).
+-- Safety-margin reserve for the longer lock message, wrapped at the narrowest page width the banner
+-- appears at. Real height is still recomputed dynamically from wrapped text.
 local PROFILE_LOCK_BANNER_HEIGHT = 56
 -------------------------------------------------------------------------
 -- Basic helpers
@@ -132,15 +97,13 @@ local function SettingsFrame_OnDragStop()
 	this:StopMovingOrSizing()
 end
 
--- A ACAB: method (not a file-local) since Settings.lua's own
--- RefreshPositionSliderRange and SettingsBars.lua's page builders both call it.
+-- A ACAB: method since Settings.lua's own RefreshPositionSliderRange and SettingsBars.lua's page
+-- builders both call it.
 function ACAB:IsDefaultBarId(barId)
 	return ACAB:IsDefaultBarFamilyId(barId)
 end
 
--- Finds an Extra Bar's SavedVariables entry by ID, not array index -
--- ACABDB.bars is a plain array under the hood. A ACAB: method for the
--- same cross-file reason as IsDefaultBarId above.
+-- Finds an Extra Bar's SavedVariables entry by ID, not array index - ACABDB.bars is a plain array.
 function ACAB:FindCustomBarConfig(barId)
 	local i
 
@@ -155,8 +118,7 @@ function ACAB:FindCustomBarConfig(barId)
 	return nil
 end
 
--- Returns cfg, isDefault for any bar id (1-5 default, 6+ custom). A ACAB:
--- method for the same cross-file reason as IsDefaultBarId above.
+-- Returns cfg, isDefault for any bar id (1-5 default, 6+ custom).
 function ACAB:GetBarConfig(barId)
 	if ACAB:IsDefaultBarId(barId) then
 		return ACABDB.defaultBars[barId], true
@@ -166,20 +128,13 @@ function ACAB:GetBarConfig(barId)
 end
 -------------------------------------------------------------------------
 -- Screen coordinate ranges
---
--- Computed once per page build, not per-tick - the "Position (X: -1024 to
--- 1024)" caption is a static FontString set at build time.
+-- Computed once per page build, not per-tick - the "Position (X: -1024 to 1024)" caption is a static
+-- FontString set at build time.
 -------------------------------------------------------------------------
 
--- Elements anchor at various corners (TOPLEFT-TOPLEFT, CENTER-CENTER,
--- etc. - see ApplyBarPosition/DefaultBars.lua's per-frame anchors), so
--- depending on which corner pair a given element uses, its offset from
--- UIParent can need to span up to a full screen dimension just to reach
--- the opposite edge, plus some room to drag it fully off-screen in
--- either direction. Doubling UIParent's own size comfortably covers
--- every anchor-corner combination in use, with room to spare.
--- A ACAB: method (not a file-local) since SettingsBars.lua's simple-page
--- builder calls it too, not just this file's own position-range functions.
+-- Elements anchor at various corners, so a given element's offset from UIParent can need to span up to
+-- a full screen dimension to reach the opposite edge, plus room to drag it fully off-screen. Doubling
+-- UIParent's own size comfortably covers every anchor-corner combination in use.
 function ACAB:GetScreenCoordinateRange()
 	local width = UIParent:GetWidth()
 	local height = UIParent:GetHeight()
@@ -197,17 +152,12 @@ end
 
 -------------------------------------------------------------------------
 -- Action-bar-specific X/Y position clamp range
---
--- Computed per-bar (depends on buttonSize/buttonCount/border style), kept
--- live via RefreshPositionSliderRange below. Bars anchor TOPLEFT-to-
--- UIParent's BOTTOMLEFT (Core.lua), y=0 at the screen bottom, increasing
--- upward.
---
--- WARNING: use GetScreenWidth()/GetScreenHeight() for the screen-bounds
--- terms, NOT UIParent:GetWidth()/GetHeight() - UIParent has a non-1
--- self-scale, so its own GetWidth()/GetHeight() undershoots the real
--- screen edges; GetRight()/GetTop() (which equal GetScreenWidth()/
--- GetScreenHeight()) are the correct reference.
+-- Computed per-bar (depends on buttonSize/buttonCount/border style), kept live via
+-- RefreshPositionSliderRange below. Bars anchor TOPLEFT-to-UIParent's BOTTOMLEFT, y=0 at the screen
+-- bottom, increasing upward.
+-- WARNING: use GetScreenWidth()/GetScreenHeight() for the screen-bounds terms, not
+-- UIParent:GetWidth()/GetHeight() - UIParent has a non-1 self-scale, so its own GetWidth()/GetHeight()
+-- undershoots the real screen edges.
 --
 -- xMin = 0
 -- xMax = GetScreenWidth() - barWidth - borderSize
@@ -222,11 +172,8 @@ local function GetActionBarBorderSize()
 	return ACAB:IsVanillaBorderStyle() and 4 or 1
 end
 
--- A ACAB: method (not a file-local) since SettingsBars.lua's bar-page
--- builder calls it too, not just this file's own RefreshPositionSliderRange.
 function ACAB:GetActionBarCoordinateRange(cfg)
-	-- See the coordinate-range comment above: screen bounds come from
-	-- GetScreenWidth()/GetScreenHeight(), not UIParent:GetWidth()/GetHeight().
+	-- Screen bounds come from GetScreenWidth()/GetScreenHeight(), not UIParent:GetWidth()/GetHeight().
 	local screenWidthUnits = GetScreenWidth()
 	local screenHeightUnits = GetScreenHeight()
 
@@ -244,10 +191,8 @@ function ACAB:GetActionBarCoordinateRange(cfg)
 	local spacing = (cfg and cfg.spacing) or 0
 	local borderSize = GetActionBarBorderSize()
 
-	-- Pet Bar condense: Bar.lua's LayoutButtons compacts filled slots into
-	-- cfg.cols-wide rows instead of reserving every one of the 10 pool
-	-- slots' own cell - the on-screen footprint shrinks to match, so the
-	-- clamp range must be computed from that same effective shape or the
+	-- Pet Bar condense: Bar.lua's LayoutButtons compacts filled slots into cfg.cols-wide rows instead
+	-- of reserving every one of the 10 pool slots' own cell - the clamp range must match that shape or the
 	-- bar can never reach screen edges the full uncondensed grid blocked.
 	if cfg and cfg.isPetBar and ACAB:ShouldCondensePetBarSlots() then
 		local filled = ACAB:GetPetBarFilledSlotCount()
@@ -266,11 +211,34 @@ function ACAB:GetActionBarCoordinateRange(cfg)
 	local barWidth = (cols * buttonSize) + ((cols - 1) * spacing)
 	local barHeight = (rows * buttonSize) + ((rows - 1) * spacing)
 
-	local minX = 0
-	local maxX = screenWidthUnits - barWidth - borderSize
+	local minX, maxX
 
-	local minY = barHeight + borderSize
-	local maxY = screenHeightUnits
+	-- Modern Layout's Right Action Bar 1 (id 4) anchors BOTTOMRIGHT (flush
+	-- to the screen's right edge) instead of every other bar's BOTTOMLEFT -
+	-- mirror the range the same way GetSimpleElementCoordinateRange does
+	-- for the corner cluster, or this slider reads cfg.x's BOTTOMRIGHT
+	-- convention (0 at the right edge, negative moving left) as if it were
+	-- BOTTOMLEFT and clamps it up to 0.
+	if ACAB:IsRightAnchoredPoint(cfg and cfg.point) then
+		minX = -(screenWidthUnits - barWidth - borderSize)
+		maxX = 0
+	else
+		minX = 0
+		maxX = screenWidthUnits - barWidth - borderSize
+	end
+
+	local minY, maxY
+
+	-- Same BOTTOM-anchor mirroring as the X check above - Right Action
+	-- Bar 1/2 use BOTTOMRIGHT/BOTTOMLEFT under Modern Layout, where y is
+	-- the bar's own bottom edge instead of its top edge.
+	if ACAB:IsBottomAnchoredPoint(cfg and cfg.point) then
+		minY = borderSize
+		maxY = screenHeightUnits - barHeight
+	else
+		minY = barHeight + borderSize
+		maxY = screenHeightUnits
+	end
 
 	-- Never feed SetMinMaxValues a backwards span (max < min) if an
 	-- oversized bar/border combination would otherwise invert it.
@@ -285,12 +253,8 @@ function ACAB:GetActionBarCoordinateRange(cfg)
 	return minX, maxX, minY, maxY
 end
 
--- Recomputes and re-applies an action-bar page's X/Y slider clamp range
--- from its CURRENT buttonSize/buttonCount/cols/rows and border style -
--- call whenever any of those change live (button size drag, button
--- count stepper, grid preset pick), since GetActionBarCoordinateRange
--- depends on them. Also re-clamps the current value, in case a
--- shrinking range no longer contains it.
+-- Recomputes and re-applies an action-bar page's X/Y slider clamp range from its current
+-- buttonSize/buttonCount/cols/rows and border style. Also re-clamps the current value.
 function ACAB:RefreshPositionSliderRange(page)
 	if not page or not page.xSlider or not page.ySlider or not page.barId then
 		return
@@ -324,30 +288,33 @@ function ACAB:RefreshPositionSliderRange(page)
 end
 
 -------------------------------------------------------------------------
--- Native/simple-element X/Y position clamp range (Bag Bar, Micro Menu,
--- Stance/Pet Bar native mode, Experience Bar, Cast Bar - NOT Latency Bar,
--- whose overlay hitbox is currently oversized relative to its visual
+-- Native/simple-element X/Y position clamp range (Bag Bar, Micro Menu, Stance/Pet Bar native mode,
+-- Experience Bar, Cast Bar - not Latency Bar, whose overlay hitbox is oversized relative to its visual
 -- footprint, a separate known issue).
---
--- Unlike action bars, these elements' footprint isn't formula-derived
--- (native frames, or chain-anchored containers) - read the real rendered
--- size instead, via each element's `.ACABOverlay` (EnsureContainerOverlay,
--- DefaultBars.lua), which tracks the trimmed real visual footprint.
---
+-- Unlike action bars, these elements' footprint isn't formula-derived - read the real rendered size via
+-- each element's `.ACABOverlay`, which tracks the trimmed real visual footprint.
 -- WARNING - two things action bars don't need:
--- 1. Hit-rect padding: frame:GetWidth()/GetHeight() can exceed the real
---    drawn size - prefer the overlay for measurement, not the raw frame.
--- 2. Scale: these elements call :SetScale() directly, so pos.x/y are in
---    pre-scale unit space - divide by scale to compare against
---    screenWidth/frameWidth: x <= (screenWidth - frameWidth)/scale.
---
--- extraMaxYPixels (optional): extra real screen pixels of headroom
--- (GetPixelStep()) added before the scale division.
+-- 1. Hit-rect padding: frame:GetWidth()/GetHeight() can exceed the real drawn size - prefer the overlay.
+-- 2. Scale: these elements call :SetScale() directly, so pos.x/y are in pre-scale unit space - divide
+--    by scale to compare against screenWidth/frameWidth.
+-- extraMaxYPixels (optional): extra real screen pixels of headroom added before the scale division.
 -------------------------------------------------------------------------
 
--- A ACAB: method (not a file-local) since SettingsBars.lua's simple-page
--- builder calls it too, not just this file's own RefreshSimplePositionSliderRange.
-function ACAB:GetSimpleElementCoordinateRange(frame, extraMaxYPixels)
+-- True for any point string anchored to the screen's right/bottom edge - Modern Layout's corner cluster
+-- stores position this way (BOTTOMRIGHT), x=0/y=0 flush against that edge and more negative moving away
+-- from it, the mirror image of the BOTTOMLEFT/TOPLEFT convention every X/Y position slider otherwise assumes.
+function ACAB:IsRightAnchoredPoint(point)
+	return point ~= nil and string.find(point, "RIGHT") ~= nil
+end
+
+function ACAB:IsBottomAnchoredPoint(point)
+	return point ~= nil and string.find(point, "BOTTOM") ~= nil
+end
+
+-- isRightAnchored/isBottomAnchored (optional): mirror minX/maxX and minY/maxY respectively for an
+-- element whose stored point anchors to the screen's right and/or bottom edge (0 at that edge, negative
+-- moving away from it) instead of the default TOPLEFT convention every other element uses.
+function ACAB:GetSimpleElementCoordinateRange(frame, extraMaxYPixels, isRightAnchored, isBottomAnchored)
 	local screenWidthUnits = GetScreenWidth()
 	local screenHeightUnits = GetScreenHeight()
 
@@ -359,11 +326,10 @@ function ACAB:GetSimpleElementCoordinateRange(frame, extraMaxYPixels)
 		screenHeightUnits = 768
 	end
 
-	-- frame:GetWidth()/GetHeight() are scale-independent; multiply by the
-	-- container's own scale for the same space frame:GetLeft()*scale uses.
-	-- WARNING: don't use the overlay's GetWidth()/GetHeight() as the base
-	-- size - it measures smaller than the true footprint once scale isn't
-	-- 1. The overlay is only used below for the inset correction.
+	-- frame:GetWidth()/GetHeight() are scale-independent; multiply by the container's own scale for
+	-- the same space frame:GetLeft()*scale uses.
+	-- WARNING: don't use the overlay's GetWidth()/GetHeight() as the base size - it measures smaller
+	-- than the true footprint once scale isn't 1. The overlay is only used below for the inset correction.
 	local overlay = frame and frame.ACABOverlay
 
 	local scale = (frame and frame:GetScale()) or 1
@@ -372,21 +338,13 @@ function ACAB:GetSimpleElementCoordinateRange(frame, extraMaxYPixels)
 		scale = 1
 	end
 
-	-- Some elements' overlay is trimmed inward from the container's own raw
-	-- anchor corner (e.g. Micro Menu's grid overlay, Latency Bar's own
-	-- ACAB.LATENCY_BAR_OVERLAY_INSET) - left/right and top/bottom trims are
-	-- tracked independently since they aren't always symmetric. Measured
-	-- directly below (container-vs-overlay offset) rather than hardcoded,
-	-- so it stays correct for any element/inset; 0 when the overlay is a
-	-- plain SetAllPoints(container) with no trim.
+	-- Some elements' overlay is trimmed inward from the container's own raw anchor corner - measured
+	-- directly below (container-vs-overlay offset) rather than hardcoded, 0 when there's no trim.
 	local leftInset, rightInset, topInset, bottomInset = 0, 0, 0, 0
 
 	if overlay and frame then
-		-- frame:GetLeft()/GetTop() are in the container's own local unit
-		-- system (scaled by its own SetScale); the overlay's scale is
-		-- always 1. Multiply the container's edge by its own scale before
-		-- diffing against the overlay's edge, or the inset picks up a
-		-- scale-dependent error.
+		-- frame:GetLeft()/GetTop() are in the container's own local unit system; the overlay's scale
+		-- is always 1 - multiply the container's edge by its own scale before diffing against the overlay's.
 		local containerLeft = frame:GetLeft()
 		local overlayLeft = overlay:GetLeft()
 		local containerRight = frame:GetRight()
@@ -419,8 +377,7 @@ function ACAB:GetSimpleElementCoordinateRange(frame, extraMaxYPixels)
 		extraY = extraMaxYPixels * ACAB:GetPixelStep()
 	end
 
-	-- frameWidth/frameHeight convert the container's raw size into the same
-	-- space as the insets above.
+	-- frameWidth/frameHeight convert the container's raw size into the same space as the insets above.
 	-- Real right edge: (x*scale) + frameWidth*scale - rightInset <= screenWidth
 	--   => x <= (screenWidth + rightInset)/scale - frameWidth
 	-- Real top edge:   (x*scale) - topInset <= screenHeight + extra
@@ -430,11 +387,30 @@ function ACAB:GetSimpleElementCoordinateRange(frame, extraMaxYPixels)
 	local frameWidth = (frame and frame:GetWidth()) or 0
 	local frameHeight = (frame and frame:GetHeight()) or 0
 
-	local minX = 0
-	local maxX = (screenWidthUnits + rightInset) / scale - frameWidth
+	local minX, maxX
 
-	local minY = frameHeight - bottomInset / scale
-	local maxY = (screenHeightUnits + extraY + topInset) / scale
+	if isRightAnchored then
+		-- Mirror image of the LEFT-anchored formula below: 0 flush at the right edge, negative moving
+		-- left - leftInset/rightInset swap roles since "distance from the right edge" reads from the opposite side.
+		minX = -((screenWidthUnits + leftInset) / scale - frameWidth)
+		maxX = 0
+	else
+		minX = 0
+		maxX = (screenWidthUnits + rightInset) / scale - frameWidth
+	end
+
+	local minY, maxY
+
+	if isBottomAnchored then
+		-- Mirror image of the TOP-anchored formula above: y is the frame's own bottom edge (0 flush at
+		-- the screen's bottom) instead of its top edge - topInset/bottomInset swap roles the same way
+		-- leftInset/rightInset do for isRightAnchored above.
+		minY = -bottomInset / scale
+		maxY = (screenHeightUnits + extraY + topInset) / scale - frameHeight
+	else
+		minY = frameHeight - bottomInset / scale
+		maxY = (screenHeightUnits + extraY + topInset) / scale
+	end
 
 	if maxX < minX then
 		maxX = minX
@@ -451,13 +427,9 @@ function ACAB:GetSimpleElementCoordinateRange(frame, extraMaxYPixels)
 	return minX, maxX, minY, maxY
 end
 
--- Recomputes and re-applies a simple-page element's X/Y slider clamp
--- range from its CURRENT rendered size - call whenever anything that
--- can change that size happens live (scale drag, spacing drag, grid
--- preset pick). No-ops for pages without config.getElementFrame (i.e.
--- Latency Bar, deliberately left on the generic screen-relative range).
--- Also re-clamps the current value, in case a shrinking range no longer
--- contains it.
+-- Recomputes and re-applies a simple-page element's X/Y slider clamp range from its current rendered
+-- size. No-ops for pages without config.getElementFrame (Latency Bar, deliberately left on the generic
+-- screen-relative range). Also re-clamps the current value.
 function ACAB:RefreshSimplePositionSliderRange(page, key)
 	if not page or not page.xSlider or not page.ySlider then
 		return
@@ -475,7 +447,10 @@ function ACAB:RefreshSimplePositionSliderRange(page, key)
 		return
 	end
 
-	local minX, maxX, minY, maxY = ACAB:GetSimpleElementCoordinateRange(frame, config.extraMaxYPixels)
+	local pos = config.getPosition and config.getPosition()
+	local isRightAnchored = ACAB:IsRightAnchoredPoint(pos and pos.point)
+	local isBottomAnchored = ACAB:IsBottomAnchoredPoint(pos and pos.point)
+	local minX, maxX, minY, maxY = ACAB:GetSimpleElementCoordinateRange(frame, config.extraMaxYPixels, isRightAnchored, isBottomAnchored)
 
 	page.xSlider:SetMinMaxValues(minX, maxX)
 	page.ySlider:SetMinMaxValues(minY, maxY)
@@ -497,23 +472,17 @@ function ACAB:RefreshSimplePositionSliderRange(page, key)
 end
 -------------------------------------------------------------------------
 -- Reusable scrollable content area
---
--- One generic ScrollFrame + wiring helper backs every settings page/tab
--- (bar pages via contentPanel, General tab, Profiles tab), so any page
--- that grows past its available height gets scrolling with zero
--- page-specific code.
+-- One generic ScrollFrame + wiring helper backs every settings page/tab, so any page that grows past
+-- its available height gets scrolling with zero page-specific code.
 -------------------------------------------------------------------------
 
 -- How far one mouse-wheel notch moves the scrollbar, in pixels.
 local SETTINGS_SCROLL_WHEEL_STEP = 30
 
--- Creates a native ScrollFrame (UIPanelScrollFrameTemplate) parented to
--- `parent`, with mouse-wheel scrolling wired in. Content should be
--- parented into whatever scrollchild ACAB:UpdateScrollFrame is later given
--- for it (via scrollFrame:SetScrollChild), not into scrollFrame itself.
--- scrollbarOnLeft (optional): re-anchors the scrollbar to the LEFT side
--- instead of UIPanelScrollBarTemplate's default RIGHT side, for callers
--- like the bar-list sidebar.
+-- Creates a native ScrollFrame parented to `parent`, with mouse-wheel scrolling wired in. Content
+-- should be parented into whatever scrollchild ACAB:UpdateScrollFrame is later given (via
+-- scrollFrame:SetScrollChild), not into scrollFrame itself.
+-- scrollbarOnLeft (optional): re-anchors the scrollbar to the LEFT side instead of the default RIGHT.
 function ACAB:CreateScrollFrame(parent, name, scrollbarOnLeft)
 	local scrollFrame = CreateFrame("ScrollFrame", name, parent, "UIPanelScrollFrameTemplate")
 
@@ -521,10 +490,8 @@ function ACAB:CreateScrollFrame(parent, name, scrollbarOnLeft)
 
 	scrollFrame.scrollBar = scrollBar
 
-	-- Overrides the template's native OnScrollRangeChanged (which would
-	-- show/hide the scrollbar from its own internal range calc) to a no-op,
-	-- making ACAB:UpdateScrollFrame the single source of truth for scrollbar
-	-- visibility.
+	-- Overrides the template's native OnScrollRangeChanged to a no-op, making ACAB:UpdateScrollFrame
+	-- the single source of truth for scrollbar visibility.
 	scrollFrame:SetScript("OnScrollRangeChanged", function() end)
 
 	if scrollBar and scrollbarOnLeft then
@@ -624,10 +591,8 @@ function ACAB:UpdateScrollFrame(scrollFrame, scrollChild, requiredContentHeight,
 			scrollBar:Hide()
 		end
 
-		-- Each scrollframe that cares supplies its own re-layout callback at
-		-- creation time (CreateSettingsFrame's ApplyBarsViewScrollbarReserves,
-		-- ACAB:CreateWideContentScrollFrame) to hand the space a hidden
-		-- scrollbar would have occupied back to the content.
+		-- Each scrollframe that cares supplies its own re-layout callback at creation time, to hand the
+		-- space a hidden scrollbar would have occupied back to the content.
 		scrollFrame.needsScrollbar = maxScroll > 0
 
 		if scrollFrame.applyScrollbarReserve then
@@ -637,10 +602,8 @@ function ACAB:UpdateScrollFrame(scrollFrame, scrollChild, requiredContentHeight,
 	end
 end
 
--- Lets other files (DefaultBars.lua's native-checkbox reconciliation)
--- check whether the settings window has been built this session without
--- forcing it into existence, unlike the ACAB:GetOrCreate*/RefreshBarList
--- functions, which create it lazily.
+-- Lets other files check whether the settings window has been built this session without forcing it
+-- into existence, unlike the ACAB:GetOrCreate*/RefreshBarList functions, which create it lazily.
 function ACAB:IsSettingsFrameCreated()
 	return ACAB.settingsFrame ~= nil
 end
@@ -649,8 +612,7 @@ end
 -- Create main settings frame
 -------------------------------------------------------------------------
 
--- A ACAB: method (not a file-local) since every GetOrCreate*Page/Panel
--- builder across all three settings files lazily creates the shell
+-- Every GetOrCreate*Page/Panel builder across all three settings files lazily creates the shell
 -- through this same entry point.
 function ACAB:CreateSettingsFrame()
 	local f = CreateFrame(
@@ -749,35 +711,27 @@ function ACAB:CreateSettingsFrame()
 
 	-------------------------------------------------------------------------
 	-- Top-level view tabs ("Bars" / "General" / "Profiles")
-	--
-	-- ShowBarsView/ShowGeneralView/ShowProfilesView own which panel is
-	-- shown, mirroring the show/hide-one-page-at-a-time pattern
-	-- GetOrCreateBarPage/ShowBarPage use for individual bar pages.
+	-- ShowBarsView/ShowGeneralView/ShowProfilesView own which panel is shown, mirroring the
+	-- show/hide-one-page-at-a-time pattern GetOrCreateBarPage/ShowBarPage use for individual bar pages.
 	-------------------------------------------------------------------------
 
 	f.currentView = "bars"
 
-	-- Top nav tabs get a fading gold highlight (ACAB:CreateFadeStrip,
-	-- UIWidgets.lua) instead of ACAB:StyleModernButton's default solid
-	-- border swap; every other StyleModernButton call site keeps the
-	-- default border-swap hover look.
-	-- Matches ACAB:StyleModernButton's backdrop insets (3px each side) so
-	-- the fade strip stays inside the button's black backdrop rectangle.
+	-- Top nav tabs get a fading gold highlight instead of ACAB:StyleModernButton's default solid
+	-- border swap. Matches StyleModernButton's backdrop insets (3px each side) so the fade strip stays
+	-- inside the button's black backdrop rectangle.
 	local TAB_FADE_INSET = 3
 
-	-- StyleModernButton's rest-state border color, used as the tab's
-	-- "inactive" border color since tabs keep a real border for visual
-	-- distinctness (unlike bar-list rows).
+	-- StyleModernButton's rest-state border color, used as the tab's "inactive" border color since tabs
+	-- keep a real border for visual distinctness.
 	local TAB_BORDER_REST_COLOR = { 0.55, 0.55, 0.55 }
 
 	local function ApplyTabFadeHighlight(button)
 		local stripWidth = 90 - (TAB_FADE_INSET * 2)
 		local stripHeight = 20 - (TAB_FADE_INSET * 2)
 
-		-- Persistent highlight for whichever tab matches the currently open
-		-- view (ACAB.settingsFrame.currentView; see ACAB:RefreshActiveTabHighlight),
-		-- same gold ACAB.UI_ACCENT_COLOR as the bar-list sidebar's selected
-		-- row. Created first so hoverStrip draws on top of it.
+		-- Persistent highlight for whichever tab matches the currently open view, same gold
+		-- UI_ACCENT_COLOR as the bar-list sidebar's selected row. Created first so hoverStrip draws on top.
 		local selectStrip = ACAB:CreateFadeStrip(button, stripWidth, stripHeight)
 
 		selectStrip:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", TAB_FADE_INSET, TAB_FADE_INSET)
@@ -787,8 +741,7 @@ function ACAB:CreateSettingsFrame()
 
 		button.tabSelectStrip = selectStrip
 
-		-- Hover uses the neutral ACAB.UI_HOVER_COLOR, matching the bar-list
-		-- sidebar's hover/select color split (white hover, gold select) so
+		-- Hover uses the neutral UI_HOVER_COLOR, matching the bar-list sidebar's hover/select split so
 		-- "hovering" and "currently open" stay distinguishable.
 		local hoverStrip = ACAB:CreateFadeStrip(button, stripWidth, stripHeight)
 
@@ -799,8 +752,7 @@ function ACAB:CreateSettingsFrame()
 
 		button.isHovering = false
 
-		-- Border color tracks whichever fade is most prominent: hover wins
-		-- over select, select wins over rest.
+		-- Border color tracks whichever fade is most prominent: hover wins over select, select wins over rest.
 		function button:UpdateFadeBorderColor()
 			if self.isHovering then
 				self:SetBackdropBorderColor(ACAB.UI_HOVER_COLOR[1], ACAB.UI_HOVER_COLOR[2], ACAB.UI_HOVER_COLOR[3], 1)
@@ -813,8 +765,7 @@ function ACAB:CreateSettingsFrame()
 
 		button:UpdateFadeBorderColor()
 
-		-- Replaces the OnEnter/OnLeave StyleModernButton installed;
-		-- OnMouseDown/OnMouseUp (press-nudge) are untouched.
+		-- Replaces the OnEnter/OnLeave StyleModernButton installed; OnMouseDown/OnMouseUp are untouched.
 		button:SetScript("OnEnter", function()
 			this.isHovering = true
 			hoverStrip:Show()
@@ -943,16 +894,14 @@ function ACAB:CreateSettingsFrame()
 		editmode = tabEditModeButton,
 	}
 
-	-- Matches f.currentView's initial value ("bars"); set manually here
-	-- since ACAB.settingsFrame isn't assigned yet for ACAB:RefreshActiveTabHighlight
-	-- to use.
+	-- Matches f.currentView's initial value ("bars"); set manually since ACAB.settingsFrame isn't
+	-- assigned yet for RefreshActiveTabHighlight to use.
 	tabBarsButton.tabSelectStrip:Show()
 	tabBarsButton:UpdateFadeBorderColor()
 
 	-------------------------------------------------------------------------
-	-- Divider between the tab row and the content below it. Two-point
-	-- SetPoint (TOPLEFT+TOPRIGHT, no fixed width) so it stretches to match
-	-- the window's width regardless of which view resized it.
+	-- Divider between the tab row and the content below it. Two-point SetPoint (no fixed width) so it
+	-- stretches to match the window's width regardless of which view resized it.
 	-------------------------------------------------------------------------
 
 	local tabContentDivider = f:CreateTexture(nil, "ARTWORK")
@@ -968,22 +917,17 @@ function ACAB:CreateSettingsFrame()
 	-- Left bar list
 	-------------------------------------------------------------------------
 
-	-- f.listPanel is the fixed viewport (visible bounds + border +
-	-- scrollbar), same shape as contentScrollFrame below. f.listContent is
-	-- its permanent scroll child that bar-list rows/divider get
-	-- parented/anchored into (ACAB:RefreshBarList), sized to the full
-	-- row-list height so ACAB:UpdateScrollFrame can turn scrolling on
-	-- whenever the list has more rows than the window has room for.
+	-- f.listPanel is the fixed viewport, same shape as contentScrollFrame below. f.listContent is its
+	-- permanent scroll child that bar-list rows/divider get parented into, sized to the full row-list
+	-- height so ACAB:UpdateScrollFrame can turn scrolling on when needed.
 	f.listPanel = ACAB:CreateScrollFrame(f, "ACABSettingsListScrollFrame", true)
 
 	f.listPanel:SetWidth(140)
 	f.listPanel:SetHeight(610)
 
-	-- Positioned by ApplyBarsViewScrollbarReserves (below): reserves
-	-- scrollbar space only while that scrollbar is actually shown.
+	-- Positioned by ApplyBarsViewScrollbarReserves (below): reserves scrollbar space only while shown.
 
-	-- Same backdrop as contentScrollFrame below, so the row list reads as
-	-- one bordered/divided container.
+	-- Same backdrop as contentScrollFrame below, so the row list reads as one bordered/divided container.
 	f.listPanel:SetBackdrop({
 		bgFile   = "Interface\\Tooltips\\UI-Tooltip-Background",
 		edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -1008,8 +952,8 @@ function ACAB:CreateSettingsFrame()
 	f.barButtons = {}
 	f.barButtonsByBarId = {}
 
-	-- Lives on the viewport (f.listPanel), not the scrolling f.listContent
-	-- below, so it stays fixed at the top regardless of scroll position.
+	-- Lives on the viewport (f.listPanel), not the scrolling f.listContent below, so it stays fixed at
+	-- the top regardless of scroll position.
 	local listTitle = f.listPanel:CreateFontString(
 		nil,
 		"OVERLAY",
@@ -1028,23 +972,19 @@ function ACAB:CreateSettingsFrame()
 
 	f.listContent = CreateFrame("Frame", nil, f.listPanel)
 
-	-- SetWidth/SetHeight + SetScrollChild must be called immediately here,
-	-- not left until the first deferred Fit, or the list renders nothing
-	-- until the next-frame-deferred Fit finally runs.
+	-- SetWidth/SetHeight + SetScrollChild must be called immediately here, not left until the first
+	-- deferred Fit, or the list renders nothing until the next-frame-deferred Fit finally runs.
 	f.listContent:SetWidth(f.listPanel:GetWidth())
 	f.listContent:SetHeight(610)
 
 	f.listPanel:SetScrollChild(f.listContent)
 
 	-------------------------------------------------------------------------
-	-- Right content panel: contentScrollFrame is the fixed viewport for the
-	-- Bars view, contentPanel its scroll child (ACAB:UpdateScrollFrame
-	-- resizes it to fit the showing bar page). General/Profiles get their
-	-- own pair (ACAB:CreateWideContentScrollFrame) instead of sharing this.
-	--
-	-- WARNING: a scrollframe must stay permanently paired with the
-	-- scrollchild it was created with - never re-target it at a different
-	-- frame, or that frame renders with no resolvable position/size.
+	-- Right content panel: contentScrollFrame is the fixed viewport for the Bars view, contentPanel its
+	-- scroll child (ACAB:UpdateScrollFrame resizes it to fit the showing bar page). General/Profiles
+	-- get their own pair (ACAB:CreateWideContentScrollFrame) instead of sharing this.
+	-- WARNING: a scrollframe must stay permanently paired with the scrollchild it was created with -
+	-- never re-target it at a different frame, or that frame renders with no resolvable position/size.
 	-------------------------------------------------------------------------
 
 	f.contentScrollFrame = ACAB:CreateScrollFrame(f, "ACABSettingsContentScrollFrame")
@@ -1052,10 +992,8 @@ function ACAB:CreateSettingsFrame()
 	f.contentScrollFrame:SetHeight(610)
 
 	-------------------------------------------------------------------------
-	-- Bars-view horizontal geometry: both panels' widths/anchors are
-	-- recomputed from whichever scrollbars are currently shown, so an
-	-- unscrolled panel gets that space back. listPanel's scrollbar sits on
-	-- its left, contentScrollFrame's on its right - one function owns both.
+	-- Bars-view horizontal geometry: both panels' widths/anchors are recomputed from whichever
+	-- scrollbars are currently shown, so an unscrolled panel gets that space back.
 	-------------------------------------------------------------------------
 
 	local BARS_VIEW_PADDING = 18
@@ -1085,8 +1023,7 @@ function ACAB:CreateSettingsFrame()
 			BARS_VIEW_TOP
 		)
 
-		-- Anchored by TOPRIGHT, so its width is what sets its LEFT edge -
-		-- i.e. the gap to the bar list beside it.
+		-- Anchored by TOPRIGHT, so its width is what sets its left edge (the gap to the bar list beside it).
 		f.contentScrollFrame:SetWidth(
 			f:GetWidth()
 				- (2 * BARS_VIEW_PADDING)
@@ -1141,26 +1078,17 @@ function ACAB:CreateSettingsFrame()
 	return f
 end
 
--- Creates one scrollframe+scrollchild pair spanning the FULL content
--- width (the space the bar list would otherwise occupy, since it's
--- hidden in General/Profiles) - shared shape for GetOrCreateGeneralPanel/
--- GetOrCreateProfilesPanel below, each calling this once to build their
--- own independent pair (see CreateSettingsFrame's own comment on why each
--- view gets its own rather than sharing one). Returns scrollFrame,
--- scrollChild - caller stores both (e.g. ACAB.settingsFrame.generalScrollFrame/
--- generalPanel) and builds its real content into scrollChild.
+-- Creates one scrollframe+scrollchild pair spanning the full content width (the space the bar list
+-- would otherwise occupy, hidden in General/Profiles). Returns scrollFrame, scrollChild - caller
+-- stores both and builds its real content into scrollChild.
 function ACAB:CreateWideContentScrollFrame(name)
 	local scrollFrame = ACAB:CreateScrollFrame(ACAB.settingsFrame, name)
 
 	scrollFrame:SetHeight(610)
 
-	-- Must read ACAB.settingsFrame:GetWidth() (a fixed literal, SetWidth(780)
-	-- once in CreateSettingsFrame, never anchor-derived) rather than an
-	-- anchor-implied width - an anchor-implied width is not guaranteed
-	-- resolved yet the moment code right after this reads it back.
-	-- Only reserves room for its own scrollbar while that bar is actually
-	-- shown (ACAB:UpdateScrollFrame flips needsScrollbar and calls this back)
-	-- - an unscrolled panel gets the full width instead.
+	-- Must read ACAB.settingsFrame:GetWidth() (a fixed literal, never anchor-derived) rather than an
+	-- anchor-implied width, which isn't guaranteed resolved yet the moment code reads it back.
+	-- Only reserves room for its own scrollbar while shown - an unscrolled panel gets the full width.
 	scrollFrame.applyScrollbarReserve = function()
 		local reserve = scrollFrame.needsScrollbar and SETTINGS_SCROLLBAR_RESERVED_WIDTH or 0
 
@@ -1199,44 +1127,60 @@ function ACAB:CreateWideContentScrollFrame(name)
 	return scrollFrame, scrollChild
 end
 -------------------------------------------------------------------------
--- Default-PROFILE lock, distinct from ApplyDefaultLayoutGating below
--- (which gates the unrelated "Use Default Blizzard Layout" checkbox -
--- both gates are independent and can apply to the same controls at once).
--- The Default PROFILE must never be edited: every settings page shows a
--- red warning banner and locks its controls while it's active.
+-- Default-PROFILE lock, distinct from ApplyDefaultLayoutGating below (which gates the unrelated
+-- "Force Vanilla Layout Mode" checkbox - both gates are independent and can apply to the same controls
+-- at once). The Default PROFILE must never be edited: every settings page shows a red warning banner
+-- and locks its controls while it's active.
 -------------------------------------------------------------------------
 
--- Text shown while the Default PROFILE is active - takes priority over
--- the layout-lock text below if both conditions happen to be true at
--- once (the Default profile's own restriction is the broader one).
+-- Text shown while the Default PROFILE is active - takes priority over the layout-lock text below if
+-- both conditions are true at once (the Default profile's restriction is the broader one).
 local PROFILE_LOCK_MESSAGE_PROFILE =
 	"Editing Settings is prohibited while in default profile mode. " ..
-	"Go to Profile Settings and set up a profile if you wish to " ..
-	"change Settings or access Layout Edit Mode."
+	"Set up a profile if you wish to change Settings or access Layout " ..
+	"Edit Mode. |cffffd100Click to create one now.|r"
 
--- Text shown while "Use Default Blizzard Layout" (General tab) is on, on
--- pages that gate ONLY applies to (bar 1 and the simple/native-backed
--- pages - see ApplyDefaultLayoutGating's own header comment).
+-- Text shown while "Force Vanilla Layout Mode" (General tab) is on, on pages that gate only applies to
+-- (bar 1 and the simple/native-backed pages).
 local PROFILE_LOCK_MESSAGE_LAYOUT =
-	"Editing Settings is prohibited while using the Default Blizzard " ..
-	"Layout. Disable Default Blizzard Layout under General Settings " ..
-	"if you wish to change Settings or access Layout Edit Mode."
+	"Editing Settings is prohibited while Force Vanilla Layout Mode " ..
+	"is enabled. Disable it under General Settings if you wish to " ..
+	"change Settings or access Layout Edit Mode. " ..
+	"|cffffd100Click to jump to General Settings.|r"
 
--- One reusable warning banner per page - a solid strip anchored right
--- below the page's title and right above its first content control
--- (PROFILE_LOCK_BANNER_TOP/PROFILE_LOCK_BANNER_HEIGHT reserve that band
--- unconditionally, so nothing needs to reflow when this toggles). Hidden
--- by default; toggled (and its exact height/text) set by
--- ApplyProfileLockGating below - text isn't fixed at creation time since
--- which of the two messages above applies can change live.
+-- Single entry point for "the user clicked something locked by the Default-profile/Force-default-layout
+-- gate, now what" - used by the lock banner's OnClick and any locked control that opts into the same
+-- behavior. Re-checks live state so priority always matches PROFILE_LOCK_MESSAGE_PROFILE's priority
+-- (default profile wins when both are true). Default profile skips straight to the create-profile
+-- dialog; otherwise, if only layout-force is on, jumps to General and pulses that checkbox.
+function ACAB:HandleLockReasonClick()
+	if ACAB:IsDefaultProfileActive() then
+		ACAB:ShowCreateProfileDialog(function(ok)
+			if ok then
+				ACAB:ApplyUseDefaultLayoutChange(false)
+
+				local generalPanel = ACAB.settingsFrame and ACAB.settingsFrame.generalPanel
+
+				if generalPanel and generalPanel.useDefaultLayoutCheckbox then
+					generalPanel.useDefaultLayoutCheckbox:SetChecked(false)
+				end
+			end
+		end)
+	elseif ACABDB.useDefaultLayout == true then
+		ACAB:OpenSettingsPageByName("general")
+		ACAB:HighlightGeneralLayoutCheckbox()
+	end
+end
+
+-- One reusable warning banner per page - a solid strip anchored right below the page's title and right
+-- above its first content control. Hidden by default; toggled (and its exact height/text) set by
+-- ApplyProfileLockGating below - text isn't fixed at creation time since which message applies can change live.
 function ACAB:CreateProfileLockWarning(page)
-	local banner = CreateFrame("Frame", nil, page)
+	-- "Button", not "Frame" - a plain Frame has no "OnClick" script handler in this client.
+	local banner = CreateFrame("Button", nil, page)
 
-	-- PARENTED to `page` (so it hides/shows along with it) but ANCHORED to
-	-- contentPanel - `page` itself now slides DOWN by this banner's height
-	-- only while the banner is actually shown (ACAB:ApplyPageBannerReserve),
-	-- and the banner has to stay put in the band that opens up rather than
-	-- sliding down with it.
+	-- Parented to `page` (so it hides/shows along with it) but anchored to contentPanel - `page` itself
+	-- slides down by this banner's height only while shown, and the banner has to stay put in that band.
 	banner:SetPoint("TOPLEFT", ACAB.settingsFrame.contentPanel, "TOPLEFT", 0, PROFILE_LOCK_BANNER_TOP)
 	banner:SetPoint("TOPRIGHT", ACAB.settingsFrame.contentPanel, "TOPRIGHT", 0, PROFILE_LOCK_BANNER_TOP)
 	banner:SetHeight(PROFILE_LOCK_BANNER_HEIGHT)
@@ -1251,7 +1195,10 @@ function ACAB:CreateProfileLockWarning(page)
 		insets = { left = 2, right = 2, top = 2, bottom = 2 },
 	})
 
-	banner:SetBackdropColor(0.35, 0, 0, 0.9)
+	banner.lockedBackdropColor = { 0.35, 0, 0, 0.9 }
+	banner.hoverBackdropColor = { 0.5, 0.08, 0.08, 0.9 }
+
+	banner:SetBackdropColor(unpack(banner.lockedBackdropColor))
 
 	local text = banner:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 
@@ -1263,17 +1210,30 @@ function ACAB:CreateProfileLockWarning(page)
 
 	banner.text = text
 
+	banner:EnableMouse(true)
+
+	banner:SetScript("OnEnter", function()
+		this:SetBackdropColor(unpack(this.hoverBackdropColor))
+	end)
+
+	banner:SetScript("OnLeave", function()
+		this:SetBackdropColor(unpack(this.lockedBackdropColor))
+	end)
+
+	-- Shared with every other locked control's click - one place owns "what does clicking something
+	-- locked by this reason do".
+	banner:SetScript("OnClick", function()
+		ACAB:HandleLockReasonClick()
+	end)
+
 	banner:Hide()
 
 	return banner
 end
 
--- Opens/collapses the band the profile-lock banner occupies by sliding
--- `page` down by the banner's height only while shown - same reflow
--- technique as ACAB:ReflowGeneralOverrideSliders. Works by moving `page`
--- itself (every control is anchored to it with a fixed Y); the page title
--- and the banner must stay anchored to contentPanel instead so they don't
--- move with it.
+-- Opens/collapses the band the profile-lock banner occupies by sliding `page` down by the banner's
+-- height only while shown. Works by moving `page` itself; the page title and banner stay anchored to
+-- contentPanel instead so they don't move with it.
 function ACAB:ApplyPageBannerReserve(page, locked)
 	if not page or not ACAB.settingsFrame or not ACAB.settingsFrame.contentPanel then
 		return
@@ -1282,11 +1242,8 @@ function ACAB:ApplyPageBannerReserve(page, locked)
 	local reserve = 0
 
 	if locked then
-		-- The banner's REAL height, not PROFILE_LOCK_BANNER_HEIGHT: its
-		-- height is recomputed from however many lines its message actually
-		-- wraps to (SetProfileLockBannerMessage, called just before this
-		-- from ApplyProfileLockGating), which can exceed that constant.
-		-- Falls back to the constant if it hasn't been measured yet.
+		-- The banner's real height, not PROFILE_LOCK_BANNER_HEIGHT: recomputed from however many
+		-- lines its message wraps to, which can exceed that constant. Falls back if not measured yet.
 		reserve = (page.profileLockWarning and page.profileLockWarning:GetHeight())
 			or PROFILE_LOCK_BANNER_HEIGHT
 
@@ -1300,18 +1257,11 @@ function ACAB:ApplyPageBannerReserve(page, locked)
 	page:SetPoint("BOTTOMRIGHT", ACAB.settingsFrame.contentPanel, "BOTTOMRIGHT", 0, 0)
 end
 
--- Sets the banner's message and resizes the banner to fit however many
--- lines that message actually wraps to at the page's CURRENT width
--- (text:GetHeight() reflects real wrapped height once SetText runs, same
--- content-aware-sizing technique UIWidgets.lua's dialog uses) - so a
--- longer message, a narrower window, or a translation never gets cut off
--- rather than just being clamped to PROFILE_LOCK_BANNER_HEIGHT's own
--- (generous, but not guaranteed-sufficient) reserved space.
+-- Sets the banner's message and resizes it to fit however many lines that message actually wraps to at
+-- the page's current width, so a longer message or narrower window never gets cut off.
 local function SetProfileLockBannerMessage(banner, message)
-	-- Must set explicit SetWidth on BOTH banner and text, computed from
-	-- `page`'s own current width - a TOPLEFT+TOPRIGHT anchor pair alone
-	-- does not reliably wrap text in this environment (renders as one long
-	-- line, clipped by the ancestor scrollframe instead of wrapping).
+	-- Must set explicit SetWidth on both banner and text - a TOPLEFT+TOPRIGHT anchor pair alone does
+	-- not reliably wrap text in this environment (renders as one long line instead).
 	local page = banner:GetParent()
 	local width = page:GetWidth()
 
@@ -1324,16 +1274,12 @@ local function SetProfileLockBannerMessage(banner, message)
 	banner:SetHeight((banner.text:GetHeight() or 0) + 12)
 end
 
--- A ACAB: method (not a file-local) since SettingsBars.lua's
--- RefreshBarSettingsPage/CreateBarListRow/RefreshBarList call it too, not
--- just this file's own gating family.
 function ACAB:LockControl(control, locked)
 	control:EnableMouse(not locked)
 	control:SetAlpha(locked and 0.5 or 1)
 
-	-- Templated Buttons additionally need :Disable()/:Enable() -
-	-- EnableMouse alone doesn't grey them out or block their OnClick the
-	-- way it does for sliders/template-less swatch buttons.
+	-- Templated Buttons additionally need :Disable()/:Enable() - EnableMouse alone doesn't grey them
+	-- out or block their OnClick the way it does for sliders/template-less swatch buttons.
 	if control.Disable and control.Enable then
 		if locked then
 			control:Disable()
@@ -1343,33 +1289,23 @@ function ACAB:LockControl(control, locked)
 	end
 end
 
--- Greys `control` like ACAB:LockControl, but never touches EnableMouse OR
--- Disable()/Enable() - both confirmed live on this client to also swallow
--- OnEnter/OnLeave entirely (not just OnClick), which would silently kill
--- the "why is this locked" tooltip a caller wired via
--- CreateLabeledCheckbox's config.lockedText. Only stamps control.ACABLocked;
--- the actual click-block lives in CreateLabeledCheckbox's own OnClick
--- wrapper (UIWidgets.lua), which checks this same field and reverts the
--- toggle instead of calling through to config.onClick while locked.
+-- Greys `control` like ACAB:LockControl, but never touches EnableMouse or Disable()/Enable() - both
+-- also swallow OnEnter/OnLeave entirely on this client, which would kill a "why is this locked" tooltip.
+-- Only stamps control.ACABLocked; the actual click-block lives in CreateLabeledCheckbox's own OnClick wrapper.
 function ACAB:LockControlKeepingTooltip(control, locked)
 	control.ACABLocked = locked and true or false
 
 	control:SetAlpha(locked and 0.5 or 1)
 end
 
--- Every optional widget name either a full bar page (GetOrCreateBarPage)
--- or a simple bar page (CreateSimpleBarPage, including its Experience
--- Bar-only extras) can have on itself. Checked by presence so the same
--- list works for both page shapes. enableCheckbox IS locked like
--- everything else here by default - it's only exempted, inline below,
--- for the numbered default bars (1-5), where the user wants
--- enable/disable to stay the one available option even while everything
--- else on the page is locked.
+-- Every optional widget name either a full bar page or a simple bar page can have on itself. Checked by
+-- presence so the same list works for both page shapes. enableCheckbox is locked like everything else
+-- by default - only exempted, inline below, for the numbered default bars (1-5).
 local PROFILE_LOCK_CONTROL_NAMES = {
 	"xSlider", "ySlider", "xStepperBigMinus", "xStepperMinus", "xStepperPlus", "xStepperBigPlus",
 	"yStepperBigMinus", "yStepperMinus", "yStepperPlus", "yStepperBigPlus", "xValueClick", "yValueClick",
 	"buttonSizeSlider", "spacingSlider",
-	"scaleSlider", "resetPositionButton", "enableCheckbox",
+	"scaleSlider", "resetPositionButton", "resetModernButton", "enableCheckbox",
 	"buttonCountMinus", "buttonCountPlus", "pageIndicatorSlider",
 	"orientationCheckbox", "keyRingCheckbox", "keyRingScaleSlider",
 	"betterExpBarCheckbox", "expBarShowLevelCheckbox",
@@ -1382,13 +1318,9 @@ local PROFILE_LOCK_CONTROL_NAMES = {
 	"hoverOnlyCheckbox", "hoverDurationSlider",
 }
 
--- alsoCheckLayoutLock: true on the pages the Default-layout lock also
--- applies to (bar 1's page, every simple/native-backed page) - the
--- banner shows for THAT lock too there, with its own message, and the
--- SAME combined lock now drives control-locking below too (user
--- decision: while EITHER lock is active, enable/disable is the only
--- thing that should stay available on a numbered default bar - every
--- other control locks the same way under either reason).
+-- alsoCheckLayoutLock: true on the pages the Default-layout lock also applies to (bar 1's page, every
+-- simple/native-backed page) - the banner shows for that lock too, with its own message, and the same
+-- combined lock drives control-locking below.
 function ACAB:ApplyProfileLockGating(page, alsoCheckLayoutLock)
 	local profileLocked = self:IsDefaultProfileActive()
 	local layoutLocked = alsoCheckLayoutLock and (ACABDB.useDefaultLayout == true)
@@ -1398,6 +1330,7 @@ function ACAB:ApplyProfileLockGating(page, alsoCheckLayoutLock)
 		page.profileLockWarning:SetShown(locked)
 
 		if locked then
+			-- Profile lock takes priority (the banner's OnClick re-derives this same priority live).
 			SetProfileLockBannerMessage(
 				page.profileLockWarning,
 				profileLocked and PROFILE_LOCK_MESSAGE_PROFILE or PROFILE_LOCK_MESSAGE_LAYOUT
@@ -1405,14 +1338,11 @@ function ACAB:ApplyProfileLockGating(page, alsoCheckLayoutLock)
 		end
 	end
 
-	-- Opens up the banner's band only while it's actually shown, instead
-	-- of every page permanently reserving it.
+	-- Opens up the banner's band only while it's actually shown, instead of every page permanently reserving it.
 	ACAB:ApplyPageBannerReserve(page, locked)
 
-	-- Numbered default bars (1-5, Pet Bar) keep enable/disable available
-	-- even while everything else locks - every other page (extra bars 6-9,
-	-- simple/native-backed pages) has NO exemption, its enable checkbox
-	-- locks exactly like every other control.
+	-- Numbered default bars (1-5, Pet Bar) keep enable/disable available even while everything else
+	-- locks - every other page has no exemption.
 	local barId = page.barId
 	local isNumberedDefaultBar = type(barId) == "number" and ACAB:IsDefaultBarFamilyId(barId)
 
@@ -1440,11 +1370,8 @@ function ACAB:ApplyProfileLockGating(page, alsoCheckLayoutLock)
 			local row = page.assignmentRows[i]
 
 			if row.dropdown then
-				-- EnableMouse(false) on the dropdown frame itself doesn't
-				-- block its click handling - UIDropDownMenuTemplate's own
-				-- clickable region is a separate child Button
-				-- ("<name>Button", native FrameXML naming convention),
-				-- which needs :Disable()/:Enable() directly.
+				-- EnableMouse(false) on the dropdown frame itself doesn't block its click handling -
+				-- UIDropDownMenuTemplate's clickable region is a separate child Button needing :Disable()/:Enable().
 				local dropdownButton = getglobal(row.dropdown:GetName() .. "Button")
 
 				if dropdownButton then
@@ -1458,19 +1385,12 @@ function ACAB:ApplyProfileLockGating(page, alsoCheckLayoutLock)
 end
 
 -------------------------------------------------------------------------
--- Default-layout gating (General tab's "Use Default Blizzard Layout")
---
--- Uses EnableMouse(false) rather than Slider/Button Enable()/Disable():
--- a universal Frame method that works on both sliders and the plain
--- template-less grid swatch buttons, unlike Disable() which only
--- reliably affects templated Button widgets. Only simple/native-backed
--- pages call this; default bars (1-5) get the same effect via
--- ACAB:ApplyProfileLockGating's alsoCheckLayoutLock instead; custom bars
--- never gate on this.
+-- Default-layout gating (General tab's "Force Vanilla Layout Mode")
+-- Uses EnableMouse(false) rather than Slider/Button Enable()/Disable() - a universal Frame method that
+-- also works on template-less grid swatch buttons. Only simple/native-backed pages call this; default
+-- bars (1-5) get the same effect via ApplyProfileLockGating's alsoCheckLayoutLock; custom bars never gate on this.
 -------------------------------------------------------------------------
 
--- A ACAB: method (not a file-local) since SettingsBars.lua's
--- RefreshSimpleBarPage calls it too, not just this file's own gating family.
 function ACAB:ApplyDefaultLayoutGating(page, interactive)
 	local alpha = interactive and 1 or 0.5
 
@@ -1484,9 +1404,7 @@ function ACAB:ApplyDefaultLayoutGating(page, interactive)
 		page.ySlider:SetAlpha(alpha)
 	end
 
-	-- Stepper buttons and the click-to-edit value readouts gate the same
-	-- way the sliders they flank do - Buttons additionally need
-	-- Disable()/Enable(), see LockControl's comment above.
+	-- Stepper buttons and the click-to-edit value readouts gate the same way the sliders they flank do.
 	local positionButtonNames = {
 		"xStepperBigMinus", "xStepperMinus", "xStepperPlus", "xStepperBigPlus",
 		"yStepperBigMinus", "yStepperMinus", "yStepperPlus", "yStepperBigPlus",
@@ -1549,10 +1467,8 @@ function ACAB:ApplyDefaultLayoutGating(page, interactive)
 	end
 end
 
--- Re-applies gating to every currently-built default-bar page (1-5) -
--- called whenever the General tab's checkbox changes, so any page
--- already open/cached updates immediately without needing to close and
--- reopen Settings.
+-- Re-applies gating to every currently-built default-bar page (1-5) - called whenever the General
+-- tab's checkbox changes, so any page already open/cached updates immediately.
 function ACAB:RefreshDefaultLayoutGatingOnAllPages()
 	if not ACAB.settingsFrame then
 		return
@@ -1568,11 +1484,9 @@ function ACAB:RefreshDefaultLayoutGatingOnAllPages()
 		end
 	end
 
-	-- Bag Bar / Micro Menu / Latency Bar / Experience Bar / Cast Bar are
-	-- also gated on useDefaultLayout (RefreshSimpleBarPage below), so their
-	-- pages need the same live refresh if already built/cached. The Stance
-	-- Bar (like the Pet Bar) is covered by the ACAB.DEFAULT_BAR_IDS loop
-	-- above instead, since it's keyed by its own numeric id now.
+	-- Bag Bar / Micro Menu / Latency Bar / Experience Bar / Cast Bar are also gated on
+	-- useDefaultLayout, so their pages need the same live refresh if already built/cached. Stance Bar
+	-- (like Pet Bar) is covered by the ACAB.DEFAULT_BAR_IDS loop above, keyed by its own numeric id.
 	local specialKeys = { "bagbar", "micromenu", "latencybar", "expbar", "castbar", "tooltip" }
 	local si
 
@@ -1584,40 +1498,25 @@ function ACAB:RefreshDefaultLayoutGatingOnAllPages()
 end
 
 -------------------------------------------------------------------------
--- Dynamic content-panel/window height: measures the real on-screen bottom
--- edge (Frame:GetTop()/GetBottom()) of whichever controls are actually
--- shown, so each page (which vary in which controls they have) gets a
--- window sized to its own content instead of a fixed size tuned for the
--- busiest page.
+-- Dynamic content-panel/window height: measures the real on-screen bottom edge of whichever controls
+-- are actually shown, so each page gets a window sized to its own content instead of a fixed size
+-- tuned for the busiest page.
 -------------------------------------------------------------------------
 
--- Distance from the settings window's own top edge down to
--- contentPanel/listPanel's top (matches their "-64" TOPRIGHT/TOPLEFT
--- anchor offset in CreateSettingsFrame, leaving room for the tab/content
--- divider line) and from their bottom edge down to the window's own
--- bottom edge - the fixed "chrome" every view's content sits inside,
--- regardless of which view/page is showing.
+-- Distance from the settings window's top edge down to contentPanel/listPanel's top, and from their
+-- bottom edge down to the window's own bottom edge - the fixed "chrome" every view's content sits inside.
 local SETTINGS_CHROME_TOP = 64
 local SETTINGS_CHROME_BOTTOM = 18
 
--- Never shrinks below whatever the current view's own frame naturally
--- needs to avoid feeling cramped, even if every one of its controls
--- happens to measure shorter than this.
+-- Never shrinks below whatever the current view naturally needs to avoid feeling cramped.
 local SETTINGS_CONTENT_MIN_HEIGHT = 260
 
--- The settings window can never grow taller than this fraction of the
--- player's actual screen height - see ApplySettingsHeightFromCandidates'
--- own comment on why capping height alone (the window is CENTER-anchored)
--- is enough to guarantee top/bottom screen padding too.
+-- The settings window can never grow taller than this fraction of the player's actual screen height.
 local SETTINGS_MAX_HEIGHT_RATIO = 0.9
 
--- Appends frame to list only if non-nil, at the next free index (n+1).
--- table.getn/# have undefined behavior on tables with nil "holes" (Lua
--- 5.0 manual) - since several of the candidate controls below are nil
--- depending on bar kind (custom vs. default) or bar id (bar 1 has no
--- enable checkbox), candidate lists are built through this helper rather
--- than a table constructor with nils embedded in it, so the resulting
--- table is always hole-free.
+-- Appends frame to list only if non-nil, at the next free index. table.getn/# have undefined behavior
+-- on tables with nil "holes" (Lua 5.0 manual), so candidate lists are built through this helper rather
+-- than a table constructor with nils embedded in it.
 local function AppendCandidate(list, n, frame)
 	if frame then
 		list[n + 1] = frame
@@ -1627,15 +1526,10 @@ local function AppendCandidate(list, n, frame)
 	return n
 end
 
--- Deepest distance from `referenceTop` (scroll child's real GetTop()) down
--- to any candidate's bottom edge - how much vertical room the content
--- needs.
---
--- WARNING: measured as a DELTA between two live positions, not a computed
--- screen-center estimate - the settings window is movable, so a position-
--- derived estimate goes wrong (sometimes shorter than the content, which
--- also silently suppresses the scrollbar) once dragged. A top-to-bottom
--- delta stays correct wherever the window is.
+-- Deepest distance from `referenceTop` down to any candidate's bottom edge - how much vertical room
+-- the content needs.
+-- WARNING: measured as a delta between two live positions, not a computed screen-center estimate - the
+-- settings window is movable, so a position-derived estimate goes wrong once dragged.
 local function MeasureDeepestExtent(candidateList, referenceTop)
 	if not candidateList or not referenceTop then
 		return nil
@@ -1663,66 +1557,37 @@ local function MeasureDeepestExtent(candidateList, referenceTop)
 	return deepest
 end
 
--- Resizes `scrollChildPanel` (whichever view is being fitted)/listPanel/
--- the outer window to fit the lowest bottom edge in candidateList,
--- floored at SETTINGS_CONTENT_MIN_HEIGHT and capped at the screen-
--- relative max (ACAB:UpdateScrollFrame turns scrolling on for whatever
--- doesn't fit).
--- listCandidateList (optional): fits/scrolls the bar-list sidebar
--- independently using the same shared viewportHeight, so an overlong
--- list scrolls instead of rendering past the window's bottom edge.
--- minContentHeight (optional): floor on top of SETTINGS_CONTENT_MIN_HEIGHT
--- (see FitSettingsWindowToBarPage's baseline).
--- noMinFloor (optional): skips SETTINGS_CONTENT_MIN_HEIGHT for a view
--- (Profiles) meant to shrink-to-fit its own short content.
---
+-- Resizes `scrollChildPanel`/listPanel/the outer window to fit the lowest bottom edge in candidateList,
+-- floored at SETTINGS_CONTENT_MIN_HEIGHT and capped at the screen-relative max.
+-- listCandidateList (optional): fits/scrolls the bar-list sidebar independently using the same shared
+-- viewportHeight. minContentHeight (optional): floor on top of SETTINGS_CONTENT_MIN_HEIGHT.
+-- noMinFloor (optional): skips SETTINGS_CONTENT_MIN_HEIGHT for a view (Profiles) meant to shrink-to-fit.
 -- Returns the measured (unclamped, unfloored) content height.
 local function ApplySettingsHeightFromCandidates(candidateList, scrollFrame, scrollChildPanel, listCandidateList, minContentHeight, noMinFloor)
 	if not ACAB.settingsFrame or not scrollFrame or not scrollChildPanel then
 		return nil
 	end
 
-	-- Captured before either scroll position gets reset below, so the
-	-- ACAB:UpdateScrollFrame calls at the bottom of this function can
-	-- restore the user's actual scroll position (clamped to whatever the
-	-- new content size allows) instead of snapping back to the top on
-	-- every re-fit.
+	-- Captured before either scroll position gets reset below, so ACAB:UpdateScrollFrame can restore
+	-- the user's actual scroll position instead of snapping back to the top on every re-fit.
 	local previousContentScroll = scrollFrame:GetVerticalScroll()
 	local previousListScroll = listCandidateList and ACAB.settingsFrame.listPanel
 		and ACAB.settingsFrame.listPanel:GetVerticalScroll()
 
-	-- Both scroll positions have to be reset to the top BEFORE measuring:
-	-- GetTop()/GetBottom() read real SCREEN positions that shift with the
-	-- current scroll offset, so a previously-scrolled view would otherwise
-	-- measure as shorter than it really is.
+	-- Both scroll positions must reset to the top before measuring: GetTop()/GetBottom() read real
+	-- screen positions that shift with the current scroll offset.
 	scrollFrame:SetVerticalScroll(0)
 
 	if listCandidateList and ACAB.settingsFrame.listPanel then
 		ACAB.settingsFrame.listPanel:SetVerticalScroll(0)
 	end
 
-	-- Every candidate is a descendant of scrollChildPanel, which is
-	-- PERMANENTLY the given scrollFrame's scroll child (set once, at
-	-- creation - see CreateSettingsFrame/ACAB:CreateWideContentScrollFrame's
-	-- own comments on why nothing here ever re-targets SetScrollChild at a
-	-- different frame), so its own top is the right reference to measure
-	-- each candidate's depth from.
-
-	-- Top-down resolve pass. REQUIRED, not a debug leftover - the discarded
-	-- return values ARE the point, the CALL is the work (see
-	-- docs/01-Environment-Capability-Analysis.md §5af).
-	--
-	-- WARNING: frame rects resolve lazily on this client, against the
-	-- anchor's own cached rect. SetVerticalScroll(0) above moves this
-	-- subtree without re-resolving it, so reading a child while its
-	-- ancestor is still stale caches that child against the ancestor's OLD
-	-- position, and the measurement below then reads back confidently
-	-- wrong values. Resolving top-down (scrollChildPanel, then every
-	-- measured frame) avoids that.
-	--
-	-- Live-verified: dropping either loop, or reading children before
-	-- scrollChildPanel, brings the bug back (panel measures short,
-	-- everything below the toggled control becomes unreachable).
+	-- Top-down resolve pass. Required, not a debug leftover - the discarded return values ARE the
+	-- point (see docs/01-Environment-Capability-Analysis.md §5af).
+	-- WARNING: frame rects resolve lazily on this client, against the anchor's own cached rect.
+	-- SetVerticalScroll(0) above moves this subtree without re-resolving it, so reading a child while
+	-- its ancestor is still stale caches wrong values. Resolving top-down (scrollChildPanel first, then
+	-- every measured frame) avoids that - dropping either loop, or reordering it, brings the bug back.
 	scrollChildPanel:GetTop()
 
 	local resolveI
@@ -1831,11 +1696,8 @@ local function ApplySettingsHeightFromCandidates(candidateList, scrollFrame, scr
 	return measuredContentHeight
 end
 
--- Bars view: combines the current bar page's own controls with the bar
--- list's rows - both are visible side by side in this view, so the
--- window has to be tall enough for whichever of the two is actually
--- taller (e.g. a short custom-bar page next to a long bar list with many
--- custom bars added).
+-- Bars view: combines the current bar page's own controls with the bar list's rows - both are visible
+-- side by side, so the window has to be tall enough for whichever is actually taller.
 function ACAB:FitSettingsWindowToBarPage(barId)
 	if not ACAB.settingsFrame then
 		return
@@ -1858,6 +1720,7 @@ function ACAB:FitSettingsWindowToBarPage(barId)
 	n = AppendCandidate(candidates, n, page.spacingValueText)
 	n = AppendCandidate(candidates, n, page.buttonSizeValueText)
 	n = AppendCandidate(candidates, n, page.resetPositionButton)
+	n = AppendCandidate(candidates, n, page.resetModernButton)
 	n = AppendCandidate(candidates, n, page.buttonCountMinus)
 	n = AppendCandidate(candidates, n, page.buttonCountPlus)
 	n = AppendCandidate(candidates, n, page.buttonCountValueText)
@@ -1865,24 +1728,15 @@ function ACAB:FitSettingsWindowToBarPage(barId)
 	n = AppendCandidate(candidates, n, page.pageIndicatorValueText)
 	n = AppendCandidate(candidates, n, page.useVanillaPetBarCheckbox)
 
-	-- Scale/Orientation controls, present on the simple bar pages
-	-- (Stance Bar/Bag Bar/Micro Menu) alongside Spacing above - included
-	-- here (the shared bar-page height-fit function, used for both
-	-- default/custom AND simple pages) since FitSettingsWindowToBarPage
-	-- already looks up ACAB.settingsFrame.pages[barId] generically regardless
-	-- of key type (numeric bar id or string simple-page key).
+	-- Scale/Orientation controls, present on the simple bar pages (Stance Bar/Bag Bar/Micro Menu)
+	-- alongside Spacing above - included here since this shared function handles both page shapes.
 	n = AppendCandidate(candidates, n, page.scaleValueText)
 	n = AppendCandidate(candidates, n, page.orientationCheckbox)
 	n = AppendCandidate(candidates, n, page.keyRingCheckbox)
 	n = AppendCandidate(candidates, n, page.keyRingScaleValueText)
 
-	-- "Better Experience Bar" + its 5 text toggles + Font Size slider + 3
-	-- color pickers + Reset Colors button + Pulse Interval slider
-	-- (Experience Bar page only) - expBarGlowPulseIntervalValueText is the
-	-- effective lowest control on this page, so it's what actually drives
-	-- this page's real fitted height; every other entry here is still
-	-- listed for the same "include every real candidate" thoroughness this
-	-- list already follows.
+	-- "Better Experience Bar" + its 5 text toggles + Font Size slider + 3 color pickers + Reset Colors
+	-- button + Pulse Interval slider (Experience Bar page only).
 	n = AppendCandidate(candidates, n, page.betterExpBarCheckbox)
 	n = AppendCandidate(candidates, n, page.expBarFontSizeSlider)
 	n = AppendCandidate(candidates, n, page.expBarFontSizeValueText)
@@ -1898,9 +1752,8 @@ function ACAB:FitSettingsWindowToBarPage(barId)
 	n = AppendCandidate(candidates, n, page.expBarGlowPulseIntervalSlider)
 	n = AppendCandidate(candidates, n, page.expBarGlowPulseIntervalValueText)
 
-	-- Stance/Page Bar Assignment rows - only ever present on bar 1's page.
-	-- Each individual row is included as its own candidate, same "walk the
-	-- rows, not their shared container" convention gridSwatches below uses.
+	-- Stance/Page Bar Assignment rows - present on any default bar's (1-5) own page. Each row is
+	-- included as its own candidate, same convention gridSwatches below uses.
 	if page.assignmentRows then
 		local i
 
@@ -1920,20 +1773,13 @@ function ACAB:FitSettingsWindowToBarPage(barId)
 		end
 	end
 
-	-- Stance Bar's "no stances currently available" message (0 live forms)
-	-- takes the grid swatches' place - same candidate treatment.
+	-- Stance Bar's "no stances currently available" message takes the grid swatches' place.
 	n = AppendCandidate(candidates, n, page.noStancesText)
 
 	n = AppendCandidate(candidates, n, page.useVanillaStanceBarCheckbox)
 
-	-- Measured/fitted SEPARATELY from the page's own candidates above (own
-	-- listCandidates table, not appended into `candidates`) - the bar-list
-	-- sidebar now scrolls independently of the content page
-	-- (ACAB:CreateScrollFrame's ACAB.settingsFrame.listPanel/listContent), so it
-	-- needs its own true bottom-most-row measurement rather than being
-	-- merged into one combined list, even though the window's own overall
-	-- height still ends up driven by whichever of the two is taller (see
-	-- ApplySettingsHeightFromCandidates' own listCandidateList handling).
+	-- Measured/fitted separately from the page's own candidates above - the bar-list sidebar scrolls
+	-- independently of the content page, so it needs its own true bottom-most-row measurement.
 	local listCandidates = {}
 	local listN = 0
 
@@ -1945,10 +1791,8 @@ function ACAB:FitSettingsWindowToBarPage(barId)
 		end
 	end
 
-	-- The scrollchild is ACAB.settingsFrame.contentPanel itself, NOT `page` -
-	-- every bar page uses page:SetAllPoints(ACAB.settingsFrame.contentPanel)
-	-- (GetOrCreateBarPage), so `page` always just mirrors contentPanel's
-	-- own rect rather than having independently meaningful dimensions.
+	-- The scrollchild is ACAB.settingsFrame.contentPanel itself, not `page` - every bar page uses
+	-- page:SetAllPoints(contentPanel), so `page` always just mirrors contentPanel's own rect.
 	local measured = ApplySettingsHeightFromCandidates(
 		candidates,
 		ACAB.settingsFrame.contentScrollFrame,
@@ -1957,17 +1801,10 @@ function ACAB:FitSettingsWindowToBarPage(barId)
 		ACAB.settingsFrame.standardBarPageHeight
 	)
 
-	-- "Standard bar page" baseline: every numbered bar page except bar 1
-	-- (Action Bars 2-5 and Extra Bars 6-9) is built by the same code path
-	-- with the same controls, so they all measure the same height - record
-	-- it and use it as the window's floor from then on (passed back in as
-	-- minContentHeight above). This is what stops the window from resizing
-	-- at all while clicking between those pages, and from shrinking below
-	-- that baseline when a SHORTER page (a simple bar) is selected.
-	--
-	-- Bar 1 is deliberately excluded: its Stance/Page Bar Assignment rows
-	-- make it taller than a standard page, and using it as the baseline
-	-- would inflate every other page to Main Bar's height.
+	-- "Standard bar page" baseline: every numbered bar page except bar 1 is built by the same code path
+	-- with the same controls, so they all measure the same height - record it as the window's floor.
+	-- This stops the window from resizing between those pages, and from shrinking below that baseline
+	-- when a shorter page is selected. Bar 1 is excluded: its assignment rows would inflate the baseline.
 	if measured and type(barId) == "number" and barId ~= 1 then
 		if not ACAB.settingsFrame.standardBarPageHeight or measured > ACAB.settingsFrame.standardBarPageHeight then
 			ACAB.settingsFrame.standardBarPageHeight = measured
@@ -1992,8 +1829,8 @@ function ACAB:FitSettingsWindowToGeneralView()
 	n = AppendCandidate(candidates, n, panel.mainBarPaginationCheckbox)
 	n = AppendCandidate(candidates, n, panel.mainBarStanceSwapCheckbox)
 
-	-- Stance/Page Bar Assignment rows live on bar 1's own settings page -
-	-- see FitSettingsWindowToBarPage for their candidate handling.
+	-- Stance/Page Bar Assignment rows live on each default bar's (1-5) own settings page - see
+	-- FitSettingsWindowToBarPage for their candidate handling.
 
 	n = AppendCandidate(candidates, n, panel.macroTextCheckbox)
 	n = AppendCandidate(candidates, n, panel.macroValueText)
@@ -2012,9 +1849,7 @@ function ACAB:FitSettingsWindowToGeneralView()
 	n = AppendCandidate(candidates, n, panel.globalButtonSizeValueText)
 	n = AppendCandidate(candidates, n, panel.bypassBar2DepCheckbox)
 
-	-- "Enable Better Experience Bar" lives on the Experience Bar's own
-	-- settings page - see FitSettingsWindowToBarPage for its candidate
-	-- handling.
+	-- "Enable Better Experience Bar" lives on the Experience Bar's own settings page.
 
 	ApplySettingsHeightFromCandidates(candidates, ACAB.settingsFrame.generalScrollFrame, panel)
 end
@@ -2029,13 +1864,13 @@ function ACAB:FitSettingsWindowToProfilesView()
 	local n = 0
 
 	n = AppendCandidate(candidates, n, panel.profileDropdown)
+	n = AppendCandidate(candidates, n, panel.wizardButton)
 	n = AppendCandidate(candidates, n, panel.exportButton)
 	n = AppendCandidate(candidates, n, panel.copyButton)
 	n = AppendCandidate(candidates, n, panel.importButton)
 	n = AppendCandidate(candidates, n, panel.deleteButton)
 
-	-- Profiles is a short page by nature - shrink-to-fit instead of
-	-- matching the Bars/General views' SETTINGS_CONTENT_MIN_HEIGHT floor.
+	-- Profiles is a short page by nature - shrink-to-fit instead of matching the other views' floor.
 	ApplySettingsHeightFromCandidates(candidates, ACAB.settingsFrame.profilesScrollFrame, panel, nil, nil, true)
 end
 function ACAB:FitSettingsWindowToEditModeView()
@@ -2055,8 +1890,7 @@ function ACAB:FitSettingsWindowToEditModeView()
 	n = AppendCandidate(candidates, n, panel.customGridSizeSlider)
 	n = AppendCandidate(candidates, n, panel.customGridSizeValueText)
 
-	-- Edit Mode is a short page by nature - shrink-to-fit instead of
-	-- matching the Bars/General views' SETTINGS_CONTENT_MIN_HEIGHT floor.
+	-- Edit Mode is a short page by nature - shrink-to-fit instead of matching the other views' floor.
 	ApplySettingsHeightFromCandidates(candidates, ACAB.settingsFrame.editModeScrollFrame, panel, nil, nil, true)
 end
 -------------------------------------------------------------------------
@@ -2081,10 +1915,8 @@ function ACAB:ShowSettingsFrame()
 	elseif ACAB.settingsFrame.currentView == "editmode" then
 		ACAB:DeferFit(function() ACAB:FitSettingsWindowToEditModeView() end)
 	else
-		-- RefreshBarList (above) just rebuilt the bar-list rows from
-		-- scratch (e.g. a bar added/removed while the window was closed),
-		-- so even though the active page itself isn't changing here, the
-		-- window still needs to refit against the new row count.
+		-- RefreshBarList (above) just rebuilt the bar-list rows from scratch, so even though the
+		-- active page isn't changing here, the window still needs to refit against the new row count.
 		ACAB:DeferFit(function() ACAB:FitSettingsWindowToBarPage(ACAB.settingsFrame.activeBarId) end)
 	end
 end

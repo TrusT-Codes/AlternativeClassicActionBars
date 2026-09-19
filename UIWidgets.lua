@@ -618,9 +618,17 @@ function ACAB:CreateLabeledCheckbox(parent, name, config)
 		-- revert that flip and never call through to `onClick`, instead of
 		-- the usual :Disable() (confirmed live on this client to also
 		-- swallow OnEnter/OnLeave, killing the locked-reason tooltip).
+		-- config.onLockedClick (optional) runs instead - e.g. jumping the
+		-- user to whatever setting is actually blocking this one, same as
+		-- the lock banner's own click (ACAB:HandleLockReasonClick).
 		checkbox:SetScript("OnClick", function()
 			if this.ACABLocked then
 				this:SetChecked(not this:GetChecked())
+
+				if config.onLockedClick then
+					config.onLockedClick()
+				end
+
 				return
 			end
 
@@ -648,7 +656,16 @@ function ACAB:CreateLabeledCheckbox(parent, name, config)
 			GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
 
 			if this.ACABLocked and lockedText then
-				GameTooltip:SetText(lockedText, 1, 0.15, 0.15, 1, true)
+				-- config.lockedText may be a function instead of a plain
+				-- string, so the shown text can branch on whichever lock
+				-- reason is CURRENTLY active rather than a fixed string.
+				local resolvedText = lockedText
+
+				if type(lockedText) == "function" then
+					resolvedText = lockedText()
+				end
+
+				GameTooltip:SetText(resolvedText, 1, 0.15, 0.15, 1, true)
 			elseif tooltip then
 				GameTooltip:SetText(tooltip.title or "", 1, 1, 1)
 
@@ -781,6 +798,13 @@ ACABDialogMixin = {}
 local DIALOG_WIDTH = 360
 local DIALOG_BUTTON_HEIGHT = 22
 local DIALOG_BUTTON_MIN_WIDTH = 100
+-- "prominent"/"minor" button.variant sizing (ACAB:ShowDialog's
+-- buttonConfig.variant) - prominent is the visually dominant primary
+-- choice, minor a smaller de-emphasized one, e.g. the first-login dialog.
+local DIALOG_BUTTON_HEIGHT_PROMINENT = 34
+local DIALOG_BUTTON_MIN_WIDTH_PROMINENT = 220
+local DIALOG_BUTTON_HEIGHT_MINOR = 18
+local DIALOG_BUTTON_MIN_WIDTH_MINOR = 80
 local DIALOG_TEXTAREA_HEIGHT = 160
 local DIALOG_ERROR_BANNER_HEIGHT = 54
 local DIALOG_TEXTAREA_SCROLLBAR_RESERVE = 28
@@ -932,10 +956,8 @@ function ACABDialogMixin:OnLoad()
 	for i = 1, 4 do
 		local button = CreateFrame("Button", nil, self)
 
-		button:SetHeight(DIALOG_BUTTON_HEIGHT)
-
-		-- minWidth avoids short labels looking like a tiny nub; maxWidth
-		-- matches the dialog's usable text width.
+		-- Height/minWidth are set per-config in Init instead (variant
+		-- support) - only the maxWidth clamp and visuals are fixed here.
 		ACAB:StyleModernButton(button, DIALOG_BUTTON_MIN_WIDTH, DIALOG_WIDTH - 40)
 		button:Hide()
 
@@ -953,6 +975,9 @@ end
 --   reserveErrorBanner = true,  -- reserves space for :ShowInlineError
 --   liveValidate = function(value) return ok, errorMessage end, -- textarea only
 --   buttons = { { text, isDefault, danger, keepOpen,
+--     variant = "prominent"|"minor",  -- optional size/color emphasis;
+--       prominent = taller + wider + blue, minor = shorter + narrower + red
+--       (same red as danger - no need to also set danger for a minor button)
 --     validate = function(value) return ok, errorMessage end,
 --     onClick = function(value) end }, ... },
 -- }
@@ -1066,13 +1091,34 @@ function ACABDialogMixin:Init(config)
 		local buttonConfig = self.buttonConfigs[i]
 
 		if buttonConfig then
+			local variant = buttonConfig.variant
+
+			-- Buttons are reused across dialogs (self.buttons is a fixed
+			-- pool), so height/minWidth must be reset here per variant or
+			-- a plain button can inherit a previous dialog's prominent/
+			-- minor sizing.
+			if variant == "prominent" then
+				button:SetHeight(DIALOG_BUTTON_HEIGHT_PROMINENT)
+				button.minWidth = DIALOG_BUTTON_MIN_WIDTH_PROMINENT
+			elseif variant == "minor" then
+				button:SetHeight(DIALOG_BUTTON_HEIGHT_MINOR)
+				button.minWidth = DIALOG_BUTTON_MIN_WIDTH_MINOR
+			else
+				button:SetHeight(DIALOG_BUTTON_HEIGHT)
+				button.minWidth = DIALOG_BUTTON_MIN_WIDTH
+			end
+
+			button.maxWidth = DIALOG_WIDTH - 40
+
 			button:SetText(buttonConfig.text or "")
 
 			-- Buttons are reused across dialogs (self.buttons is a fixed
-			-- pool), so a non-danger button must reset its color here or
-			-- it can inherit red from a previous dialog's danger button.
-			if buttonConfig.danger then
+			-- pool), so a non-danger/non-prominent button must reset its
+			-- color here or it can inherit a previous dialog's color.
+			if buttonConfig.danger or variant == "minor" then
 				ACAB:ApplyDangerButtonHighlight(button)
+			elseif variant == "prominent" then
+				ACAB:ApplyProminentButtonHighlight(button)
 			else
 				button:SetBackdropColor(0.08, 0.08, 0.08, 0.85)
 			end
@@ -1119,14 +1165,18 @@ function ACABDialogMixin:Init(config)
 	end
 
 	-- Pass 2: greedily wrap buttons 1..count into rows - rows[r] is an
-	-- array of button indices, rowWidths[r] that row's total width.
+	-- array of button indices, rowWidths[r] that row's total width,
+	-- rowHeights[r] that row's tallest button (rows can mix variant
+	-- heights, so this can no longer assume a flat DIALOG_BUTTON_HEIGHT).
 	local rows = {}
 	local rowWidths = {}
+	local rowHeights = {}
 	local rowCount = 0
 
 	for i = 1, count do
 		local button = self.buttons[i]
 		local width = button:GetWidth()
+		local height = button:GetHeight()
 		local addWidth = width
 
 		if rowCount > 0 and table.getn(rows[rowCount]) > 0 then
@@ -1136,16 +1186,22 @@ function ACABDialogMixin:Init(config)
 				rowCount = rowCount + 1
 				rows[rowCount] = {}
 				rowWidths[rowCount] = 0
+				rowHeights[rowCount] = 0
 				addWidth = width
 			end
 		else
 			rowCount = rowCount + 1
 			rows[rowCount] = {}
 			rowWidths[rowCount] = 0
+			rowHeights[rowCount] = 0
 		end
 
 		table.insert(rows[rowCount], i)
 		rowWidths[rowCount] = rowWidths[rowCount] + addWidth
+
+		if height > rowHeights[rowCount] then
+			rowHeights[rowCount] = height
+		end
 	end
 
 	-- Each row is anchored off self's own TOP with a precomputed offset,
@@ -1196,7 +1252,7 @@ function ACABDialogMixin:Init(config)
 			cursorX = cursorX + width + BUTTON_GAP_X
 		end
 
-		rowY = rowY + DIALOG_BUTTON_HEIGHT
+		rowY = rowY + rowHeights[r]
 	end
 
 	self:SetHeight(rowY + BOTTOM_PADDING)
@@ -1454,6 +1510,14 @@ local DANGER_COLOR = { 0.6, 0.08, 0.08 }
 
 function ACAB:ApplyDangerButtonHighlight(button)
 	button:SetBackdropColor(DANGER_COLOR[1], DANGER_COLOR[2], DANGER_COLOR[3], 0.9)
+end
+
+-- Same idea as ApplyDangerButtonHighlight, for a "prominent"-variant button
+-- (e.g. the first-login dialog's primary choice) - flat blue background.
+local PROMINENT_COLOR = { 0.12, 0.35, 0.68 }
+
+function ACAB:ApplyProminentButtonHighlight(button)
+	button:SetBackdropColor(PROMINENT_COLOR[1], PROMINENT_COLOR[2], PROMINENT_COLOR[3], 0.9)
 end
 
 -------------------------------------------------------------------------
