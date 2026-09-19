@@ -227,8 +227,18 @@ function ACAB:GetActionBarCoordinateRange(cfg)
 		maxX = screenWidthUnits - barWidth - borderSize
 	end
 
-	local minY = barHeight + borderSize
-	local maxY = screenHeightUnits
+	local minY, maxY
+
+	-- Same BOTTOM-anchor mirroring as the X check above - Right Action
+	-- Bar 1/2 use BOTTOMRIGHT/BOTTOMLEFT under Modern Layout, where y is
+	-- the bar's own bottom edge instead of its top edge.
+	if ACAB:IsBottomAnchoredPoint(cfg and cfg.point) then
+		minY = borderSize
+		maxY = screenHeightUnits - barHeight
+	else
+		minY = barHeight + borderSize
+		maxY = screenHeightUnits
+	end
 
 	-- Never feed SetMinMaxValues a backwards span (max < min) if an
 	-- oversized bar/border combination would otherwise invert it.
@@ -290,16 +300,21 @@ end
 -- extraMaxYPixels (optional): extra real screen pixels of headroom added before the scale division.
 -------------------------------------------------------------------------
 
--- True for any point string anchored to the screen's right edge - Modern Layout's corner cluster
--- stores position this way, x=0 flush against the right edge and more negative moving left, the mirror
--- image of the BOTTOMLEFT/TOPLEFT convention every X/Y position slider otherwise assumes.
+-- True for any point string anchored to the screen's right/bottom edge - Modern Layout's corner cluster
+-- stores position this way (BOTTOMRIGHT), x=0/y=0 flush against that edge and more negative moving away
+-- from it, the mirror image of the BOTTOMLEFT/TOPLEFT convention every X/Y position slider otherwise assumes.
 function ACAB:IsRightAnchoredPoint(point)
 	return point ~= nil and string.find(point, "RIGHT") ~= nil
 end
 
--- isRightAnchored (optional): mirrors minX/maxX for a RIGHT-anchored element's x convention (0 at the
--- screen's right edge, negative moving left) instead of the default LEFT-anchored one.
-function ACAB:GetSimpleElementCoordinateRange(frame, extraMaxYPixels, isRightAnchored)
+function ACAB:IsBottomAnchoredPoint(point)
+	return point ~= nil and string.find(point, "BOTTOM") ~= nil
+end
+
+-- isRightAnchored/isBottomAnchored (optional): mirror minX/maxX and minY/maxY respectively for an
+-- element whose stored point anchors to the screen's right and/or bottom edge (0 at that edge, negative
+-- moving away from it) instead of the default TOPLEFT convention every other element uses.
+function ACAB:GetSimpleElementCoordinateRange(frame, extraMaxYPixels, isRightAnchored, isBottomAnchored)
 	local screenWidthUnits = GetScreenWidth()
 	local screenHeightUnits = GetScreenHeight()
 
@@ -384,8 +399,18 @@ function ACAB:GetSimpleElementCoordinateRange(frame, extraMaxYPixels, isRightAnc
 		maxX = (screenWidthUnits + rightInset) / scale - frameWidth
 	end
 
-	local minY = frameHeight - bottomInset / scale
-	local maxY = (screenHeightUnits + extraY + topInset) / scale
+	local minY, maxY
+
+	if isBottomAnchored then
+		-- Mirror image of the TOP-anchored formula above: y is the frame's own bottom edge (0 flush at
+		-- the screen's bottom) instead of its top edge - topInset/bottomInset swap roles the same way
+		-- leftInset/rightInset do for isRightAnchored above.
+		minY = -bottomInset / scale
+		maxY = (screenHeightUnits + extraY + topInset) / scale - frameHeight
+	else
+		minY = frameHeight - bottomInset / scale
+		maxY = (screenHeightUnits + extraY + topInset) / scale
+	end
 
 	if maxX < minX then
 		maxX = minX
@@ -424,7 +449,8 @@ function ACAB:RefreshSimplePositionSliderRange(page, key)
 
 	local pos = config.getPosition and config.getPosition()
 	local isRightAnchored = ACAB:IsRightAnchoredPoint(pos and pos.point)
-	local minX, maxX, minY, maxY = ACAB:GetSimpleElementCoordinateRange(frame, config.extraMaxYPixels, isRightAnchored)
+	local isBottomAnchored = ACAB:IsBottomAnchoredPoint(pos and pos.point)
+	local minX, maxX, minY, maxY = ACAB:GetSimpleElementCoordinateRange(frame, config.extraMaxYPixels, isRightAnchored, isBottomAnchored)
 
 	page.xSlider:SetMinMaxValues(minX, maxX)
 	page.ySlider:SetMinMaxValues(minY, maxY)
