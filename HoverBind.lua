@@ -3,15 +3,21 @@
 -- exclusive with edit mode (Core.lua's SetEditMode/SetHoverBindMode).
 --
 -- Default-bar buttons (bars 1-5) bind through native binding actions
--- (ACTIONBUTTON1-12, MULTIACTIONBAR#BUTTON1-12). Custom-bar slots (bars
--- 6+) have no native per-slot binding action, so they bind through this
--- addon's own bindings.xml-declared actions: ACABBIND1-48 (one per
--- free action slot 73-120), ACABPETBIND1-10 (styled Pet Bar, keyed
--- by pet slot), ACABSTANCEBIND1-10 (styled Stance Bar, keyed by
--- shapeshift form index). The native "Use Vanilla Pet/Stance Bar"
--- containers aren't Bar.lua/Button.lua pool buttons, so they're outside
--- this system (like Bag Bar/Micro Menu) and keybind only via native
--- Blizzard Keybindings.
+-- (ACTIONBUTTON1-12, MULTIACTIONBAR#BUTTON1-12) - their saved keybind always
+-- lives under this nativeBindingId. Custom-bar slots (bars 6+) have no native
+-- per-slot binding action, so they bind through this addon's own
+-- bindings.xml-declared actions: ACABBIND1-48 (one per free action slot
+-- 73-120), ACABPETBIND1-10 (styled Pet Bar, keyed by pet slot),
+-- ACABSTANCEBIND1-10 (styled Stance Bar, keyed by shapeshift form index).
+-- The native "Use Vanilla Pet/Stance Bar" containers aren't Bar.lua/
+-- Button.lua pool buttons, so they're outside this system (like Bag Bar/
+-- Micro Menu) and keybind only via native Blizzard Keybindings.
+--
+-- When DefaultBars.lua's stance/page-swap moves a default-bar button's
+-- actionSlot into the 73-120 pool range, its native binding action would
+-- still fire its own fixed vanilla slot, not this button's current one -
+-- see SyncDefaultBarBindingRedirect below, which moves the physical key onto
+-- that button's own ACABBIND<n> for as long as it stays swapped.
 --
 -- WARNING: SetBindingClick and SetBinding(key, "BONUSACTIONBUTTON1") are
 -- both dead ends for custom slots on this client - they record in the
@@ -118,11 +124,86 @@ function ACAB:ForEachButton(fn)
 end
 
 -------------------------------------------------------------------------
+-- Default-bar swap redirect
+--
+-- A default-bar button's saved keybind always lives under its nativeBindingId
+-- (e.g. MULTIACTIONBAR1BUTTON1) - that's the one Blizzard's key-binding UI and
+-- SaveBindings know about. But when DefaultBars.lua's stance/page-swap
+-- assigns an Extra Bar to that button, the button's actionSlot moves into the
+-- 73-120 pool range, and native binding actions always fire their own fixed
+-- vanilla slot - never this button's current one. So while swapped, the key
+-- is moved (session-only, never saved) onto this button's own ACABBIND<n>
+-- action instead, which does dispatch through the button's current actionSlot.
+-- btn.activeBindingId tracks which identity the key currently lives under.
+-------------------------------------------------------------------------
+
+-- Moves the key back onto btn.nativeBindingId if a previous sync redirected it away.
+-- Called before reading/writing a default-bar button's binding directly (hoverbind edit/clear),
+-- so those operations always see the true current key.
+function ACAB:RehomeDefaultBarBinding(btn)
+	if not btn or not btn.nativeBindingId then
+		return
+	end
+
+	local liveId = btn.activeBindingId or btn.nativeBindingId
+
+	if liveId ~= btn.nativeBindingId then
+		local k1, k2 = GetBindingKey(liveId)
+
+		if k1 then SetBinding(k1); SetBinding(k1, btn.nativeBindingId) end
+		if k2 then SetBinding(k2); SetBinding(k2, btn.nativeBindingId) end
+	end
+
+	btn.activeBindingId = btn.nativeBindingId
+end
+
+-- Moves the key from btn.nativeBindingId onto ACABBIND<n> if btn.actionSlot is
+-- currently swapped into the pool range, or back home if it isn't. Idempotent -
+-- safe to call on every Rebind/Init even when nothing actually changed.
+function ACAB:SyncDefaultBarBindingRedirect(btn)
+	if not btn or not btn.nativeBindingId then
+		return
+	end
+
+	local targetId = btn.nativeBindingId
+
+	if btn.actionSlot and btn.actionSlot >= ACAB.ACTION_SLOT_START then
+		targetId = "ACABBIND" .. tostring(btn.actionSlot - 72)
+	end
+
+	local liveId = btn.activeBindingId or btn.nativeBindingId
+
+	if liveId == targetId then
+		btn.activeBindingId = targetId
+		return
+	end
+
+	-- Funnels through nativeBindingId so a chained swap (Extra Bar A -> Extra Bar B) always
+	-- reads the key off one stable source instead of one custom id directly to another.
+	if liveId ~= btn.nativeBindingId then
+		local k1, k2 = GetBindingKey(liveId)
+
+		if k1 then SetBinding(k1); SetBinding(k1, btn.nativeBindingId) end
+		if k2 then SetBinding(k2); SetBinding(k2, btn.nativeBindingId) end
+	end
+
+	if targetId ~= btn.nativeBindingId then
+		local k1, k2 = GetBindingKey(btn.nativeBindingId)
+
+		if k1 then SetBinding(k1); SetBinding(k1, targetId) end
+		if k2 then SetBinding(k2); SetBinding(k2, targetId) end
+	end
+
+	btn.activeBindingId = targetId
+end
+
+-------------------------------------------------------------------------
 -- Bound check
 -------------------------------------------------------------------------
 
 function ACAB:IsButtonBound(ref)
-	return GetBindingKey(ref.bindingId) ~= nil
+	local id = (ref.frame and ref.frame.activeBindingId) or ref.bindingId
+	return GetBindingKey(id) ~= nil
 end
 
 -------------------------------------------------------------------------
@@ -266,6 +347,12 @@ local function RefreshHoverBindTarget(hovered)
 end
 
 local function ApplyHoverBindKey(hovered, combo)
+	-- Default-bar buttons: a prior swap may have moved the live key onto ACABBIND<n> -
+	-- pull it back onto hovered.bindingId (nativeBindingId) first so the read/write below sees it.
+	if hovered.fixedSlotBar then
+		ACAB:RehomeDefaultBarBinding(hovered.frame)
+	end
+
 	local previousAction = GetBindingAction(combo)
 	if previousAction and previousAction ~= "" and previousAction ~= hovered.bindingId then
 		ACAB:Print("Rebound " .. combo .. " (was: " .. previousAction .. ")")
@@ -288,15 +375,27 @@ local function ApplyHoverBindKey(hovered, combo)
 
 	SaveBindings(GetCurrentBindingSet())
 
+	-- Pushes the freshly-saved key back out to ACABBIND<n> if the button is currently swapped.
+	if hovered.fixedSlotBar then
+		ACAB:SyncDefaultBarBindingRedirect(hovered.frame)
+	end
+
 	RefreshHoverBindTarget(hovered)
 end
 
 -- Escape deletes the hovered button's current keybind rather than binding
 -- itself - it never becomes a keybind on this client.
 local function ClearHoverBindKey(hovered)
+	if hovered.fixedSlotBar then
+		ACAB:RehomeDefaultBarBinding(hovered.frame)
+	end
+
 	local existingKey1, existingKey2 = GetBindingKey(hovered.bindingId)
 
 	if not existingKey1 and not existingKey2 then
+		if hovered.fixedSlotBar then
+			ACAB:SyncDefaultBarBindingRedirect(hovered.frame)
+		end
 		return
 	end
 
@@ -310,6 +409,10 @@ local function ClearHoverBindKey(hovered)
 	SaveBindings(GetCurrentBindingSet())
 
 	ACAB:Print("Cleared keybind for " .. hovered.bindingId)
+
+	if hovered.fixedSlotBar then
+		ACAB:SyncDefaultBarBindingRedirect(hovered.frame)
+	end
 
 	RefreshHoverBindTarget(hovered)
 end
