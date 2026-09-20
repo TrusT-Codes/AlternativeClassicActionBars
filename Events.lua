@@ -59,12 +59,32 @@ end)
 -- UPDATE_BONUS_ACTIONBAR fires whenever the player's stance/form/stealth
 -- state changes - see ACAB:HideBonusActionBarFrame's own comment
 -- (DefaultBars.lua) for why BonusActionBarFrame needs independent
--- hide+neuter treatment.
+-- hide+neuter treatment. Only covers forms vanilla grants a bonus action
+-- page to (e.g. Bear/Cat) - PLAYER_AURAS_CHANGED below catches the rest
+-- (e.g. Travel/Aquatic Form), per this client's own confirmed behavior
+-- that UPDATE_SHAPESHIFT_FORM never fires (docs/01-Environment-Capability-Analysis.md §5aj).
 local mainBarBonusEventFrame = CreateFrame("Frame", "ACABMainBarBonusEventFrame")
 mainBarBonusEventFrame:RegisterEvent("UPDATE_BONUS_ACTIONBAR")
+mainBarBonusEventFrame:RegisterEvent("PLAYER_AURAS_CHANGED")
+
+local lastDefaultBarStanceIndex = false
+
 mainBarBonusEventFrame:SetScript("OnEvent", function()
-	ACAB:HideBonusActionBarFrame()
-	ACAB:RefreshDefaultBarSlots()
+	if event == "UPDATE_BONUS_ACTIONBAR" then
+		ACAB:HideBonusActionBarFrame()
+		ACAB:RefreshDefaultBarSlots()
+		lastDefaultBarStanceIndex = ACAB:GetActiveStanceIndex()
+		return
+	end
+
+	-- PLAYER_AURAS_CHANGED fires on every buff/debuff tick, not just form changes - only
+	-- re-resolve bar slots when the active stance/form index itself actually changed.
+	local stanceIndex = ACAB:GetActiveStanceIndex()
+
+	if stanceIndex ~= lastDefaultBarStanceIndex then
+		lastDefaultBarStanceIndex = stanceIndex
+		ACAB:RefreshDefaultBarSlots()
+	end
 end)
 
 -------------------------------------------------------------------------
