@@ -3839,6 +3839,19 @@ function ACAB:RebuildDefaultBarAssignmentRows(barId)
 	local stanceSwapOn = ACABDB.defaultBarStanceSwapEnabled ~= false
 	local count = stanceSwapOn and GetNumShapeshiftForms and GetNumShapeshiftForms() or 0
 
+	-- TEMPORARY diagnostic (diag2 investigation) - logs every rebuild's form order, remove once confirmed.
+	if DEFAULT_CHAT_FRAME then
+		local names = "gen=" .. tostring(page.assignmentRebuildGeneration) .. " bar" .. tostring(barId) .. " count=" .. tostring(count)
+		local si
+
+		for si = 1, (count or 0) do
+			local _, n = GetShapeshiftFormInfo(si)
+			names = names .. " " .. tostring(si) .. "=" .. tostring(n)
+		end
+
+		DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99[ACABdiag]|r rows-rebuilt " .. names)
+	end
+
 	if count and count > 0 then
 		local s
 
@@ -3864,6 +3877,15 @@ function ACAB:RebuildDefaultBarAssignmentRows(barId)
 					end
 
 					ACABDB.defaultBarStanceBarAssignment[barId][s] = value
+
+					-- TEMPORARY diagnostic (diag2 investigation) - logs the exact write, remove once confirmed.
+					if DEFAULT_CHAT_FRAME then
+						local _, liveName = GetShapeshiftFormInfo(s)
+
+						DEFAULT_CHAT_FRAME:AddMessage(string.format(
+							"|cff33ff99[ACABdiag]|r stance-write gen=%s bar%s stance%s liveName=%s value=%s",
+							tostring(page.assignmentRebuildGeneration), tostring(barId), tostring(s), tostring(liveName), tostring(value)))
+					end
 
 					ACAB:RefreshDefaultBarSlots()
 				end,

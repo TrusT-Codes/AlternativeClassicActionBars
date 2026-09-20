@@ -102,6 +102,12 @@ end)
 local stanceFormEventFrame = CreateFrame("Frame", "ACABStanceFormEventFrame")
 stanceFormEventFrame:RegisterEvent("UPDATE_SHAPESHIFT_FORMS")
 stanceFormEventFrame:SetScript("OnEvent", function()
+	-- TEMPORARY diagnostic (diag2 investigation) - confirms whether this event actually fires here, remove once confirmed.
+	if DEFAULT_CHAT_FRAME then
+		DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99[ACABdiag]|r UPDATE_SHAPESHIFT_FORMS fired, numForms=" ..
+			tostring(GetNumShapeshiftForms and GetNumShapeshiftForms()))
+	end
+
 	ACAB:RebuildStanceBarContainer()
 
 	-- Styled mode: re-syncs cfg.buttonCount/cols/rows against the new live
