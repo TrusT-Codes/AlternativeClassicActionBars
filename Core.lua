@@ -1410,141 +1410,14 @@ function ACAB:RunLoginSequence(earlyLeft, earlyTop, settledLeft, settledTop, wai
 
 	ACAB:Print("Fully initialized! Click the minimap button or use /acab for options.")
 
+	ACAB:CheckForUpdates()
+
 	if ACAB.pendingFirstLoginDialog then
 		ACAB.pendingFirstLoginDialog = nil
 		ACAB:ShowFirstLoginDialog()
 	end
 
 	WaitForPostLoginSettleThenVerify()
-end
-
-
--- Temporary diagnostic: "/acab diag1 <label>" dumps saved position config + live frame anchors for diffing.
-local function DiagPrint(msg)
-	DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99[ACABdiag]|r " .. msg)
-end
-
-local function DiagBarCfg(id, label)
-	local cfg = ACABDB.defaultBars and ACABDB.defaultBars[id]
-
-	if not cfg then
-		DiagPrint(label .. ": no cfg")
-		return
-	end
-
-	DiagPrint(string.format("%s pos=%s %s,%s size=%s spacing=%s enabled=%s",
-		label, tostring(cfg.point), tostring(cfg.x), tostring(cfg.y),
-		tostring(cfg.buttonSize), tostring(cfg.spacing), tostring(cfg.enabled)))
-
-	local na = cfg.nativeAnchor
-
-	if na then
-		DiagPrint(string.format("%s nativeAnchor=%s %s,%s nativeSpacing=%s",
-			label, tostring(na.point), tostring(na.x), tostring(na.y), tostring(cfg.nativeSpacing)))
-	else
-		DiagPrint(label .. " nativeAnchor=nil")
-	end
-end
-
--- ACABDB.bars is a plain array, not keyed by id - scan for the entry whose .id field matches.
-local function DiagExtraBar(id, label)
-	local cfg = nil
-	local i
-
-	if ACABDB.bars then
-		for i = 1, table.getn(ACABDB.bars) do
-			if ACABDB.bars[i] and ACABDB.bars[i].id == id then
-				cfg = ACABDB.bars[i]
-				break
-			end
-		end
-	end
-
-	if not cfg then
-		DiagPrint(label .. ": no cfg")
-		return
-	end
-
-	DiagPrint(string.format("%s pos=%s rel=%s %s,%s size=%s spacing=%s enabled=%s",
-		label, tostring(cfg.point), tostring(cfg.relativePoint), tostring(cfg.x), tostring(cfg.y),
-		tostring(cfg.buttonSize), tostring(cfg.spacing), tostring(cfg.enabled)))
-end
-
-local function DiagElement(prefix, label)
-	local pos = ACABDB[prefix .. "Position"]
-	local na = ACABDB[prefix .. "NativeAnchor"]
-
-	if pos then
-		DiagPrint(string.format("%s pos=%s %s,%s", label, tostring(pos.point), tostring(pos.x), tostring(pos.y)))
-	else
-		DiagPrint(label .. " pos=nil")
-	end
-
-	if na then
-		DiagPrint(string.format("%s nativeAnchor=%s %s,%s", label, tostring(na.point), tostring(na.x), tostring(na.y)))
-	else
-		DiagPrint(label .. " nativeAnchor=nil")
-	end
-end
-
-local function DiagFrame(name, label)
-	local frame = getglobal(name)
-
-	if not frame then
-		DiagPrint(label .. ": frame missing")
-		return
-	end
-
-	local left = frame.GetLeft and frame:GetLeft()
-	local bottom = frame.GetBottom and frame:GetBottom()
-	local point, relTo, relPoint, x, y = frame:GetPoint()
-
-	DiagPrint(string.format("%s live left=%s bottom=%s point=%s rel=%s relPoint=%s x=%s y=%s",
-		label, tostring(left), tostring(bottom), tostring(point),
-		relTo and relTo:GetName() or "nil", tostring(relPoint), tostring(x), tostring(y)))
-end
-
-local function RunDiag1(stage)
-	ACAB:EnsureDB()
-
-	DiagPrint("--- diag1 [" .. tostring(stage) .. "] ---")
-	DiagPrint(string.format("useDefaultLayout=%s lastAppliedVanillaStyle=%s schemaVersion=%s",
-		tostring(ACABDB.useDefaultLayout), tostring(ACABDB.lastAppliedVanillaStyle), tostring(ACABDB.schemaVersion)))
-
-	local id
-
-	for id = 1, 5 do
-		DiagBarCfg(id, "bar" .. id)
-	end
-
-	DiagBarCfg(ACAB.PET_BAR_ID, "petBar")
-
-	for id = ACAB.EXTRA_BAR_ID_START, ACAB.EXTRA_BAR_ID_START + ACAB.EXTRA_BAR_COUNT - 1 do
-		DiagExtraBar(id, "extraBar" .. (id - ACAB.EXTRA_BAR_ID_START + 1))
-	end
-
-	local bar3 = ACABDB.defaultBars and ACABDB.defaultBars[3]
-	local bar3Enabled = bar3 and bar3.enabled
-	local baselineY = ACAB.GetPetBarBaselineY and ACAB:GetPetBarBaselineY(bar3Enabled)
-
-	DiagPrint(string.format("bar3.enabled=%s GetPetBarBaselineY=%s", tostring(bar3Enabled), tostring(baselineY)))
-
-	DiagElement("stanceBar", "stanceBar")
-	DiagElement("bagBar", "bagBar")
-	DiagElement("microMenu", "microMenu")
-	DiagElement("keyRing", "keyRing")
-	DiagElement("latencyBar", "latencyBar")
-	DiagElement("castBar", "castBar")
-	DiagElement("expBar", "expBar")
-	DiagElement("mainBarPageIndicator", "pageIndicator")
-
-	DiagFrame("ActionButton1", "ActionButton1")
-	DiagFrame("PetActionButton1", "PetActionButton1")
-	DiagFrame(ACAB.LATENCY_BAR_FRAME_NAME, "LatencyBarFrame")
-	DiagFrame(ACAB.CAST_BAR_FRAME_NAME, "CastBarFrame")
-	DiagFrame(ACAB.KEYRING_BUTTON_NAME, "KeyRingButton")
-
-	DiagPrint("--- end diag1 ---")
 end
 
 -- /acab settings <pagename> - name -> settings page resolution table, mirroring right-click-to-settings.
@@ -1878,8 +1751,6 @@ SlashCmdList["ACAB"] = function(msg)
 		ACAB:RecaptureWrappedNativeFrameAnchors()
 	elseif command == "help" then
 		PrintCommandHelp()
-	elseif string.find(msg, "^diag1") then
-		RunDiag1(string.gsub(msg, "^diag1%s*", ""))
 	else
 		ACAB:Print("Unknown command \"" .. msg .. "\". Type " .. ColorKeyName("/acab help") .. " for a list.")
 	end
