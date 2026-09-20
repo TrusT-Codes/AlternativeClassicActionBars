@@ -76,16 +76,24 @@ function ACAB:CheckForUpdates()
 	AnnounceOwnVersion()
 end
 
-local listenerFrame = CreateFrame("Frame")
-listenerFrame:RegisterEvent("CHAT_MSG_ADDON")
-listenerFrame:SetScript("OnEvent", function()
-	if event ~= "CHAT_MSG_ADDON" or arg1 ~= MSG_PREFIX or notifiedThisSession then
+-- Nags once per session if remoteVersion is newer than this client's own version.
+function ACAB:HandleVersionAnnouncement(remoteVersion)
+	if notifiedThisSession then
 		return
 	end
 
-	if ACAB:CompareVersions(arg2, ACAB.currentVersion) > 0 then
+	if ACAB:CompareVersions(remoteVersion, ACAB.currentVersion) > 0 then
 		notifiedThisSession = true
-		ACAB:Print("A newer version (" .. arg2 .. ") is available - you're on " .. ACAB.currentVersion ..
+		ACAB:Print("A newer version (" .. remoteVersion .. ") is available - you're on " .. ACAB.currentVersion ..
 			". Get it at https://github.com/TrusT-Codes/AlternativeClassicActionBars/releases")
 	end
+end
+
+local listenerFrame = CreateFrame("Frame")
+listenerFrame:RegisterEvent("CHAT_MSG_ADDON")
+listenerFrame:SetScript("OnEvent", function()
+	if event ~= "CHAT_MSG_ADDON" or arg1 ~= MSG_PREFIX then
+		return
+	end
+	ACAB:HandleVersionAnnouncement(arg2)
 end)
