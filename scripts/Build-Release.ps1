@@ -49,7 +49,18 @@ $stageAddonDir = Join-Path $stageRoot $addonFolderName
 if (Test-Path $stageRoot) { Remove-Item $stageRoot -Recurse -Force }
 New-Item -ItemType Directory -Path $stageAddonDir -Force | Out-Null
 
-Copy-Item $tocPath -Destination $stageAddonDir
+$stagedTocPath = Join-Path $stageAddonDir "$addonFolderName.toc"
+Copy-Item $tocPath -Destination $stagedTocPath
+
+# Stamp the staged .toc's ## Version line with the release version so the shipped
+# zip always matches the tag, even if the committed .toc lagged behind.
+$tocContent = Get-Content $stagedTocPath
+if ($tocContent -match '^## Version:') {
+    $tocContent = $tocContent -replace '^## Version:.*$', "## Version: $Version"
+} else {
+    $tocContent = @($tocContent[0]) + @("## Version: $Version") + $tocContent[1..($tocContent.Count - 1)]
+}
+Set-Content -Path $stagedTocPath -Value $tocContent
 
 foreach ($file in $addonFiles) {
     $src = Join-Path $repoRoot $file
