@@ -103,13 +103,13 @@ function ACAB:GetActiveStanceIndex()
 end
 
 -- Resolves the action slot for pool button `slotIndex` of default bar `id`
--- (1-5) on the effective page. Per stance index (page 7-9) or page-bar
--- (page ~= 1):
+-- (1-5) on the effective page. Per stance index (page == 1 or page 7-9) or
+-- page-bar (any other page):
 --   nil (No Pageswap) -> static slot, never redirects.
 --   -1  (Default)     -> vanilla paging math (bar 1 only; same as static
 --                         for bars 2-5, which have none of their own).
 --   Extra Bar id      -> that bar's live slot, else static slot.
--- page == 1 with no stance active always uses the static slot.
+-- page == 1 with no stance active (or stance-swap disabled) uses the static slot.
 function ACAB:GetDefaultBarSlotForIndex(id, slotIndex)
 	local page = self:GetDefaultBarEffectivePage()
 
@@ -135,18 +135,24 @@ function ACAB:GetDefaultBarSlotForIndex(id, slotIndex)
 
 	local assignedId
 
-	if page >= 7 and page <= 9 then
-		local stanceIndex = self:GetActiveStanceIndex()
+	if page == 1 or (page >= 7 and page <= 9) then
+		-- GetActiveStanceIndex, not the page number, is the real signal a stance/form is active.
+		-- Vanilla only grants a bonus-bar page (page 7-9) to forms with extra spells (e.g. Bear/Cat) -
+		-- page stays 1 for forms without one (e.g. Travel/Aquatic Form) even while shapeshifted, so
+		-- page == 1 must still check for an active stance rather than assuming "no stance".
+		local stanceIndex = nil
+
+		if ACABDB.defaultBarStanceSwapEnabled ~= false then
+			stanceIndex = self:GetActiveStanceIndex()
+		end
 
 		assignedId = stanceIndex
 			and ACABDB.defaultBarStanceBarAssignment
 			and ACABDB.defaultBarStanceBarAssignment[id]
 			and ACABDB.defaultBarStanceBarAssignment[id][stanceIndex]
-	elseif page ~= 1 then
+	else
 		assignedId = ACABDB.defaultBarPageBarAssignment
 			and ACABDB.defaultBarPageBarAssignment[id]
-	else
-		return StaticSlot()
 	end
 
 	if assignedId == nil then
