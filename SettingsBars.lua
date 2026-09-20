@@ -3856,8 +3856,10 @@ function ACAB:RebuildDefaultBarAssignmentRows(barId)
 		local s
 
 		for s = 1, count do
-			local icon, name = GetShapeshiftFormInfo(s)
-			local label = (name and name ~= "" and name) or ("Stance " .. tostring(s))
+			local stanceIndex = s
+
+			local icon, name = GetShapeshiftFormInfo(stanceIndex)
+			local label = (name and name ~= "" and name) or ("Stance " .. tostring(stanceIndex))
 
 			local row = CreateExtraBarAssignmentRow(
 				container,
@@ -3865,7 +3867,7 @@ function ACAB:RebuildDefaultBarAssignmentRows(barId)
 				function()
 					return ACABDB.defaultBarStanceBarAssignment
 						and ACABDB.defaultBarStanceBarAssignment[barId]
-						and ACABDB.defaultBarStanceBarAssignment[barId][s]
+						and ACABDB.defaultBarStanceBarAssignment[barId][stanceIndex]
 				end,
 				function(value)
 					if not ACABDB.defaultBarStanceBarAssignment then
@@ -3876,21 +3878,21 @@ function ACAB:RebuildDefaultBarAssignmentRows(barId)
 						ACABDB.defaultBarStanceBarAssignment[barId] = {}
 					end
 
-					ACABDB.defaultBarStanceBarAssignment[barId][s] = value
+					ACABDB.defaultBarStanceBarAssignment[barId][stanceIndex] = value
 
 					-- TEMPORARY diagnostic (diag2 investigation) - logs the exact write, remove once confirmed.
 					if DEFAULT_CHAT_FRAME then
-						local _, liveName = GetShapeshiftFormInfo(s)
+						local _, liveName = GetShapeshiftFormInfo(stanceIndex)
 
 						DEFAULT_CHAT_FRAME:AddMessage(string.format(
 							"|cff33ff99[ACABdiag]|r stance-write gen=%s bar%s stance%s liveName=%s value=%s",
-							tostring(page.assignmentRebuildGeneration), tostring(barId), tostring(s), tostring(liveName), tostring(value)))
+							tostring(page.assignmentRebuildGeneration), tostring(barId), tostring(stanceIndex), tostring(liveName), tostring(value)))
 					end
 
 					ACAB:RefreshDefaultBarSlots()
 				end,
 				-- Name must stay unique (bar id + stance index + generation suffix) or dropdown frame-identity corruption returns.
-				"ACABDefaultBarStanceAssignmentDropdown" .. tostring(barId) .. "_" .. tostring(s) .. generationSuffix
+				"ACABDefaultBarStanceAssignmentDropdown" .. tostring(barId) .. "_" .. tostring(stanceIndex) .. generationSuffix
 			)
 
 			row:SetPoint("TOPLEFT", container, "TOPLEFT", 0, y)

@@ -66,6 +66,12 @@ function ACABInlineDropdownMixin:OnLoad(widthPixels)
 		local info
 		local i
 
+		-- TEMPORARY diagnostic (diag2 investigation) - confirms which dropdown frame's menu is actually
+		-- being populated when opened, remove once confirmed.
+		if DEFAULT_CHAT_FRAME then
+			DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99[ACABdiag]|r dropdown-populate name=" .. tostring(dropdown:GetName()))
+		end
+
 		for i = 1, table.getn(dropdown.options) do
 			local option = dropdown.options[i]
 
@@ -78,6 +84,13 @@ function ACABInlineDropdownMixin:OnLoad(widthPixels)
 			info.text = optionText
 			info.notCheckable = true
 			info.func = function()
+				-- TEMPORARY diagnostic (diag2 investigation) - confirms which dropdown frame's onSelect
+				-- actually fires on click, remove once confirmed.
+				if DEFAULT_CHAT_FRAME then
+					DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99[ACABdiag]|r dropdown-click name=" ..
+						tostring(dropdown:GetName()) .. " value=" .. tostring(optionValue))
+				end
+
 				dropdown:SetSelected(optionValue, optionText)
 
 				if dropdown.onSelect then
