@@ -1410,6 +1410,8 @@ function ACAB:RunLoginSequence(earlyLeft, earlyTop, settledLeft, settledTop, wai
 
 	ACAB:Print("Fully initialized! Click the minimap button or use /acab for options.")
 
+	ACAB:CheckForUpdates()
+
 	if ACAB.pendingFirstLoginDialog then
 		ACAB.pendingFirstLoginDialog = nil
 		ACAB:ShowFirstLoginDialog()
