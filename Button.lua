@@ -179,10 +179,9 @@ function ACABButtonMixin:Init(parent, actionSlot, slotIndex)
 	-- from the parent bar frame, which is unconfirmed on this client.
 	self:SetFrameStrata("HIGH")
 
-	-- Default bars (1-5) show their real native keybind action name as
-	-- hotkey text instead of going through the ACABBIND<n> dispatch table.
-	-- A default bar's dynamic slot can land inside the 73-120 pool range, so
-	-- self.nativeBindingId also excludes it from that table.
+	-- Default bars (1-5) show their real native keybind action name as their
+	-- home identity; SyncDefaultBarBindingRedirect below moves the physical
+	-- key off it onto ACABBIND<n> while this button's slot is swapped.
 	if parent.config and (parent.config.fixedActionSlots or parent.config.dynamicDefaultBar) and slotIndex then
 		local prefix = ACAB.DEFAULT_BAR_BINDING_PREFIXES and
 			ACAB.DEFAULT_BAR_BINDING_PREFIXES[parent.config.id]
@@ -193,9 +192,16 @@ function ACABButtonMixin:Init(parent, actionSlot, slotIndex)
 	end
 
 	-- Registers as the live target for HoverBind.lua's ACABBIND<n> dispatch (n = actionSlot - 72), keyed by action slot.
-	if actionSlot >= ACAB.ACTION_SLOT_START and not self.nativeBindingId then
+	-- Default-bar buttons register here too when swapped into this range - see SyncDefaultBarBindingRedirect.
+	if actionSlot >= ACAB.ACTION_SLOT_START then
 		ACAB.customBindTargets = ACAB.customBindTargets or {}
 		ACAB.customBindTargets[actionSlot - 72] = self
+	end
+
+	-- Default-bar buttons: redirects the physical key off its native binding action
+	-- and onto ACABBIND<n> whenever the swapped-in content lives outside its home slot.
+	if self.nativeBindingId then
+		ACAB:SyncDefaultBarBindingRedirect(self)
 	end
 
 	-- Registers as the live target for HoverBind.lua's ACABPETBIND<n> dispatch, keyed by pet slot (1-10).
@@ -623,15 +629,20 @@ function ACABButtonMixin:Rebind(newActionSlot)
 	local oldActionSlot = self.actionSlot
 
 	-- Clears the old index first so a stale entry never briefly points at a button that no longer owns that slot.
-	if ACAB.customBindTargets and oldActionSlot and oldActionSlot >= ACAB.ACTION_SLOT_START and not self.nativeBindingId then
+	if ACAB.customBindTargets and oldActionSlot and oldActionSlot >= ACAB.ACTION_SLOT_START then
 		ACAB.customBindTargets[oldActionSlot - 72] = nil
 	end
 
 	self.actionSlot = newActionSlot
 
-	if newActionSlot >= ACAB.ACTION_SLOT_START and not self.nativeBindingId then
+	if newActionSlot >= ACAB.ACTION_SLOT_START then
 		ACAB.customBindTargets = ACAB.customBindTargets or {}
 		ACAB.customBindTargets[newActionSlot - 72] = self
+	end
+
+	-- Default-bar buttons: keeps the physical key following whichever bar (home or swapped-in) this slot now shows.
+	if self.nativeBindingId then
+		ACAB:SyncDefaultBarBindingRedirect(self)
 	end
 
 	self:Refresh()
@@ -818,7 +829,7 @@ function ACABButtonMixin:UpdateHotkeyText()
 		return
 	end
 
-	local key = self.actionSlot and GetBindingKey(ACAB:GetHoverBindingId(self))
+	local key = self.actionSlot and GetBindingKey(self.activeBindingId or ACAB:GetHoverBindingId(self))
 
 	self:SetTruncatedButtonText(self.hotkey, key and CompactBindingKeyText(key) or "")
 end
