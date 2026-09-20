@@ -1547,42 +1547,6 @@ local function RunDiag1(stage)
 	DiagPrint("--- end diag1 ---")
 end
 
--- Temporary diagnostic: "/acab diag2 <barId>" dumps default-bar-N's raw stance-bar-assignment table
--- against the live shapeshift form list (name per index) - investigating druid form bar-swap persistence.
-local function RunDiag2(rest)
-	ACAB:EnsureDB()
-
-	local barId = tonumber(rest) or 2
-
-	DiagPrint("--- diag2 [bar" .. tostring(barId) .. "] ---")
-	DiagPrint(string.format("useDefaultLayout=%s isDefaultProfileActive=%s defaultBarStanceSwapEnabled=%s",
-		tostring(ACABDB.useDefaultLayout), tostring(ACAB:IsDefaultProfileActive()), tostring(ACABDB.defaultBarStanceSwapEnabled)))
-
-	local numForms = GetNumShapeshiftForms and GetNumShapeshiftForms() or 0
-	local activeIdx = ACAB:GetActiveStanceIndex()
-	local offset = GetBonusBarOffset and GetBonusBarOffset() or 0
-	local page = ACAB:GetDefaultBarEffectivePage()
-
-	DiagPrint(string.format("GetNumShapeshiftForms=%s GetActiveStanceIndex=%s GetBonusBarOffset=%s GetDefaultBarEffectivePage=%s",
-		tostring(numForms), tostring(activeIdx), tostring(offset), tostring(page)))
-
-	local s
-
-	for s = 1, numForms do
-		local icon, name, isActive = GetShapeshiftFormInfo(s)
-		local assignedId = ACABDB.defaultBarStanceBarAssignment
-			and ACABDB.defaultBarStanceBarAssignment[barId]
-			and ACABDB.defaultBarStanceBarAssignment[barId][s]
-
-		DiagPrint(string.format("  stance %s name=%s isActive=%s -> assignedId=%s",
-			tostring(s), tostring(name), tostring(isActive), tostring(assignedId)))
-	end
-
-	DiagPrint(string.format("GetDefaultBarSlotForIndex(%s, 1)=%s",
-		tostring(barId), tostring(ACAB:GetDefaultBarSlotForIndex(barId, 1))))
-	DiagPrint("--- end diag2 ---")
-end
-
 -- /acab settings <pagename> - name -> settings page resolution table, mirroring right-click-to-settings.
 local SETTINGS_PAGE_ALIASES = {
 	general = { view = "general" },
@@ -1916,8 +1880,6 @@ SlashCmdList["ACAB"] = function(msg)
 		PrintCommandHelp()
 	elseif string.find(msg, "^diag1") then
 		RunDiag1(string.gsub(msg, "^diag1%s*", ""))
-	elseif string.find(msg, "^diag2") then
-		RunDiag2(string.gsub(msg, "^diag2%s*", ""))
 	else
 		ACAB:Print("Unknown command \"" .. msg .. "\". Type " .. ColorKeyName("/acab help") .. " for a list.")
 	end

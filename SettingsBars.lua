@@ -3839,27 +3839,12 @@ function ACAB:RebuildDefaultBarAssignmentRows(barId)
 	local stanceSwapOn = ACABDB.defaultBarStanceSwapEnabled ~= false
 	local count = stanceSwapOn and GetNumShapeshiftForms and GetNumShapeshiftForms() or 0
 
-	-- TEMPORARY diagnostic (diag2 investigation) - logs every rebuild's form order, remove once confirmed.
-	if DEFAULT_CHAT_FRAME then
-		local names = "gen=" .. tostring(page.assignmentRebuildGeneration) .. " bar" .. tostring(barId) .. " count=" .. tostring(count)
-		local si
-
-		for si = 1, (count or 0) do
-			local _, n = GetShapeshiftFormInfo(si)
-			names = names .. " " .. tostring(si) .. "=" .. tostring(n)
-		end
-
-		DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99[ACABdiag]|r rows-rebuilt " .. names)
-	end
-
 	if count and count > 0 then
 		local s
 
 		for s = 1, count do
-			local stanceIndex = s
-
-			local icon, name = GetShapeshiftFormInfo(stanceIndex)
-			local label = (name and name ~= "" and name) or ("Stance " .. tostring(stanceIndex))
+			local icon, name = GetShapeshiftFormInfo(s)
+			local label = (name and name ~= "" and name) or ("Stance " .. tostring(s))
 
 			local row = CreateExtraBarAssignmentRow(
 				container,
@@ -3867,7 +3852,7 @@ function ACAB:RebuildDefaultBarAssignmentRows(barId)
 				function()
 					return ACABDB.defaultBarStanceBarAssignment
 						and ACABDB.defaultBarStanceBarAssignment[barId]
-						and ACABDB.defaultBarStanceBarAssignment[barId][stanceIndex]
+						and ACABDB.defaultBarStanceBarAssignment[barId][s]
 				end,
 				function(value)
 					if not ACABDB.defaultBarStanceBarAssignment then
@@ -3878,21 +3863,12 @@ function ACAB:RebuildDefaultBarAssignmentRows(barId)
 						ACABDB.defaultBarStanceBarAssignment[barId] = {}
 					end
 
-					ACABDB.defaultBarStanceBarAssignment[barId][stanceIndex] = value
-
-					-- TEMPORARY diagnostic (diag2 investigation) - logs the exact write, remove once confirmed.
-					if DEFAULT_CHAT_FRAME then
-						local _, liveName = GetShapeshiftFormInfo(stanceIndex)
-
-						DEFAULT_CHAT_FRAME:AddMessage(string.format(
-							"|cff33ff99[ACABdiag]|r stance-write gen=%s bar%s stance%s liveName=%s value=%s",
-							tostring(page.assignmentRebuildGeneration), tostring(barId), tostring(stanceIndex), tostring(liveName), tostring(value)))
-					end
+					ACABDB.defaultBarStanceBarAssignment[barId][s] = value
 
 					ACAB:RefreshDefaultBarSlots()
 				end,
 				-- Name must stay unique (bar id + stance index + generation suffix) or dropdown frame-identity corruption returns.
-				"ACABDefaultBarStanceAssignmentDropdown" .. tostring(barId) .. "_" .. tostring(stanceIndex) .. generationSuffix
+				"ACABDefaultBarStanceAssignmentDropdown" .. tostring(barId) .. "_" .. tostring(s) .. generationSuffix
 			)
 
 			row:SetPoint("TOPLEFT", container, "TOPLEFT", 0, y)
