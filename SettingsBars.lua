@@ -646,6 +646,13 @@ local function GridSwatch_OnClick()
 
 	local barId = page.barId
 
+	-- Main Bar only: Grid Layout is locked to the native 12x1 grid while any Blizzard art is visible,
+	-- since the art-fitting math (DefaultBars.lua's ApplyMainBarArtPosition) assumes that grid.
+	if barId == 1 and ACABDB.mainBarArtMode ~= ACAB.MAIN_BAR_ART_MODE_DISABLED then
+		ACAB:HighlightMainBarArtModeDropdown()
+		return
+	end
+
 	if barId == "micromenu" then
 		-- page.isDefault is unconditionally true for every simple page - must be checked before the
 		-- page.isDefault branch below or this would wrongly call ACAB:SetDefaultBarLayout.
@@ -727,6 +734,25 @@ local function RebuildGridSwatches(page, barId, swatchY)
 			GridSwatch_OnClick
 		)
 
+		-- Main Bar only: red "locked" tooltip while any Blizzard art is visible - no other bar's swatches
+		-- get this wiring, matching CreateLabeledCheckbox's lockedText color/behavior (UIWidgets.lua).
+		if barId == 1 then
+			swatch:SetScript("OnEnter", function()
+				if ACABDB.mainBarArtMode ~= ACAB.MAIN_BAR_ART_MODE_DISABLED then
+					GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+					GameTooltip:SetText(
+						"Grid Layout cant be changed while Gryphons / Background Art is enabled. Click to highlight the Setting",
+						1, 0.15, 0.15, 1, true
+					)
+					GameTooltip:Show()
+				end
+			end)
+
+			swatch:SetScript("OnLeave", function()
+				GameTooltip:Hide()
+			end)
+		end
+
 		page.gridSwatches[i] = swatch
 
 		xOffset = xOffset + SWATCH_SIZE + SWATCH_GAP
@@ -747,6 +773,60 @@ local function RefreshGridSwatchSelection(page, cols, rows)
 		end
 	end
 end
+
+-- Main Bar only: greys Grid Layout's swatches while any Blizzard art is visible (see the OnEnter/OnClick
+-- wiring in RebuildGridSwatches/GridSwatch_OnClick above). Alpha-only, same as ACAB:LockControlKeepingTooltip
+-- (Settings.lua) - EnableMouse(false)/:Disable() would swallow OnEnter/OnLeave on this client, killing the
+-- tooltip and click-to-highlight this needs.
+function ACAB:ApplyMainBarGridLayoutArtLock(page)
+	if not page or page.barId ~= 1 or not page.gridSwatches then
+		return
+	end
+
+	local locked = ACABDB.mainBarArtMode ~= ACAB.MAIN_BAR_ART_MODE_DISABLED
+	local i
+
+	for i = 1, table.getn(page.gridSwatches) do
+		page.gridSwatches[i]:SetAlpha(locked and 0.5 or 1)
+	end
+end
+
+-- Brief gold pulse behind Main Bar's "Gryphons / Background Art" dropdown row - called when a locked
+-- Grid Layout swatch is clicked, same structure as ACAB:HighlightGeneralLayoutCheckbox
+-- (SettingsGeneral.lua) but targets a control on this same page instead of jumping to another page.
+function ACAB:HighlightMainBarArtModeDropdown()
+	local page = ACAB.settingsFrame and ACAB.settingsFrame.pages and ACAB.settingsFrame.pages[1]
+	local row = page and page.mainBarArtModeRow
+
+	if not row then
+		return
+	end
+
+	if not row.acabHighlightStrip then
+		local strip = ACAB:CreateFadeStrip(page, row:GetWidth() + 16, row:GetHeight() + 10, { edgeFraction = 0.15 })
+
+		strip:SetPoint("LEFT", row, "LEFT", -8, 0)
+		strip:SetFadeColor(ACAB.UI_ACCENT_COLOR[1], ACAB.UI_ACCENT_COLOR[2], ACAB.UI_ACCENT_COLOR[3])
+		strip:SetPeakAlpha(0.55)
+		strip:Hide()
+
+		row.acabHighlightStrip = strip
+	end
+
+	local strip = row.acabHighlightStrip
+
+	strip:Show()
+
+	-- Three pulses via C_Timer.After rather than a hand-rolled OnUpdate ticker.
+	if C_Timer then
+		C_Timer.After(0.45, function() strip:Hide() end)
+		C_Timer.After(0.75, function() strip:Show() end)
+		C_Timer.After(1.2, function() strip:Hide() end)
+		C_Timer.After(1.5, function() strip:Show() end)
+		C_Timer.After(1.95, function() strip:Hide() end)
+	end
+end
+
 -------------------------------------------------------------------------
 -- Create a bar settings page
 -- Shared between default bars (1-5) and custom bars (6+). Controls that don't apply to one kind
@@ -873,6 +953,14 @@ function ACAB:GetOrCreateBarPage(barId)
 		positionStartY = positionStartY - (24 + 14)
 	end
 
+	-- Main Bar only: "Gryphons / Background Art" dropdown reserves one more row right below hover-only.
+	local isMainBarPage = barId == 1
+	local mainBarArtModeY = positionStartY
+
+	if isMainBarPage then
+		positionStartY = positionStartY - (32 + 14)
+	end
+
 	local xLabelY = positionStartY
 	local xSliderY = xLabelY + 4
 	local yLabelY = xSliderY - 40
@@ -937,6 +1025,65 @@ function ACAB:GetOrCreateBarPage(barId)
 		end,
 		barId
 	)
+
+	-------------------------------------------------------------------------
+	-- Gryphons / Background Art (Main Bar page only)
+	-------------------------------------------------------------------------
+
+	if isMainBarPage then
+		local row = CreateFrame("Frame", nil, page)
+
+		row:SetWidth(500)
+		row:SetHeight(32)
+		row:SetPoint("TOPLEFT", page, "TOPLEFT", ACAB.INDENT_SECTION, mainBarArtModeY)
+
+		local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+
+		label:SetPoint("LEFT", row, "LEFT", 0, 0)
+		label:SetWidth(180)
+		label:SetJustifyH("LEFT")
+		label:SetText("Gryphons / Background Art:")
+
+		local dropdown = ACAB:CreateInlineDropdown(row, 180, "ACABMainBarArtModeDropdown")
+
+		dropdown:SetPoint("LEFT", label, "RIGHT", -8, -2)
+		dropdown:SetOptions({
+			{ text = "Fully Disabled", value = ACAB.MAIN_BAR_ART_MODE_DISABLED },
+			{ text = "Disable Gryphons", value = ACAB.MAIN_BAR_ART_MODE_NO_GRYPHONS },
+			{ text = "Fully Enabled", value = ACAB.MAIN_BAR_ART_MODE_FULL },
+		})
+
+		local function RefreshMainBarArtModeDropdown()
+			dropdown:SetSelected(ACABDB.mainBarArtMode or ACAB.MAIN_BAR_ART_MODE_FULL)
+		end
+
+		dropdown.onSelect = function(value)
+			ACABDB.mainBarArtMode = value
+
+			ACAB:ApplyBlizzardArtVisibility()
+
+			-- Re-enabling any art forces Grid Layout back to the native 12x1 grid the art-fitting math
+			-- assumes - Grid Layout's own guard (GridSwatch_OnClick) only stops FUTURE changes, it can't
+			-- retroactively undo a grid the user already picked while art was Fully Disabled.
+			if value ~= ACAB.MAIN_BAR_ART_MODE_DISABLED then
+				local cfg = ACAB:GetBarConfig(1)
+
+				if cfg and (cfg.cols ~= 12 or cfg.rows ~= 1) then
+					ACAB:SetDefaultBarLayout(1, 12, 1)
+				end
+			end
+
+			ACAB:RefreshBarSettingsPage(1)
+		end
+
+		RefreshMainBarArtModeDropdown()
+
+		row.dropdown = dropdown
+		page.mainBarArtModeRow = row
+		page.RefreshMainBarArtModeDropdown = RefreshMainBarArtModeDropdown
+
+		self:AddHoverOnlyReflowRow(page, row, ACAB.INDENT_SECTION, mainBarArtModeY)
+	end
 
 	-------------------------------------------------------------------------
 	-- Use Vanilla Pet Bar (Pet Bar page only)
@@ -1384,6 +1531,7 @@ function ACAB:GetOrCreateBarPage(barId)
 	page.gridSwatchY = swatchY
 
 	RebuildGridSwatches(page, barId, swatchY)
+	ACAB:ApplyMainBarGridLayoutArtLock(page)
 
 	-- Grid Layout can't just be added to page.hoverOnlyReflowRows - its swatches are a dynamic array,
 	-- repositioned in place instead of rebuilt here.
@@ -3438,6 +3586,16 @@ function ACAB:RefreshBarSettingsPage(barId)
 	)
 
 	-------------------------------------------------------------------------
+	-- Gryphons / Background Art (Main Bar page only)
+	-------------------------------------------------------------------------
+
+	if page.RefreshMainBarArtModeDropdown then
+		page.RefreshMainBarArtModeDropdown()
+	end
+
+	ACAB:ApplyMainBarGridLayoutArtLock(page)
+
+	-------------------------------------------------------------------------
 	-- Button count (custom bars only)
 	-------------------------------------------------------------------------
 
@@ -4100,7 +4258,7 @@ function ACAB:ResetAllElementsToVanillaLayout()
 	end
 
 	-- Native layout always shows Blizzard's own bar art.
-	ACABDB.disableBlizzardArt = false
+	ACABDB.mainBarArtMode = ACAB.MAIN_BAR_ART_MODE_FULL
 
 	if ACAB.ApplyBlizzardArtVisibility then
 		ACAB:ApplyBlizzardArtVisibility()

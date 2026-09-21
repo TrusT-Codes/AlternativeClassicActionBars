@@ -112,6 +112,20 @@ ACAB.DEFAULT_BAR_NAMES = {
 	[ACAB.STANCE_BAR_ID] = "Stance Bar",
 }
 
+-- Main Bar's Blizzard art (MainMenuBarArtFrame background + gryphon end-caps) visibility modes -
+-- ACABDB.mainBarArtMode. Replaces the old boolean ACABDB.disableBlizzardArt.
+ACAB.MAIN_BAR_ART_MODE_FULL = "full"              -- Fully Enabled (native default, == old disableBlizzardArt = false).
+ACAB.MAIN_BAR_ART_MODE_NO_GRYPHONS = "noGryphons" -- Disable Gryphons only - background stays shown.
+ACAB.MAIN_BAR_ART_MODE_DISABLED = "disabled"      -- Fully disabled (== old disableBlizzardArt = true).
+
+-- MainMenuBarArtFrame:GetRegions() region names that are the left/right gryphon end-caps, confirmed live
+-- (diag30): MainMenuBarLeftEndCap/RightEndCap. Everything else on the frame (MainMenuBarTexture0-3) is
+-- the background shelf art. All regions anchor BOTTOM to MainMenuBarArtFrame's own BOTTOM.
+ACAB.MAIN_BAR_ART_GRYPHON_REGION_NAMES = {
+	MainMenuBarLeftEndCap = true,
+	MainMenuBarRightEndCap = true,
+}
+
 -- Extra Bars (ids EXTRA_BAR_ID_START..+COUNT-1) are numbered from 1 for the user.
 function ACAB:GetBarDisplayName(barId)
 	if self.DEFAULT_BAR_NAMES[barId] then
@@ -1330,6 +1344,7 @@ function ACAB:RunLoginSequence(earlyLeft, earlyTop, settledLeft, settledTop, wai
 	ACAB:CaptureLatencyBarPositionIfNeeded()
 	ACAB:CaptureExpBarPositionIfNeeded()
 	ACAB:CaptureCastBarPositionIfNeeded()
+	ACAB:CaptureMainBarArtNativeOffsetIfNeeded()
 
 	-- Gives Latency Bar/Cast Bar's native anchor its best chance of being correct this login. Asynchronous.
 	do

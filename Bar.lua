@@ -83,6 +83,11 @@ function ACAB:ApplyBarPosition(bar)
 		cfg.x or 0,
 		cfg.y or 0
 	)
+
+	-- Main Bar's Blizzard art (background + gryphons) rides along, anchored to this frame.
+	if cfg.id == 1 and self.ApplyMainBarArtPosition then
+		self:ApplyMainBarArtPosition()
+	end
 end
 
 -------------------------------------------------------------------------
@@ -549,9 +554,16 @@ function ACAB:SetBarButtonSize(bar, newSize)
 
 	self:LayoutButtons(bar)
 
-	-- Every buttonSize-changing path funnels through here, so this is the single place that rebuilds the grid.
-	if bar.config.id == 1 and self:IsEditMode() then
-		self:RebuildLayoutGrid()
+	-- Every buttonSize-changing path funnels through here, so this is the single place that rebuilds the grid,
+	-- and the single place Main Bar's Blizzard art (background + gryphons) rescales to match.
+	if bar.config.id == 1 then
+		if self:IsEditMode() then
+			self:RebuildLayoutGrid()
+		end
+
+		if self.ApplyMainBarArtPosition then
+			self:ApplyMainBarArtPosition()
+		end
 	end
 end
 

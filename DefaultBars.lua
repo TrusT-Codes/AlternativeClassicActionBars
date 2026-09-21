@@ -218,14 +218,17 @@ function ACAB:HideBonusActionBarFrame()
 end
 
 -------------------------------------------------------------------------
--- "Disable Blizzard Art" (General tab checkbox)
+-- "Gryphons / Background Art" (Main Bar settings page dropdown, ACABDB.mainBarArtMode)
 --
 -- Hides/shows MainMenuBarArtFrame's own regions (GetRegions(), not the
 -- frame itself - that would take ActionButton1-12, its real children,
 -- down with it) so bar 1's replica buttons show against the user's UI.
+-- ACAB.MAIN_BAR_ART_GRYPHON_REGION_NAMES (Core.lua) picks the two end-cap
+-- textures (MainMenuBarLeftEndCap/RightEndCap, live-confirmed) out from
+-- the background tiles (MainMenuBarTexture0-3).
 --
 -- MainMenuBarArtFrame stays pinned at strata "MEDIUM" level 5 regardless
--- of the checkbox - must stay strictly between MainMenuExpBar's level 2
+-- of the mode - must stay strictly between MainMenuExpBar's level 2
 -- (XP bar fill would bleed past the art) and ACAB bars' level 10
 -- (bars would render behind the art). Do not change without
 -- re-verifying both those frames' levels.
@@ -243,7 +246,8 @@ function ACAB:ApplyBlizzardArtVisibility()
 	artFrame:SetFrameStrata("MEDIUM")
 	artFrame:SetFrameLevel(5)
 
-	local hide = ACABDB.disableBlizzardArt
+	local mode = ACABDB.mainBarArtMode or self.MAIN_BAR_ART_MODE_FULL
+	local gryphonNames = self.MAIN_BAR_ART_GRYPHON_REGION_NAMES
 
 	local regions = { artFrame:GetRegions() }
 	local i
@@ -252,12 +256,324 @@ function ACAB:ApplyBlizzardArtVisibility()
 		local region = regions[i]
 
 		if region and region.GetObjectType and region:GetObjectType() == "Texture" then
+			local isGryphon = region.GetName and gryphonNames[region:GetName()]
+
+			local hide = (mode == self.MAIN_BAR_ART_MODE_DISABLED)
+				or (mode == self.MAIN_BAR_ART_MODE_NO_GRYPHONS and isGryphon)
+
 			if hide then
 				region:Hide()
 			else
 				region:Show()
 			end
 		end
+	end
+end
+
+-------------------------------------------------------------------------
+-- Grouped movement + scaling: MainMenuBarArtFrame rides along with Main Bar's own ACABBar1 frame
+-- (rather than a second branch in the shared drag engine) and scales with its button size, so the art
+-- always frames the button row the same way vanilla's native layout does. All of MainMenuBarArtFrame's
+-- regions anchor BOTTOM to the frame itself (live-confirmed), so moving/scaling the frame alone carries
+-- every region along automatically.
+-------------------------------------------------------------------------
+
+-- Polls MainMenuBarArtFrame's raw position until 2 consecutive reads agree (or a timeout) before
+-- trusting it - mirrors ACAB:WaitForNativeBarSettle's own reasoning for ActionButton1 (Core.lua):
+-- "its native position isn't guaranteed final immediately after PLAYER_ENTERING_WORLD." A single
+-- synchronous read (the previous approach) could easily land mid-settle rather than at the true rest
+-- position - live-confirmed as reproducibly wrong across multiple full client restarts, ruling out a
+-- capture-ordering explanation and pointing at this instead.
+-- Top-down resolve pass (§5af) before trusting artFrame's own rect - reads its real parent
+-- (MainMenuBar, not UIParent) first each time, discarding the values, so artFrame is never resolved
+-- against a stale cached ancestor position. Same technique as ApplySettingsHeightFromCandidates.
+local function WarmMainBarArtAncestorChain()
+	if MainMenuBar then
+		MainMenuBar:GetLeft()
+		MainMenuBar:GetTop()
+	end
+end
+
+local function WaitForMainBarArtSettle(callback)
+	local artFrame = MainMenuBarArtFrame
+
+	if not artFrame or not C_Timer or not C_Timer.NewTicker then
+		WarmMainBarArtAncestorChain()
+		callback(artFrame and artFrame:GetLeft(), artFrame and artFrame:GetTop())
+		return
+	end
+
+	local pollInterval = 0.1
+	local stableReadsRequired = 2
+	local timeout = 3
+
+	WarmMainBarArtAncestorChain()
+	local lastLeft, lastTop = artFrame:GetLeft(), artFrame:GetTop()
+	local stableCount = 0
+	local elapsed = 0
+
+	local ticker
+	ticker = C_Timer.NewTicker(pollInterval, function()
+		elapsed = elapsed + pollInterval
+
+		WarmMainBarArtAncestorChain()
+		local left, top = artFrame:GetLeft(), artFrame:GetTop()
+
+		if left and top and lastLeft and lastTop and left == lastLeft and top == lastTop then
+			stableCount = stableCount + 1
+		else
+			stableCount = 0
+		end
+
+		lastLeft, lastTop = left, top
+
+		local settled = stableCount >= stableReadsRequired
+		local timedOut = elapsed >= timeout
+
+		if settled or timedOut then
+			ticker:Cancel()
+			callback(lastLeft, lastTop)
+		end
+	end)
+end
+
+-- Captures MainMenuBarArtFrame's pristine native offset from Main Bar's native anchor, once ever - only
+-- once WaitForMainBarArtSettle confirms its position has actually settled (asynchronous). Called
+-- explicitly early in Core.lua's RunLoginSequence, alongside CaptureKeyRingPositionIfNeeded/
+-- CaptureCastBarPositionIfNeeded/etc, and defensively from ApplyMainBarArtPosition. Before settling
+-- completes, ApplyMainBarArtPosition's own offset-nil bail-out leaves the art frame untouched at
+-- whatever its current native position is - never incorrectly positioned - so there's no bad
+-- intermediate state to worry about, only "not yet repositioned".
+function ACAB:CaptureMainBarArtNativeOffsetIfNeeded()
+	-- .width is also checked (not just table presence) so a value saved before width/height were added
+	-- to this capture gets one fresh, safe re-capture on next login.
+	if ACABDB.mainBarArtNativeOffset and ACABDB.mainBarArtNativeOffset.width then
+		return
+	end
+
+	local artFrame = MainMenuBarArtFrame
+	local cfg = ACABDB.defaultBars and ACABDB.defaultBars[1]
+	local nativeAnchor = cfg and cfg.nativeAnchor
+
+	if not artFrame or not nativeAnchor or artFrame.ACABArtSettlePolling then
+		return
+	end
+
+	artFrame.ACABArtSettlePolling = true
+
+	WaitForMainBarArtSettle(function(left, top)
+		artFrame.ACABArtSettlePolling = nil
+
+		if not left or not top then
+			return
+		end
+
+		local frameScale = artFrame:GetEffectiveScale()
+		local targetScale = UIParent:GetEffectiveScale()
+
+		if not frameScale or not targetScale or targetScale == 0 then
+			return
+		end
+
+		local screenY = (top * frameScale) / targetScale
+		local frameW = artFrame:GetWidth()
+		local frameH = artFrame:GetHeight()
+
+		-- X is NOT derived from the frame's own raw native position (screenX) - that reproduces
+		-- MainMenuBarArtFrame's true native anchor faithfully, but live-measured against the left
+		-- gryphon's own real rendered edge, that leaves a ~27px gap before button 1 that reads as
+		-- visibly wrong (confirmed repeatedly, independent of capture timing/method). The actual design
+		-- rule that looks correct: the left gryphon's right edge sits flush (zero gap) against button 1's
+		-- left edge. Deriving gryphonRightFromFrameLeft purely from the gryphon region's own live
+		-- geometry (its point offset from the frame's own BOTTOM anchor, its width - both in the frame's
+		-- unscaled local units, so this stays correct at any button size) rather than a hardcoded pixel
+		-- constant.
+		local gryphon = getglobal("MainMenuBarLeftEndCap")
+		local gryphonRightFromFrameLeft = nil
+
+		if gryphon then
+			local point, _, _, x = gryphon:GetPoint(1)
+			local gryphonWidth = gryphon:GetWidth()
+
+			if point == "BOTTOM" and x and gryphonWidth then
+				gryphonRightFromFrameLeft = (frameW / 2) + x + (gryphonWidth / 2)
+			end
+		end
+
+		ACABDB.mainBarArtNativeOffset = {
+			y = screenY - nativeAnchor.y,
+			gryphonRightFromFrameLeft = gryphonRightFromFrameLeft,
+			-- Native declared size (from FrameXML's own <Size>, never a Lua SetWidth/SetHeight call) - see
+			-- ApplyMainBarArtPosition's own comment on why this must be reasserted every time we SetPoint it.
+			width = frameW,
+			height = frameH,
+		}
+
+		-- Re-apply now that the true settled offset is known - any earlier, pre-settle calls this
+		-- session left the art frame untouched (see this function's own header comment), so this is the
+		-- first time it actually gets positioned/scaled.
+		ACAB:ApplyMainBarArtPosition()
+	end)
+end
+
+-- Real screen-pixel anchor of bar 1's own frame, in the same UIParent-normalized units
+-- CaptureNativeAnchor uses (Database.lua). Reads `bar` directly, not its edit-mode overlay hitbox
+-- (Bar.lua's EnsureBarOverlay) - the overlay's own inset from `bar` (ComputeVanillaBorderInsets,
+-- Core.lua) is buttonSize*ratio MINUS a flat fudge, not a simple proportional term, so it doesn't scale
+-- the same way `scale` does here.
+--
+-- Returns LEFT and BOTTOM, not LEFT/TOP: live-confirmed (comparing bar's own GetTop()/GetBottom() across
+-- two different button sizes) that bar's BOTTOM edge is the one that stays constant when only buttonSize
+-- changes - the TOP edge rises as the row gets taller. cfg.point is nominally "TOPLEFT", but the bottom
+-- is what's actually fixed on screen, so anchoring the art off bar's bottom (not top) is what keeps it
+-- buttonSize-independent instead of drifting.
+local function GetButton1ScreenAnchor(bar)
+	-- Top-down resolve pass (§5af, docs/01-Environment-Capability-Analysis.md) before trusting bar's own
+	-- rect: this client caches a child's resolved position against its ancestor's rect at read time, so
+	-- reading a frame before its ancestor (UIParent) has been read this tick can resolve it against a
+	-- stale ancestor position. Return value deliberately discarded - the read itself is what matters.
+	UIParent:GetLeft()
+
+	local left = bar:GetLeft()
+	local bottom = bar:GetBottom()
+
+	if not left or not bottom then
+		return nil
+	end
+
+	local barScale = bar:GetEffectiveScale()
+	local targetScale = UIParent:GetEffectiveScale()
+
+	if not barScale or not targetScale or targetScale == 0 then
+		return nil
+	end
+
+	return (left * barScale) / targetScale, (bottom * barScale) / targetScale
+end
+
+-- Repositions/rescales MainMenuBarArtFrame relative to ACAB.bars[1] - called from Bar.lua's
+-- ApplyBarPosition and SetBarButtonSize whenever bar.config.id == 1, so dragging/resizing Main Bar
+-- carries the art along automatically with zero changes to the shared drag engine.
+function ACAB:ApplyMainBarArtPosition()
+	self:EnsureDB()
+
+	local artFrame = MainMenuBarArtFrame
+	local bar = self.bars and self.bars[1]
+
+	if not artFrame or not bar or not bar.config then
+		return
+	end
+
+	self:CaptureMainBarArtNativeOffsetIfNeeded()
+
+	local offset = ACABDB.mainBarArtNativeOffset
+
+	if not offset then
+		return
+	end
+
+	local scale = (bar.config.buttonSize or self.BUTTON_SIZE) / self.BUTTON_SIZE
+
+	artFrame.ACABApplyingMainBarArtPosition = true
+
+	-- Reasserted every call, not just once: this client's GetLeft/GetTop never resolve for a frame
+	-- that's been SetPoint'd via Lua unless it's ALSO had an explicit Lua SetWidth/SetHeight call at
+	-- some point (a native <Size> declaration alone doesn't count) - live-confirmed, see
+	-- docs/01-Environment-Capability-Analysis.md §5ak. MainMenuBarArtFrame's size only ever came from
+	-- FrameXML's own <Size>, so without this its rect (and apparently its on-screen render) gets stuck
+	-- the moment we start calling SetPoint on it ourselves. Values are its true native size, so this
+	-- never actually changes anything visually - it only keeps the frame's rect resolvable.
+	if offset.width and offset.height then
+		artFrame:SetWidth(offset.width)
+		artFrame:SetHeight(offset.height)
+	end
+
+	artFrame:SetScale(scale)
+	artFrame:ClearAllPoints()
+
+	-- Absolute UIParent-relative position, not anchored directly to `bar`: `bar` can have a non-1
+	-- effective scale of its own (e.g. vanilla border style), and PixelUtil.SetPoint's pixel-snap
+	-- conversion is keyed to the REGION's (artFrame's) own effective scale, not relativeTo's - anchoring
+	-- straight to `bar` fed it a raw offset in the wrong coordinate space. Anchoring to UIParent instead,
+	-- like bar itself does (see ApplyBarPosition above), sidesteps that.
+	--
+	-- The base point is button 1's own real edge (GetButton1ScreenAnchor - LEFT/BOTTOM, bar's stable
+	-- edges), not bar.config.x/y (the CONTAINER frame's edge). bar.config.x/y is the fallback only for
+	-- the rare case button 1 isn't ready yet.
+	local btn1X, btn1Y = GetButton1ScreenAnchor(bar)
+	local baseX = btn1X or bar.config.x or 0
+	local baseY = btn1Y or bar.config.y or 0
+
+	-- REVERTED (a same-session BOTTOMLEFT-anchor restructure broke buttonSize-36 alignment that was
+	-- already confirmed correct here) - back to the confirmed-good state: TOPLEFT frame anchor, X via a
+	-- 2-point empirical linear fit in `scale` (confirmed-correct at scale=1 -> total +42.7 vs baseX;
+	-- still has some residual drift at larger button sizes - buttonSize 36 was prioritized and locked in
+	-- first). Fix the scale=44/36 residual drift as its own follow-up, not bundled with this revert.
+	local artX = baseX + (326.6308 - 283.9308 * scale)
+
+	local measuredYCorrection = 43.3457
+
+	local artY = baseY + measuredYCorrection
+
+	self:PixelSetPoint(
+		artFrame,
+		bar.config.point or "TOPLEFT",
+		UIParent,
+		bar.config.relativePoint or "BOTTOMLEFT",
+		artX,
+		artY
+	)
+	artFrame.ACABApplyingMainBarArtPosition = nil
+
+	-- TEMPORARY DIAGNOSTIC (diag37) - the logical position (per every query so far) is now correct
+	-- (near-zero gap), but the same visual error persists across repeated tests with genuinely different
+	-- computed positions - suggesting the actual drawn pixels aren't refreshing to match the new anchor.
+	-- Forces a hard redraw by toggling Hide()/Show() on every currently-shown Texture region. Remove
+	-- once confirmed either way.
+	do
+		local regions = { artFrame:GetRegions() }
+		local i
+
+		for i = 1, table.getn(regions) do
+			local region = regions[i]
+
+			if region and region.GetObjectType and region:GetObjectType() == "Texture" and region:IsShown() then
+				region:Hide()
+				region:Show()
+			end
+		end
+	end
+
+	-- TEMPORARY DIAGNOSTIC (diag36) - now aligning against the edit-mode overlay hitbox's own edge
+	-- instead of bar/button1's own GetLeft() (per your comparison against what the overlay visually
+	-- shows). Prints overlay L alongside button1 L/gryphon R so the remaining gap (if any) is visible
+	-- against both references. Remove once confirmed.
+	if C_Timer then
+		C_Timer.After(0, function()
+			-- Top-down warm-up (§5af) before reading anything below, same reasoning as
+			-- GetButton1ScreenAnchor/WaitForMainBarArtSettle above.
+			UIParent:GetLeft()
+			MainMenuBar:GetLeft()
+			bar:GetLeft()
+
+			local btn1 = bar.buttons and bar.buttons[1]
+			local gryphon = getglobal("MainMenuBarLeftEndCap")
+			local overlay = ACAB.EnsureBarOverlay and ACAB:EnsureBarOverlay(bar)
+
+			local btn1L, btn1T, btn1B = btn1 and btn1:GetLeft(), btn1 and btn1:GetTop(), bar:GetBottom()
+			local gryphonR, gryphonT, gryphonB = gryphon and gryphon:GetRight(), gryphon and gryphon:GetTop(), gryphon and gryphon:GetBottom()
+			local overlayL = overlay and overlay:GetLeft()
+
+			ACAB:Print(
+				"[diag36] bar L=" .. tostring(btn1L) .. " T=" .. tostring(btn1T) .. " B=" .. tostring(btn1B) ..
+				" overlay L=" .. tostring(overlayL) ..
+				" gryphon R=" .. tostring(gryphonR) .. " T=" .. tostring(gryphonT) .. " B=" .. tostring(gryphonB) ..
+				" gap(vs bar)=" .. tostring(btn1L and gryphonR and (btn1L - gryphonR)) ..
+				" gap(vs overlay)=" .. tostring(overlayL and gryphonR and (overlayL - gryphonR)) ..
+				" scale=" .. tostring(scale) ..
+				" measuredYCorrection=" .. tostring(measuredYCorrection)
+			)
+		end)
 	end
 end
 
@@ -2171,6 +2487,13 @@ function ACAB:InstallReanchorGuard(frame, flagName)
 
 	frame.ACABReanchorGuarded = true
 end
+
+-- MainMenuBarArtFrame never repositions itself natively, but once ApplyMainBarArtPosition starts driving
+-- it every drag/resize, nothing else should be able to silently re-anchor it back - same guard style as
+-- NativeElements.lua's Cast Bar. Installed here (after InstallReanchorGuard's own definition above,
+-- since this is a top-level call that runs immediately at file load) rather than up near
+-- ApplyMainBarArtPosition, which only defines functions and isn't called until later.
+ACAB:InstallReanchorGuard(MainMenuBarArtFrame, "ACABApplyingMainBarArtPosition")
 
 -- Applies `native` (a relative anchor captured via GetPoint(1)) to `frame`, then re-reads its now-correct
 -- GetLeft()/GetTop() to build a normal UIParent-relative absolute anchor table, since the live
