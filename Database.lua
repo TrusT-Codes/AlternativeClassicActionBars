@@ -1367,8 +1367,14 @@ function ACAB:EnsureDB()
 		ACABDB.tintWholeButtonOnRange = true
 	end
 
-	if ACABDB.disableBlizzardArt == nil then
-		ACABDB.disableBlizzardArt = false
+	-- ACABDB.disableBlizzardArt is the old boolean this replaces - migrated once into the new enum, then
+	-- left alone (orphaned, harmless) since nothing reads/writes it anymore.
+	if ACABDB.mainBarArtMode == nil then
+		if ACABDB.disableBlizzardArt == true then
+			ACABDB.mainBarArtMode = ACAB.MAIN_BAR_ART_MODE_DISABLED
+		else
+			ACABDB.mainBarArtMode = ACAB.MAIN_BAR_ART_MODE_FULL
+		end
 	end
 
 	if ACABDB.snapToAdjacentElements == nil then
