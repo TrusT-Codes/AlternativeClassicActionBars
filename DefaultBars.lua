@@ -504,16 +504,18 @@ function ACAB:ApplyMainBarArtPosition()
 	local baseX = btn1X or bar.config.x or 0
 	local baseY = btn1Y or bar.config.y or 0
 
-	-- REVERTED (a same-session BOTTOMLEFT-anchor restructure broke buttonSize-36 alignment that was
-	-- already confirmed correct here) - back to the confirmed-good state: TOPLEFT frame anchor, X via a
-	-- 2-point empirical linear fit in `scale` (confirmed-correct at scale=1 -> total +42.7 vs baseX;
-	-- still has some residual drift at larger button sizes - buttonSize 36 was prioritized and locked in
-	-- first). Fix the scale=44/36 residual drift as its own follow-up, not bundled with this revert.
-	local artX = baseX + (326.6308 - 283.9308 * scale)
+	-- TOPLEFT frame anchor. Both axes are a linear fit in `scale`, written as
+	-- (buttonSize-36 constant) + slope*(scale-1) so scale=1 (buttonSize 36) reduces to the confirmed-correct
+	-- flat offset untouched. GetLeft/GetRight/GetTop/GetBottom on this client don't reflect a frame's own
+	-- SetScale() (confirmed via a stable 2-read poll, not a timing artifact), so a live-measured gryphon/
+	-- art-frame rect can't be used to fit this - slopes come from 3 rounds of real ruler measurement at
+	-- buttonSize 44, root-found via secant/regression across all 3 (converted through
+	-- UIParent:GetEffectiveScale()=0.9) rather than a raw 2-point fit through the latest round alone.
+	local artX = baseX + 42.7 - 206.112 * (scale - 1)
 
 	local measuredYCorrection = 43.3457
 
-	local artY = baseY + measuredYCorrection
+	local artY = baseY + measuredYCorrection - 120.893 * (scale - 1)
 
 	self:PixelSetPoint(
 		artFrame,
@@ -544,35 +546,63 @@ function ACAB:ApplyMainBarArtPosition()
 		end
 	end
 
-	-- TEMPORARY DIAGNOSTIC (diag36) - now aligning against the edit-mode overlay hitbox's own edge
-	-- instead of bar/button1's own GetLeft() (per your comparison against what the overlay visually
-	-- shows). Prints overlay L alongside button1 L/gryphon R so the remaining gap (if any) is visible
-	-- against both references. Remove once confirmed.
-	if C_Timer then
-		C_Timer.After(0, function()
-			-- Top-down warm-up (§5af) before reading anything below, same reasoning as
-			-- GetButton1ScreenAnchor/WaitForMainBarArtSettle above.
+	-- TEMPORARY DIAGNOSTIC (diag40) - diag39's single deferred read caught gryphon/artFrame rects
+	-- mid-settle after SetScale (artFrame's own R-L printed as the native unscaled width at every button
+	-- size, gryphon's width came back partially-updated) - same class of bug WaitForMainBarArtSettle
+	-- already exists to dodge. Polls artFrame/gryphon's rect until 2 consecutive reads agree (or a 3s
+	-- timeout) before printing. Remove once the scaling formula is confirmed correct across button sizes.
+	if C_Timer and C_Timer.NewTicker then
+		local gryphon = getglobal("MainMenuBarLeftEndCap")
+		local btn1 = bar.buttons and bar.buttons[1]
+
+		local function WarmChain()
 			UIParent:GetLeft()
 			MainMenuBar:GetLeft()
 			bar:GetLeft()
+			artFrame:GetLeft()
+		end
 
-			local btn1 = bar.buttons and bar.buttons[1]
-			local gryphon = getglobal("MainMenuBarLeftEndCap")
-			local overlay = ACAB.EnsureBarOverlay and ACAB:EnsureBarOverlay(bar)
+		WarmChain()
+		local lastArtR, lastGryphonR = artFrame:GetRight(), gryphon and gryphon:GetRight()
+		local stableCount = 0
+		local elapsed = 0
+		local pollInterval = 0.1
 
-			local btn1L, btn1T, btn1B = btn1 and btn1:GetLeft(), btn1 and btn1:GetTop(), bar:GetBottom()
-			local gryphonR, gryphonT, gryphonB = gryphon and gryphon:GetRight(), gryphon and gryphon:GetTop(), gryphon and gryphon:GetBottom()
-			local overlayL = overlay and overlay:GetLeft()
+		local ticker
+		ticker = C_Timer.NewTicker(pollInterval, function()
+			elapsed = elapsed + pollInterval
 
-			ACAB:Print(
-				"[diag36] bar L=" .. tostring(btn1L) .. " T=" .. tostring(btn1T) .. " B=" .. tostring(btn1B) ..
-				" overlay L=" .. tostring(overlayL) ..
-				" gryphon R=" .. tostring(gryphonR) .. " T=" .. tostring(gryphonT) .. " B=" .. tostring(gryphonB) ..
-				" gap(vs bar)=" .. tostring(btn1L and gryphonR and (btn1L - gryphonR)) ..
-				" gap(vs overlay)=" .. tostring(overlayL and gryphonR and (overlayL - gryphonR)) ..
-				" scale=" .. tostring(scale) ..
-				" measuredYCorrection=" .. tostring(measuredYCorrection)
-			)
+			WarmChain()
+			local artR, gryphonR = artFrame:GetRight(), gryphon and gryphon:GetRight()
+
+			if artR == lastArtR and gryphonR == lastGryphonR then
+				stableCount = stableCount + 1
+			else
+				stableCount = 0
+			end
+
+			lastArtR, lastGryphonR = artR, gryphonR
+
+			if stableCount >= 2 or elapsed >= 3 then
+				ticker:Cancel()
+
+				local btn1L, btn1T = btn1 and btn1:GetLeft(), btn1 and btn1:GetTop()
+				local barL, barT, barB = bar:GetLeft(), bar:GetTop(), bar:GetBottom()
+				local gryphonL, gryphonT, gryphonB = gryphon and gryphon:GetLeft(), gryphon and gryphon:GetTop(), gryphon and gryphon:GetBottom()
+				local artL, artT, artB = artFrame:GetLeft(), artFrame:GetTop(), artFrame:GetBottom()
+
+				ACAB:Print(
+					"[diag40] settled(" .. tostring(elapsed) .. "s) btn1 L=" .. tostring(btn1L) .. " T=" .. tostring(btn1T) ..
+					" bar L=" .. tostring(barL) .. " T=" .. tostring(barT) .. " B=" .. tostring(barB) ..
+					" art L=" .. tostring(artL) .. " R=" .. tostring(artR) .. " T=" .. tostring(artT) .. " B=" .. tostring(artB) ..
+					" gryphon L=" .. tostring(gryphonL) .. " R=" .. tostring(gryphonR) .. " T=" .. tostring(gryphonT) .. " B=" .. tostring(gryphonB) ..
+					" offsetW=" .. tostring(offset.width) .. " offsetH=" .. tostring(offset.height) ..
+					" gryphonRightFromFrameLeft=" .. tostring(offset.gryphonRightFromFrameLeft) ..
+					" scale=" .. tostring(scale) ..
+					" baseX=" .. tostring(baseX) .. " baseY=" .. tostring(baseY) ..
+					" artX=" .. tostring(artX) .. " artY=" .. tostring(artY)
+				)
+			end
 		end)
 	end
 end

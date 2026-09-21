@@ -44,9 +44,21 @@ function ACAB:ForEachBar(fn)
 	end
 end
 
--- cfg.spacing may be absent on old saves; default to 0.
-local function BarFrameSize(cfg)
+-- cfg.spacing may be absent on old saves; default to 0. Main Bar's spacing scales with its own
+-- buttonSize, same as the Blizzard art it's grouped with - every other bar's spacing is a flat,
+-- buttonSize-independent gap.
+local function EffectiveSpacing(cfg)
 	local spacing = cfg.spacing or 0
+
+	if cfg.id == 1 then
+		return spacing * (cfg.buttonSize / ACAB.BUTTON_SIZE)
+	end
+
+	return spacing
+end
+
+local function BarFrameSize(cfg)
+	local spacing = EffectiveSpacing(cfg)
 
 	local width = (cfg.buttonSize * cfg.cols) + ((cfg.cols - 1) * spacing)
 	local height = (cfg.buttonSize * cfg.rows) + ((cfg.rows - 1) * spacing)
@@ -100,8 +112,7 @@ function ACAB:LayoutButtons(bar)
 	end
 
 	local cfg = bar.config
-	-- cfg.spacing may be absent on old saves; default to 0.
-	local spacing = cfg.spacing or 0
+	local spacing = EffectiveSpacing(cfg)
 	local i
 
 	-- Pet Bar condense: compacts filled slots into sequential grid cells; suspended during edit mode/action-grid preview.
