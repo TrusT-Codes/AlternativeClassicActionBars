@@ -653,6 +653,13 @@ local function GridSwatch_OnClick()
 		return
 	end
 
+	-- Micro Menu only: Grid Layout is locked while it's grouped with Main Bar - navigates to Main Bar's
+	-- page and pulses the setting there, since this element has no dropdown of its own.
+	if barId == "micromenu" and ACABDB.mainBarArtMode ~= ACAB.MAIN_BAR_ART_MODE_DISABLED then
+		ACAB:HighlightMainBarArtModeDropdownFromElsewhere()
+		return
+	end
+
 	if barId == "micromenu" then
 		-- page.isDefault is unconditionally true for every simple page - must be checked before the
 		-- page.isDefault branch below or this would wrongly call ACAB:SetDefaultBarLayout.
@@ -753,6 +760,26 @@ local function RebuildGridSwatches(page, barId, swatchY)
 			end)
 		end
 
+		-- Micro Menu only: same red "locked" tooltip while it's grouped with Main Bar (mirrors bar 1's
+		-- own wiring above) - clicking it navigates to Main Bar's page and highlights the setting there,
+		-- since this element has no dropdown of its own to pulse in place.
+		if barId == "micromenu" then
+			swatch:SetScript("OnEnter", function()
+				if ACABDB.mainBarArtMode ~= ACAB.MAIN_BAR_ART_MODE_DISABLED then
+					GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+					GameTooltip:SetText(
+						"Grid Layout cant be changed while Micro Menu is grouped with Main Bar. Click to highlight the Setting",
+						1, 0.15, 0.15, 1, true
+					)
+					GameTooltip:Show()
+				end
+			end)
+
+			swatch:SetScript("OnLeave", function()
+				GameTooltip:Hide()
+			end)
+		end
+
 		page.gridSwatches[i] = swatch
 
 		xOffset = xOffset + SWATCH_SIZE + SWATCH_GAP
@@ -791,6 +818,38 @@ function ACAB:ApplyMainBarGridLayoutArtLock(page)
 	end
 end
 
+-- Bag Bar/Micro Menu/Latency Bar only: greys Position/Spacing/Scale (and Micro Menu's own Grid Layout
+-- swatches) while this element is grouped with Main Bar. Mirrors ApplyMainBarGridLayoutArtLock exactly -
+-- alpha-only, the OnEnter tooltip wiring lives in CreateSimpleBarPage, the actual refusal in each
+-- control's own onApply/onChange.
+function ACAB:ApplySimpleElementGroupedLock(page)
+	if not page then
+		return
+	end
+
+	local barId = page.barId
+
+	if barId ~= "bagbar" and barId ~= "micromenu" and barId ~= "latencybar" then
+		return
+	end
+
+	local locked = ACABDB.mainBarArtMode ~= ACAB.MAIN_BAR_ART_MODE_DISABLED
+	local controls = { page.xSlider, page.ySlider, page.spacingSlider, page.scaleSlider, page.keyRingScaleSlider }
+	local i
+
+	for i = 1, table.getn(controls) do
+		if controls[i] then
+			controls[i]:SetAlpha(locked and 0.5 or 1)
+		end
+	end
+
+	if page.gridSwatches then
+		for i = 1, table.getn(page.gridSwatches) do
+			page.gridSwatches[i]:SetAlpha(locked and 0.5 or 1)
+		end
+	end
+end
+
 -- Brief gold pulse behind Main Bar's "Gryphons / Background Art" dropdown row - called when a locked
 -- Grid Layout swatch is clicked, same structure as ACAB:HighlightGeneralLayoutCheckbox
 -- (SettingsGeneral.lua) but targets a control on this same page instead of jumping to another page.
@@ -825,6 +884,14 @@ function ACAB:HighlightMainBarArtModeDropdown()
 		C_Timer.After(1.5, function() strip:Show() end)
 		C_Timer.After(1.95, function() strip:Hide() end)
 	end
+end
+
+-- Same pulse as HighlightMainBarArtModeDropdown, for a locked control on a DIFFERENT page (Bag Bar/Micro
+-- Menu/Latency Bar's own simple pages) - navigates to Main Bar's page first via ShowBarPage, mirroring how
+-- HighlightGeneralLayoutCheckbox's own caller navigates to the General panel before pulsing there.
+function ACAB:HighlightMainBarArtModeDropdownFromElsewhere()
+	ACAB:ShowBarPage(1)
+	ACAB:HighlightMainBarArtModeDropdown()
 end
 
 -------------------------------------------------------------------------
@@ -1071,6 +1138,12 @@ function ACAB:GetOrCreateBarPage(barId)
 				if cfg and (cfg.cols ~= 12 or cfg.rows ~= 1) then
 					ACAB:SetDefaultBarLayout(1, 12, 1)
 				end
+			end
+
+			-- Engages/releases Micro Menu, Latency Bar, Page Indicator, and Bag Bar's grouped movement +
+			-- scaling with Main Bar immediately, rather than waiting for the next drag/buttonSize change.
+			if ACAB.ApplyMainBarGroupedElements then
+				ACAB:ApplyMainBarGroupedElements()
 			end
 
 			ACAB:RefreshBarSettingsPage(1)
@@ -1770,6 +1843,16 @@ function ACAB:GetOrCreateBarPage(barId)
 					format = function(value) return string.format("%.1f", value) end,
 					onChange = function(value, suppressApply)
 						if not suppressApply then
+							-- Grouped with Main Bar while any Blizzard art is visible - see the matching
+							-- guard on Bag Bar/Micro Menu/Latency Bar's own Scale sliders
+							-- (CreateSimpleBarPage). No highlight-pulse redirect here either, same
+							-- reasoning - a continuous drag would thrash it every tick, and this slider
+							-- already lives on the same page as the dropdown it would be pulsing.
+							if ACABDB.mainBarArtMode ~= ACAB.MAIN_BAR_ART_MODE_DISABLED then
+								ACAB:RefreshBarSettingsPage(1)
+								return
+							end
+
 							ACAB:SetPageIndicatorScale(value)
 						end
 					end,
@@ -1779,6 +1862,30 @@ function ACAB:GetOrCreateBarPage(barId)
 			page.pageIndicatorTitle = pageIndicatorTitle
 			page.pageIndicatorSlider = pageIndicatorSlider
 			page.pageIndicatorValueText = pageIndicatorValueText
+
+			pageIndicatorSlider:SetScript("OnEnter", function()
+				if ACABDB.mainBarArtMode ~= ACAB.MAIN_BAR_ART_MODE_DISABLED then
+					GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+					GameTooltip:SetText(
+						"Page Indicator is grouped with Main Bar while Gryphons / Background Art is enabled - its own Scale control is locked. Click to highlight the Setting",
+						1, 0.15, 0.15, 1, true
+					)
+					GameTooltip:Show()
+				end
+			end)
+
+			pageIndicatorSlider:SetScript("OnLeave", function()
+				GameTooltip:Hide()
+			end)
+
+			-- Already on the same page as the dropdown (no ShowBarPage navigation needed) - same
+			-- same-page pulse the Grid Layout guard uses, via OnMouseDown so it fires once per click
+			-- rather than every tick of a drag.
+			pageIndicatorSlider:SetScript("OnMouseDown", function()
+				if ACABDB.mainBarArtMode ~= ACAB.MAIN_BAR_ART_MODE_DISABLED then
+					ACAB:HighlightMainBarArtModeDropdown()
+				end
+			end)
 
 			self:AddHoverOnlyReflowRow(page, pageIndicatorSlider, ACAB.INDENT_INPUT, pageIndicatorSliderY)
 
@@ -1996,6 +2103,15 @@ local function ApplyBetterExpBarGating(page)
 	end
 end
 
+-- True while `key`'s Position/Spacing/Scale/Grid controls are locked because Main Bar's art mode is
+-- grouping this element with it (ACAB:ApplyMainBarGroupedElements, DefaultBars.lua). Only Bag Bar/Micro
+-- Menu/Latency Bar are groupable this way - Page Indicator has no page of its own (its Scale slider lives
+-- on bar 1's own page, locked alongside that page's own Grid Layout guard instead).
+local function IsSimpleElementGroupLocked(key)
+	return (key == "bagbar" or key == "micromenu" or key == "latencybar")
+		and ACABDB.mainBarArtMode ~= ACAB.MAIN_BAR_ART_MODE_DISABLED
+end
+
 -------------------------------------------------------------------------
 -- Simple bar pages (Stance Bar / Bag Bar / Micro Menu): one builder, parameterized via
 -- ACAB.simpleBarPageConfigs, instead of three near-identical page builders. Position (X/Y, live) +
@@ -2187,6 +2303,14 @@ local function CreateSimpleBarPage(key)
 		lowText = "Left",
 		highText = "Right",
 		onApply = function(applied)
+			-- Sliders drag continuously (OnValueChanged fires every pixel), so locking here just refuses
+			-- the value and snaps the display back - no click-to-highlight redirect, which would thrash
+			-- between pages on every tick of a drag. The OnEnter tooltip below explains why.
+			if IsSimpleElementGroupLocked(key) then
+				ACAB:RefreshSimpleBarPage(key)
+				return
+			end
+
 			local y = page.yAppliedValue or page.ySlider:GetValue()
 
 			config.setPosition(applied, y)
@@ -2213,6 +2337,11 @@ local function CreateSimpleBarPage(key)
 		lowText = "Down",
 		highText = "Up",
 		onApply = function(applied)
+			if IsSimpleElementGroupLocked(key) then
+				ACAB:RefreshSimpleBarPage(key)
+				return
+			end
+
 			local x = page.xAppliedValue or page.xSlider:GetValue()
 
 			config.setPosition(x, applied)
@@ -2262,6 +2391,11 @@ local function CreateSimpleBarPage(key)
 				format = tostring,
 				onChange = function(value, suppressApply)
 					if not suppressApply then
+						if IsSimpleElementGroupLocked(key) then
+							ACAB:RefreshSimpleBarPage(key)
+							return
+						end
+
 						-- Micro Menu displays value - uiOffset as the actual stored/applied spacing; every
 						-- other hasSpacing page has no offset (defaults to 0).
 						local uiOffset = config.spacingUiOffset or 0
@@ -2314,6 +2448,11 @@ local function CreateSimpleBarPage(key)
 				format = function(value) return string.format("%.1f", value) end,
 				onChange = function(value, suppressApply)
 					if not suppressApply then
+						if IsSimpleElementGroupLocked(key) then
+							ACAB:RefreshSimpleBarPage(key)
+							return
+						end
+
 						config.setScale(value)
 
 						-- Scale change also compensates stored x/y (keeping the element's bottom-left
@@ -2382,6 +2521,52 @@ local function CreateSimpleBarPage(key)
 		-- Same swatch-height-plus-caption-plus-gap arithmetic as GetOrCreateBarPage's own
 		-- button-count-row positioning.
 		cursorY = swatchY - SWATCH_SIZE - 14 - 14
+	end
+
+	-------------------------------------------------------------------------
+	-- Grouped-with-Main-Bar lock tooltip (Bag Bar/Micro Menu/Latency Bar only) - red "locked" tooltip on
+	-- Position/Spacing/Scale, same wording style as the Grid Layout guard above. Alpha-only (never
+	-- EnableMouse(false)/Disable() - both swallow OnEnter/OnLeave on this client), the actual refusal
+	-- lives in each control's own onApply/onChange above.
+	-------------------------------------------------------------------------
+
+	if key == "bagbar" or key == "micromenu" or key == "latencybar" then
+		-- Key Ring's own Scale slider is created further down (it shares Bag Bar's page rather than
+		-- having one of its own) - doesn't exist yet here, so it gets its lock/tooltip/click wiring at
+		-- its own creation point below instead of in this list.
+		local lockableControls = { page.xSlider, page.ySlider, page.spacingSlider, page.scaleSlider }
+		local i
+
+		for i = 1, table.getn(lockableControls) do
+			local control = lockableControls[i]
+
+			if control then
+				control:SetScript("OnEnter", function()
+					if ACABDB.mainBarArtMode ~= ACAB.MAIN_BAR_ART_MODE_DISABLED then
+						GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+						GameTooltip:SetText(
+							config.title .. " is grouped with Main Bar while Gryphons / Background Art is enabled - its own Position/Spacing/Scale controls are locked. Click to highlight the Setting",
+							1, 0.15, 0.15, 1, true
+						)
+						GameTooltip:Show()
+					end
+				end)
+
+				control:SetScript("OnLeave", function()
+					GameTooltip:Hide()
+				end)
+
+				-- OnMouseDown, not the drag-repeating onApply/onChange above - fires once per click
+				-- instead of thrashing between pages on every pixel of a drag.
+				control:SetScript("OnMouseDown", function()
+					if ACABDB.mainBarArtMode ~= ACAB.MAIN_BAR_ART_MODE_DISABLED then
+						ACAB:HighlightMainBarArtModeDropdownFromElsewhere()
+					end
+				end)
+			end
+		end
+
+		ACAB:ApplySimpleElementGroupedLock(page)
 	end
 
 	-------------------------------------------------------------------------
@@ -2720,6 +2905,14 @@ local function CreateSimpleBarPage(key)
 				format = function(value) return string.format("%.1f", value) end,
 				onChange = function(value, suppressApply)
 					if not suppressApply then
+						-- Grouped alongside Bag Bar (ApplyGroupedKeyRingPosition, DefaultBars.lua) - same
+						-- guard as the sliders above, no highlight-pulse redirect from onChange itself
+						-- (see OnMouseDown below instead) to avoid thrashing on a continuous drag.
+						if ACABDB.mainBarArtMode ~= ACAB.MAIN_BAR_ART_MODE_DISABLED then
+							ACAB:RefreshSimpleBarPage(key)
+							return
+						end
+
 						ACAB:SetKeyRingScale(value)
 					end
 				end,
@@ -2729,7 +2922,32 @@ local function CreateSimpleBarPage(key)
 		page.keyRingScaleValueText = keyRingScaleValueText
 		page.keyRingScaleSlider = keyRingScaleSlider
 
+		keyRingScaleSlider:SetScript("OnEnter", function()
+			if ACABDB.mainBarArtMode ~= ACAB.MAIN_BAR_ART_MODE_DISABLED then
+				GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+				GameTooltip:SetText(
+					"Key Ring is grouped with Main Bar while Gryphons / Background Art is enabled - its own Scale control is locked. Click to highlight the Setting",
+					1, 0.15, 0.15, 1, true
+				)
+				GameTooltip:Show()
+			end
+		end)
+
+		keyRingScaleSlider:SetScript("OnLeave", function()
+			GameTooltip:Hide()
+		end)
+
+		keyRingScaleSlider:SetScript("OnMouseDown", function()
+			if ACABDB.mainBarArtMode ~= ACAB.MAIN_BAR_ART_MODE_DISABLED then
+				ACAB:HighlightMainBarArtModeDropdownFromElsewhere()
+			end
+		end)
+
 		ACAB:AddHoverOnlyReflowRow(page, keyRingScaleSlider, ACAB.INDENT_INPUT, keyRingScaleSliderY)
+
+		-- Re-applied now that keyRingScaleSlider exists - the earlier call (right after the X/Y/Spacing/
+		-- Scale block above) ran before this section was built, so it couldn't set this one's alpha yet.
+		ACAB:ApplySimpleElementGroupedLock(page)
 
 		cursorY = keyRingScaleSliderY - 36
 	end
@@ -3002,6 +3220,8 @@ function ACAB:RefreshSimpleBarPage(key)
 
 		RefreshGridSwatchSelection(page, cols, rows)
 	end
+
+	ACAB:ApplySimpleElementGroupedLock(page)
 
 	if config.hasHoverOnly then
 		self:RefreshHoverOnlyControls(page, config.getHoverOnly(), config.getHoverDuration())
@@ -3658,6 +3878,8 @@ function ACAB:RefreshBarSettingsPage(barId)
 		page.pageIndicatorSlider:SetValue(scale)
 		page.pageIndicatorValueText:SetText(string.format("%.1f", scale))
 		page.pageIndicatorSlider.suppressApply = nil
+
+		page.pageIndicatorSlider:SetAlpha(ACABDB.mainBarArtMode ~= ACAB.MAIN_BAR_ART_MODE_DISABLED and 0.5 or 1)
 
 		ACAB:RefreshMainBarPageIndicatorControlsVisibility()
 	end
