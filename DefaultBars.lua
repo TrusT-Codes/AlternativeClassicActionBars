@@ -422,11 +422,12 @@ end
 -- Core.lua) is buttonSize*ratio MINUS a flat fudge, not a simple proportional term, so it doesn't scale
 -- the same way `scale` does here.
 --
--- Returns LEFT and BOTTOM, not LEFT/TOP: live-confirmed (comparing bar's own GetTop()/GetBottom() across
--- two different button sizes) that bar's BOTTOM edge is the one that stays constant when only buttonSize
--- changes - the TOP edge rises as the row gets taller. cfg.point is nominally "TOPLEFT", but the bottom
--- is what's actually fixed on screen, so anchoring the art off bar's bottom (not top) is what keeps it
--- buttonSize-independent instead of drifting.
+-- Returns LEFT and TOP, not LEFT/BOTTOM: live-confirmed (bar's own GetTop()/GetBottom() across several
+-- different button sizes, same drag position) that bar's TOP-LEFT corner is the one that stays constant
+-- when only buttonSize changes - button 1 sits at zero offset from it (Bar.lua's LayoutButtons), and the
+-- BOTTOM edge is what drops as the row gets taller. Anchoring the art off this corner (not the bottom) is
+-- what keeps its own anchor point buttonSize-independent, the same way bar's own anchor never moves when
+-- SetBarButtonSize runs - only SetWidth/SetHeight change, cfg.x/y never do.
 local function GetButton1ScreenAnchor(bar)
 	-- Top-down resolve pass (§5af, docs/01-Environment-Capability-Analysis.md) before trusting bar's own
 	-- rect: this client caches a child's resolved position against its ancestor's rect at read time, so
@@ -435,9 +436,9 @@ local function GetButton1ScreenAnchor(bar)
 	UIParent:GetLeft()
 
 	local left = bar:GetLeft()
-	local bottom = bar:GetBottom()
+	local top = bar:GetTop()
 
-	if not left or not bottom then
+	if not left or not top then
 		return nil
 	end
 
@@ -448,7 +449,7 @@ local function GetButton1ScreenAnchor(bar)
 		return nil
 	end
 
-	return (left * barScale) / targetScale, (bottom * barScale) / targetScale
+	return (left * barScale) / targetScale, (top * barScale) / targetScale
 end
 
 -- Repositions/rescales MainMenuBarArtFrame relative to ACAB.bars[1] - called from Bar.lua's
@@ -497,33 +498,42 @@ function ACAB:ApplyMainBarArtPosition()
 	-- straight to `bar` fed it a raw offset in the wrong coordinate space. Anchoring to UIParent instead,
 	-- like bar itself does (see ApplyBarPosition above), sidesteps that.
 	--
-	-- The base point is button 1's own real edge (GetButton1ScreenAnchor - LEFT/BOTTOM, bar's stable
-	-- edges), not bar.config.x/y (the CONTAINER frame's edge). bar.config.x/y is the fallback only for
-	-- the rare case button 1 isn't ready yet.
+	-- The base point is button 1's own real edge (GetButton1ScreenAnchor - LEFT/TOP, bar's buttonSize-
+	-- invariant corner), not bar.config.x/y (the CONTAINER frame's edge). bar.config.x/y is the fallback
+	-- only for the rare case button 1 isn't ready yet.
 	local btn1X, btn1Y = GetButton1ScreenAnchor(bar)
 	local baseX = btn1X or bar.config.x or 0
 	local baseY = btn1Y or bar.config.y or 0
 
-	-- TOPLEFT frame anchor. Both axes are a linear fit in `scale`, written as
-	-- (buttonSize-36 constant) + slope*(scale-1) so scale=1 (buttonSize 36) reduces to the confirmed-correct
-	-- flat offset untouched. GetLeft/GetRight/GetTop/GetBottom on this client don't reflect a frame's own
-	-- SetScale() (confirmed via a stable 2-read poll, not a timing artifact), so a live-measured gryphon/
-	-- art-frame rect can't be used to fit this - slopes come from 3 rounds of real ruler measurement at
-	-- buttonSize 44, root-found via secant/regression across all 3 (converted through
-	-- UIParent:GetEffectiveScale()=0.9) rather than a raw 2-point fit through the latest round alone.
-	local artX = baseX + 42.7 - 206.112 * (scale - 1)
+	-- TOPLEFT frame anchor, at a FLAT offset from baseX/baseY plus a small residual correction that DOES
+	-- grow with (scale-1) - baseX/baseY track bar's own raw button hitbox (buttonSize-invariant left/top),
+	-- but the vanilla border decoration's own visual inset (ComputeVanillaBorderInsets, Core.lua) has a
+	-- real proportional term, so the BORDERED bar a person actually looks at grows a little in every
+	-- direction, not just downward from a fixed top. Coefficients from real ruler measurement at buttonSize
+	-- 50, converted through UIParent:GetEffectiveScale()=0.9. Zero at scale=1, so the confirmed-correct
+	-- buttonSize-36 baseline is untouched.
+	local artX = baseX + 42.7 + 40 * (scale - 1)
 
-	local measuredYCorrection = 43.3457
+	local measuredYCorrection = 7.0000189174628
 
-	local artY = baseY + measuredYCorrection - 120.893 * (scale - 1)
+	local artY = baseY + measuredYCorrection + 10 * (scale - 1)
 
-	self:PixelSetPoint(
-		artFrame,
+	-- SetPoint's x/y offset resolves through the CALLING frame's own effective scale, not a fixed screen
+	-- unit (the same mechanic that already forced anchoring to UIParent instead of `bar` earlier in this
+	-- feature) - confirmed live: artX/artY and artFrame:GetPoint() both stay bit-identical for 1.5s after
+	-- this runs (nothing external re-touches them), yet the frame still visually drifts from `bar` as
+	-- buttonSize changes. `bar` never hits this because it never calls SetScale (PixelSetSize/SetWidth+
+	-- SetHeight instead), so its own effective scale - and therefore how its SetPoint offsets resolve -
+	-- never moves. artFrame's DOES move (that's what SetScale(scale) is for), so the same numeric artX/artY
+	-- resolves to a different actual screen position at every buttonSize. Dividing by `scale` here cancels
+	-- that multiplication back out, landing on the fixed baseX/baseY+offset screen position regardless of
+	-- buttonSize. At scale=1 (buttonSize 36) this divides by 1 - the confirmed-correct baseline is untouched.
+	artFrame:SetPoint(
 		bar.config.point or "TOPLEFT",
 		UIParent,
 		bar.config.relativePoint or "BOTTOMLEFT",
-		artX,
-		artY
+		artX / scale,
+		artY / scale
 	)
 	artFrame.ACABApplyingMainBarArtPosition = nil
 
@@ -544,66 +554,6 @@ function ACAB:ApplyMainBarArtPosition()
 				region:Show()
 			end
 		end
-	end
-
-	-- TEMPORARY DIAGNOSTIC (diag40) - diag39's single deferred read caught gryphon/artFrame rects
-	-- mid-settle after SetScale (artFrame's own R-L printed as the native unscaled width at every button
-	-- size, gryphon's width came back partially-updated) - same class of bug WaitForMainBarArtSettle
-	-- already exists to dodge. Polls artFrame/gryphon's rect until 2 consecutive reads agree (or a 3s
-	-- timeout) before printing. Remove once the scaling formula is confirmed correct across button sizes.
-	if C_Timer and C_Timer.NewTicker then
-		local gryphon = getglobal("MainMenuBarLeftEndCap")
-		local btn1 = bar.buttons and bar.buttons[1]
-
-		local function WarmChain()
-			UIParent:GetLeft()
-			MainMenuBar:GetLeft()
-			bar:GetLeft()
-			artFrame:GetLeft()
-		end
-
-		WarmChain()
-		local lastArtR, lastGryphonR = artFrame:GetRight(), gryphon and gryphon:GetRight()
-		local stableCount = 0
-		local elapsed = 0
-		local pollInterval = 0.1
-
-		local ticker
-		ticker = C_Timer.NewTicker(pollInterval, function()
-			elapsed = elapsed + pollInterval
-
-			WarmChain()
-			local artR, gryphonR = artFrame:GetRight(), gryphon and gryphon:GetRight()
-
-			if artR == lastArtR and gryphonR == lastGryphonR then
-				stableCount = stableCount + 1
-			else
-				stableCount = 0
-			end
-
-			lastArtR, lastGryphonR = artR, gryphonR
-
-			if stableCount >= 2 or elapsed >= 3 then
-				ticker:Cancel()
-
-				local btn1L, btn1T = btn1 and btn1:GetLeft(), btn1 and btn1:GetTop()
-				local barL, barT, barB = bar:GetLeft(), bar:GetTop(), bar:GetBottom()
-				local gryphonL, gryphonT, gryphonB = gryphon and gryphon:GetLeft(), gryphon and gryphon:GetTop(), gryphon and gryphon:GetBottom()
-				local artL, artT, artB = artFrame:GetLeft(), artFrame:GetTop(), artFrame:GetBottom()
-
-				ACAB:Print(
-					"[diag40] settled(" .. tostring(elapsed) .. "s) btn1 L=" .. tostring(btn1L) .. " T=" .. tostring(btn1T) ..
-					" bar L=" .. tostring(barL) .. " T=" .. tostring(barT) .. " B=" .. tostring(barB) ..
-					" art L=" .. tostring(artL) .. " R=" .. tostring(artR) .. " T=" .. tostring(artT) .. " B=" .. tostring(artB) ..
-					" gryphon L=" .. tostring(gryphonL) .. " R=" .. tostring(gryphonR) .. " T=" .. tostring(gryphonT) .. " B=" .. tostring(gryphonB) ..
-					" offsetW=" .. tostring(offset.width) .. " offsetH=" .. tostring(offset.height) ..
-					" gryphonRightFromFrameLeft=" .. tostring(offset.gryphonRightFromFrameLeft) ..
-					" scale=" .. tostring(scale) ..
-					" baseX=" .. tostring(baseX) .. " baseY=" .. tostring(baseY) ..
-					" artX=" .. tostring(artX) .. " artY=" .. tostring(artY)
-				)
-			end
-		end)
 	end
 end
 
