@@ -174,6 +174,22 @@ function ACAB:ApplyExpBarPosition()
 		)
 	end
 
+	-- Reasserted every call (same reasoning as Key Ring's own SetFrameStrata comment): native vanilla
+	-- draws MainMenuExpBar above MainMenuBarPerformanceBarFrame when both occupy the same "MEDIUM" strata,
+	-- which reads wrong once Latency Bar is repositioned near/over it. Pins Experience Bar's frame level
+	-- one below Latency Bar's current level so it always renders underneath, without touching Latency
+	-- Bar's own strata/level at all.
+	do
+		local latencyBarFrame = getglobal(self.LATENCY_BAR_FRAME_NAME)
+
+		if latencyBarFrame then
+			local latencyLevel = latencyBarFrame:GetFrameLevel()
+
+			frame:SetFrameStrata(latencyBarFrame:GetFrameStrata())
+			frame:SetFrameLevel((latencyLevel > 0) and (latencyLevel - 1) or 0)
+		end
+	end
+
 	self:EnsureContainerOverlay(frame, self.StartExpBarDrag, self.StopExpBarDrag, "expbar", self.SetExpBarScale, nil, "Experience Bar")
 	EnsureExpBarBottomBorderStrip(frame)
 

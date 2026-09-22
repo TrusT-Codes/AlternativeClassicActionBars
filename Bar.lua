@@ -96,9 +96,17 @@ function ACAB:ApplyBarPosition(bar)
 		cfg.y or 0
 	)
 
-	-- Main Bar's Blizzard art (background + gryphons) rides along, anchored to this frame.
-	if cfg.id == 1 and self.ApplyMainBarArtPosition then
-		self:ApplyMainBarArtPosition()
+	-- Main Bar's Blizzard art (background + gryphons) rides along, anchored to this frame. Micro Menu/
+	-- Latency Bar/Page Indicator/Bag Bar ride along too, but only while the art mode that groups them is
+	-- active (ApplyMainBarGroupedElements itself checks ACABDB.mainBarArtMode).
+	if cfg.id == 1 then
+		if self.ApplyMainBarArtPosition then
+			self:ApplyMainBarArtPosition()
+		end
+
+		if self.ApplyMainBarGroupedElements then
+			self:ApplyMainBarGroupedElements()
+		end
 	end
 end
 
@@ -574,6 +582,10 @@ function ACAB:SetBarButtonSize(bar, newSize)
 
 		if self.ApplyMainBarArtPosition then
 			self:ApplyMainBarArtPosition()
+		end
+
+		if self.ApplyMainBarGroupedElements then
+			self:ApplyMainBarGroupedElements()
 		end
 	end
 end

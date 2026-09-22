@@ -1421,6 +1421,15 @@ function ACAB:RunLoginSequence(earlyLeft, earlyTop, settledLeft, settledTop, wai
 
 	ACAB:ApplyBlizzardArtVisibility()
 
+	-- Every element above (Bag Bar/Key Ring/Micro Menu/Latency Bar/Page Indicator) has just applied its
+	-- own saved, ungrouped position - if Main Bar's art mode is grouping them, this immediately re-aligns
+	-- them relative to Main Bar instead of leaving them sitting at their saved position until the next
+	-- drag/buttonSize change/dropdown toggle. Must run after every one of those Apply*Position calls above,
+	-- and after ApplyAllDefaultBars (Main Bar itself needs to be positioned first).
+	if ACAB.ApplyMainBarGroupedElements then
+		ACAB:ApplyMainBarGroupedElements()
+	end
+
 	ACAB:CreateMinimapButton()
 
 	ACAB:Print("Fully initialized! Click the minimap button or use /acab for options.")

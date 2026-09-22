@@ -686,6 +686,13 @@ function ACAB:ApplyKeyRingPosition()
 	-- sets "HIGH" on every call so nothing can silently reset it to a lower tier.
 	frame:SetFrameStrata("HIGH")
 
+	-- KeyRingButton is natively parented to MainMenuBarArtFrame, which Main Bar's own art code scales by
+	-- buttonSize/36 UNCONDITIONALLY (even with Blizzard art Fully Disabled - that only hides its regions,
+	-- never touches the frame's own scale). Without this, Key Ring would visibly drift/resize any time
+	-- Main Bar's buttonSize changes, regardless of whether it's grouped with Main Bar or not. Reasserted
+	-- every call, same reasoning as SetFrameStrata above.
+	self:SetKeyRingOwnScaleForEffective(frame, ACABDB.keyRingScale or 1)
+
 	local pos = ACABDB.keyRingPosition
 
 	if pos then
@@ -759,7 +766,10 @@ function ACAB:ResetKeyRingPosition()
 	ACABDB.keyRingScale = 1
 
 	if frame then
-		frame:SetScale(1)
+		-- TRUE effective scale 1, not just frame:SetScale(1) - see ApplyKeyRingPosition's own comment;
+		-- ResolveNativeAnchorToAbsolute below needs the frame at a real effective scale of 1 to resolve
+		-- correctly, which plain SetScale(1) wouldn't guarantee while Main Bar's buttonSize isn't 36.
+		self:SetKeyRingOwnScaleForEffective(frame, 1)
 	end
 
 	local native = ACABDB.keyRingNativeAnchor
@@ -793,7 +803,9 @@ function ACAB:SetKeyRingScale(scale)
 	ACABDB.keyRingScale = scale
 
 	if frame then
-		frame:SetScale(scale)
+		-- Not a plain frame:SetScale(scale) - see ApplyKeyRingPosition's own comment on why Key Ring's
+		-- native MainMenuBarArtFrame parentage needs this counteracted.
+		self:SetKeyRingOwnScaleForEffective(frame, scale)
 	end
 
 	if pos then
