@@ -189,8 +189,14 @@ function ACAB:GetActionBarCoordinateRange(cfg)
 	end
 
 	local buttonSize = (cfg and cfg.buttonSize) or ACAB.BUTTON_SIZE
-	local cols = (cfg and cfg.cols) or 1
-	local rows = (cfg and cfg.rows) or 1
+	local cols, rows = 1, 1
+
+	if cfg then
+		cols, rows = ACAB:GetEffectiveBarGrid(cfg)
+	end
+
+	cols = cols or 1
+	rows = rows or 1
 	local spacing = (cfg and cfg.spacing) or 0
 	local borderSize = GetActionBarBorderSize()
 

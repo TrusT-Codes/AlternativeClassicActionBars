@@ -565,8 +565,10 @@ local GROUPABLE_ELEMENTS = {
 		hoverOnlyField = "microMenuHoverOnly",
 		hoverDurationField = "microMenuHoverDuration",
 		getFrame = function() return ACAB.microMenuContainer end,
+		-- Grouped always lays out as the vanilla 8x1 its art-relative spot assumes; the saved grid is kept
+		-- for when it's ungrouped again.
 		applyScale = function(frame, scale)
-			ACAB:ApplyGridAnchoredShape(frame, ACABDB.microMenuCols or 8, ACABDB.microMenuRows or 1, ACABDB.microMenuSpacing or 0, scale)
+			ACAB:ApplyGridAnchoredShape(frame, 8, 1, ACABDB.microMenuSpacing or 0, scale)
 		end,
 		applyUngrouped = function() ACAB:SetMicroMenuScale(ACABDB.microMenuScale or 1) end,
 	},
