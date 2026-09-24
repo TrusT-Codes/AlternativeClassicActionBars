@@ -218,22 +218,11 @@ function ACAB:HideBonusActionBarFrame()
 end
 
 -------------------------------------------------------------------------
--- "Gryphons / Background Art" (Main Bar settings page dropdown, ACABDB.mainBarArtMode)
---
--- Hides/shows MainMenuBarArtFrame's own regions (GetRegions(), not the
--- frame itself - that would take ActionButton1-12, its real children,
--- down with it) so bar 1's replica buttons show against the user's UI.
--- ACAB.MAIN_BAR_ART_GRYPHON_REGION_NAMES (Core.lua) picks the two end-cap
--- textures (MainMenuBarLeftEndCap/RightEndCap, live-confirmed) out from
--- the background tiles (MainMenuBarTexture0-3).
---
--- MainMenuBarArtFrame stays pinned at strata "MEDIUM" level 5 regardless
--- of the mode - must stay strictly between MainMenuExpBar's level 2
--- (XP bar fill would bleed past the art) and ACAB bars' level 10
--- (bars would render behind the art). Do not change without
--- re-verifying both those frames' levels.
---
--- Bars 2-5 have no equivalent art frame in vanilla FrameXML.
+-- Main Bar's Blizzard art ("Gryphons / Background Art" dropdown, ACABDB.mainBarArtMode)
+-------------------------------------------------------------------------
+
+-- Shows/hides MainMenuBarArtFrame's Texture regions per art mode - never the frame itself, whose children
+-- are ActionButton1-12. Level 5 must stay between MainMenuExpBar (2) and ACAB bars (10) or either renders wrong.
 function ACAB:ApplyBlizzardArtVisibility()
 	local artFrame = MainMenuBarArtFrame
 
@@ -271,22 +260,11 @@ function ACAB:ApplyBlizzardArtVisibility()
 end
 
 -------------------------------------------------------------------------
--- Grouped movement + scaling: MainMenuBarArtFrame rides along with Main Bar's own ACABBar1 frame
--- (rather than a second branch in the shared drag engine) and scales with its button size, so the art
--- always frames the button row the same way vanilla's native layout does. All of MainMenuBarArtFrame's
--- regions anchor BOTTOM to the frame itself (live-confirmed), so moving/scaling the frame alone carries
--- every region along automatically.
+-- Main Bar art placement: MainMenuBarArtFrame follows ACABBar1's position and scales with its buttonSize.
+-- Every art region anchors BOTTOM to the frame, so moving/scaling the frame carries them all.
 -------------------------------------------------------------------------
 
--- Polls MainMenuBarArtFrame's raw position until 2 consecutive reads agree (or a timeout) before
--- trusting it - mirrors ACAB:WaitForNativeBarSettle's own reasoning for ActionButton1 (Core.lua):
--- "its native position isn't guaranteed final immediately after PLAYER_ENTERING_WORLD." A single
--- synchronous read (the previous approach) could easily land mid-settle rather than at the true rest
--- position - live-confirmed as reproducibly wrong across multiple full client restarts, ruling out a
--- capture-ordering explanation and pointing at this instead.
--- Top-down resolve pass (§5af) before trusting artFrame's own rect - reads its real parent
--- (MainMenuBar, not UIParent) first each time, discarding the values, so artFrame is never resolved
--- against a stale cached ancestor position. Same technique as ApplySettingsHeightFromCandidates.
+-- Reads MainMenuBar's rect (values discarded) so MainMenuBarArtFrame never resolves against a stale parent (§5af).
 local function WarmMainBarArtAncestorChain()
 	if MainMenuBar then
 		MainMenuBar:GetLeft()
@@ -294,6 +272,7 @@ local function WarmMainBarArtAncestorChain()
 	end
 end
 
+-- Polls MainMenuBarArtFrame's left/top until 2 consecutive reads match (3s timeout), then calls callback(left, top).
 local function WaitForMainBarArtSettle(callback)
 	local artFrame = MainMenuBarArtFrame
 
@@ -337,16 +316,10 @@ local function WaitForMainBarArtSettle(callback)
 	end)
 end
 
--- Captures MainMenuBarArtFrame's pristine native offset from Main Bar's native anchor, once ever - only
--- once WaitForMainBarArtSettle confirms its position has actually settled (asynchronous). Called
--- explicitly early in Core.lua's RunLoginSequence, alongside CaptureKeyRingPositionIfNeeded/
--- CaptureCastBarPositionIfNeeded/etc, and defensively from ApplyMainBarArtPosition. Before settling
--- completes, ApplyMainBarArtPosition's own offset-nil bail-out leaves the art frame untouched at
--- whatever its current native position is - never incorrectly positioned - so there's no bad
--- intermediate state to worry about, only "not yet repositioned".
+-- Captures MainMenuBarArtFrame's native offset/size once, after its position settles (asynchronous), then
+-- applies the art position. Until then ApplyMainBarArtPosition leaves the art at its native spot.
 function ACAB:CaptureMainBarArtNativeOffsetIfNeeded()
-	-- .width is also checked (not just table presence) so a value saved before width/height were added
-	-- to this capture gets one fresh, safe re-capture on next login.
+	-- .width check re-captures saves from before width/height were stored.
 	if ACABDB.mainBarArtNativeOffset and ACABDB.mainBarArtNativeOffset.width then
 		return
 	end
@@ -379,15 +352,7 @@ function ACAB:CaptureMainBarArtNativeOffsetIfNeeded()
 		local frameW = artFrame:GetWidth()
 		local frameH = artFrame:GetHeight()
 
-		-- X is NOT derived from the frame's own raw native position (screenX) - that reproduces
-		-- MainMenuBarArtFrame's true native anchor faithfully, but live-measured against the left
-		-- gryphon's own real rendered edge, that leaves a ~27px gap before button 1 that reads as
-		-- visibly wrong (confirmed repeatedly, independent of capture timing/method). The actual design
-		-- rule that looks correct: the left gryphon's right edge sits flush (zero gap) against button 1's
-		-- left edge. Deriving gryphonRightFromFrameLeft purely from the gryphon region's own live
-		-- geometry (its point offset from the frame's own BOTTOM anchor, its width - both in the frame's
-		-- unscaled local units, so this stays correct at any button size) rather than a hardcoded pixel
-		-- constant.
+		-- Left gryphon's right edge, in the frame's unscaled units from its left edge.
 		local gryphon = getglobal("MainMenuBarLeftEndCap")
 		local gryphonRightFromFrameLeft = nil
 
@@ -403,38 +368,19 @@ function ACAB:CaptureMainBarArtNativeOffsetIfNeeded()
 		ACABDB.mainBarArtNativeOffset = {
 			y = screenY - nativeAnchor.y,
 			gryphonRightFromFrameLeft = gryphonRightFromFrameLeft,
-			-- Native declared size (from FrameXML's own <Size>, never a Lua SetWidth/SetHeight call) - see
-			-- ApplyMainBarArtPosition's own comment on why this must be reasserted every time we SetPoint it.
+			-- FrameXML <Size>, reasserted by ApplyMainBarArtPosition.
 			width = frameW,
 			height = frameH,
 		}
 
-		-- Re-apply now that the true settled offset is known - any earlier, pre-settle calls this
-		-- session left the art frame untouched (see this function's own header comment), so this is the
-		-- first time it actually gets positioned/scaled.
 		ACAB:ApplyMainBarArtPosition()
 	end)
 end
 
--- Real screen-pixel anchor of bar 1's own frame, in the same UIParent-normalized units
--- CaptureNativeAnchor uses (Database.lua). Reads `bar` directly, not its edit-mode overlay hitbox
--- (Bar.lua's EnsureBarOverlay) - the overlay's own inset from `bar` (ComputeVanillaBorderInsets,
--- Core.lua) is buttonSize*ratio MINUS a flat fudge, not a simple proportional term, so it doesn't scale
--- the same way `scale` does here.
---
--- Returns LEFT and TOP, not LEFT/BOTTOM: live-confirmed (bar's own GetTop()/GetBottom() across several
--- different button sizes, same drag position) that bar's TOP-LEFT corner is the one that stays constant
--- when only buttonSize changes - button 1 sits at zero offset from it (Bar.lua's LayoutButtons), and the
--- BOTTOM edge is what drops as the row gets taller. Anchoring the art off this corner (not the bottom) is
--- what keeps its own anchor point buttonSize-independent, the same way bar's own anchor never moves when
--- SetBarButtonSize runs - only SetWidth/SetHeight change, cfg.x/y never do.
--- Modern style: returns the vanilla-equivalent corner instead - Modern buttons run MODERN_BUTTON_SIZE_DELTA
--- larger and sit MODERN_BUTTON_SIZE_POSITION_SHIFT up-left of where the same vanilla button would.
+-- Main Bar button 1's LEFT/TOP in UIParent units - the corner that stays fixed when buttonSize changes.
+-- Modern style returns the vanilla-equivalent corner (MODERN_BUTTON_SIZE_POSITION_SHIFT down-right).
 local function GetButton1ScreenAnchor(bar)
-	-- Top-down resolve pass (§5af, docs/01-Environment-Capability-Analysis.md) before trusting bar's own
-	-- rect: this client caches a child's resolved position against its ancestor's rect at read time, so
-	-- reading a frame before its ancestor (UIParent) has been read this tick can resolve it against a
-	-- stale ancestor position. Return value deliberately discarded - the read itself is what matters.
+	-- Must read UIParent first (value discarded) or bar's rect can resolve against a stale ancestor (§5af).
 	UIParent:GetLeft()
 
 	local left = bar:GetLeft()
@@ -459,8 +405,7 @@ local function GetButton1ScreenAnchor(bar)
 	return (left * barScale) / targetScale, (top * barScale) / targetScale
 end
 
--- Main Bar's buttonSize as its vanilla-style equivalent (Modern style's buttons run
--- MODERN_BUTTON_SIZE_DELTA larger for the same visual size).
+-- Main Bar's buttonSize as its vanilla-style equivalent (Modern runs MODERN_BUTTON_SIZE_DELTA larger).
 function ACAB:GetMainBarVanillaButtonSize(cfg)
 	local size = (cfg and cfg.buttonSize) or self.BUTTON_SIZE
 
@@ -471,14 +416,12 @@ function ACAB:GetMainBarVanillaButtonSize(cfg)
 	return size
 end
 
--- Scale Main Bar's Blizzard art and every element grouped with it ride at.
+-- Scale of Main Bar's Blizzard art and every element grouped with it.
 function ACAB:GetMainBarArtScale(cfg)
 	return self:GetMainBarVanillaButtonSize(cfg) / self.BUTTON_SIZE
 end
 
--- Main Bar's button gap: its vanilla-equivalent spacing scaled with the art, so every button stays on its
--- art slot in both border styles (Modern spacing runs VANILLA_SPACING_FLOOR lower, buttonSize
--- MODERN_BUTTON_SIZE_DELTA higher).
+-- Main Bar's button gap, scaled with the art so every button stays on its art slot in both border styles.
 function ACAB:GetMainBarEffectiveSpacing(cfg)
 	local spacing = (cfg and cfg.spacing) or 0
 	local scale = self:GetMainBarArtScale(cfg)
@@ -490,9 +433,7 @@ function ACAB:GetMainBarEffectiveSpacing(cfg)
 	return (spacing + self.VANILLA_SPACING_FLOOR) * scale - self.MODERN_BUTTON_SIZE_DELTA
 end
 
--- Repositions/rescales MainMenuBarArtFrame relative to ACAB.bars[1] - called from Bar.lua's
--- ApplyBarPosition and SetBarButtonSize whenever bar.config.id == 1, so dragging/resizing Main Bar
--- carries the art along automatically with zero changes to the shared drag engine.
+-- Positions/scales MainMenuBarArtFrame against Main Bar's button 1. Runs on every Main Bar move/resize (Bar.lua).
 function ACAB:ApplyMainBarArtPosition()
 	self:EnsureDB()
 
@@ -515,13 +456,7 @@ function ACAB:ApplyMainBarArtPosition()
 
 	artFrame.ACABApplyingMainBarArtPosition = true
 
-	-- Reasserted every call, not just once: this client's GetLeft/GetTop never resolve for a frame
-	-- that's been SetPoint'd via Lua unless it's ALSO had an explicit Lua SetWidth/SetHeight call at
-	-- some point (a native <Size> declaration alone doesn't count) - live-confirmed, see
-	-- docs/01-Environment-Capability-Analysis.md §5ak. MainMenuBarArtFrame's size only ever came from
-	-- FrameXML's own <Size>, so without this its rect (and apparently its on-screen render) gets stuck
-	-- the moment we start calling SetPoint on it ourselves. Values are its true native size, so this
-	-- never actually changes anything visually - it only keeps the frame's rect resolvable.
+	-- Must reassert the native size every call or the frame's rect stops resolving once Lua SetPoints it (§5ak).
 	if offset.width and offset.height then
 		artFrame:SetWidth(offset.width)
 		artFrame:SetHeight(offset.height)
@@ -530,42 +465,19 @@ function ACAB:ApplyMainBarArtPosition()
 	artFrame:SetScale(scale)
 	artFrame:ClearAllPoints()
 
-	-- Absolute UIParent-relative position, not anchored directly to `bar`: `bar` can have a non-1
-	-- effective scale of its own (e.g. vanilla border style), and PixelUtil.SetPoint's pixel-snap
-	-- conversion is keyed to the REGION's (artFrame's) own effective scale, not relativeTo's - anchoring
-	-- straight to `bar` fed it a raw offset in the wrong coordinate space. Anchoring to UIParent instead,
-	-- like bar itself does (see ApplyBarPosition above), sidesteps that.
-	--
-	-- The base point is button 1's own real edge (GetButton1ScreenAnchor - LEFT/TOP, bar's buttonSize-
-	-- invariant corner), not bar.config.x/y (the CONTAINER frame's edge). bar.config.x/y is the fallback
-	-- only for the rare case button 1 isn't ready yet.
+	-- Anchored to UIParent (not `bar`) at button 1's corner; bar.config.x/y only until button 1 resolves.
 	local btn1X, btn1Y = GetButton1ScreenAnchor(bar)
 	local baseX = btn1X or bar.config.x or 0
 	local baseY = btn1Y or bar.config.y or 0
 
-	-- TOPLEFT frame anchor, at a FLAT offset from baseX/baseY plus a small residual correction that DOES
-	-- grow with (scale-1) - baseX/baseY track bar's own raw button hitbox (buttonSize-invariant left/top),
-	-- but the vanilla border decoration's own visual inset (ComputeVanillaBorderInsets, Core.lua) has a
-	-- real proportional term, so the BORDERED bar a person actually looks at grows a little in every
-	-- direction, not just downward from a fixed top. Coefficients from real ruler measurement at buttonSize
-	-- 50, converted through UIParent:GetEffectiveScale()=0.9. Zero at scale=1, so the confirmed-correct
-	-- buttonSize-36 baseline is untouched.
+	-- Measured offset from button 1 at scale 1, plus a residual that grows with (scale - 1).
 	local artX = baseX + 42.7 + 40 * (scale - 1)
 
 	local measuredYCorrection = 7.0000189174628
 
 	local artY = baseY + measuredYCorrection + 10 * (scale - 1)
 
-	-- SetPoint's x/y offset resolves through the CALLING frame's own effective scale, not a fixed screen
-	-- unit (the same mechanic that already forced anchoring to UIParent instead of `bar` earlier in this
-	-- feature) - confirmed live: artX/artY and artFrame:GetPoint() both stay bit-identical for 1.5s after
-	-- this runs (nothing external re-touches them), yet the frame still visually drifts from `bar` as
-	-- buttonSize changes. `bar` never hits this because it never calls SetScale (PixelSetSize/SetWidth+
-	-- SetHeight instead), so its own effective scale - and therefore how its SetPoint offsets resolve -
-	-- never moves. artFrame's DOES move (that's what SetScale(scale) is for), so the same numeric artX/artY
-	-- resolves to a different actual screen position at every buttonSize. Dividing by `scale` here cancels
-	-- that multiplication back out, landing on the fixed baseX/baseY+offset screen position regardless of
-	-- buttonSize. At scale=1 (buttonSize 36) this divides by 1 - the confirmed-correct baseline is untouched.
+	-- Offsets resolve through artFrame's own scale - must divide by scale or the art drifts with buttonSize.
 	artFrame:SetPoint(
 		bar.config.point or "TOPLEFT",
 		UIParent,
@@ -575,11 +487,11 @@ function ACAB:ApplyMainBarArtPosition()
 	)
 	artFrame.ACABApplyingMainBarArtPosition = nil
 
-	-- TEMPORARY DIAGNOSTIC (diag37) - the logical position (per every query so far) is now correct
-	-- (near-zero gap), but the same visual error persists across repeated tests with genuinely different
-	-- computed positions - suggesting the actual drawn pixels aren't refreshing to match the new anchor.
-	-- Forces a hard redraw by toggling Hide()/Show() on every currently-shown Texture region. Remove
-	-- once confirmed either way.
+	-- ActionButton1-12 are artFrame's children - from here on this session their live position is no
+	-- longer native (see Core.lua's VerifyDefaultBarAnchorsSettled).
+	self.mainBarArtMoved = true
+
+	-- Forces the shown art textures to redraw at the new anchor (Hide/Show each one).
 	do
 		local regions = { artFrame:GetRegions() }
 		local i
@@ -596,111 +508,128 @@ function ACAB:ApplyMainBarArtPosition()
 end
 
 -------------------------------------------------------------------------
--- Grouped movement + scaling: Bag Bar, Key Ring, Micro Menu, Latency Bar, Page Indicator
---
--- While grouped (ACAB:IsElementGrouped), each element sits at its vanilla offset from Main Bar's native
--- button-1 anchor, scaled by Main Bar's buttonSize/36. The offset is derived from the permanent native-
--- anchor snapshots on every call, never from a live frame read. Each element's own Apply*Position/
--- Apply*Shape (NativeElements.lua) routes through ApplyGroupedIfActive first.
+-- Elements grouped with Main Bar: Bag Bar, Key Ring, Micro Menu, Latency Bar, Page Indicator.
+-- While grouped (IsElementGrouped) each sits at its vanilla offset from Main Bar's button 1, scaled with
+-- Main Bar's art. Offsets come from the native-anchor snapshots on every call, never a live frame read.
+-- Each element's own Apply*Position/Apply*Shape (NativeElements.lua) tries ApplyGroupedIfActive first.
 -------------------------------------------------------------------------
 
--- Per-element unlock flag.
-local GROUP_UNLOCK_FIELDS = {
-	bagbar = "bagBarGroupUnlocked",
-	keyring = "keyRingGroupUnlocked",
-	micromenu = "microMenuGroupUnlocked",
-	latencybar = "latencyBarGroupUnlocked",
-	pageindicator = "pageIndicatorGroupUnlocked",
+-- One descriptor per groupable element. Method-name fields resolve on ACAB at call time.
+--   pixelCorrection: {x, y} screen-pixel nudge on the vanilla offset (+ right/up), scaled with Main Bar.
+--   pixelNudgeY: whole physical pixels added to the final grouped Y, unscaled (+ up).
+--   capture(): lazily captures the element's saved/native position before it's read.
+--   applyScale(frame, scale): sets the element's grouped scale (and shape) before it's anchored.
+--   applyUngrouped(): restores the element's own saved scale/position.
+local GROUPABLE_ELEMENTS = {
+	bagbar = {
+		name = "Bag Bar",
+		settingsKey = "bagbar",
+		unlockField = "bagBarGroupUnlocked",
+		nativeAnchorField = "bagBarNativeAnchor",
+		pixelCorrection = { -1, 2 },
+		startDrag = "StartBagBarDrag",
+		stopDrag = "StopBagBarDrag",
+		setScale = "SetBagBarScale",
+		hoverOnlyField = "bagBarHoverOnly",
+		hoverDurationField = "bagBarHoverDuration",
+		getFrame = function() return ACAB.bagBarContainer end,
+		applyScale = function(frame, scale)
+			ACAB:ApplyChainAnchoredShape(frame, ACABDB.bagBarSpacing or 0, ACABDB.bagBarOrientation == true, scale)
+		end,
+		applyUngrouped = function() ACAB:SetBagBarScale(ACABDB.bagBarScale or 1) end,
+	},
+
+	keyring = {
+		name = "Key Ring",
+		settingsKey = "keyring",
+		unlockField = "keyRingGroupUnlocked",
+		nativeAnchorField = "keyRingNativeAnchor",
+		pixelCorrection = { -1, 1 },
+		pixelNudgeY = -1,
+		startDrag = "StartKeyRingDrag",
+		stopDrag = "StopKeyRingDrag",
+		setScale = "SetKeyRingScale",
+		-- Above every other overlay's 100 so Key Ring's drag surface wins where it overlaps Bag Bar's.
+		overlayLevel = 150,
+		hoverOnlyField = "keyRingHoverOnly",
+		hoverDurationField = "keyRingHoverDuration",
+		capture = function() ACAB:CaptureKeyRingPositionIfNeeded() end,
+		getFrame = function() return getglobal(ACAB.KEYRING_BUTTON_NAME) end,
+		applyScale = function(frame, scale) ACAB:ApplyKeyRingStrataAndScale(frame, scale) end,
+		applyUngrouped = function() ACAB:SetKeyRingScale(ACABDB.keyRingScale or 1) end,
+	},
+
+	micromenu = {
+		name = "Micro Menu",
+		settingsKey = "micromenu",
+		unlockField = "microMenuGroupUnlocked",
+		nativeAnchorField = "microMenuNativeAnchor",
+		startDrag = "StartMicroMenuDrag",
+		stopDrag = "StopMicroMenuDrag",
+		setScale = "SetMicroMenuScale",
+		hoverOnlyField = "microMenuHoverOnly",
+		hoverDurationField = "microMenuHoverDuration",
+		getFrame = function() return ACAB.microMenuContainer end,
+		applyScale = function(frame, scale)
+			ACAB:ApplyGridAnchoredShape(frame, ACABDB.microMenuCols or 8, ACABDB.microMenuRows or 1, ACABDB.microMenuSpacing or 0, scale)
+		end,
+		applyUngrouped = function() ACAB:SetMicroMenuScale(ACABDB.microMenuScale or 1) end,
+	},
+
+	latencybar = {
+		name = "Latency Bar",
+		settingsKey = "latencybar",
+		unlockField = "latencyBarGroupUnlocked",
+		nativeAnchorField = "latencyBarNativeAnchor",
+		pixelCorrection = { -1, 1 },
+		pixelNudgeY = -1,
+		startDrag = "StartLatencyBarDrag",
+		stopDrag = "StopLatencyBarDrag",
+		setScale = "SetLatencyBarScale",
+		-- InstallReanchorGuard flag - without it the guard swallows our own SetPoint.
+		guardFlag = "ACABApplyingLatencyBarPosition",
+		overlayInset = ACAB.LATENCY_BAR_OVERLAY_INSET,
+		hoverOnlyField = "latencyBarHoverOnly",
+		hoverDurationField = "latencyBarHoverDuration",
+		capture = function() ACAB:CaptureLatencyBarPositionIfNeeded() end,
+		getFrame = function() return getglobal(ACAB.LATENCY_BAR_FRAME_NAME) end,
+		applyScale = function(frame, scale) frame:SetScale(scale) end,
+		applyUngrouped = function() ACAB:SetLatencyBarScale(ACABDB.latencyBarScale or 1) end,
+	},
+
+	pageindicator = {
+		name = "Page Indicator",
+		-- No page of its own - its Scale slider lives on Main Bar's page.
+		settingsKey = 1,
+		unlockField = "pageIndicatorGroupUnlocked",
+		nativeAnchorField = "mainBarPageIndicatorNativeAnchor",
+		startDrag = "StartPageIndicatorDrag",
+		stopDrag = "StopPageIndicatorDrag",
+		setScale = "SetPageIndicatorScale",
+		getFrame = function() return ACAB.pageIndicatorContainer end,
+		applyScale = function(frame, scale) frame:SetScale(scale) end,
+		applyUngrouped = function()
+			ACAB:SetPageIndicatorScale(ACABDB.mainBarPageIndicatorScale or 1)
+			ACAB:ApplyPageIndicatorPosition()
+		end,
+	},
 }
 
--- Settings page holding each element's lock icon.
-local GROUP_SETTINGS_PAGES = {
-	bagbar = "bagbar",
-	keyring = "keyring",
-	micromenu = "micromenu",
-	latencybar = "latencybar",
-	pageindicator = 1,
-}
-
-local GROUP_NATIVE_ANCHOR_FIELDS = {
-	bagbar = "bagBarNativeAnchor",
-	keyring = "keyRingNativeAnchor",
-	micromenu = "microMenuNativeAnchor",
-	latencybar = "latencyBarNativeAnchor",
-	pageindicator = "mainBarPageIndicatorNativeAnchor",
-}
-
--- Flat real-screen-pixel nudge on top of the vanilla offset (+X right, +Y up), scaled with buttonSize.
-local GROUP_PIXEL_CORRECTIONS = {
-	bagbar = { -1, 2 },
-	keyring = { -1, 1 },
-	latencybar = { -1, 1 },
-}
-
--- Whole physical screen pixels added to the final grouped Y, unscaled (+ up, - down).
-local GROUP_PHYSICAL_PIXEL_NUDGE_Y = {
-	keyring = -1,
-	latencybar = -1,
-}
-
-local GROUP_APPLY_FUNCTIONS = {
-	bagbar = "ApplyGroupedBagBarPosition",
-	keyring = "ApplyGroupedKeyRingPosition",
-	micromenu = "ApplyGroupedMicroMenuPosition",
-	latencybar = "ApplyGroupedLatencyBarPosition",
-	pageindicator = "ApplyGroupedPageIndicatorPosition",
-}
-
-local GROUP_DISPLAY_NAMES = {
-	bagbar = "Bag Bar",
-	keyring = "Key Ring",
-	micromenu = "Micro Menu",
-	latencybar = "Latency Bar",
-	pageindicator = "Page Indicator",
-}
+-- Order ApplyMainBarGroupedElements applies the elements in.
+local GROUPABLE_ELEMENT_ORDER = { "bagbar", "keyring", "micromenu", "latencybar", "pageindicator" }
 
 function ACAB:IsElementGroupUnlocked(elementKey)
-	local field = GROUP_UNLOCK_FIELDS[elementKey]
+	local element = GROUPABLE_ELEMENTS[elementKey]
 
-	return field ~= nil and ACABDB[field] == true
+	return element ~= nil and ACABDB[element.unlockField] == true
 end
 
--- True while elementKey is anchored to Main Bar: art mode isn't Fully Disabled and it isn't unlocked.
+-- True while elementKey is anchored to Main Bar: Main Bar art is enabled and the element isn't unlocked.
 function ACAB:IsElementGrouped(elementKey)
-	return GROUP_UNLOCK_FIELDS[elementKey] ~= nil
+	return GROUPABLE_ELEMENTS[elementKey] ~= nil
 		and ACABDB ~= nil
-		and ACABDB.mainBarArtMode ~= self.MAIN_BAR_ART_MODE_DISABLED
+		and self:IsMainBarArtEnabled()
 		and not self:IsElementGroupUnlocked(elementKey)
-end
-
--- Applies elementKey's grouped position/scale if it's grouped. Returns true only if that actually
--- happened, so callers fall through to their own ungrouped path otherwise (e.g. Main Bar not built yet).
-function ACAB:ApplyGroupedIfActive(elementKey)
-	if not self:IsElementGrouped(elementKey) then
-		return false
-	end
-
-	local fn = self[GROUP_APPLY_FUNCTIONS[elementKey]]
-
-	return fn ~= nil and fn(self) == true
-end
-
--- Shared by the settings-page lock icons and the edit-mode lock icons.
-function ACAB:ToggleElementGroupLock(elementKey)
-	local field = GROUP_UNLOCK_FIELDS[elementKey]
-
-	if not field then
-		return
-	end
-
-	ACABDB[field] = not (ACABDB[field] == true)
-
-	self:ApplyMainBarGroupedElements()
-	self:ApplyDefaultLayoutEditVisual()
-
-	if self.RefreshBarSettingsPage then
-		self:RefreshBarSettingsPage(GROUP_SETTINGS_PAGES[elementKey])
-	end
 end
 
 -- Fraction of a rect's width/height a point name sits at (LEFT=0/RIGHT=1, BOTTOM=0/TOP=1).
@@ -722,15 +651,13 @@ local function GetPointFractions(point)
 	return fx, fy
 end
 
--- Snaps an anchor offset to whole physical pixels, the same way PixelSetPoint does for a frame at
--- UIParent's effective scale - so the result matches where "Reset to Vanilla Layout" actually renders it.
+-- Snaps an anchor offset to whole physical pixels like PixelSetPoint does at UIParent's effective scale.
 local function SnapNativeOffset(value)
 	return PixelUtil.GetNearestPixelSize(value or 0, UIParent:GetEffectiveScale())
 end
 
--- Vanilla TOPLEFT (UIParent units) of `frame` from its native anchor snapshot, at native scale 1, with the
--- offset pixel-snapped like PixelSetPoint. A relativeTo other than UIParent is read live - only
--- MainMenuBar in practice, which is never moved.
+-- Vanilla TOPLEFT (UIParent units) of `frame` from its native anchor snapshot, at scale 1, offset
+-- pixel-snapped. A relativeTo other than UIParent (MainMenuBar in practice) is read live.
 local function ResolveNativeTopLeft(native, frame)
 	local relFrame = nil
 
@@ -745,6 +672,7 @@ local function ResolveNativeTopLeft(native, frame)
 	local rfx, rfy = GetPointFractions(native.relativePoint or "BOTTOMLEFT")
 	local relX, relY
 
+	-- Must read UIParent first (value discarded) or relFrame can resolve against a stale ancestor (§5af).
 	UIParent:GetLeft()
 
 	if relFrame then
@@ -771,11 +699,11 @@ local function ResolveNativeTopLeft(native, frame)
 	return relX + SnapNativeOffset(native.x) - (width * pfx), relY + SnapNativeOffset(native.y) + (height * (1 - pfy))
 end
 
--- elementKey's vanilla offset from Main Bar's native button-1 anchor, in buttonSize-36 units.
-local function GetGroupedElementBaseline(elementKey, frame)
+-- The element's vanilla offset from Main Bar's native button-1 anchor, in buttonSize-36 units.
+local function GetGroupedElementBaseline(element, frame)
 	local mainCfg = ACABDB.defaultBars and ACABDB.defaultBars[1]
 	local mainNative = mainCfg and mainCfg.nativeAnchor
-	local native = ACABDB[GROUP_NATIVE_ANCHOR_FIELDS[elementKey]]
+	local native = ACABDB[element.nativeAnchorField]
 
 	if not mainNative or not native or not frame then
 		return nil
@@ -787,7 +715,7 @@ local function GetGroupedElementBaseline(elementKey, frame)
 		return nil
 	end
 
-	local correction = GROUP_PIXEL_CORRECTIONS[elementKey]
+	local correction = element.pixelCorrection
 	local uiScale = UIParent:GetEffectiveScale()
 	local correctionX, correctionY = 0, 0
 
@@ -799,15 +727,16 @@ local function GetGroupedElementBaseline(elementKey, frame)
 	return (left - mainNative.x) + correctionX, (top - mainNative.y) + correctionY
 end
 
--- Grouped absolute screen target (not yet divided for SetPoint) plus the scale to SetScale to.
+-- elementKey's grouped absolute target (not yet divided for SetPoint) plus the scale to apply, or nil.
 function ACAB:GetGroupedElementPlacement(elementKey, frame)
+	local element = GROUPABLE_ELEMENTS[elementKey]
 	local bar = self.bars and self.bars[1]
 
-	if not bar or not bar.config then
+	if not element or not bar or not bar.config then
 		return nil
 	end
 
-	local baseX, baseY = GetGroupedElementBaseline(elementKey, frame)
+	local baseX, baseY = GetGroupedElementBaseline(element, frame)
 
 	if not baseX then
 		return nil
@@ -821,7 +750,7 @@ function ACAB:GetGroupedElementPlacement(elementKey, frame)
 
 	local barScale = self:GetMainBarArtScale(bar.config)
 	local targetY = btn1Y + (baseY * barScale)
-	local nudgeY = GROUP_PHYSICAL_PIXEL_NUDGE_Y[elementKey]
+	local nudgeY = element.pixelNudgeY
 
 	if nudgeY then
 		-- One physical pixel in UIParent units (minPixels = 1 forces exactly one).
@@ -833,8 +762,8 @@ function ACAB:GetGroupedElementPlacement(elementKey, frame)
 	return btn1X + (baseX * barScale), targetY, barScale
 end
 
--- Divides an absolute target by frame's live effective-scale ratio to UIParent - SetPoint offsets
--- resolve through the frame's full effective scale, parent chain included. Must run after SetScale.
+-- Divides an absolute target by frame's effective-scale ratio to UIParent (SetPoint offsets resolve
+-- through the frame's full effective scale). Must run after the frame's SetScale.
 function ACAB:DivideForGroupedSetPoint(frame, targetX, targetY)
 	local frameScale = frame:GetEffectiveScale()
 	local targetScale = UIParent:GetEffectiveScale()
@@ -852,8 +781,8 @@ function ACAB:DivideForGroupedSetPoint(frame, targetX, targetY)
 	return targetX / ratio, targetY / ratio
 end
 
--- Sets frame's own scale so its true effective scale equals desiredScale, cancelling the scale Key Ring
--- inherits from its native parent MainMenuBarArtFrame (scaled by ApplyMainBarArtPosition in every mode).
+-- Sets frame's own scale so its effective scale equals desiredScale, cancelling the scale Key Ring
+-- inherits from MainMenuBarArtFrame (scaled by ApplyMainBarArtPosition in every art mode).
 function ACAB:SetKeyRingOwnScaleForEffective(frame, desiredScale)
 	desiredScale = desiredScale or 1
 
@@ -876,181 +805,118 @@ function ACAB:SetKeyRingOwnScaleForEffective(frame, desiredScale)
 	frame:SetScale(desiredScale / inheritedRatio)
 end
 
-function ACAB:ApplyGroupedBagBarPosition()
-	local container = self.bagBarContainer
+-- Shared tail of every groupable element's grouped and ungrouped position apply: ensures its edit-mode
+-- overlay exists and reapplies its hover-only state.
+function ACAB:EnsureElementOverlayAndHover(elementKey, frame)
+	local element = GROUPABLE_ELEMENTS[elementKey]
 
-	if not container then
-		return false
+	if element.overlayInset then
+		frame.overlayInset = element.overlayInset
 	end
 
-	local x, y, elementScale = self:GetGroupedElementPlacement("bagbar", container)
+	self:EnsureContainerOverlay(
+		frame,
+		self[element.startDrag],
+		self[element.stopDrag],
+		element.settingsKey,
+		self[element.setScale],
+		element.overlayLevel,
+		element.name
+	)
 
-	if not x then
-		return false
+	if element.hoverOnlyField then
+		self:ApplyHoverOnlyState(frame, ACABDB[element.hoverOnlyField], function() return ACABDB[element.hoverDurationField] or 3 end)
 	end
-
-	self:ApplyChainAnchoredShape(container, ACABDB.bagBarSpacing or 0, ACABDB.bagBarOrientation == true, elementScale)
-
-	local passedX, passedY = self:DivideForGroupedSetPoint(container, x, y)
-
-	container:ClearAllPoints()
-	container:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", passedX, passedY)
-
-	self:EnsureContainerOverlay(container, self.StartBagBarDrag, self.StopBagBarDrag, "bagbar", self.SetBagBarScale, nil, "Bag Bar")
-
-	self:ApplyHoverOnlyState(container, ACABDB.bagBarHoverOnly, function() return ACABDB.bagBarHoverDuration or 3 end)
-
-	return true
 end
 
--- KeyRingButton has no InstallReanchorGuard (only InstallShowGuard), so no ACABApplying* flag is needed.
-function ACAB:ApplyGroupedKeyRingPosition()
-	self:CaptureKeyRingPositionIfNeeded()
+-- Scales and anchors elementKey at its grouped placement. Returns false, leaving the frame untouched, while
+-- its frame or Main Bar's anchors aren't available yet.
+local function ApplyGroupedElementPosition(elementKey)
+	local element = GROUPABLE_ELEMENTS[elementKey]
 
-	local frame = getglobal(self.KEYRING_BUTTON_NAME)
+	if element.capture then
+		element.capture()
+	end
+
+	local frame = element.getFrame()
 
 	if not frame then
 		return false
 	end
 
-	local x, y, elementScale = self:GetGroupedElementPlacement("keyring", frame)
+	local x, y, scale = ACAB:GetGroupedElementPlacement(elementKey, frame)
 
 	if not x then
 		return false
 	end
 
-	frame:SetFrameStrata("HIGH")
-	self:SetKeyRingOwnScaleForEffective(frame, elementScale)
+	element.applyScale(frame, scale)
 
-	local passedX, passedY = self:DivideForGroupedSetPoint(frame, x, y)
+	local passedX, passedY = ACAB:DivideForGroupedSetPoint(frame, x, y)
+	local guardFlag = element.guardFlag
+
+	if guardFlag then
+		frame[guardFlag] = true
+	end
 
 	frame:ClearAllPoints()
 	frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", passedX, passedY)
 
-	self:EnsureContainerOverlay(frame, self.StartKeyRingDrag, self.StopKeyRingDrag, "keyring", self.SetKeyRingScale, 150, "Key Ring")
+	if guardFlag then
+		frame[guardFlag] = nil
+	end
 
-	self:ApplyHoverOnlyState(frame, ACABDB.keyRingHoverOnly, function() return ACABDB.keyRingHoverDuration or 3 end)
+	ACAB:EnsureElementOverlayAndHover(elementKey, frame)
 
 	return true
 end
 
-function ACAB:ApplyGroupedMicroMenuPosition()
-	local container = self.microMenuContainer
-
-	if not container then
+-- Applies elementKey's grouped placement if it's grouped. Returns true only if that happened, so callers
+-- fall back to their own ungrouped path otherwise.
+function ACAB:ApplyGroupedIfActive(elementKey)
+	if not self:IsElementGrouped(elementKey) then
 		return false
 	end
 
-	local x, y, elementScale = self:GetGroupedElementPlacement("micromenu", container)
-
-	if not x then
-		return false
-	end
-
-	self:ApplyGridAnchoredShape(container, ACABDB.microMenuCols or 8, ACABDB.microMenuRows or 1, ACABDB.microMenuSpacing or 0, elementScale)
-
-	local passedX, passedY = self:DivideForGroupedSetPoint(container, x, y)
-
-	container:ClearAllPoints()
-	container:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", passedX, passedY)
-
-	self:EnsureContainerOverlay(container, self.StartMicroMenuDrag, self.StopMicroMenuDrag, "micromenu", self.SetMicroMenuScale, nil, "Micro Menu")
-
-	self:ApplyHoverOnlyState(container, ACABDB.microMenuHoverOnly, function() return ACABDB.microMenuHoverDuration or 3 end)
-
-	return true
+	return ApplyGroupedElementPosition(elementKey)
 end
 
-function ACAB:ApplyGroupedLatencyBarPosition()
-	self:CaptureLatencyBarPositionIfNeeded()
+-- Flips elementKey's group lock - shared by the settings-page and edit-mode lock icons.
+function ACAB:ToggleElementGroupLock(elementKey)
+	local element = GROUPABLE_ELEMENTS[elementKey]
 
-	local frame = getglobal(self.LATENCY_BAR_FRAME_NAME)
-
-	if not frame then
-		return false
+	if not element then
+		return
 	end
 
-	local x, y, elementScale = self:GetGroupedElementPlacement("latencybar", frame)
+	ACABDB[element.unlockField] = not (ACABDB[element.unlockField] == true)
 
-	if not x then
-		return false
+	self:ApplyMainBarGroupedElements()
+	self:ApplyDefaultLayoutEditVisual()
+
+	if self.RefreshBarSettingsPage then
+		self:RefreshBarSettingsPage(element.settingsKey)
 	end
-
-	frame:SetScale(elementScale)
-
-	local passedX, passedY = self:DivideForGroupedSetPoint(frame, x, y)
-
-	frame.ACABApplyingLatencyBarPosition = true
-	frame:ClearAllPoints()
-	frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", passedX, passedY)
-	frame.ACABApplyingLatencyBarPosition = nil
-
-	frame.overlayInset = self.LATENCY_BAR_OVERLAY_INSET
-
-	self:EnsureContainerOverlay(frame, self.StartLatencyBarDrag, self.StopLatencyBarDrag, "latencybar", self.SetLatencyBarScale, nil, "Latency Bar")
-
-	self:ApplyHoverOnlyState(frame, ACABDB.latencyBarHoverOnly, function() return ACABDB.latencyBarHoverDuration or 3 end)
-
-	return true
 end
 
-function ACAB:ApplyGroupedPageIndicatorPosition()
-	local container = self.pageIndicatorContainer
-
-	if not container then
-		return false
-	end
-
-	local x, y, elementScale = self:GetGroupedElementPlacement("pageindicator", container)
-
-	if not x then
-		return false
-	end
-
-	container:SetScale(elementScale)
-
-	local passedX, passedY = self:DivideForGroupedSetPoint(container, x, y)
-
-	container:ClearAllPoints()
-	container:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", passedX, passedY)
-
-	self:EnsureContainerOverlay(container, self.StartPageIndicatorDrag, self.StopPageIndicatorDrag, 1, self.SetPageIndicatorScale, nil, "Page Indicator")
-
-	return true
-end
-
--- Single entry point: called whenever Main Bar moves/scales (Bar.lua), the art-mode dropdown changes, or
--- an element's lock is toggled. Ungrouped elements get Set*Scale with their own stored value, which
--- resets the frame's real SetScale from grouped mode and reapplies their saved position through it.
+-- Re-applies every groupable element: grouped ones to Main Bar, the rest to their own saved scale/position.
+-- Runs on Main Bar move/resize (Bar.lua), art-mode changes, lock toggles, and login.
 function ACAB:ApplyMainBarGroupedElements()
 	self:EnsureDB()
 
-	if not self:ApplyGroupedIfActive("bagbar") then
-		self:SetBagBarScale(ACABDB.bagBarScale or 1)
-	end
+	local i
 
-	if not self:ApplyGroupedIfActive("keyring") then
-		self:SetKeyRingScale(ACABDB.keyRingScale or 1)
-	end
+	for i = 1, table.getn(GROUPABLE_ELEMENT_ORDER) do
+		local elementKey = GROUPABLE_ELEMENT_ORDER[i]
 
-	if not self:ApplyGroupedIfActive("micromenu") then
-		self:SetMicroMenuScale(ACABDB.microMenuScale or 1)
-	end
-
-	if not self:ApplyGroupedIfActive("latencybar") then
-		self:SetLatencyBarScale(ACABDB.latencyBarScale or 1)
-	end
-
-	if not self:ApplyGroupedIfActive("pageindicator") then
-		self:SetPageIndicatorScale(ACABDB.mainBarPageIndicatorScale or 1)
-		self:ApplyPageIndicatorPosition()
+		if not self:ApplyGroupedIfActive(elementKey) then
+			GROUPABLE_ELEMENTS[elementKey].applyUngrouped()
+		end
 	end
 end
 
--- Offset (container units) from container's CENTER to its edit-mode overlay's center, from the same static
--- trims EnsureContainerOverlay/ApplyChainAnchoredShape/ApplyGridAnchoredShape apply: chain/grid overlays
--- trim the first button's leading hit-rect inset (container already excludes the trailing one),
--- overlayInset trims each side by its own amount.
+-- Offset (container units) from container's CENTER to its edit-mode overlay's center, from the same
+-- static trims EnsureContainerOverlay/ApplyChainAnchoredShape/ApplyGridAnchoredShape/overlayInset apply.
 local function GetOverlayCenterOffset(container)
 	if container.chainButtons then
 		local first = ACAB:GetChainShownEndpoints(container)
@@ -1073,16 +939,15 @@ local function GetOverlayCenterOffset(container)
 	return 0, 0
 end
 
--- Edit-mode lock icon centered on elementKey's overlay hitbox. Parented and anchored to the element
--- itself, not the overlay - Bag Bar/Micro Menu's overlay is re-anchored to their buttons on every shape
--- pass and a dependent anchored to it stays behind. Parenting also hides it with the element (Enabled off).
+-- Edit-mode lock icon for elementKey, parented/anchored to the element itself (not its overlay, whose
+-- anchors Bag Bar/Micro Menu rebuild every shape pass) so it also hides with the element.
 function ACAB:EnsureGroupLockIcon(elementKey, container)
 	if container.ACABGroupLockIcon then
 		return container.ACABGroupLockIcon
 	end
 
 	local icon = self:CreateLockToggleButton(container, "ACABEditModeGroupLock" .. elementKey, {
-		tooltipTitle = GROUP_DISPLAY_NAMES[elementKey],
+		tooltipTitle = GROUPABLE_ELEMENTS[elementKey].name,
 		lockedLine = "This Element is currently locked to MainBar-ArtBar, click to unlock",
 		unlockedLine = "This Element is currently unlocked from MainBar-ArtBar, click to lock",
 		onClick = function()
@@ -1099,8 +964,8 @@ function ACAB:EnsureGroupLockIcon(elementKey, container)
 	return icon
 end
 
--- Overlay only while not grouped; lock icon whenever art mode groups this element at all (same condition
--- that shows its settings-page lock icon).
+-- Edit-mode visual for a groupable element: overlay only while ungrouped, lock icon (centered on the
+-- overlay hitbox) whenever Main Bar art is enabled.
 function ACAB:ApplyGroupedElementEditVisual(elementKey, container, enabledFlag, show)
 	self:ApplyContainerOverlayVisual(container, enabledFlag, show and not self:IsElementGrouped(elementKey))
 
@@ -1109,13 +974,12 @@ function ACAB:ApplyGroupedElementEditVisual(elementKey, container, enabledFlag, 
 	end
 
 	local icon = self:EnsureGroupLockIcon(elementKey, container)
-	local modeGrouped = ACABDB.mainBarArtMode ~= self.MAIN_BAR_ART_MODE_DISABLED
 	local dx, dy = GetOverlayCenterOffset(container)
 
 	icon:ClearAllPoints()
 	icon:SetPoint("CENTER", container, "CENTER", dx, dy)
 
-	icon:SetShown(show and modeGrouped and enabledFlag ~= false)
+	icon:SetShown(show and self:IsMainBarArtEnabled() and enabledFlag ~= false)
 	icon:SetLocked(not self:IsElementGroupUnlocked(elementKey))
 end
 
@@ -1149,6 +1013,28 @@ function ACAB:PixelSetSize(region, width, height)
 	else
 		region:SetWidth(width)
 		region:SetHeight(height)
+	end
+end
+
+-- Pixel-snapped re-anchor of `frame` to UIParent from a saved {point, relativePoint, x, y} table.
+-- guardFlag (optional) is the frame's InstallReanchorGuard flag, set around the call so it isn't swallowed.
+function ACAB:ApplySavedPosition(frame, pos, guardFlag)
+	if guardFlag then
+		frame[guardFlag] = true
+	end
+
+	frame:ClearAllPoints()
+	self:PixelSetPoint(
+		frame,
+		pos.point or "TOPLEFT",
+		UIParent,
+		pos.relativePoint or "BOTTOMLEFT",
+		pos.x or 0,
+		pos.y or 0
+	)
+
+	if guardFlag then
+		frame[guardFlag] = nil
 	end
 end
 
@@ -1189,6 +1075,42 @@ function ACAB:SetDefaultBarButtonSize(id, size)
 	end
 end
 
+-- Default bar cfg's native spacing in the active border style (Modern runs VANILLA_SPACING_FLOOR lower).
+function ACAB:GetDefaultBarNativeSpacing(cfg)
+	local spacing = cfg.nativeSpacing or 0
+
+	if not self:IsVanillaBorderStyle() then
+		spacing = math.max(0, spacing - self.VANILLA_SPACING_FLOOR)
+	end
+
+	return spacing
+end
+
+-- Pins Main Bar's spacing to its native value while its art is enabled - any other gap pushes buttons off
+-- their art slots.
+function ACAB:EnforceMainBarArtSpacing()
+	local cfg = ACABDB.defaultBars and ACABDB.defaultBars[1]
+	local bar = self.bars and self.bars[1]
+
+	if not cfg or not cfg.nativeSpacing or not bar or not self:IsMainBarArtEnabled() then
+		return
+	end
+
+	local spacing = self:GetDefaultBarNativeSpacing(cfg)
+
+	if cfg.spacing == spacing then
+		return
+	end
+
+	cfg.spacing = spacing
+
+	self:ApplyBarShape(bar)
+
+	if self:IsEditMode() then
+		self:RebuildLayoutGrid()
+	end
+end
+
 -- Spacing slider equivalent of SetDefaultBarButtonSize; writes cfg.spacing then reapplies via ApplyBarShape.
 function ACAB:SetDefaultBarSpacing(id, spacing)
 	self:EnsureDB()
@@ -1196,6 +1118,11 @@ function ACAB:SetDefaultBarSpacing(id, spacing)
 	local cfg = ACABDB.defaultBars[id]
 
 	if not cfg then
+		return
+	end
+
+	if id == 1 and self:IsMainBarArtEnabled() then
+		self:EnforceMainBarArtSpacing()
 		return
 	end
 
@@ -1250,8 +1177,7 @@ end
 -------------------------------------------------------------------------
 
 -- Restores position/grid shape/button size for default bar `id` via Bar.lua's Apply/Set functions.
--- Modern style gets the same layout in Modern terms: buttonSize +MODERN_BUTTON_SIZE_DELTA, spacing
--- -VANILLA_SPACING_FLOOR, corner shifted up-left by MODERN_BUTTON_SIZE_POSITION_SHIFT so button centers match.
+-- Modern style gets the same layout in Modern terms (larger buttons, smaller spacing, corner shifted up-left).
 function ACAB:ResetDefaultBarLayout(id)
 	self:EnsureDB()
 
@@ -1278,11 +1204,7 @@ function ACAB:ResetDefaultBarLayout(id)
 	end
 
 	if cfg.nativeSpacing then
-		cfg.spacing = cfg.nativeSpacing
-
-		if modern then
-			cfg.spacing = math.max(0, cfg.nativeSpacing - self.VANILLA_SPACING_FLOOR)
-		end
+		cfg.spacing = self:GetDefaultBarNativeSpacing(cfg)
 	end
 
 	self:ApplyBarPosition(bar)
@@ -3039,11 +2961,8 @@ function ACAB:InstallReanchorGuard(frame, flagName)
 	frame.ACABReanchorGuarded = true
 end
 
--- MainMenuBarArtFrame never repositions itself natively, but once ApplyMainBarArtPosition starts driving
--- it every drag/resize, nothing else should be able to silently re-anchor it back - same guard style as
--- NativeElements.lua's Cast Bar. Installed here (after InstallReanchorGuard's own definition above,
--- since this is a top-level call that runs immediately at file load) rather than up near
--- ApplyMainBarArtPosition, which only defines functions and isn't called until later.
+-- Only ApplyMainBarArtPosition may re-anchor MainMenuBarArtFrame. Top-level call: must stay below
+-- InstallReanchorGuard's definition or login throws "attempt to call nil value".
 ACAB:InstallReanchorGuard(MainMenuBarArtFrame, "ACABApplyingMainBarArtPosition")
 
 -- Applies `native` (a relative anchor captured via GetPoint(1)) to `frame`, then re-reads its now-correct

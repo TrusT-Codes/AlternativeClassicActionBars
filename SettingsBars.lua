@@ -647,20 +647,6 @@ local function GridSwatch_OnClick()
 
 	local barId = page.barId
 
-	-- Main Bar only: Grid Layout is locked to the native 12x1 grid while any Blizzard art is visible,
-	-- since the art-fitting math (DefaultBars.lua's ApplyMainBarArtPosition) assumes that grid.
-	if barId == 1 and ACABDB.mainBarArtMode ~= ACAB.MAIN_BAR_ART_MODE_DISABLED then
-		ACAB:HighlightMainBarArtModeDropdown()
-		return
-	end
-
-	-- Micro Menu only: Grid Layout is locked while it's grouped with Main Bar - navigates to Main Bar's
-	-- page and pulses the setting there, since this element has no dropdown of its own.
-	if barId == "micromenu" and ACAB:IsElementGrouped("micromenu") then
-		ACAB:HighlightMainBarArtModeDropdownFromElsewhere()
-		return
-	end
-
 	if barId == "micromenu" then
 		-- page.isDefault is unconditionally true for every simple page - must be checked before the
 		-- page.isDefault branch below or this would wrongly call ACAB:SetDefaultBarLayout.
@@ -678,11 +664,8 @@ local function GridSwatch_OnClick()
 	ACAB:RefreshBarSettingsPage(barId)
 end
 
--- Shared red-warning-plus-gold-click-instruction tooltip for every control locked by Main Bar's
--- "Gryphons / Background Art" grouping (Grid Layout swatches, Position/Spacing/Scale sliders). mainText
--- is the plain "why is this locked" line (red, matching the locked-control convention elsewhere in this
--- file); the "Click to highlight the Setting" line is always the same and always gold (1, 0.82, 0),
--- matching CreateLockToggleButton's own locked/unlocked instruction color (UIWidgets.lua).
+-- Red "why is this locked" line plus the gold "Click to highlight the Setting" line, for any control locked
+-- by Main Bar's art grouping.
 function ACAB:ShowGroupLockedTooltip(ownerFrame, mainText)
 	GameTooltip:SetOwner(ownerFrame, "ANCHOR_RIGHT")
 	GameTooltip:SetText(mainText, 1, 0.15, 0.15, 1, true)
@@ -690,9 +673,8 @@ function ACAB:ShowGroupLockedTooltip(ownerFrame, mainText)
 	GameTooltip:Show()
 end
 
--- Wraps control's existing OnEnter/OnLeave (and OnClick for Buttons) so while isLocked() is true, hover
--- shows the grouped-lock tooltip and a click runs onLockedClick instead. Sliders get OnMouseDown instead
--- (fires once per click, not every drag tick like OnValueChanged).
+-- Wraps control's OnEnter/OnLeave/OnClick so while isLocked() is true, hover shows the locked tooltip and a
+-- click runs onLockedClick instead. Sliders hook OnMouseDown (once per click, not every drag tick).
 function ACAB:InstallGroupLockGuard(control, isLocked, lockedText, onLockedClick)
 	local originalEnter = control:GetScript("OnEnter")
 	local originalLeave = control:GetScript("OnLeave")
@@ -743,6 +725,37 @@ function ACAB:InstallGroupLockGuard(control, isLocked, lockedText, onLockedClick
 	end
 end
 
+-- True on Main Bar's page while its art is enabled - pins controls that would move buttons off their art
+-- slots. No unlock option.
+local function IsMainBarArtLocked(page)
+	return page.barId == 1 and ACAB:IsMainBarArtEnabled()
+end
+
+-- Red tooltip + same-page art-mode dropdown pulse on a Main Bar control pinned by IsMainBarArtLocked.
+local function InstallMainBarArtGuard(page, control, lockedText)
+	ACAB:InstallGroupLockGuard(
+		control,
+		function() return IsMainBarArtLocked(page) end,
+		lockedText,
+		function() ACAB:HighlightMainBarArtModeDropdown() end
+	)
+end
+
+-- Grid Layout locks, keyed by page barId: Main Bar's while its art is enabled, Micro Menu's while grouped.
+local GRID_LAYOUT_LOCKS = {
+	[1] = {
+		isLocked = function() return ACAB:IsMainBarArtEnabled() end,
+		text = "Grid Layout cant be changed while Gryphons / Background Art is enabled.",
+		onLockedClick = function() ACAB:HighlightMainBarArtModeDropdown() end,
+	},
+
+	micromenu = {
+		isLocked = function() return ACAB:IsElementGrouped("micromenu") end,
+		text = "Grid Layout cant be changed while Micro Menu is grouped with Main Bar.",
+		onLockedClick = function() ACAB:HighlightMainBarArtModeDropdownFromElsewhere() end,
+	},
+}
+
 -- Builds (or rebuilds) a page's Grid Layout swatch row at a fixed Y anchor, from
 -- GetGridPresetsForBar(barId). Stance Bar's preset list is live rather than a fixed table, so unlike
 -- every other bar kind its swatches must be torn down and rebuilt on every page refresh.
@@ -786,6 +799,7 @@ local function RebuildGridSwatches(page, barId, swatchY)
 	end
 
 	local xOffset = ACAB.INDENT_CONTROL
+	local lock = GRID_LAYOUT_LOCKS[barId]
 
 	for i = 1, table.getn(gridPresets) do
 		local preset = gridPresets[i]
@@ -807,33 +821,9 @@ local function RebuildGridSwatches(page, barId, swatchY)
 			GridSwatch_OnClick
 		)
 
-		-- Main Bar only: red "locked" tooltip while any Blizzard art is visible - no other bar's swatches
-		-- get this wiring, matching CreateLabeledCheckbox's lockedText color/behavior (UIWidgets.lua).
-		if barId == 1 then
-			swatch:SetScript("OnEnter", function()
-				if ACABDB.mainBarArtMode ~= ACAB.MAIN_BAR_ART_MODE_DISABLED then
-					ACAB:ShowGroupLockedTooltip(this, "Grid Layout cant be changed while Gryphons / Background Art is enabled.")
-				end
-			end)
-
-			swatch:SetScript("OnLeave", function()
-				GameTooltip:Hide()
-			end)
-		end
-
-		-- Micro Menu only: same red "locked" tooltip while it's grouped with Main Bar (mirrors bar 1's
-		-- own wiring above) - clicking it navigates to Main Bar's page and highlights the setting there,
-		-- since this element has no dropdown of its own to pulse in place.
-		if barId == "micromenu" then
-			swatch:SetScript("OnEnter", function()
-				if ACAB:IsElementGrouped("micromenu") then
-					ACAB:ShowGroupLockedTooltip(this, "Grid Layout cant be changed while Micro Menu is grouped with Main Bar.")
-				end
-			end)
-
-			swatch:SetScript("OnLeave", function()
-				GameTooltip:Hide()
-			end)
+		-- Must install after OnClick is set - the guard wraps the existing handler.
+		if lock then
+			ACAB:InstallGroupLockGuard(swatch, lock.isLocked, lock.text, lock.onLockedClick)
 		end
 
 		page.gridSwatches[i] = swatch
@@ -857,16 +847,12 @@ local function RefreshGridSwatchSelection(page, cols, rows)
 	end
 end
 
--- Main Bar only: greys Grid Layout's swatches while any Blizzard art is visible (see the OnEnter/OnClick
--- wiring in RebuildGridSwatches/GridSwatch_OnClick above). Alpha-only - EnableMouse(false)/:Disable()
--- would swallow OnEnter/OnLeave on this client. Only ever dims: must run after ApplyProfileLockGating,
--- which owns the un-dimmed state.
-function ACAB:ApplyMainBarGridLayoutArtLock(page)
-	if not page or page.barId ~= 1 or not page.gridSwatches then
-		return
-	end
+-- Dims page's Grid Layout swatches while GRID_LAYOUT_LOCKS locks them - alpha only, so their locked
+-- tooltip still shows. Only ever dims: must run after ApplyProfileLockGating, which owns the undimmed state.
+local function ApplyGridLayoutLock(page)
+	local lock = GRID_LAYOUT_LOCKS[page.barId]
 
-	if ACABDB.mainBarArtMode == ACAB.MAIN_BAR_ART_MODE_DISABLED then
+	if not lock or not page.gridSwatches or not lock.isLocked() then
 		return
 	end
 
@@ -885,7 +871,7 @@ local GROUPABLE_SIMPLE_PAGES = {
 	latencybar = true,
 }
 
--- Every control on a groupable simple page locked while its element is grouped with Main Bar.
+-- Controls on a groupable simple page that lock while its element is grouped with Main Bar.
 local GROUP_LOCK_CONTROL_NAMES = {
 	"xSlider", "xStepperBigMinus", "xStepperMinus", "xStepperPlus", "xStepperBigPlus", "xValueClick",
 	"ySlider", "yStepperBigMinus", "yStepperMinus", "yStepperPlus", "yStepperBigPlus", "yValueClick",
@@ -893,17 +879,58 @@ local GROUP_LOCK_CONTROL_NAMES = {
 	"resetPositionButton", "resetModernButton",
 }
 
--- Titles/labels/value readouts dimmed alongside the controls above.
+-- Titles/labels/value readouts dimmed alongside those controls.
 local GROUP_LOCK_TEXT_NAMES = {
 	"xLabel", "xValueText", "yLabel", "yValueText",
 	"spacingTitle", "spacingValueText", "scaleTitle", "scaleValueText",
 }
 
--- Greys every GROUP_LOCK_CONTROL_NAMES control (and Micro Menu's Grid Layout swatches) while the page's
--- element is grouped with Main Bar. Alpha-only; tooltip/click wiring is InstallGroupLockGuard
--- (CreateSimpleBarPage), the value refusal lives in each control's own onApply/onChange. Controls only
--- ever get dimmed here - must run after ApplyDefaultLayoutGating/ApplyProfileLockGating, which own the
--- un-dimmed state.
+-- Settings-page lock icon toggling elementKey's grouping with Main Bar. Starts locked.
+local function CreateGroupLockButton(page, name, anchor, tooltipTitle, elementKey)
+	local button = ACAB:CreateLockToggleButton(page, name, {
+		anchor = anchor,
+		tooltipTitle = tooltipTitle,
+		lockedLine = "Anchored to Main Bar while Gryphons / Background Art is enabled. Click to unlock and move/scale it independently.",
+		unlockedLine = "Unlocked - independent of Main Bar. Click to re-lock and snap back to its anchored position.",
+		onClick = function()
+			ACAB:ToggleElementGroupLock(elementKey)
+		end,
+	})
+
+	button:SetLocked(true)
+
+	return button
+end
+
+-- Syncs a settings-page lock icon: shown while Main Bar art is enabled, extraShow isn't false, and the page
+-- isn't Default-profile/layout locked.
+local function RefreshGroupLockButton(button, elementKey, extraShow)
+	if not button then
+		return
+	end
+
+	button:SetShown(
+		ACAB:IsMainBarArtEnabled()
+			and extraShow ~= false
+			and not ACAB:IsDefaultProfileActive()
+			and ACABDB.useDefaultLayout ~= true
+	)
+	button:SetLocked(not ACAB:IsElementGroupUnlocked(elementKey))
+end
+
+-- While key's element is grouped with Main Bar, snaps its simple page back to the saved values and returns
+-- true so the caller drops the edit.
+local function RevertIfGroupLocked(key)
+	if GROUPABLE_SIMPLE_PAGES[key] and ACAB:IsElementGrouped(key) then
+		ACAB:RefreshSimpleBarPage(key)
+		return true
+	end
+
+	return false
+end
+
+-- Dims a groupable simple page's locked controls (alpha only - clicks go through InstallGroupLockGuard) and
+-- syncs its lock icon. Only ever dims: must run after ApplyDefaultLayoutGating/ApplyProfileLockGating.
 function ACAB:ApplySimpleElementGroupedLock(page)
 	if not page or not GROUPABLE_SIMPLE_PAGES[page.barId] then
 		return
@@ -921,13 +948,10 @@ function ACAB:ApplySimpleElementGroupedLock(page)
 				control:SetAlpha(0.5)
 			end
 		end
-
-		if page.gridSwatches then
-			for i = 1, table.getn(page.gridSwatches) do
-				page.gridSwatches[i]:SetAlpha(0.5)
-			end
-		end
 	end
+
+	-- Micro Menu's Grid Layout swatches.
+	ApplyGridLayoutLock(page)
 
 	for i = 1, table.getn(GROUP_LOCK_TEXT_NAMES) do
 		local text = page[GROUP_LOCK_TEXT_NAMES[i]]
@@ -937,16 +961,7 @@ function ACAB:ApplySimpleElementGroupedLock(page)
 		end
 	end
 
-	-- Shown only while art mode groups this element at all (Fully Disabled leaves it independent anyway)
-	-- and the page isn't Default-profile/layout locked, same as Spacing/Button Size's own lock icons.
-	if page.groupLockButton then
-		page.groupLockButton:SetShown(
-			ACABDB.mainBarArtMode ~= ACAB.MAIN_BAR_ART_MODE_DISABLED
-				and not ACAB:IsDefaultProfileActive()
-				and ACABDB.useDefaultLayout ~= true
-		)
-		page.groupLockButton:SetLocked(not ACAB:IsElementGroupUnlocked(barId))
-	end
+	RefreshGroupLockButton(page.groupLockButton, barId)
 end
 
 -- Main Bar page's Page Indicator Scale slider - same dim-only rule as ApplySimpleElementGroupedLock.
@@ -964,20 +979,10 @@ function ACAB:ApplyPageIndicatorGroupedLock(page)
 	page.pageIndicatorTitle:SetAlpha(locked and 0.5 or 1)
 	page.pageIndicatorValueText:SetAlpha(locked and 0.5 or 1)
 
-	if page.pageIndicatorGroupLockButton then
-		page.pageIndicatorGroupLockButton:SetShown(
-			ACABDB.mainBarArtMode ~= ACAB.MAIN_BAR_ART_MODE_DISABLED
-				and ACABDB.defaultBarPaginationEnabled ~= false
-				and not ACAB:IsDefaultProfileActive()
-				and ACABDB.useDefaultLayout ~= true
-		)
-		page.pageIndicatorGroupLockButton:SetLocked(not ACAB:IsElementGroupUnlocked("pageindicator"))
-	end
+	RefreshGroupLockButton(page.pageIndicatorGroupLockButton, "pageindicator", ACABDB.defaultBarPaginationEnabled ~= false)
 end
 
--- Brief gold pulse behind Main Bar's "Gryphons / Background Art" dropdown row - called when a locked
--- Grid Layout swatch is clicked, same structure as ACAB:HighlightGeneralLayoutCheckbox
--- (SettingsGeneral.lua) but targets a control on this same page instead of jumping to another page.
+-- Pulses a gold highlight behind Main Bar's "Gryphons / Background Art" dropdown row, if that page is built.
 function ACAB:HighlightMainBarArtModeDropdown()
 	local page = ACAB.settingsFrame and ACAB.settingsFrame.pages and ACAB.settingsFrame.pages[1]
 	local row = page and page.mainBarArtModeRow
@@ -1001,7 +1006,7 @@ function ACAB:HighlightMainBarArtModeDropdown()
 
 	strip:Show()
 
-	-- Three pulses via C_Timer.After rather than a hand-rolled OnUpdate ticker.
+	-- Three on/off pulses.
 	if C_Timer then
 		C_Timer.After(0.45, function() strip:Hide() end)
 		C_Timer.After(0.75, function() strip:Show() end)
@@ -1011,9 +1016,7 @@ function ACAB:HighlightMainBarArtModeDropdown()
 	end
 end
 
--- Same pulse as HighlightMainBarArtModeDropdown, for a locked control on a DIFFERENT page (Bag Bar/Micro
--- Menu/Latency Bar's own simple pages) - navigates to Main Bar's page first via ShowBarPage, mirroring how
--- HighlightGeneralLayoutCheckbox's own caller navigates to the General panel before pulsing there.
+-- Opens Main Bar's page, then pulses its art-mode dropdown - for locked controls on other pages.
 function ACAB:HighlightMainBarArtModeDropdownFromElsewhere()
 	ACAB:ShowBarPage(1)
 	ACAB:HighlightMainBarArtModeDropdown()
@@ -1254,24 +1257,19 @@ function ACAB:GetOrCreateBarPage(barId)
 
 			ACAB:ApplyBlizzardArtVisibility()
 
-			-- Re-enabling any art forces Grid Layout back to the native 12x1 grid the art-fitting math
-			-- assumes - Grid Layout's own guard (GridSwatch_OnClick) only stops FUTURE changes, it can't
-			-- retroactively undo a grid the user already picked while art was Fully Disabled.
+			-- Any visible art forces Main Bar back to the native 12x1 grid and spacing the art placement assumes.
 			if value ~= ACAB.MAIN_BAR_ART_MODE_DISABLED then
 				local cfg = ACAB:GetBarConfig(1)
 
 				if cfg and (cfg.cols ~= 12 or cfg.rows ~= 1) then
 					ACAB:SetDefaultBarLayout(1, 12, 1)
 				end
+
+				ACAB:EnforceMainBarArtSpacing()
 			end
 
-			-- Engages/releases Micro Menu, Latency Bar, Page Indicator, and Bag Bar's grouped movement +
-			-- scaling with Main Bar immediately, rather than waiting for the next drag/buttonSize change.
-			if ACAB.ApplyMainBarGroupedElements then
-				ACAB:ApplyMainBarGroupedElements()
-			end
-
-			-- Grouped elements lose their edit-mode overlay and gain a lock icon (and vice versa).
+			-- Groups/ungroups the Main Bar elements now, and swaps their edit-mode overlays/lock icons.
+			ACAB:ApplyMainBarGroupedElements()
 			ACAB:ApplyDefaultLayoutEditVisual()
 
 			ACAB:RefreshBarSettingsPage(1)
@@ -1504,6 +1502,8 @@ function ACAB:GetOrCreateBarPage(barId)
 			" to " .. tostring(ACAB.SPACING_MAX) .. ")"
 		)
 
+		page.spacingTitle = spacingTitle
+
 		self:AddHoverOnlyReflowRow(page, spacingTitle, ACAB.INDENT_SECTION, spacingTitleY)
 
 		-- Placeholder initial text only - RefreshBarSettingsPage sets the real value from cfg.spacing
@@ -1525,6 +1525,12 @@ function ACAB:GetOrCreateBarPage(barId)
 				format = tostring,
 				onChange = function(value, suppressApply)
 					if not suppressApply then
+						-- Pinned while Main Bar's art is enabled; the pulse runs from the guard's OnMouseDown.
+						if IsMainBarArtLocked(page) then
+							ACAB:RefreshBarSettingsPage(1)
+							return
+						end
+
 						-- The slider's own value is always displayed (0-based) - convert to real only at this write boundary.
 						local real = value + ACAB:GetSpacingDisplayOffset()
 
@@ -1549,6 +1555,10 @@ function ACAB:GetOrCreateBarPage(barId)
 		page.spacingSliderHigh = spacingSliderHigh
 		page.spacingValueText = spacingValueText
 		page.spacingSlider = spacingSlider
+
+		if barId == 1 then
+			InstallMainBarArtGuard(page, spacingSlider, "Spacing cant be changed while Gryphons / Background Art is enabled.")
+		end
 
 		self:AddHoverOnlyReflowRow(page, spacingSlider, ACAB.INDENT_INPUT, spacingSliderY)
 
@@ -1644,6 +1654,10 @@ function ACAB:GetOrCreateBarPage(barId)
 
 				page.resetModernButton = resetModernButton
 
+				if barId == 1 then
+					InstallMainBarArtGuard(page, resetModernButton, "Reset to Modern Layout cant be used while Gryphons / Background Art is enabled.")
+				end
+
 				self:AddHoverOnlyReflowRow(page, resetModernButton, ACAB.INDENT_INPUT, resetModernY)
 
 				nextY = resetModernY
@@ -1732,7 +1746,7 @@ function ACAB:GetOrCreateBarPage(barId)
 	page.gridSwatchY = swatchY
 
 	RebuildGridSwatches(page, barId, swatchY)
-	ACAB:ApplyMainBarGridLayoutArtLock(page)
+	ApplyGridLayoutLock(page)
 
 	-- Grid Layout can't just be added to page.hoverOnlyReflowRows - its swatches are a dynamic array,
 	-- repositioned in place instead of rebuilt here.
@@ -1971,8 +1985,7 @@ function ACAB:GetOrCreateBarPage(barId)
 					format = function(value) return string.format("%.1f", value) end,
 					onChange = function(value, suppressApply)
 						if not suppressApply then
-							-- Refuses the value while grouped; the highlight pulse runs from OnMouseDown
-							-- (InstallGroupLockGuard below) instead of every drag tick.
+							-- Refuses the value while grouped (the guard below handles the click itself).
 							if ACAB:IsElementGrouped("pageindicator") then
 								ACAB:RefreshBarSettingsPage(1)
 								return
@@ -1988,7 +2001,7 @@ function ACAB:GetOrCreateBarPage(barId)
 			page.pageIndicatorSlider = pageIndicatorSlider
 			page.pageIndicatorValueText = pageIndicatorValueText
 
-			-- Same page as the dropdown, so the same-page pulse (no ShowBarPage navigation).
+			-- The art-mode dropdown is on this same page, so no page navigation before the pulse.
 			ACAB:InstallGroupLockGuard(
 				pageIndicatorSlider,
 				function() return ACAB:IsElementGrouped("pageindicator") end,
@@ -1998,24 +2011,14 @@ function ACAB:GetOrCreateBarPage(barId)
 
 			self:AddHoverOnlyReflowRow(page, pageIndicatorSlider, ACAB.INDENT_INPUT, pageIndicatorSliderY)
 
-			-- Group lock icon beside the slider - Page Indicator has no page of its own for a top-right icon.
-			local pageIndicatorGroupLockButton = ACAB:CreateLockToggleButton(
+			-- Beside the slider, since Page Indicator has no page of its own.
+			page.pageIndicatorGroupLockButton = CreateGroupLockButton(
 				page,
 				"ACABMainBarPageIndicatorGroupLockButton",
-				{
-					anchor = { "LEFT", pageIndicatorSlider, "RIGHT", 4, 0 },
-					tooltipTitle = "Grouped with Main Bar",
-					lockedLine = "Anchored to Main Bar while Gryphons / Background Art is enabled. Click to unlock and move/scale it independently.",
-					unlockedLine = "Unlocked - independent of Main Bar. Click to re-lock and snap back to its anchored position.",
-					onClick = function()
-						ACAB:ToggleElementGroupLock("pageindicator")
-					end,
-				}
+				{ "LEFT", pageIndicatorSlider, "RIGHT", 4, 0 },
+				"Grouped with Main Bar",
+				"pageindicator"
 			)
-
-			pageIndicatorGroupLockButton:SetLocked(true)
-
-			page.pageIndicatorGroupLockButton = pageIndicatorGroupLockButton
 
 			assignmentAnchorY = pageIndicatorSliderY - 44
 		end
@@ -2231,12 +2234,6 @@ local function ApplyBetterExpBarGating(page)
 	end
 end
 
--- True while `key`'s page controls are locked because its element is grouped with Main Bar. Page
--- Indicator has no page of its own - its Scale slider on bar 1's page is guarded separately.
-local function IsSimpleElementGroupLocked(key)
-	return GROUPABLE_SIMPLE_PAGES[key] == true and ACAB:IsElementGrouped(key)
-end
-
 -------------------------------------------------------------------------
 -- Simple bar pages (Stance Bar / Bag Bar / Micro Menu): one builder, parameterized via
 -- ACAB.simpleBarPageConfigs, instead of three near-identical page builders. Position (X/Y, live) +
@@ -2282,29 +2279,15 @@ local function CreateSimpleBarPage(key)
 
 	title:SetText(config.title .. " Settings (Default)")
 
-	-------------------------------------------------------------------------
-	-- Group lock icon (groupable pages only), top right: locked = anchored to Main Bar while Gryphons /
-	-- Background Art is enabled, unlocked = moves/scales independently.
-	-------------------------------------------------------------------------
-
+	-- Group lock icon, top right (groupable pages only).
 	if GROUPABLE_SIMPLE_PAGES[key] then
-		local groupLockButton = ACAB:CreateLockToggleButton(
+		page.groupLockButton = CreateGroupLockButton(
 			page,
 			"ACABSimplePage" .. key .. "GroupLockButton",
-			{
-				anchor = { "TOPRIGHT", ACAB.settingsFrame.contentPanel, "TOPRIGHT", -20, -14 },
-				tooltipTitle = config.title .. " Grouped with Main Bar",
-				lockedLine = "Anchored to Main Bar while Gryphons / Background Art is enabled. Click to unlock and move/scale it independently.",
-				unlockedLine = "Unlocked - independent of Main Bar. Click to re-lock and snap back to its anchored position.",
-				onClick = function()
-					ACAB:ToggleElementGroupLock(key)
-				end,
-			}
+			{ "TOPRIGHT", ACAB.settingsFrame.contentPanel, "TOPRIGHT", -20, -14 },
+			config.title .. " Grouped with Main Bar",
+			key
 		)
-
-		groupLockButton:SetLocked(true)
-
-		page.groupLockButton = groupLockButton
 	end
 
 	-- No unconditional banner reserve - see GetOrCreateBarPage's own contentTopOffset comment.
@@ -2420,10 +2403,7 @@ local function CreateSimpleBarPage(key)
 	local minX, maxX, minY, maxY
 
 	if config.getElementFrame then
-		local initialPos = config.getPosition and config.getPosition()
-		local initialIsRightAnchored = ACAB:IsRightAnchoredPoint(initialPos and initialPos.point)
-		local initialIsBottomAnchored = ACAB:IsBottomAnchoredPoint(initialPos and initialPos.point)
-		minX, maxX, minY, maxY = ACAB:GetSimpleElementCoordinateRange(config.getElementFrame(), config.extraMaxYPixels, initialIsRightAnchored, initialIsBottomAnchored, config.getRangeScale and config.getRangeScale())
+		minX, maxX, minY, maxY = ACAB:GetSimplePageCoordinateRange(config, config.getElementFrame())
 	else
 		minX, maxX, minY, maxY = ACAB:GetScreenCoordinateRange()
 	end
@@ -2455,11 +2435,9 @@ local function CreateSimpleBarPage(key)
 		lowText = "Left",
 		highText = "Right",
 		onApply = function(applied)
-			-- Sliders drag continuously (OnValueChanged fires every pixel), so locking here just refuses
-			-- the value and snaps the display back - no click-to-highlight redirect, which would thrash
-			-- between pages on every tick of a drag. The OnEnter tooltip below explains why.
-			if IsSimpleElementGroupLocked(key) then
-				ACAB:RefreshSimpleBarPage(key)
+			-- Fires every drag tick, so it only refuses the value - the page-switching highlight runs once
+			-- per click from InstallGroupLockGuard.
+			if RevertIfGroupLocked(key) then
 				return
 			end
 
@@ -2491,8 +2469,7 @@ local function CreateSimpleBarPage(key)
 		lowText = "Down",
 		highText = "Up",
 		onApply = function(applied)
-			if IsSimpleElementGroupLocked(key) then
-				ACAB:RefreshSimpleBarPage(key)
+			if RevertIfGroupLocked(key) then
 				return
 			end
 
@@ -2547,8 +2524,7 @@ local function CreateSimpleBarPage(key)
 				format = tostring,
 				onChange = function(value, suppressApply)
 					if not suppressApply then
-						if IsSimpleElementGroupLocked(key) then
-							ACAB:RefreshSimpleBarPage(key)
+						if RevertIfGroupLocked(key) then
 							return
 						end
 
@@ -2606,8 +2582,7 @@ local function CreateSimpleBarPage(key)
 				format = function(value) return string.format("%.1f", value) end,
 				onChange = function(value, suppressApply)
 					if not suppressApply then
-						if IsSimpleElementGroupLocked(key) then
-							ACAB:RefreshSimpleBarPage(key)
+						if RevertIfGroupLocked(key) then
 							return
 						end
 
@@ -3026,11 +3001,8 @@ local function CreateSimpleBarPage(key)
 		page.resetModernButton = resetModernButton
 	end
 
-	-------------------------------------------------------------------------
-	-- Grouped-with-Main-Bar guard (groupable pages) - red tooltip + click jumps to Main Bar's art-mode
-	-- dropdown on every GROUP_LOCK_CONTROL_NAMES control. Installed last, once the Reset buttons exist.
-	-------------------------------------------------------------------------
-
+	-- Grouped-with-Main-Bar guard on every GROUP_LOCK_CONTROL_NAMES control - must run last, once the
+	-- Reset buttons exist.
 	if GROUPABLE_SIMPLE_PAGES[key] then
 		local controlNames = config.hasSpacing and "Position/Spacing/Scale" or "Position/Scale"
 		local lockedText = config.title .. " is grouped with Main Bar while Gryphons / Background Art is enabled - its own " .. controlNames .. " controls are locked."
@@ -3104,9 +3076,7 @@ function ACAB:RefreshSimpleBarPage(key)
 
 		if frame then
 			local rawPos = config.getPosition()
-			local isRightAnchored = ACAB:IsRightAnchoredPoint(rawPos and rawPos.point)
-			local isBottomAnchored = ACAB:IsBottomAnchoredPoint(rawPos and rawPos.point)
-			local minX, maxX, minY, maxY = ACAB:GetSimpleElementCoordinateRange(frame, config.extraMaxYPixels, isRightAnchored, isBottomAnchored, config.getRangeScale and config.getRangeScale())
+			local minX, maxX, minY, maxY = ACAB:GetSimplePageCoordinateRange(config, frame)
 
 			page.xSlider:SetMinMaxValues(minX, maxX)
 			page.ySlider:SetMinMaxValues(minY, maxY)
@@ -3352,7 +3322,7 @@ function ACAB:RefreshSimpleBarPage(key)
 		ACAB:LockControlKeepingTooltip(page.useVanillaStanceBarCheckbox, vanillaModeLocked)
 	end
 
-	-- Grouped-with-Main-Bar dimming only ever dims - must run after both gating calls above.
+	-- Only ever dims - must run after both gating calls above.
 	ACAB:ApplySimpleElementGroupedLock(page)
 end
 
@@ -3445,7 +3415,7 @@ ACAB.simpleBarPageConfigs["keyring"] = {
 	getPosition = function() return ACABDB.keyRingPosition end,
 	setPosition = function(x, y) ACAB:SetKeyRingPosition(x, y) end,
 	getElementFrame = function() return getglobal(ACAB.KEYRING_BUTTON_NAME) end,
-	-- KeyRingButton's own GetScale() cancels a scale inherited from its native parent - not its real scale.
+	-- KeyRingButton's GetScale() also cancels its parent's scale, so the range uses the saved scale.
 	getRangeScale = function() return ACABDB.keyRingScale or 1 end,
 	reset = function() ACAB:ResetKeyRingPosition() end,
 	resetModern = function() ACAB:ApplyModernSingleKeyRing() end,
@@ -3821,10 +3791,7 @@ function ACAB:RefreshBarSettingsPage(barId)
 		cfg.rows or 1
 	)
 
-	-------------------------------------------------------------------------
-	-- Gryphons / Background Art (Main Bar page only)
-	-------------------------------------------------------------------------
-
+	-- Gryphons / Background Art (Main Bar page only).
 	if page.RefreshMainBarArtModeDropdown then
 		page.RefreshMainBarArtModeDropdown()
 	end
@@ -3915,10 +3882,13 @@ function ACAB:RefreshBarSettingsPage(barId)
 	-- on, so a bar page opened after the toggle was already enabled still starts locked.
 	ACAB:RefreshBarPageGlobalOverrideGating(page)
 
-	-- Main Bar's art-mode guards only ever dim - run after ApplyProfileLockGating above, which would
-	-- otherwise reset their alpha back to 1.
-	ACAB:ApplyMainBarGridLayoutArtLock(page)
+	-- Only ever dim - must run after ApplyProfileLockGating above, which resets alpha to 1.
+	ApplyGridLayoutLock(page)
 	ACAB:ApplyPageIndicatorGroupedLock(page)
+
+	if page.resetModernButton and IsMainBarArtLocked(page) then
+		page.resetModernButton:SetAlpha(0.5)
+	end
 
 	-- Bar 5 can only be enabled while bar 4 is, unless the General tab's bypass option is on. Runs
 	-- after ApplyProfileLockGating - that call unconditionally unlocks enableCheckbox whenever the
@@ -3951,13 +3921,23 @@ function ACAB:RefreshBarPageGlobalOverrideGating(page)
 	if page.spacingSlider then
 		local globalOn = ACABDB.globalSpacingEnabled == true
 		local unlocked = cfg and cfg.spacingUnlocked == true
-		local locked = alsoLocked or (globalOn and not unlocked)
+		local artLocked = IsMainBarArtLocked(page)
+		local locked = alsoLocked or artLocked or (globalOn and not unlocked)
 
-		page.spacingSlider:EnableMouse(not locked)
+		-- The art lock keeps the mouse on so its tooltip and click-to-highlight still work.
+		page.spacingSlider:EnableMouse(not locked or (artLocked and not alsoLocked))
 		page.spacingSlider:SetAlpha(locked and 0.5 or 1)
 
+		if page.spacingTitle then
+			page.spacingTitle:SetAlpha(artLocked and 0.5 or 1)
+		end
+
+		if page.spacingValueText then
+			page.spacingValueText:SetAlpha(artLocked and 0.5 or 1)
+		end
+
 		if page.spacingLockButton then
-			page.spacingLockButton:SetShown(globalOn and not alsoLocked)
+			page.spacingLockButton:SetShown(globalOn and not alsoLocked and not artLocked)
 			page.spacingLockButton:SetLocked(not unlocked)
 		end
 	end
@@ -4774,14 +4754,13 @@ function ACAB:RefreshBarList()
 	-- separately by useDefaultLayout, same as default bars 1-5.
 	-------------------------------------------------------------------------
 
-	local specialKeys = { "bagbar", "keyring", "micromenu", "latencybar", "expbar", "castbar", "tooltip" }
+	local specialKeys = ACAB.SIMPLE_PAGE_KEYS
 	local si
 
 	for si = 1, table.getn(specialKeys) do
 		local key = specialKeys[si]
 
-		-- Bag Bar/Micro Menu rows only appear once their container was built - degrades gracefully if
-		-- discovery failed. Key Ring/Latency/Experience/Cast Bar get the same defensive check.
+		-- Each row only appears once its real frame/container exists.
 		local exists = true
 
 		if key == "bagbar" then
