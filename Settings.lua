@@ -225,6 +225,12 @@ function ACAB:GetActionBarCoordinateRange(cfg)
 	if ACAB:IsRightAnchoredPoint(cfg and cfg.point) then
 		minX = -(screenWidthUnits - barWidth - borderSize)
 		maxX = 0
+	elseif ACAB:IsHorizontallyCenteredPoint(cfg and cfg.point) then
+		-- Centered anchor: equal room either side of the center line, so x = 0 sits mid-slider.
+		local halfRange = (screenWidthUnits - barWidth - borderSize) / 2
+
+		minX = -halfRange
+		maxX = halfRange
 	else
 		minX = 0
 		maxX = screenWidthUnits - barWidth - borderSize
@@ -312,6 +318,12 @@ end
 
 function ACAB:IsBottomAnchoredPoint(point)
 	return point ~= nil and string.find(point, "BOTTOM") ~= nil
+end
+
+-- True for a horizontally centered point (BOTTOM/TOP/CENTER, Modern Layout's Main Bar/Action Bar 1/2):
+-- x is the offset from the screen's vertical center line.
+function ACAB:IsHorizontallyCenteredPoint(point)
+	return point ~= nil and string.find(point, "LEFT") == nil and string.find(point, "RIGHT") == nil
 end
 
 -- isRightAnchored/isBottomAnchored (optional): mirror minX/maxX and minY/maxY respectively for an

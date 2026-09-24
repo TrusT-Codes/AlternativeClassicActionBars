@@ -1629,6 +1629,9 @@ function ACAB:ResetPageIndicatorToModernBase()
 		return
 	end
 
+	-- Same default scale Reset to Vanilla Layout restores.
+	self:SetPageIndicatorScale(1)
+
 	local _, mainBarRight, mainBarTop, mainBarBottom = self:GetElementRealEdges(bar1)
 
 	if not mainBarRight then
@@ -1868,6 +1871,47 @@ function ACAB:ApplyModernSingleLatencyBar()
 	}
 
 	self:ApplyLatencyBarPosition()
+end
+
+-------------------------------------------------------------------------
+-- "Reset to Modern Layout Default" buttons: each resets its element's own layout/scale to the same
+-- defaults "Reset to Vanilla Layout" uses, then applies its Modern Layout position. Layout first - the
+-- position measurements read the element's settled size.
+-------------------------------------------------------------------------
+
+function ACAB:ResetBagBarLayoutToModernBase()
+	self:ResetBagBarLayout()
+	self:ApplyModernSingleBagBar()
+end
+
+function ACAB:ResetKeyRingLayoutToModernBase()
+	self:EnsureDB()
+
+	ACABDB.keyRingScale = 1
+
+	self:ApplyModernSingleKeyRing()
+end
+
+function ACAB:ResetMicroMenuLayoutToModernBase()
+	self:ResetMicroMenuLayout()
+	self:ApplyModernSingleMicroMenu()
+end
+
+-- Measured one frame after the scale reset - the overlay rects it reads don't reflect a new SetScale until then.
+function ACAB:ResetLatencyBarLayoutToModernBase()
+	self:EnsureDB()
+
+	ACABDB.latencyBarScale = 1
+
+	local frame = getglobal(self.LATENCY_BAR_FRAME_NAME)
+
+	if frame then
+		frame:SetScale(1)
+	end
+
+	C_Timer.After(0, function()
+		ACAB:ApplyModernSingleLatencyBar()
+	end)
 end
 
 -- No independent enable flag - this element's visibility is entirely derived from ACABDB.defaultBarPaginationEnabled.

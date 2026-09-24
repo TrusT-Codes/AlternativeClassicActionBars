@@ -477,14 +477,9 @@ function ACAB:ApplyMainBarArtPosition()
 
 	local artY = baseY + measuredYCorrection + 10 * (scale - 1)
 
-	-- Offsets resolve through artFrame's own scale - must divide by scale or the art drifts with buttonSize.
-	artFrame:SetPoint(
-		bar.config.point or "TOPLEFT",
-		UIParent,
-		bar.config.relativePoint or "BOTTOMLEFT",
-		artX / scale,
-		artY / scale
-	)
+	-- Always TOPLEFT/BOTTOMLEFT - artX/artY are bottom-left screen coordinates whatever Main Bar's own anchor
+	-- point is. Offsets resolve through artFrame's own scale - must divide by scale or the art drifts.
+	artFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", artX / scale, artY / scale)
 	artFrame.ACABApplyingMainBarArtPosition = nil
 
 	-- ActionButton1-12 are artFrame's children - from here on this session their live position is no
@@ -1077,7 +1072,7 @@ end
 
 -- Default bar cfg's native spacing in the active border style (Modern runs VANILLA_SPACING_FLOOR lower).
 function ACAB:GetDefaultBarNativeSpacing(cfg)
-	local spacing = cfg.nativeSpacing or 0
+	local spacing = (cfg and cfg.nativeSpacing) or 0
 
 	if not self:IsVanillaBorderStyle() then
 		spacing = math.max(0, spacing - self.VANILLA_SPACING_FLOOR)
@@ -1226,15 +1221,22 @@ end
 -- applying it for real - never computed via a buttonSize*N formula, or border-style insets go stale.
 -------------------------------------------------------------------------
 
--- Effective button size/spacing Modern Layout uses everywhere, via the same global size/spacing overrides every bar respects.
+-- Button size/spacing Modern Layout uses everywhere: the General tab's global overrides if on, otherwise
+-- the same defaults Reset to Vanilla Layout uses in the active border style.
 function ACAB:GetModernLayoutSizing()
 	self:EnsureDB()
 
-	local buttonSize = (ACABDB.globalButtonSizeEnabled and ACABDB.globalButtonSizeValue) or self.BUTTON_SIZE
+	local buttonSize = (ACABDB.globalButtonSizeEnabled and ACABDB.globalButtonSizeValue) or self:GetCurrentButtonSizeBaseline()
+	local spacing
 
-	-- Mirrors Bar.lua's ApplyGlobalSpacingToBar formula: vanilla border floor is ADDED to the slider value, not clamped.
-	local floor = self:IsVanillaBorderStyle() and self.VANILLA_SPACING_FLOOR or 0
-	local spacing = floor + ((ACABDB.globalSpacingEnabled and ACABDB.globalSpacingValue) or 0)
+	if ACABDB.globalSpacingEnabled and ACABDB.globalSpacingValue then
+		-- Mirrors Bar.lua's ApplyGlobalSpacingToBar: the vanilla border floor is added, not clamped.
+		local floor = self:IsVanillaBorderStyle() and self.VANILLA_SPACING_FLOOR or 0
+
+		spacing = floor + ACABDB.globalSpacingValue
+	else
+		spacing = self:GetDefaultBarNativeSpacing(ACABDB.defaultBars and ACABDB.defaultBars[1])
+	end
 
 	return buttonSize, spacing
 end

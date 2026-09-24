@@ -320,6 +320,12 @@ function ACAB:ResetPetBarLayoutToModernBase()
 		-- Layout first: PixelSetPoint reads the container's live GetEffectiveScale to stay pixel-perfect,
 		-- so applying position while a stale scale is still live lands it at the wrong X/Y.
 		cfg.scale = self:GetModernPetStanceScale()
+
+		-- Same default spacing Reset to Vanilla Layout restores.
+		if cfg.nativeSpacing then
+			cfg.spacing = cfg.nativeSpacing
+		end
+
 		self:ApplyPetBarNativeShape()
 
 		local containerLeft, containerRight = self:GetElementRealEdges(container)
