@@ -529,7 +529,7 @@ local GROUPABLE_ELEMENTS = {
 		hoverDurationField = "bagBarHoverDuration",
 		getFrame = function() return ACAB.bagBarContainer end,
 		applyScale = function(frame, scale)
-			ACAB:ApplyChainAnchoredShape(frame, ACABDB.bagBarSpacing or 0, ACABDB.bagBarOrientation == true, scale)
+			ACAB:ApplyChainAnchoredShape(frame, ACABDB.bagBarSpacing or 0, ACAB:GetBagBarEffectiveVertical(), scale)
 		end,
 		applyUngrouped = function() ACAB:SetBagBarScale(ACABDB.bagBarScale or 1) end,
 	},
@@ -566,7 +566,9 @@ local GROUPABLE_ELEMENTS = {
 		hoverDurationField = "microMenuHoverDuration",
 		getFrame = function() return ACAB.microMenuContainer end,
 		applyScale = function(frame, scale)
-			ACAB:ApplyGridAnchoredShape(frame, ACABDB.microMenuCols or 8, ACABDB.microMenuRows or 1, ACABDB.microMenuSpacing or 0, scale)
+			local cols, rows = ACAB:GetMicroMenuEffectiveGrid()
+
+			ACAB:ApplyGridAnchoredShape(frame, cols, rows, ACABDB.microMenuSpacing or 0, scale)
 		end,
 		applyUngrouped = function() ACAB:SetMicroMenuScale(ACABDB.microMenuScale or 1) end,
 	},

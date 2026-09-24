@@ -94,6 +94,24 @@ function ACAB:SetBagBarHoverDuration(duration)
 	self:SetHoverDurationSetting("bagBarHoverDuration", duration, self.ApplyBagBarPosition)
 end
 
+-- Bag Bar's orientation: horizontal while grouped with Main Bar, keeping its saved orientation.
+function ACAB:GetBagBarEffectiveVertical()
+	if self:IsElementGrouped("bagbar") then
+		return false
+	end
+
+	return ACABDB.bagBarOrientation == true
+end
+
+-- Bag Bar's grid as cols, rows (5x1 or 1x5) for the settings page's Grid Layout swatches.
+function ACAB:GetBagBarEffectiveGrid()
+	if self:GetBagBarEffectiveVertical() then
+		return 1, 5
+	end
+
+	return 5, 1
+end
+
 -- Re-lays-out the Bag Bar's real buttons from its current saved spacing/orientation/scale.
 -- No-op until CreateBagBarAndMicroMenu has built the container.
 function ACAB:ApplyBagBarShape()
@@ -282,6 +300,15 @@ end
 
 function ACAB:SetMicroMenuHoverDuration(duration)
 	self:SetHoverDurationSetting("microMenuHoverDuration", duration, self.ApplyMicroMenuPosition)
+end
+
+-- Grid Micro Menu lays out with: 8x1 while grouped with Main Bar, keeping its saved cols/rows.
+function ACAB:GetMicroMenuEffectiveGrid()
+	if self:IsElementGrouped("micromenu") then
+		return 8, 1
+	end
+
+	return ACABDB.microMenuCols or 8, ACABDB.microMenuRows or 1
 end
 
 -- Unlike Bag Bar/Stance Bar, Micro Menu lays out via the fixed-grid function ApplyGridAnchoredShape.
@@ -1688,7 +1715,7 @@ end
 -- netting out the gap between Micro Menu's container and its trimmed overlay hitbox.
 local function MeasureMicroMenuStackAnchors(self, buttonSize, spacing, bagBarHeight)
 	local microMenuWidth = (self.microMenuContainer and self.microMenuContainer:GetWidth())
-		or ((ACABDB.microMenuCols or 8) * (buttonSize + spacing))
+		or ((self:GetMicroMenuEffectiveGrid()) * (buttonSize + spacing))
 	local microMenuHeight = (self.microMenuContainer and self.microMenuContainer:GetHeight()) or buttonSize
 
 	local microMenuOverlayTopGap = 0

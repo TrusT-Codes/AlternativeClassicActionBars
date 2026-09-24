@@ -53,11 +53,22 @@ local function EffectiveSpacing(cfg)
 	return cfg.spacing or 0
 end
 
+-- Grid a bar actually lays out as: Main Bar uses the vanilla 12x1 while its Blizzard art is shown, keeping
+-- its saved cols/rows for when the art is off again.
+function ACAB:GetEffectiveBarGrid(cfg)
+	if cfg.id == 1 and self:IsMainBarArtEnabled() then
+		return 12, 1
+	end
+
+	return cfg.cols, cfg.rows
+end
+
 local function BarFrameSize(cfg)
 	local spacing = EffectiveSpacing(cfg)
+	local cols, rows = ACAB:GetEffectiveBarGrid(cfg)
 
-	local width = (cfg.buttonSize * cfg.cols) + ((cfg.cols - 1) * spacing)
-	local height = (cfg.buttonSize * cfg.rows) + ((cfg.rows - 1) * spacing)
+	local width = (cfg.buttonSize * cols) + ((cols - 1) * spacing)
+	local height = (cfg.buttonSize * rows) + ((rows - 1) * spacing)
 
 	return width, height
 end
@@ -114,6 +125,7 @@ function ACAB:LayoutButtons(bar)
 
 	local cfg = bar.config
 	local spacing = EffectiveSpacing(cfg)
+	local cols = self:GetEffectiveBarGrid(cfg)
 	local i
 
 	-- Pet Bar condense: compacts filled slots into sequential grid cells; suspended during edit mode/action-grid preview.
@@ -139,7 +151,7 @@ function ACAB:LayoutButtons(bar)
 			end
 
 			if layoutIndex then
-				local col, row = ButtonIndexToGridPos(layoutIndex, cfg.cols)
+				local col, row = ButtonIndexToGridPos(layoutIndex, cols)
 
 				local xOff = col * (cfg.buttonSize + spacing)
 				local yOff = -row * (cfg.buttonSize + spacing)
