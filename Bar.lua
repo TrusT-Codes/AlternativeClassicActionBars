@@ -97,6 +97,9 @@ function ACAB:ApplyBarPosition(bar)
 	end
 
 	local cfg = bar.config
+	local barW, barH = BarFrameSize(cfg)
+
+	self:NormalizePositionAnchor(bar, cfg, self:GetCanonicalBarAnchor(cfg.id), barW, barH, "TOPLEFT")
 
 	bar:ClearAllPoints()
 
@@ -815,7 +818,8 @@ end
 -- Apply position directly from settings
 -------------------------------------------------------------------------
 
-function ACAB:SetBarPosition(bar, x, y)
+-- point/relativePoint (optional): the anchor x/y are given in - ApplyBarPosition converts to canonical.
+function ACAB:SetBarPosition(bar, x, y, point, relativePoint)
 	if not bar or not bar.config then
 		return
 	end
@@ -825,6 +829,11 @@ function ACAB:SetBarPosition(bar, x, y)
 
 	if not x or not y then
 		return
+	end
+
+	if point then
+		bar.config.point = point
+		bar.config.relativePoint = relativePoint or point
 	end
 
 	bar.config.x = x
@@ -1249,18 +1258,14 @@ function ACAB:ResetExtraBarLayout(barId)
 	local index = barId - self.EXTRA_BAR_ID_START
 	local x, y, cols, rows, buttonSize, spacing = self:GetDefaultExtraBarLayout(index)
 
-	-- GetDefaultExtraBarLayout's x/y assume TOPLEFT/BOTTOMLEFT (matching
-	-- every nativeAnchor) - Modern Layout's own slot function leaves this
-	-- bar's anchor at BOTTOMLEFT/BOTTOMLEFT, which SetBarPosition below
-	-- doesn't touch, so reset it here too.
-	bar.config.point = "TOPLEFT"
-	bar.config.relativePoint = "BOTTOMLEFT"
-
+	-- Shape first: ApplyBarPosition converts the TOPLEFT x/y below using the bar's final size.
 	self:SetBarLayout(bar, cols, rows)
 	self:SetBarButtonCount(bar, cols * rows)
 	self:SetBarSpacing(bar, spacing)
 	self:SetBarButtonSize(bar, buttonSize)
-	self:SetBarPosition(bar, x, y)
+
+	-- GetDefaultExtraBarLayout's x/y are TOPLEFT/BOTTOMLEFT, like every nativeAnchor.
+	self:SetBarPosition(bar, x, y, "TOPLEFT", "BOTTOMLEFT")
 
 	-- Restore usesDefaultPosition (SetBarPosition above cleared it) so dependants resettle.
 	bar.config.usesDefaultPosition = true
@@ -1387,20 +1392,7 @@ function ACAB:StartBarDrag(bar)
 
 	local cfg = bar.config
 
-	-- Normalize to the TOPLEFT/BOTTOMLEFT anchor convention every chain-anchored element uses.
-	local scale = bar:GetEffectiveScale()
-	local uiParentScale = UIParent:GetEffectiveScale()
-	local left, top = bar:GetLeft(), bar:GetTop()
-
-	if not scale or not uiParentScale or uiParentScale == 0 or not left or not top then
-		return
-	end
-
-	cfg.point = "TOPLEFT"
-	cfg.relativePoint = "BOTTOMLEFT"
-	cfg.x = (left * scale) / uiParentScale
-	cfg.y = (top * scale) / uiParentScale
-
+	-- Drags in the bar's own (canonical) anchor - ApplyDragSnap converts for its edge math.
 	self:ApplyBarPosition(bar)
 
 	self:StartSharedDrag("bar", cfg.id, cfg.x, cfg.y)

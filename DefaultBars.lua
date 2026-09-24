@@ -629,23 +629,8 @@ function ACAB:IsElementGrouped(elementKey)
 		and not self:IsElementGroupUnlocked(elementKey)
 end
 
--- Fraction of a rect's width/height a point name sits at (LEFT=0/RIGHT=1, BOTTOM=0/TOP=1).
 local function GetPointFractions(point)
-	local fx, fy = 0.5, 0.5
-
-	if string.find(point, "LEFT") then
-		fx = 0
-	elseif string.find(point, "RIGHT") then
-		fx = 1
-	end
-
-	if string.find(point, "BOTTOM") then
-		fy = 0
-	elseif string.find(point, "TOP") then
-		fy = 1
-	end
-
-	return fx, fy
+	return ACAB:GetPointFractions(point)
 end
 
 -- Snaps an anchor offset to whole physical pixels like PixelSetPoint does at UIParent's effective scale.
@@ -1187,16 +1172,15 @@ function ACAB:ResetDefaultBarLayout(id)
 	local modern = not self:IsVanillaBorderStyle()
 	local shift = modern and self.MODERN_BUTTON_SIZE_POSITION_SHIFT or 0
 
-	cfg.point = cfg.nativeAnchor.point
-	cfg.relativePoint = cfg.nativeAnchor.relativePoint
-	cfg.x = cfg.nativeAnchor.x - shift
-	cfg.y = cfg.nativeAnchor.y + shift
-
 	local grid = self.DEFAULT_BAR_GRID[id]
 
 	local bar = self.bars and self.bars[id]
 
 	if not bar then
+		cfg.point = cfg.nativeAnchor.point
+		cfg.relativePoint = cfg.nativeAnchor.relativePoint
+		cfg.x = cfg.nativeAnchor.x - shift
+		cfg.y = cfg.nativeAnchor.y + shift
 		return
 	end
 
@@ -1204,8 +1188,7 @@ function ACAB:ResetDefaultBarLayout(id)
 		cfg.spacing = self:GetDefaultBarNativeSpacing(cfg)
 	end
 
-	self:ApplyBarPosition(bar)
-
+	-- Shape first: ApplyBarPosition converts the native anchor to canonical using the bar's final size.
 	if grid then
 		self:SetBarLayout(bar, grid.cols, grid.rows)
 	end
@@ -1214,6 +1197,13 @@ function ACAB:ResetDefaultBarLayout(id)
 
 	-- Ensures restored spacing applies even if SetBarLayout was skipped.
 	self:ApplyBarShape(bar)
+
+	cfg.point = cfg.nativeAnchor.point
+	cfg.relativePoint = cfg.nativeAnchor.relativePoint
+	cfg.x = cfg.nativeAnchor.x - shift
+	cfg.y = cfg.nativeAnchor.y + shift
+
+	self:ApplyBarPosition(bar)
 end
 
 -------------------------------------------------------------------------
@@ -2014,9 +2004,8 @@ end
 -- them. No-ops when the setting is off or the frame can't report a
 -- size/scale yet.
 --
--- pos.point/pos.relativePoint are always "TOPLEFT"/"BOTTOMLEFT" (every
--- caller normalizes to this pair before dragging), so pos.x/pos.y convert
--- to/from screen pixels via this frame's effective scale alone.
+-- pos may use any UIParent-relative anchor - the snap math runs on a
+-- TOPLEFT/BOTTOMLEFT copy, converted back into pos's own anchor after.
 -- centerSnap (Cast Bar only) uses ComputeCenterGridSnapAdjustment instead
 -- of ComputeGridSnapAdjustment.
 function ACAB:ApplyDragSnap(frame, pos, centerSnap)
@@ -2032,13 +2021,19 @@ function ACAB:ApplyDragSnap(frame, pos, centerSnap)
 		return
 	end
 
+	local originalPoint = pos.point or "TOPLEFT"
+	local originalRelativePoint = pos.relativePoint or "BOTTOMLEFT"
+	local topLeftPos = { point = originalPoint, relativePoint = originalRelativePoint, x = pos.x, y = pos.y }
+
+	self:ConvertPositionAnchor(frame, topLeftPos, "TOPLEFT", "BOTTOMLEFT", width, height)
+
 	-- Inflates the dragged box by its visual inset (Core.lua's GetElementVisualInset, nonzero only for
 	-- default bars 1-5) so it compares border-edge-to-border-edge. Deflated back out before writing to pos.
 	local il, ir, it, ib = ACAB:GetElementVisualInset(frame)
 	local ilPx, irPx, itPx, ibPx = il * scale, ir * scale, it * scale, ib * scale
 
-	local proposedLeft = pos.x * scale - ilPx
-	local proposedTop = pos.y * scale + itPx
+	local proposedLeft = topLeftPos.x * scale - ilPx
+	local proposedTop = topLeftPos.y * scale + itPx
 
 	local boxWidth = width * scale + ilPx + irPx
 	local boxHeight = height * scale + itPx + ibPx
@@ -2075,13 +2070,22 @@ function ACAB:ApplyDragSnap(frame, pos, centerSnap)
 	local adjustedLeft = adjLeft or gridLeft
 	local adjustedTop = adjTop or gridTop
 
+	if not adjustedLeft and not adjustedTop then
+		return
+	end
+
 	if adjustedLeft then
-		pos.x = (adjustedLeft + ilPx) / scale
+		topLeftPos.x = (adjustedLeft + ilPx) / scale
 	end
 
 	if adjustedTop then
-		pos.y = (adjustedTop - itPx) / scale
+		topLeftPos.y = (adjustedTop - itPx) / scale
 	end
+
+	self:ConvertPositionAnchor(frame, topLeftPos, originalPoint, originalRelativePoint, width, height)
+
+	pos.x = topLeftPos.x
+	pos.y = topLeftPos.y
 end
 
 -- Shared OnUpdate body for every drag kind - `this` is dragFrame itself (engine-invoked handler).
@@ -2209,6 +2213,8 @@ function ACAB:DefaultBarDrag_OnUpdate()
 
 		if bar and bar.config then
 			local pos = {
+				point = bar.config.point or "TOPLEFT",
+				relativePoint = bar.config.relativePoint or "TOPLEFT",
 				x = this.dragStartX + dx,
 				y = this.dragStartY + dy,
 			}
@@ -2480,7 +2486,7 @@ end
 
 -- Call before writing a changed scale: adjusts pos.x/pos.y so `corner` (TOPLEFT/TOPRIGHT/BOTTOMLEFT/
 -- BOTTOMRIGHT) stays exactly where it was on screen (a SetPoint offset scales with the frame's own scale).
--- `localWidth`/`localHeight` are the frame's design size; only needed for a RIGHT/BOTTOM corner respectively.
+-- `localWidth`/`localHeight` are the frame's design size. Works for any pos.point.
 function ACAB:CompensateScaleKeepingCornerFixed(pos, oldScale, newScale, corner, localWidth, localHeight)
 	if not pos or not oldScale or not newScale then
 		return
@@ -2494,16 +2500,11 @@ function ACAB:CompensateScaleKeepingCornerFixed(pos, oldScale, newScale, corner,
 	localWidth = localWidth or 0
 	localHeight = localHeight or 0
 
-	local offsetX = 0
-	local offsetY = 0
+	local cornerFx, cornerFy = self:GetPointFractions(corner)
+	local pointFx, pointFy = self:GetPointFractions(pos.point or "TOPLEFT")
 
-	if corner == "TOPRIGHT" or corner == "BOTTOMRIGHT" then
-		offsetX = localWidth
-	end
-
-	if corner == "BOTTOMLEFT" or corner == "BOTTOMRIGHT" then
-		offsetY = -localHeight
-	end
+	local offsetX = (cornerFx - pointFx) * localWidth
+	local offsetY = (cornerFy - pointFy) * localHeight
 
 	pos.x = ((pos.x or 0) + offsetX) * ratio - offsetX
 	pos.y = ((pos.y or 0) + offsetY) * ratio - offsetY

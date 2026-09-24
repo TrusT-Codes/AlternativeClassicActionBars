@@ -251,7 +251,7 @@ function ACAB:SetExpBarScale(scale)
 	local frame = getglobal(self.EXP_BAR_FRAME_NAME)
 
 	if pos and frame then
-		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "BOTTOMLEFT", nil, frame:GetHeight())
+		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "BOTTOMLEFT", frame:GetWidth(), frame:GetHeight())
 	end
 
 	ACABDB.expBarScale = scale
