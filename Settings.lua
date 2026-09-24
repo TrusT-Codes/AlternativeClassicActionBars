@@ -314,7 +314,9 @@ end
 -- isRightAnchored/isBottomAnchored (optional): mirror minX/maxX and minY/maxY respectively for an
 -- element whose stored point anchors to the screen's right and/or bottom edge (0 at that edge, negative
 -- moving away from it) instead of the default TOPLEFT convention every other element uses.
-function ACAB:GetSimpleElementCoordinateRange(frame, extraMaxYPixels, isRightAnchored, isBottomAnchored)
+-- scaleOverride (optional): the element's true scale when frame:GetScale() isn't it (Key Ring - its own
+-- scale cancels an inherited parent scale).
+function ACAB:GetSimpleElementCoordinateRange(frame, extraMaxYPixels, isRightAnchored, isBottomAnchored, scaleOverride)
 	local screenWidthUnits = GetScreenWidth()
 	local screenHeightUnits = GetScreenHeight()
 
@@ -332,7 +334,7 @@ function ACAB:GetSimpleElementCoordinateRange(frame, extraMaxYPixels, isRightAnc
 	-- than the true footprint once scale isn't 1. The overlay is only used below for the inset correction.
 	local overlay = frame and frame.ACABOverlay
 
-	local scale = (frame and frame:GetScale()) or 1
+	local scale = scaleOverride or (frame and frame:GetScale()) or 1
 
 	if not scale or scale <= 0 then
 		scale = 1
@@ -450,7 +452,8 @@ function ACAB:RefreshSimplePositionSliderRange(page, key)
 	local pos = config.getPosition and config.getPosition()
 	local isRightAnchored = ACAB:IsRightAnchoredPoint(pos and pos.point)
 	local isBottomAnchored = ACAB:IsBottomAnchoredPoint(pos and pos.point)
-	local minX, maxX, minY, maxY = ACAB:GetSimpleElementCoordinateRange(frame, config.extraMaxYPixels, isRightAnchored, isBottomAnchored)
+	local rangeScale = config.getRangeScale and config.getRangeScale()
+	local minX, maxX, minY, maxY = ACAB:GetSimpleElementCoordinateRange(frame, config.extraMaxYPixels, isRightAnchored, isBottomAnchored, rangeScale)
 
 	page.xSlider:SetMinMaxValues(minX, maxX)
 	page.ySlider:SetMinMaxValues(minY, maxY)
@@ -1307,7 +1310,7 @@ local PROFILE_LOCK_CONTROL_NAMES = {
 	"buttonSizeSlider", "spacingSlider",
 	"scaleSlider", "resetPositionButton", "resetModernButton", "enableCheckbox",
 	"buttonCountMinus", "buttonCountPlus", "pageIndicatorSlider",
-	"orientationCheckbox", "keyRingCheckbox", "keyRingScaleSlider",
+	"orientationCheckbox",
 	"betterExpBarCheckbox", "expBarShowLevelCheckbox",
 	"expBarShowCurrentOverMaxCheckbox", "expBarShowPercentCheckbox",
 	"expBarShowRestedPercentCheckbox", "expBarShowRestedTotalCheckbox",
@@ -1487,7 +1490,7 @@ function ACAB:RefreshDefaultLayoutGatingOnAllPages()
 	-- Bag Bar / Micro Menu / Latency Bar / Experience Bar / Cast Bar are also gated on
 	-- useDefaultLayout, so their pages need the same live refresh if already built/cached. Stance Bar
 	-- (like Pet Bar) is covered by the ACAB.DEFAULT_BAR_IDS loop above, keyed by its own numeric id.
-	local specialKeys = { "bagbar", "micromenu", "latencybar", "expbar", "castbar", "tooltip" }
+	local specialKeys = { "bagbar", "keyring", "micromenu", "latencybar", "expbar", "castbar", "tooltip" }
 	local si
 
 	for si = 1, table.getn(specialKeys) do
@@ -1733,8 +1736,6 @@ function ACAB:FitSettingsWindowToBarPage(barId)
 	-- alongside Spacing above - included here since this shared function handles both page shapes.
 	n = AppendCandidate(candidates, n, page.scaleValueText)
 	n = AppendCandidate(candidates, n, page.orientationCheckbox)
-	n = AppendCandidate(candidates, n, page.keyRingCheckbox)
-	n = AppendCandidate(candidates, n, page.keyRingScaleValueText)
 
 	-- "Better Experience Bar" + its 5 text toggles + Font Size slider + 3 color pickers + Reset Colors
 	-- button + Pulse Interval slider (Experience Bar page only).
