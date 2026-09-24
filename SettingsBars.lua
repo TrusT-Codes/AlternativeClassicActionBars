@@ -1257,15 +1257,13 @@ function ACAB:GetOrCreateBarPage(barId)
 
 			ACAB:ApplyBlizzardArtVisibility()
 
-			-- Any visible art forces Main Bar back to the native 12x1 grid and spacing the art placement assumes.
+			-- Any visible art lays Main Bar out 12x1 (saved grid kept) with the spacing the art placement assumes.
 			if value ~= ACAB.MAIN_BAR_ART_MODE_DISABLED then
-				local cfg = ACAB:GetBarConfig(1)
-
-				if cfg and (cfg.cols ~= 12 or cfg.rows ~= 1) then
-					ACAB:SetDefaultBarLayout(1, 12, 1)
-				end
-
 				ACAB:EnforceMainBarArtSpacing()
+			end
+
+			if ACAB.bars and ACAB.bars[1] then
+				ACAB:ApplyBarShape(ACAB.bars[1])
 			end
 
 			-- Groups/ungroups the Main Bar elements now, and swaps their edit-mode overlays/lock icons.
@@ -3599,7 +3597,7 @@ ACAB.simpleBarPageConfigs["micromenu"] = {
 	hasGrid = true,
 	-- GridSwatch_OnClick calls ACAB:SetMicroMenuLayout directly, not through a config setter - only
 	-- getGridLayout is needed here, to sync swatch selection on refresh.
-	getGridLayout = function() return ACABDB.microMenuCols or 8, ACABDB.microMenuRows or 1 end,
+	getGridLayout = function() return ACAB:GetMicroMenuEffectiveGrid() end,
 	hasHoverOnly = true,
 	getHoverOnly = function() return ACABDB.microMenuHoverOnly end,
 	setHoverOnly = function(v) ACAB:SetMicroMenuHoverOnly(v) end,
@@ -3785,10 +3783,12 @@ function ACAB:RefreshBarSettingsPage(barId)
 		RebuildGridSwatches(page, barId, page.gridSwatchY)
 	end
 
+	local selectedCols, selectedRows = ACAB:GetEffectiveBarGrid(cfg)
+
 	RefreshGridSwatchSelection(
 		page,
-		cfg.cols or 12,
-		cfg.rows or 1
+		selectedCols or 12,
+		selectedRows or 1
 	)
 
 	-- Gryphons / Background Art (Main Bar page only).
