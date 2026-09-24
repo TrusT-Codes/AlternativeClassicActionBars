@@ -3389,7 +3389,7 @@ ACAB.simpleBarPageConfigs["bagbar"] = {
 		ACAB:ResetBagBarLayout()
 		ACAB:ResetBagBarPosition()
 	end,
-	resetModern = function() ACAB:ApplyModernSingleBagBar() end,
+	resetModern = function() ACAB:ResetBagBarLayoutToModernBase() end,
 	getEnabled = function() return ACABDB.bagBarEnabled end,
 	setEnabled = function(v) ACAB:SetBagBarEnabled(v) end,
 	hasSpacing = true,
@@ -3418,7 +3418,7 @@ ACAB.simpleBarPageConfigs["keyring"] = {
 	-- KeyRingButton's GetScale() also cancels its parent's scale, so the range uses the saved scale.
 	getRangeScale = function() return ACABDB.keyRingScale or 1 end,
 	reset = function() ACAB:ResetKeyRingPosition() end,
-	resetModern = function() ACAB:ApplyModernSingleKeyRing() end,
+	resetModern = function() ACAB:ResetKeyRingLayoutToModernBase() end,
 	getEnabled = function() return ACABDB.keyRingEnabled end,
 	setEnabled = function(v) ACAB:SetKeyRingEnabled(v) end,
 	hasScale = true,
@@ -3483,7 +3483,7 @@ ACAB.simpleBarPageConfigs["latencybar"] = {
 	reset = function()
 		ACAB:ResetLatencyBarLayout()
 	end,
-	resetModern = function() ACAB:ApplyModernSingleLatencyBar() end,
+	resetModern = function() ACAB:ResetLatencyBarLayoutToModernBase() end,
 	getEnabled = function() return ACABDB.latencyBarEnabled end,
 	setEnabled = function(v) ACAB:SetLatencyBarEnabled(v) end,
 	hasScale = true,
@@ -3582,7 +3582,7 @@ ACAB.simpleBarPageConfigs["micromenu"] = {
 		ACAB:ResetMicroMenuLayout()
 		ACAB:ResetMicroMenuPosition()
 	end,
-	resetModern = function() ACAB:ApplyModernSingleMicroMenu() end,
+	resetModern = function() ACAB:ResetMicroMenuLayoutToModernBase() end,
 	getEnabled = function() return ACABDB.microMenuEnabled end,
 	setEnabled = function(v) ACAB:SetMicroMenuEnabled(v) end,
 	hasSpacing = true,
