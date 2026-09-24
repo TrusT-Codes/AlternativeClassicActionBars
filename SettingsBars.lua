@@ -4421,20 +4421,21 @@ function ACAB:ResetAllElementsToVanillaLayout()
 
 	ACAB:RefreshBarList()
 
-	if ACAB.ResetBagBarPosition then
-		ACAB:ResetBagBarPosition()
-	end
-
+	-- Layout before position for each element: position converts to canonical at the final size/scale.
 	if ACAB.ResetBagBarLayout then
 		ACAB:ResetBagBarLayout()
 	end
 
-	if ACAB.ResetMicroMenuPosition then
-		ACAB:ResetMicroMenuPosition()
+	if ACAB.ResetBagBarPosition then
+		ACAB:ResetBagBarPosition()
 	end
 
 	if ACAB.ResetMicroMenuLayout then
 		ACAB:ResetMicroMenuLayout()
+	end
+
+	if ACAB.ResetMicroMenuPosition then
+		ACAB:ResetMicroMenuPosition()
 	end
 
 	-- Force native mode's stored flags before anything below reads them - IsPetBarNativeModeEffective/
@@ -4467,12 +4468,12 @@ function ACAB:ResetAllElementsToVanillaLayout()
 		ACAB:CreateStanceBarContainer()
 	end
 
-	if ACAB.ResetStanceBarPosition then
-		ACAB:ResetStanceBarPosition()
-	end
-
 	if ACAB.ResetStanceBarLayout then
 		ACAB:ResetStanceBarLayout()
+	end
+
+	if ACAB.ResetStanceBarPosition then
+		ACAB:ResetStanceBarPosition()
 	end
 
 	if ACAB.ResetLatencyBarLayout then

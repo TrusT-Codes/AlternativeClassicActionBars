@@ -24,6 +24,7 @@ function ACAB:ApplyBagBarPosition()
 		return
 	end
 
+	self:NormalizePositionAnchor(container, pos, self.CANONICAL_ANCHOR_BAG_BAR)
 	self:ApplySavedPosition(container, pos)
 	self:EnsureElementOverlayAndHover("bagbar", container)
 end
@@ -158,7 +159,7 @@ function ACAB:SetBagBarScale(scale)
 	local pos = ACABDB.bagBarPosition
 
 	if pos and self.bagBarContainer then
-		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "BOTTOMLEFT", nil, self.bagBarContainer:GetHeight())
+		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "BOTTOMLEFT", self.bagBarContainer:GetWidth(), self.bagBarContainer:GetHeight())
 	end
 
 	ACABDB.bagBarScale = scale
@@ -236,6 +237,7 @@ function ACAB:ApplyMicroMenuPosition()
 		return
 	end
 
+	self:NormalizePositionAnchor(container, pos, self.CANONICAL_ANCHOR_MICRO_MENU)
 	self:ApplySavedPosition(container, pos)
 	self:EnsureElementOverlayAndHover("micromenu", container)
 end
@@ -389,7 +391,7 @@ function ACAB:SetMicroMenuScale(scale)
 	local pos = ACABDB.microMenuPosition
 
 	if pos and self.microMenuContainer then
-		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "BOTTOMLEFT", nil, self.microMenuContainer:GetHeight())
+		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "BOTTOMLEFT", self.microMenuContainer:GetWidth(), self.microMenuContainer:GetHeight())
 	end
 
 	ACABDB.microMenuScale = scale
@@ -688,6 +690,7 @@ function ACAB:ApplyKeyRingPosition()
 	local pos = ACABDB.keyRingPosition
 
 	if pos then
+		self:NormalizePositionAnchor(frame, pos, self.CANONICAL_ANCHOR_KEY_RING)
 		self:ApplySavedPosition(frame, pos)
 	end
 
@@ -782,7 +785,7 @@ function ACAB:SetKeyRingScale(scale)
 	local frame = getglobal(self.KEYRING_BUTTON_NAME)
 
 	if pos and frame then
-		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "BOTTOMLEFT", nil, frame:GetHeight())
+		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "BOTTOMLEFT", frame:GetWidth(), frame:GetHeight())
 	end
 
 	ACABDB.keyRingScale = scale
@@ -900,6 +903,7 @@ function ACAB:ApplyLatencyBarPosition()
 	local pos = ACABDB.latencyBarPosition
 
 	if pos then
+		self:NormalizePositionAnchor(frame, pos, self.CANONICAL_ANCHOR_LATENCY_BAR)
 		self:ApplySavedPosition(frame, pos, "ACABApplyingLatencyBarPosition")
 	end
 
@@ -959,7 +963,7 @@ function ACAB:SetLatencyBarScale(scale)
 	local frame = getglobal(self.LATENCY_BAR_FRAME_NAME)
 
 	if pos and frame then
-		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "BOTTOMLEFT", nil, frame:GetHeight())
+		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "BOTTOMLEFT", frame:GetWidth(), frame:GetHeight())
 	end
 
 	ACABDB.latencyBarScale = scale
@@ -1141,7 +1145,7 @@ function ACAB:SetCastBarScale(scale)
 	local frame = getglobal(self.CAST_BAR_FRAME_NAME)
 
 	if pos and frame then
-		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "BOTTOMLEFT", nil, frame:GetHeight())
+		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "BOTTOMLEFT", frame:GetWidth(), frame:GetHeight())
 	end
 
 	ACABDB.castBarScale = scale
@@ -1593,6 +1597,7 @@ function ACAB:ApplyPageIndicatorPosition()
 		return
 	end
 
+	self:NormalizePositionAnchor(container, pos, self.CANONICAL_ANCHOR_PAGE_INDICATOR)
 	self:ApplySavedPosition(container, pos)
 	self:EnsureElementOverlayAndHover("pageindicator", container)
 end
@@ -1626,6 +1631,9 @@ function ACAB:ResetPageIndicatorLayout()
 
 	local native = ACABDB.mainBarPageIndicatorNativeAnchor
 
+	-- Scale first: ApplyPageIndicatorPosition converts to canonical at the container's final scale.
+	self:SetPageIndicatorScale(1)
+
 	if native then
 		ACABDB.mainBarPageIndicatorPosition = {
 			point = native.point,
@@ -1636,8 +1644,6 @@ function ACAB:ResetPageIndicatorLayout()
 
 		self:ApplyPageIndicatorPosition()
 	end
-
-	self:SetPageIndicatorScale(1)
 end
 
 -- Settings.lua's Main Bar "Reset to Modern Layout Default" button - Page Indicator has no fixed target
