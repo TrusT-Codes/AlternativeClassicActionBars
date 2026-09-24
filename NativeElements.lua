@@ -10,9 +10,13 @@ local ACAB = AlternativeClassicActionBars
 -- Bag Bar position/enable
 -------------------------------------------------------------------------
 
--- Applies ACABDB.bagBarPosition to the real container, and ensures its overlay exists. Assumes
--- CreateBagBarAndMicroMenu has already run and seeded bagBarPosition.
+-- Applies the grouped placement or ACABDB.bagBarPosition to the container and ensures its overlay.
+-- No-op until CreateBagBarAndMicroMenu has built the container.
 function ACAB:ApplyBagBarPosition()
+	if self:ApplyGroupedIfActive("bagbar") then
+		return
+	end
+
 	local pos = ACABDB.bagBarPosition
 	local container = self.bagBarContainer
 
@@ -20,19 +24,8 @@ function ACAB:ApplyBagBarPosition()
 		return
 	end
 
-	container:ClearAllPoints()
-	self:PixelSetPoint(
-		container,
-		pos.point or "TOPLEFT",
-		UIParent,
-		pos.relativePoint or "BOTTOMLEFT",
-		pos.x or 0,
-		pos.y or 0
-	)
-
-	self:EnsureContainerOverlay(container, self.StartBagBarDrag, self.StopBagBarDrag, "bagbar", self.SetBagBarScale, nil, "Bag Bar")
-
-	self:ApplyHoverOnlyState(container, ACABDB.bagBarHoverOnly, function() return ACABDB.bagBarHoverDuration or 3 end)
+	self:ApplySavedPosition(container, pos)
+	self:EnsureElementOverlayAndHover("bagbar", container)
 end
 
 -- Settings.lua's Bag Bar page X/Y sliders write through this.
@@ -92,35 +85,23 @@ function ACAB:SetBagBarEnabled(enabled)
 	end
 end
 
--- Settings.lua's Bag Bar page "Only show on hover" checkbox - also governs the Key Ring frame, which has no fields of its own.
+-- Settings.lua's Bag Bar page "Only show on hover" checkbox/slider.
 function ACAB:SetBagBarHoverOnly(enabled)
-	self:EnsureDB()
-
-	ACABDB.bagBarHoverOnly = enabled and true or false
-
-	self:ApplyBagBarPosition()
-	self:ApplyKeyRingPosition()
+	self:SetHoverOnlySetting("bagBarHoverOnly", enabled, self.ApplyBagBarPosition)
 end
 
 function ACAB:SetBagBarHoverDuration(duration)
-	self:EnsureDB()
-
-	duration = self:ClampHoverDuration(duration)
-
-	if not duration then
-		return
-	end
-
-	ACABDB.bagBarHoverDuration = duration
-
-	self:ApplyBagBarPosition()
-	self:ApplyKeyRingPosition()
+	self:SetHoverDurationSetting("bagBarHoverDuration", duration, self.ApplyBagBarPosition)
 end
 
 -- Re-lays-out the Bag Bar's real buttons from its current saved spacing/orientation/scale.
 -- No-op until CreateBagBarAndMicroMenu has built the container.
 function ACAB:ApplyBagBarShape()
 	self:EnsureDB()
+
+	if self:ApplyGroupedIfActive("bagbar") then
+		return
+	end
 
 	self:ApplyChainAnchoredShape(
 		self.bagBarContainer,
@@ -226,6 +207,10 @@ end
 -------------------------------------------------------------------------
 
 function ACAB:ApplyMicroMenuPosition()
+	if self:ApplyGroupedIfActive("micromenu") then
+		return
+	end
+
 	local pos = ACABDB.microMenuPosition
 	local container = self.microMenuContainer
 
@@ -233,19 +218,8 @@ function ACAB:ApplyMicroMenuPosition()
 		return
 	end
 
-	container:ClearAllPoints()
-	self:PixelSetPoint(
-		container,
-		pos.point or "TOPLEFT",
-		UIParent,
-		pos.relativePoint or "BOTTOMLEFT",
-		pos.x or 0,
-		pos.y or 0
-	)
-
-	self:EnsureContainerOverlay(container, self.StartMicroMenuDrag, self.StopMicroMenuDrag, "micromenu", self.SetMicroMenuScale, nil, "Micro Menu")
-
-	self:ApplyHoverOnlyState(container, ACABDB.microMenuHoverOnly, function() return ACABDB.microMenuHoverDuration or 3 end)
+	self:ApplySavedPosition(container, pos)
+	self:EnsureElementOverlayAndHover("micromenu", container)
 end
 
 function ACAB:SetMicroMenuPosition(x, y)
@@ -303,30 +277,20 @@ end
 
 -- Settings.lua's Micro Menu page "Only show on hover" checkbox/slider.
 function ACAB:SetMicroMenuHoverOnly(enabled)
-	self:EnsureDB()
-
-	ACABDB.microMenuHoverOnly = enabled and true or false
-
-	self:ApplyMicroMenuPosition()
+	self:SetHoverOnlySetting("microMenuHoverOnly", enabled, self.ApplyMicroMenuPosition)
 end
 
 function ACAB:SetMicroMenuHoverDuration(duration)
-	self:EnsureDB()
-
-	duration = self:ClampHoverDuration(duration)
-
-	if not duration then
-		return
-	end
-
-	ACABDB.microMenuHoverDuration = duration
-
-	self:ApplyMicroMenuPosition()
+	self:SetHoverDurationSetting("microMenuHoverDuration", duration, self.ApplyMicroMenuPosition)
 end
 
 -- Unlike Bag Bar/Stance Bar, Micro Menu lays out via the fixed-grid function ApplyGridAnchoredShape.
 function ACAB:ApplyMicroMenuShape()
 	self:EnsureDB()
+
+	if self:ApplyGroupedIfActive("micromenu") then
+		return
+	end
 
 	self:ApplyGridAnchoredShape(
 		self.microMenuContainer,
@@ -671,9 +635,19 @@ function ACAB:CaptureKeyRingPositionIfNeeded()
 	end
 end
 
--- Applies ACABDB.keyRingPosition to the real KeyRingButton and ensures its drag/right-click overlay
--- exists - mirrors ApplyBagBarPosition's structure against KeyRingButton itself.
+-- Reasserts KeyRingButton's HIGH strata and sets its true effective scale, cancelling the scale it inherits
+-- from MainMenuBarArtFrame (which follows Main Bar's buttonSize in every art mode).
+function ACAB:ApplyKeyRingStrataAndScale(frame, scale)
+	frame:SetFrameStrata("HIGH")
+	self:SetKeyRingOwnScaleForEffective(frame, scale)
+end
+
+-- Applies the grouped placement or ACABDB.keyRingPosition to KeyRingButton and ensures its overlay.
 function ACAB:ApplyKeyRingPosition()
+	if self:ApplyGroupedIfActive("keyring") then
+		return
+	end
+
 	self:CaptureKeyRingPositionIfNeeded()
 
 	local frame = getglobal(self.KEYRING_BUTTON_NAME)
@@ -682,34 +656,27 @@ function ACAB:ApplyKeyRingPosition()
 		return
 	end
 
-	-- KeyRingButton has no explicit strata of its own (unlike the synthetic chain-anchored containers) -
-	-- sets "HIGH" on every call so nothing can silently reset it to a lower tier.
-	frame:SetFrameStrata("HIGH")
+	self:ApplyKeyRingStrataAndScale(frame, ACABDB.keyRingScale or 1)
 
 	local pos = ACABDB.keyRingPosition
 
 	if pos then
-		frame:ClearAllPoints()
-		self:PixelSetPoint(
-			frame,
-			pos.point or "TOPLEFT",
-			UIParent,
-			pos.relativePoint or "BOTTOMLEFT",
-			pos.x or 0,
-			pos.y or 0
-		)
+		self:ApplySavedPosition(frame, pos)
 	end
 
-	-- level = 150, above the 100 every other overlay uses - Key Ring's native default position overlaps
-	-- the Bag Bar container's own overlay, so this guarantees Key Ring's drag surface wins the overlap.
-	self:EnsureContainerOverlay(frame, self.StartKeyRingDrag, self.StopKeyRingDrag, "bagbar", self.SetKeyRingScale, 150, "Key Ring")
-
-	-- Shares the Bag Bar's own hoverOnly/hoverDuration fields; no separate Key Ring setting.
-	self:ApplyHoverOnlyState(frame, ACABDB.bagBarHoverOnly, function() return ACABDB.bagBarHoverDuration or 3 end)
+	self:EnsureElementOverlayAndHover("keyring", frame)
 end
 
--- Settings.lua's Bag Bar page "Show Key Ring" checkbox writes through this - independent of the Bag
--- Bar's own enable flag; this element moves/shows/hides independently of the Bag Bar container.
+-- Settings.lua's Key Ring page "Only show on hover" checkbox/slider.
+function ACAB:SetKeyRingHoverOnly(enabled)
+	self:SetHoverOnlySetting("keyRingHoverOnly", enabled, self.ApplyKeyRingPosition)
+end
+
+function ACAB:SetKeyRingHoverDuration(duration)
+	self:SetHoverDurationSetting("keyRingHoverDuration", duration, self.ApplyKeyRingPosition)
+end
+
+-- Settings.lua's Key Ring page "Enabled" checkbox - independent of the Bag Bar's own enable flag.
 function ACAB:SetKeyRingEnabled(enabled)
 	self:EnsureDB()
 
@@ -759,7 +726,8 @@ function ACAB:ResetKeyRingPosition()
 	ACABDB.keyRingScale = 1
 
 	if frame then
-		frame:SetScale(1)
+		-- Effective scale 1, not SetScale(1) - the native anchor below must resolve at true size.
+		self:SetKeyRingOwnScaleForEffective(frame, 1)
 	end
 
 	local native = ACABDB.keyRingNativeAnchor
@@ -793,7 +761,7 @@ function ACAB:SetKeyRingScale(scale)
 	ACABDB.keyRingScale = scale
 
 	if frame then
-		frame:SetScale(scale)
+		self:SetKeyRingOwnScaleForEffective(frame, scale)
 	end
 
 	if pos then
@@ -826,6 +794,10 @@ end
 
 function ACAB:StopKeyRingDrag()
 	self:StopSharedDrag()
+
+	if self.RefreshBarSettingsPage then
+		self:RefreshBarSettingsPage("keyring")
+	end
 end
 
 -------------------------------------------------------------------------
@@ -853,11 +825,8 @@ function ACAB:CaptureLatencyBarPositionIfNeeded()
 		return
 	end
 
-	-- Permanent pristine snapshot (Reset to Vanilla Layout) - stores the
-	-- frame's true native anchor via GetPoint(1) rather than an absolute
-	-- snapshot, since native code re-anchors this frame relative to
-	-- another real frame, not UIParent (confirmed: BOTTOMRIGHT of
-	-- MainMenuBar, -235,-10). Captured ONCE, never rewritten.
+	-- Permanent pristine snapshot (Reset to Vanilla Layout) of the frame's relative native anchor
+	-- (GetPoint(1) - natively BOTTOMRIGHT of MainMenuBar). Captured once, never rewritten.
 	if not ACABDB.latencyBarNativeAnchor then
 		local point, relativeTo, relativePoint, x, y = frame:GetPoint(1)
 
@@ -887,9 +856,12 @@ function ACAB:CaptureLatencyBarPositionIfNeeded()
 	end
 end
 
--- Applies ACABDB.latencyBarPosition to the real frame and ensures its drag/right-click overlay exists -
--- mirrors ApplyKeyRingPosition against MainMenuBarPerformanceBarFrame instead of KeyRingButton.
+-- Applies the grouped placement or ACABDB.latencyBarPosition to the real frame and ensures its overlay.
 function ACAB:ApplyLatencyBarPosition()
+	if self:ApplyGroupedIfActive("latencybar") then
+		return
+	end
+
 	self:CaptureLatencyBarPositionIfNeeded()
 
 	local frame = getglobal(self.LATENCY_BAR_FRAME_NAME)
@@ -901,26 +873,10 @@ function ACAB:ApplyLatencyBarPosition()
 	local pos = ACABDB.latencyBarPosition
 
 	if pos then
-		frame.ACABApplyingLatencyBarPosition = true
-
-		frame:ClearAllPoints()
-		self:PixelSetPoint(
-			frame,
-			pos.point or "TOPLEFT",
-			UIParent,
-			pos.relativePoint or "BOTTOMLEFT",
-			pos.x or 0,
-			pos.y or 0
-		)
-
-		frame.ACABApplyingLatencyBarPosition = nil
+		self:ApplySavedPosition(frame, pos, "ACABApplyingLatencyBarPosition")
 	end
 
-	frame.overlayInset = self.LATENCY_BAR_OVERLAY_INSET
-
-	self:EnsureContainerOverlay(frame, self.StartLatencyBarDrag, self.StopLatencyBarDrag, "latencybar", self.SetLatencyBarScale, nil, "Latency Bar")
-
-	self:ApplyHoverOnlyState(frame, ACABDB.latencyBarHoverOnly, function() return ACABDB.latencyBarHoverDuration or 3 end)
+	self:EnsureElementOverlayAndHover("latencybar", frame)
 end
 
 function ACAB:SetLatencyBarPosition(x, y)
@@ -992,25 +948,11 @@ end
 
 -- Settings.lua's Latency Bar page "Only show on hover" checkbox/slider.
 function ACAB:SetLatencyBarHoverOnly(enabled)
-	self:EnsureDB()
-
-	ACABDB.latencyBarHoverOnly = enabled and true or false
-
-	self:ApplyLatencyBarPosition()
+	self:SetHoverOnlySetting("latencyBarHoverOnly", enabled, self.ApplyLatencyBarPosition)
 end
 
 function ACAB:SetLatencyBarHoverDuration(duration)
-	self:EnsureDB()
-
-	duration = self:ClampHoverDuration(duration)
-
-	if not duration then
-		return
-	end
-
-	ACABDB.latencyBarHoverDuration = duration
-
-	self:ApplyLatencyBarPosition()
+	self:SetHoverDurationSetting("latencyBarHoverDuration", duration, self.ApplyLatencyBarPosition)
 end
 
 -- Settings.lua's Latency Bar page "Reset to Vanilla Layout" button - restores position AND scale in one call.
@@ -1134,19 +1076,7 @@ function ACAB:ApplyCastBarPosition()
 	local pos = ACABDB.castBarPosition
 
 	if pos then
-		frame.ACABApplyingCastBarPosition = true
-
-		frame:ClearAllPoints()
-		self:PixelSetPoint(
-			frame,
-			pos.point or "TOPLEFT",
-			UIParent,
-			pos.relativePoint or "BOTTOMLEFT",
-			pos.x or 0,
-			pos.y or 0
-		)
-
-		frame.ACABApplyingCastBarPosition = nil
+		self:ApplySavedPosition(frame, pos, "ACABApplyingCastBarPosition")
 	end
 
 	self:EnsureContainerOverlay(frame, self.StartCastBarDrag, self.StopCastBarDrag, "castbar", self.SetCastBarScale, nil, "Cast Bar")
@@ -1617,10 +1547,18 @@ function ACAB:ApplyPageIndicatorShape()
 
 	self:PixelSetSize(container, width, height)
 
+	if self:ApplyGroupedIfActive("pageindicator") then
+		return
+	end
+
 	container:SetScale(ACABDB.mainBarPageIndicatorScale or 1)
 end
 
 function ACAB:ApplyPageIndicatorPosition()
+	if self:ApplyGroupedIfActive("pageindicator") then
+		return
+	end
+
 	local pos = ACABDB.mainBarPageIndicatorPosition
 	local container = self.pageIndicatorContainer
 
@@ -1628,27 +1566,8 @@ function ACAB:ApplyPageIndicatorPosition()
 		return
 	end
 
-	container:ClearAllPoints()
-	self:PixelSetPoint(
-		container,
-		pos.point or "TOPLEFT",
-		UIParent,
-		pos.relativePoint or "BOTTOMLEFT",
-		pos.x or 0,
-		pos.y or 0
-	)
-
-	-- settingsKey = 1: this element has no page of its own; its Scale slider lives on bar 1's own
-	-- settings page, so a right-click opens that page instead.
-	self:EnsureContainerOverlay(
-		container,
-		self.StartPageIndicatorDrag,
-		self.StopPageIndicatorDrag,
-		1,
-		self.SetPageIndicatorScale,
-		nil,
-		"Page Indicator"
-	)
+	self:ApplySavedPosition(container, pos)
+	self:EnsureElementOverlayAndHover("pageindicator", container)
 end
 
 -- Settings.lua's Main Bar page Scale slider writes through this - mirrors SetStanceBarScale's
@@ -1663,6 +1582,10 @@ function ACAB:SetPageIndicatorScale(scale)
 	end
 
 	ACABDB.mainBarPageIndicatorScale = scale
+
+	if self:ApplyGroupedIfActive("pageindicator") then
+		return
+	end
 
 	if self.pageIndicatorContainer then
 		self.pageIndicatorContainer:SetScale(scale)
@@ -1705,6 +1628,9 @@ function ACAB:ResetPageIndicatorToModernBase()
 	if not bar1 or not container then
 		return
 	end
+
+	-- Same default scale Reset to Vanilla Layout restores.
+	self:SetPageIndicatorScale(1)
 
 	local _, mainBarRight, mainBarTop, mainBarBottom = self:GetElementRealEdges(bar1)
 
@@ -1884,25 +1810,31 @@ function ACAB:ApplyModernCornerClusterLayout()
 	self:ApplyLatencyBarPosition()
 end
 
--- Settings.lua's Bag Bar page "Reset to Modern Layout Default" button - Bag Bar and Key Ring only
--- (Key Ring has no settings page of its own), independent of Micro Menu/Latency Bar.
+-- Settings.lua's Bag Bar page "Reset to Modern Layout Default" button - flush in the bottom-right corner.
 function ACAB:ApplyModernSingleBagBar()
 	self:EnsureDB()
-
-	local buttonSize, spacing = self:GetModernLayoutSizing()
-	local bagBarWidth = MeasureBagBarFootprint(self, buttonSize, spacing)
 
 	ACABDB.bagBarPosition = {
 		point = "BOTTOMRIGHT", relativePoint = "BOTTOMRIGHT",
 		x = 0, y = 0,
 	}
 
+	self:ApplyBagBarPosition()
+end
+
+-- Settings.lua's Key Ring page "Reset to Modern Layout Default" button - left of Bag Bar's Modern Layout
+-- spot, without moving Bag Bar itself.
+function ACAB:ApplyModernSingleKeyRing()
+	self:EnsureDB()
+
+	local buttonSize, spacing = self:GetModernLayoutSizing()
+	local bagBarWidth = MeasureBagBarFootprint(self, buttonSize, spacing)
+
 	ACABDB.keyRingPosition = {
 		point = "BOTTOMRIGHT", relativePoint = "BOTTOMRIGHT",
 		x = -bagBarWidth, y = 0,
 	}
 
-	self:ApplyBagBarPosition()
 	self:ApplyKeyRingPosition()
 end
 
@@ -1939,6 +1871,47 @@ function ACAB:ApplyModernSingleLatencyBar()
 	}
 
 	self:ApplyLatencyBarPosition()
+end
+
+-------------------------------------------------------------------------
+-- "Reset to Modern Layout Default" buttons: each resets its element's own layout/scale to the same
+-- defaults "Reset to Vanilla Layout" uses, then applies its Modern Layout position. Layout first - the
+-- position measurements read the element's settled size.
+-------------------------------------------------------------------------
+
+function ACAB:ResetBagBarLayoutToModernBase()
+	self:ResetBagBarLayout()
+	self:ApplyModernSingleBagBar()
+end
+
+function ACAB:ResetKeyRingLayoutToModernBase()
+	self:EnsureDB()
+
+	ACABDB.keyRingScale = 1
+
+	self:ApplyModernSingleKeyRing()
+end
+
+function ACAB:ResetMicroMenuLayoutToModernBase()
+	self:ResetMicroMenuLayout()
+	self:ApplyModernSingleMicroMenu()
+end
+
+-- Measured one frame after the scale reset - the overlay rects it reads don't reflect a new SetScale until then.
+function ACAB:ResetLatencyBarLayoutToModernBase()
+	self:EnsureDB()
+
+	ACABDB.latencyBarScale = 1
+
+	local frame = getglobal(self.LATENCY_BAR_FRAME_NAME)
+
+	if frame then
+		frame:SetScale(1)
+	end
+
+	C_Timer.After(0, function()
+		ACAB:ApplyModernSingleLatencyBar()
+	end)
 end
 
 -- No independent enable flag - this element's visibility is entirely derived from ACABDB.defaultBarPaginationEnabled.
@@ -2037,16 +2010,7 @@ function ACAB:ApplyTooltipPosition()
 		return
 	end
 
-	frame:ClearAllPoints()
-	self:PixelSetPoint(
-		frame,
-		pos.point or "TOPLEFT",
-		UIParent,
-		pos.relativePoint or "BOTTOMLEFT",
-		pos.x or 0,
-		pos.y or 0
-	)
-
+	self:ApplySavedPosition(frame, pos)
 	self:EnsureContainerOverlay(frame, self.StartTooltipDrag, self.StopTooltipDrag, "tooltip", self.SetTooltipScale, nil, "Tooltip")
 end
 

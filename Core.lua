@@ -112,6 +112,22 @@ ACAB.DEFAULT_BAR_NAMES = {
 	[ACAB.STANCE_BAR_ID] = "Stance Bar",
 }
 
+-- ACABDB.mainBarArtMode values for Main Bar's Blizzard art (MainMenuBarArtFrame background + gryphons).
+ACAB.MAIN_BAR_ART_MODE_FULL = "full"              -- Fully Enabled.
+ACAB.MAIN_BAR_ART_MODE_NO_GRYPHONS = "noGryphons" -- Gryphons hidden, background shown.
+ACAB.MAIN_BAR_ART_MODE_DISABLED = "disabled"      -- All art hidden.
+
+-- MainMenuBarArtFrame region names of the two gryphon end-caps; every other region is background art.
+ACAB.MAIN_BAR_ART_GRYPHON_REGION_NAMES = {
+	MainMenuBarLeftEndCap = true,
+	MainMenuBarRightEndCap = true,
+}
+
+-- True unless Main Bar's art is Fully Disabled - the condition for any element to be grouped with Main Bar.
+function ACAB:IsMainBarArtEnabled()
+	return ACABDB.mainBarArtMode ~= self.MAIN_BAR_ART_MODE_DISABLED
+end
+
 -- Extra Bars (ids EXTRA_BAR_ID_START..+COUNT-1) are numbered from 1 for the user.
 function ACAB:GetBarDisplayName(barId)
 	if self.DEFAULT_BAR_NAMES[barId] then
@@ -907,6 +923,30 @@ function ACAB:ClampHoverDuration(duration)
 	return duration
 end
 
+-- Writes a flat ACABDB hover-only flag, then re-runs applyFn (the element's own Apply*Position).
+function ACAB:SetHoverOnlySetting(field, enabled, applyFn)
+	self:EnsureDB()
+
+	ACABDB[field] = enabled and true or false
+
+	applyFn(self)
+end
+
+-- Clamps and writes a flat ACABDB hover duration, then re-runs applyFn. Ignores non-numeric input.
+function ACAB:SetHoverDurationSetting(field, duration, applyFn)
+	self:EnsureDB()
+
+	duration = self:ClampHoverDuration(duration)
+
+	if not duration then
+		return
+	end
+
+	ACABDB[field] = duration
+
+	applyFn(self)
+end
+
 -- Mirrors DefaultBars.lua's file-local helper of the same name (not reachable from here).
 local function GetCursorPositionUIScale()
 	local scale = UIParent:GetEffectiveScale()
@@ -1260,14 +1300,11 @@ local function SetupPetBarNativeContainer()
 	end
 end
 
+-- Recaptures bars 1-5's native anchors if ActionButton1 no longer sits where Main Bar's says. Only while
+-- useDefaultLayout is on (bars sit at native), and never once Main Bar's art has moved this session -
+-- ActionButton1 is MainMenuBarArtFrame's child, so it would measure the moved spot and corrupt the anchors.
 local function VerifyDefaultBarAnchorsSettled()
-	-- Only meaningful while bars 1-5 actually sit at their native vanilla
-	-- position (useDefaultLayout ~= false) - in unlocked/custom mode
-	-- (Modern Layout or any user-dragged position), ActionButton1's live
-	-- position is SUPPOSED to differ from nativeAnchor, so comparing them
-	-- would recapture nativeAnchor from wherever the bar currently is and
-	-- silently replace the real vanilla baseline with it.
-	if ACABDB and ACABDB.useDefaultLayout == false then
+	if (ACABDB and ACABDB.useDefaultLayout == false) or ACAB.mainBarArtMoved then
 		return
 	end
 
@@ -1281,6 +1318,7 @@ local function VerifyDefaultBarAnchorsSettled()
 	if math.abs(liveAnchor.x - cfg.nativeAnchor.x) > DRIFT_TOLERANCE
 		or math.abs(liveAnchor.y - cfg.nativeAnchor.y) > DRIFT_TOLERANCE then
 		ACAB:RecaptureDefaultBarNativeAnchors()
+		return true
 	end
 end
 
@@ -1324,12 +1362,25 @@ function ACAB:RunLoginSequence(earlyLeft, earlyTop, settledLeft, settledTop, wai
 
 	ACAB:EnsureDB()
 
+	-- Must run before anything moves Main Bar's art (ActionButton1's parent) - native anchors are only
+	-- measurable until then.
+	local recapturedAtLogin = false
+
+	if ACABDB.pendingDefaultBarRecapture then
+		ACABDB.pendingDefaultBarRecapture = nil
+		ACAB:RecaptureDefaultBarNativeAnchors()
+		recapturedAtLogin = true
+	else
+		recapturedAtLogin = VerifyDefaultBarAnchorsSettled() == true
+	end
+
 	-- Must run before CreateFixedSlotDefaultBars/CreateBagBarAndMicroMenu reposition these frames directly,
 	-- or capturing afterward measures an already-disturbed position. No-op on later logins.
 	ACAB:CaptureKeyRingPositionIfNeeded()
 	ACAB:CaptureLatencyBarPositionIfNeeded()
 	ACAB:CaptureExpBarPositionIfNeeded()
 	ACAB:CaptureCastBarPositionIfNeeded()
+	ACAB:CaptureMainBarArtNativeOffsetIfNeeded()
 
 	-- Gives Latency Bar/Cast Bar's native anchor its best chance of being correct this login. Asynchronous.
 	do
@@ -1361,6 +1412,7 @@ function ACAB:RunLoginSequence(earlyLeft, earlyTop, settledLeft, settledTop, wai
 
 	ACAB:ApplyGlobalSpacing()
 	ACAB:ApplyGlobalButtonSize()
+	ACAB:EnforceMainBarArtSpacing()
 
 	ACAB:CreateStanceBarContainer()
 
@@ -1371,6 +1423,11 @@ function ACAB:RunLoginSequence(earlyLeft, earlyTop, settledLeft, settledTop, wai
 
 	ACAB:CreateBagBarAndMicroMenu()
 	SetupPetBarNativeContainer()
+
+	-- The login-start recapture ran before any bar existed - re-derive the bars built off its anchors now.
+	if recapturedAtLogin then
+		ACAB:ReapplyAfterNativeRecapture()
+	end
 
 	ACAB:CreatePageIndicatorContainer()
 
@@ -1405,6 +1462,9 @@ function ACAB:RunLoginSequence(earlyLeft, earlyTop, settledLeft, settledTop, wai
 	ACAB:ApplyBetterExpBarVisual()
 
 	ACAB:ApplyBlizzardArtVisibility()
+
+	-- Must run after Main Bar and every element above are positioned.
+	ACAB:ApplyMainBarGroupedElements()
 
 	ACAB:CreateMinimapButton()
 
@@ -1449,7 +1509,8 @@ local SETTINGS_PAGE_ALIASES = {
 
 	bags = { page = "bagbar" },
 	bagbar = { page = "bagbar" },
-	keyring = { page = "bagbar" },
+	keyring = { page = "keyring" },
+	keys = { page = "keyring" },
 	micro = { page = "micromenu" },
 	micromenu = { page = "micromenu" },
 	latency = { page = "latencybar" },
@@ -1747,7 +1808,14 @@ SlashCmdList["ACAB"] = function(msg)
 	elseif command == "profile" then
 		ACAB:HandleProfileCommand(rest)
 	elseif command == "recapture" then
-		ACAB:RecaptureDefaultBarNativeAnchors()
+		-- Once Main Bar's art has moved ActionButton1 this session, only the next login can measure native.
+		if ACAB.mainBarArtMoved then
+			ACABDB.pendingDefaultBarRecapture = true
+			ACAB:Print("Default bar positions will be recaptured on your next /reload.")
+		else
+			ACAB:RecaptureDefaultBarNativeAnchors()
+		end
+
 		ACAB:RecaptureWrappedNativeFrameAnchors()
 	elseif command == "help" then
 		PrintCommandHelp()
