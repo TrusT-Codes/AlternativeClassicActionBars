@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Add "Gryphons / Background Art" setting on the Main Bar page: Fully Enabled, Disable Gryphons, or Fully Disabled
+- Blizzard's Main Bar art now follows Main Bar when moved or resized, in both Vanilla and Modern button style
+- While the art is shown, Bag Bar, Key Ring, Micro Menu, Latency Bar and Page Indicator stay anchored to Main Bar in their vanilla spots, moving and scaling with it
+- Each anchored element has a lock icon (on its settings page and in Edit Layout mode) to unlock it and move it freely; re-locking snaps it back
+- Controls that would break the alignment are locked while the art is shown (Main Bar grid/spacing, anchored elements' position/scale/reset buttons); hovering explains why, clicking jumps to the setting
+- Key Ring gets its own settings page with its own position, scale, hover-only and reset options
+- Reset to Vanilla/Modern Layout now restore default button size, spacing and scale (Modern button style uses size 40, spacing 2)
+- Fix default bars' saved native position being recaptured wrong after the art moved
+
 ## 1.1.1-beta
 
 - Add lightweight update checker (peer-announce over addon chat, nags once per session on a newer version)
