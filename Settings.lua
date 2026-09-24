@@ -58,6 +58,9 @@ end
 -- SettingsBars.lua's page builders need to read/write it regardless of file/definition order.
 ACAB.simpleBarPageConfigs = {}
 
+-- Every string-keyed simple page, in bar-list order.
+ACAB.SIMPLE_PAGE_KEYS = { "bagbar", "keyring", "micromenu", "latencybar", "expbar", "castbar", "tooltip" }
+
 -- Layout indent constants, used instead of scattering magic numbers through every page-building call.
 ACAB.INDENT_SECTION = 18
 ACAB.INDENT_CONTROL = 22
@@ -314,8 +317,7 @@ end
 -- isRightAnchored/isBottomAnchored (optional): mirror minX/maxX and minY/maxY respectively for an
 -- element whose stored point anchors to the screen's right and/or bottom edge (0 at that edge, negative
 -- moving away from it) instead of the default TOPLEFT convention every other element uses.
--- scaleOverride (optional): the element's true scale when frame:GetScale() isn't it (Key Ring - its own
--- scale cancels an inherited parent scale).
+-- scaleOverride (optional): the element's true scale when frame:GetScale() isn't it (Key Ring).
 function ACAB:GetSimpleElementCoordinateRange(frame, extraMaxYPixels, isRightAnchored, isBottomAnchored, scaleOverride)
 	local screenWidthUnits = GetScreenWidth()
 	local screenHeightUnits = GetScreenHeight()
@@ -429,6 +431,20 @@ function ACAB:GetSimpleElementCoordinateRange(frame, extraMaxYPixels, isRightAnc
 	return minX, maxX, minY, maxY
 end
 
+-- GetSimpleElementCoordinateRange for a simple page's element frame, using its config's saved anchor
+-- side, extraMaxYPixels, and getRangeScale.
+function ACAB:GetSimplePageCoordinateRange(config, frame)
+	local pos = config.getPosition and config.getPosition()
+
+	return self:GetSimpleElementCoordinateRange(
+		frame,
+		config.extraMaxYPixels,
+		self:IsRightAnchoredPoint(pos and pos.point),
+		self:IsBottomAnchoredPoint(pos and pos.point),
+		config.getRangeScale and config.getRangeScale()
+	)
+end
+
 -- Recomputes and re-applies a simple-page element's X/Y slider clamp range from its current rendered
 -- size. No-ops for pages without config.getElementFrame (Latency Bar, deliberately left on the generic
 -- screen-relative range). Also re-clamps the current value.
@@ -449,11 +465,7 @@ function ACAB:RefreshSimplePositionSliderRange(page, key)
 		return
 	end
 
-	local pos = config.getPosition and config.getPosition()
-	local isRightAnchored = ACAB:IsRightAnchoredPoint(pos and pos.point)
-	local isBottomAnchored = ACAB:IsBottomAnchoredPoint(pos and pos.point)
-	local rangeScale = config.getRangeScale and config.getRangeScale()
-	local minX, maxX, minY, maxY = ACAB:GetSimpleElementCoordinateRange(frame, config.extraMaxYPixels, isRightAnchored, isBottomAnchored, rangeScale)
+	local minX, maxX, minY, maxY = ACAB:GetSimplePageCoordinateRange(config, frame)
 
 	page.xSlider:SetMinMaxValues(minX, maxX)
 	page.ySlider:SetMinMaxValues(minY, maxY)
@@ -1487,10 +1499,9 @@ function ACAB:RefreshDefaultLayoutGatingOnAllPages()
 		end
 	end
 
-	-- Bag Bar / Micro Menu / Latency Bar / Experience Bar / Cast Bar are also gated on
-	-- useDefaultLayout, so their pages need the same live refresh if already built/cached. Stance Bar
-	-- (like Pet Bar) is covered by the ACAB.DEFAULT_BAR_IDS loop above, keyed by its own numeric id.
-	local specialKeys = { "bagbar", "keyring", "micromenu", "latencybar", "expbar", "castbar", "tooltip" }
+	-- String-keyed simple pages get the same live refresh if already built. Stance Bar/Pet Bar are
+	-- covered by the ACAB.DEFAULT_BAR_IDS loop above.
+	local specialKeys = ACAB.SIMPLE_PAGE_KEYS
 	local si
 
 	for si = 1, table.getn(specialKeys) do

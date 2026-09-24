@@ -150,7 +150,7 @@ local function EnsureExpBarBottomBorderStrip(frame)
 	return strip
 end
 
--- Mirrors ACAB:ApplyLatencyBarPosition exactly.
+-- Applies ACABDB.expBarPosition to MainMenuExpBar and ensures its overlay, border strip, and hover-only state.
 function ACAB:ApplyExpBarPosition()
 	self:CaptureExpBarPositionIfNeeded()
 
@@ -163,22 +163,10 @@ function ACAB:ApplyExpBarPosition()
 	local pos = ACABDB.expBarPosition
 
 	if pos then
-		frame:ClearAllPoints()
-		self:PixelSetPoint(
-			frame,
-			pos.point or "TOPLEFT",
-			UIParent,
-			pos.relativePoint or "BOTTOMLEFT",
-			pos.x or 0,
-			pos.y or 0
-		)
+		self:ApplySavedPosition(frame, pos)
 	end
 
-	-- Reasserted every call (same reasoning as Key Ring's own SetFrameStrata comment): native vanilla
-	-- draws MainMenuExpBar above MainMenuBarPerformanceBarFrame when both occupy the same "MEDIUM" strata,
-	-- which reads wrong once Latency Bar is repositioned near/over it. Pins Experience Bar's frame level
-	-- one below Latency Bar's current level so it always renders underneath, without touching Latency
-	-- Bar's own strata/level at all.
+	-- Pins Experience Bar to Latency Bar's strata, one frame level below it, so it always renders underneath.
 	do
 		local latencyBarFrame = getglobal(self.LATENCY_BAR_FRAME_NAME)
 
@@ -279,25 +267,11 @@ end
 
 -- Settings.lua's Experience Bar page "Only show on hover" checkbox/slider.
 function ACAB:SetExpBarHoverOnly(enabled)
-	self:EnsureDB()
-
-	ACABDB.expBarHoverOnly = enabled and true or false
-
-	self:ApplyExpBarPosition()
+	self:SetHoverOnlySetting("expBarHoverOnly", enabled, self.ApplyExpBarPosition)
 end
 
 function ACAB:SetExpBarHoverDuration(duration)
-	self:EnsureDB()
-
-	duration = self:ClampHoverDuration(duration)
-
-	if not duration then
-		return
-	end
-
-	ACABDB.expBarHoverDuration = duration
-
-	self:ApplyExpBarPosition()
+	self:SetHoverDurationSetting("expBarHoverDuration", duration, self.ApplyExpBarPosition)
 end
 
 -- Settings.lua's Experience Bar page "Reset to Vanilla Layout" button - restores position AND scale.

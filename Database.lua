@@ -395,9 +395,19 @@ function ACAB:RecaptureDefaultBarNativeAnchors()
 		end
 	end
 
-	if self.bars and self.bars[1] then
-		self:ApplyAllDefaultBars()
+	self:ReapplyAfterNativeRecapture()
+end
+
+-- Re-applies the default bars and every bar derived from their native anchors (Pet Bar X, Extra Bars
+-- 1-4). No-op until bars are built - the login sequence calls it again once they are.
+function ACAB:ReapplyAfterNativeRecapture()
+	if not (self.bars and self.bars[1]) then
+		return
 	end
+
+	local i
+
+	self:ApplyAllDefaultBars()
 
 	-- Re-derives Pet Bar's x/y from Bar 3/Bar 1's just-refreshed nativeAnchor.
 	if self.SyncPetBarAnchorX then
@@ -1367,8 +1377,7 @@ function ACAB:EnsureDB()
 		ACABDB.tintWholeButtonOnRange = true
 	end
 
-	-- ACABDB.disableBlizzardArt is the old boolean this replaces - migrated once into the new enum, then
-	-- left alone (orphaned, harmless) since nothing reads/writes it anymore.
+	-- One-time migration from the old boolean ACABDB.disableBlizzardArt (left in place, no longer read).
 	if ACABDB.mainBarArtMode == nil then
 		if ACABDB.disableBlizzardArt == true then
 			ACABDB.mainBarArtMode = ACAB.MAIN_BAR_ART_MODE_DISABLED
@@ -1377,10 +1386,10 @@ function ACAB:EnsureDB()
 		end
 	end
 
-	-- Obsolete live-captured grouped-element baselines - now derived from native anchors every call.
+	-- Clears an obsolete saved field.
 	ACABDB.groupedElementOffsets = nil
 
-	-- Key Ring used to share Bag Bar's hover-only settings - seeded from them once.
+	-- Key Ring's hover-only settings are seeded once from Bag Bar's.
 	if ACABDB.keyRingHoverOnly == nil then
 		ACABDB.keyRingHoverOnly = ACABDB.bagBarHoverOnly == true
 	end

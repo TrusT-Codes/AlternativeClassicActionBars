@@ -44,9 +44,7 @@ function ACAB:ForEachBar(fn)
 	end
 end
 
--- cfg.spacing may be absent on old saves; default to 0. Main Bar's spacing scales with the Blizzard art
--- it's grouped with (ACAB:GetMainBarEffectiveSpacing) - every other bar's spacing is a flat,
--- buttonSize-independent gap.
+-- Main Bar's spacing scales with its Blizzard art; every other bar's is a flat gap (absent on old saves = 0).
 local function EffectiveSpacing(cfg)
 	if cfg.id == 1 then
 		return ACAB:GetMainBarEffectiveSpacing(cfg)
@@ -72,6 +70,12 @@ local function ButtonIndexToGridPos(index, cols)
 	return col, row
 end
 
+-- Re-anchors Main Bar's Blizzard art and every element grouped with it after Main Bar moves or resizes.
+local function ApplyMainBarFollowers()
+	ACAB:ApplyMainBarArtPosition()
+	ACAB:ApplyMainBarGroupedElements()
+end
+
 -------------------------------------------------------------------------
 -- Position
 -------------------------------------------------------------------------
@@ -94,17 +98,8 @@ function ACAB:ApplyBarPosition(bar)
 		cfg.y or 0
 	)
 
-	-- Main Bar's Blizzard art (background + gryphons) rides along, anchored to this frame. Micro Menu/
-	-- Latency Bar/Page Indicator/Bag Bar ride along too, but only while the art mode that groups them is
-	-- active (ApplyMainBarGroupedElements itself checks ACABDB.mainBarArtMode).
 	if cfg.id == 1 then
-		if self.ApplyMainBarArtPosition then
-			self:ApplyMainBarArtPosition()
-		end
-
-		if self.ApplyMainBarGroupedElements then
-			self:ApplyMainBarGroupedElements()
-		end
+		ApplyMainBarFollowers()
 	end
 end
 
@@ -571,20 +566,14 @@ function ACAB:SetBarButtonSize(bar, newSize)
 
 	self:LayoutButtons(bar)
 
-	-- Every buttonSize-changing path funnels through here, so this is the single place that rebuilds the grid,
-	-- and the single place Main Bar's Blizzard art (background + gryphons) rescales to match.
+	-- Every buttonSize-changing path funnels through here - the single place Main Bar's layout grid, art,
+	-- and grouped elements follow a size change.
 	if bar.config.id == 1 then
 		if self:IsEditMode() then
 			self:RebuildLayoutGrid()
 		end
 
-		if self.ApplyMainBarArtPosition then
-			self:ApplyMainBarArtPosition()
-		end
-
-		if self.ApplyMainBarGroupedElements then
-			self:ApplyMainBarGroupedElements()
-		end
+		ApplyMainBarFollowers()
 	end
 end
 
@@ -711,6 +700,9 @@ function ACAB:ApplyGlobalButtonStyle()
 		ACABDB.lastAppliedVanillaStyle = vanilla
 	end
 
+	-- Main Bar's spacing stays on its art slots in the new style.
+	self:EnforceMainBarArtSpacing()
+
 	self:ForEachBar(function(barId, bar)
 		if bar.config then
 			local i
@@ -779,6 +771,12 @@ end
 function ACAB:ApplyGlobalSpacingToBar(bar)
 	if not (bar and bar.config and ACABDB.globalSpacingEnabled) or
 		ACABDB.useDefaultLayout ~= false then
+		return
+	end
+
+	-- Main Bar's spacing is pinned to its art slots while the art is enabled.
+	if bar.config.id == 1 and self:IsMainBarArtEnabled() then
+		self:EnforceMainBarArtSpacing()
 		return
 	end
 
