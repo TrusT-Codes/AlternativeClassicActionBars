@@ -120,30 +120,12 @@ function ACAB:GetOrCreateGeneralPanel()
 	panel.tintWholeButtonCheckbox = tintWholeButtonCheckbox
 
 	-------------------------------------------------------------------------
-	-- Disable Blizzard Art - hides MainMenuBarArtFrame, styled/positioned like the checkboxes above.
-	-------------------------------------------------------------------------
-
-	local disableBlizzardArtCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABGeneralDisableBlizzardArtCheckbox", {
-		anchor = { "TOPLEFT", tintWholeButtonCheckbox, "BOTTOMLEFT", 0, -14 },
-		label = "Disable Blizzard Art",
-		onClick = function()
-			local checked = this:GetChecked() and true or false
-
-			ACABDB.disableBlizzardArt = checked
-
-			ACAB:ApplyBlizzardArtVisibility()
-		end,
-	})
-
-	panel.disableBlizzardArtCheckbox = disableBlizzardArtCheckbox
-
-	-------------------------------------------------------------------------
 	-- Default bar (1-5) pagination / stance-swap
 	-- Both default true, matching real vanilla bar 1's always-on behavior unless opted out here.
 	-------------------------------------------------------------------------
 
 	local mainBarPaginationCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABGeneralMainBarPaginationCheckbox", {
-		anchor = { "TOPLEFT", disableBlizzardArtCheckbox, "BOTTOMLEFT", 0, -14 },
+		anchor = { "TOPLEFT", tintWholeButtonCheckbox, "BOTTOMLEFT", 0, -14 },
 		label = "Enable Page Bar-Changes",
 		tooltip = {
 			title = "Enable Page Bar-Changes",
@@ -1364,10 +1346,6 @@ function ACAB:RefreshGeneralPanel()
 
 	panel.tintWholeButtonCheckbox:SetChecked(
 		ACABDB.tintWholeButtonOnRange ~= false
-	)
-
-	panel.disableBlizzardArtCheckbox:SetChecked(
-		ACABDB.disableBlizzardArt == true
 	)
 
 	panel.mainBarPaginationCheckbox:SetChecked(

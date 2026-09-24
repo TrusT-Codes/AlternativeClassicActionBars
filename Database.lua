@@ -395,9 +395,19 @@ function ACAB:RecaptureDefaultBarNativeAnchors()
 		end
 	end
 
-	if self.bars and self.bars[1] then
-		self:ApplyAllDefaultBars()
+	self:ReapplyAfterNativeRecapture()
+end
+
+-- Re-applies the default bars and every bar derived from their native anchors (Pet Bar X, Extra Bars
+-- 1-4). No-op until bars are built - the login sequence calls it again once they are.
+function ACAB:ReapplyAfterNativeRecapture()
+	if not (self.bars and self.bars[1]) then
+		return
 	end
+
+	local i
+
+	self:ApplyAllDefaultBars()
 
 	-- Re-derives Pet Bar's x/y from Bar 3/Bar 1's just-refreshed nativeAnchor.
 	if self.SyncPetBarAnchorX then
@@ -1367,8 +1377,25 @@ function ACAB:EnsureDB()
 		ACABDB.tintWholeButtonOnRange = true
 	end
 
-	if ACABDB.disableBlizzardArt == nil then
-		ACABDB.disableBlizzardArt = false
+	-- One-time migration from the old boolean ACABDB.disableBlizzardArt (left in place, no longer read).
+	if ACABDB.mainBarArtMode == nil then
+		if ACABDB.disableBlizzardArt == true then
+			ACABDB.mainBarArtMode = ACAB.MAIN_BAR_ART_MODE_DISABLED
+		else
+			ACABDB.mainBarArtMode = ACAB.MAIN_BAR_ART_MODE_FULL
+		end
+	end
+
+	-- Clears an obsolete saved field.
+	ACABDB.groupedElementOffsets = nil
+
+	-- Key Ring's hover-only settings are seeded once from Bag Bar's.
+	if ACABDB.keyRingHoverOnly == nil then
+		ACABDB.keyRingHoverOnly = ACABDB.bagBarHoverOnly == true
+	end
+
+	if ACABDB.keyRingHoverDuration == nil then
+		ACABDB.keyRingHoverDuration = ACABDB.bagBarHoverDuration or 3
 	end
 
 	if ACABDB.snapToAdjacentElements == nil then

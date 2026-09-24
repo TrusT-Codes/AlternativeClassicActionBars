@@ -44,9 +44,17 @@ function ACAB:ForEachBar(fn)
 	end
 end
 
--- cfg.spacing may be absent on old saves; default to 0.
+-- Main Bar's spacing scales with its Blizzard art; every other bar's is a flat gap (absent on old saves = 0).
+local function EffectiveSpacing(cfg)
+	if cfg.id == 1 then
+		return ACAB:GetMainBarEffectiveSpacing(cfg)
+	end
+
+	return cfg.spacing or 0
+end
+
 local function BarFrameSize(cfg)
-	local spacing = cfg.spacing or 0
+	local spacing = EffectiveSpacing(cfg)
 
 	local width = (cfg.buttonSize * cfg.cols) + ((cfg.cols - 1) * spacing)
 	local height = (cfg.buttonSize * cfg.rows) + ((cfg.rows - 1) * spacing)
@@ -60,6 +68,12 @@ local function ButtonIndexToGridPos(index, cols)
 	local row = math.floor(i / cols)
 	local col = i - (row * cols)
 	return col, row
+end
+
+-- Re-anchors Main Bar's Blizzard art and every element grouped with it after Main Bar moves or resizes.
+local function ApplyMainBarFollowers()
+	ACAB:ApplyMainBarArtPosition()
+	ACAB:ApplyMainBarGroupedElements()
 end
 
 -------------------------------------------------------------------------
@@ -83,6 +97,10 @@ function ACAB:ApplyBarPosition(bar)
 		cfg.x or 0,
 		cfg.y or 0
 	)
+
+	if cfg.id == 1 then
+		ApplyMainBarFollowers()
+	end
 end
 
 -------------------------------------------------------------------------
@@ -95,8 +113,7 @@ function ACAB:LayoutButtons(bar)
 	end
 
 	local cfg = bar.config
-	-- cfg.spacing may be absent on old saves; default to 0.
-	local spacing = cfg.spacing or 0
+	local spacing = EffectiveSpacing(cfg)
 	local i
 
 	-- Pet Bar condense: compacts filled slots into sequential grid cells; suspended during edit mode/action-grid preview.
@@ -549,9 +566,14 @@ function ACAB:SetBarButtonSize(bar, newSize)
 
 	self:LayoutButtons(bar)
 
-	-- Every buttonSize-changing path funnels through here, so this is the single place that rebuilds the grid.
-	if bar.config.id == 1 and self:IsEditMode() then
-		self:RebuildLayoutGrid()
+	-- Every buttonSize-changing path funnels through here - the single place Main Bar's layout grid, art,
+	-- and grouped elements follow a size change.
+	if bar.config.id == 1 then
+		if self:IsEditMode() then
+			self:RebuildLayoutGrid()
+		end
+
+		ApplyMainBarFollowers()
 	end
 end
 
@@ -678,6 +700,9 @@ function ACAB:ApplyGlobalButtonStyle()
 		ACABDB.lastAppliedVanillaStyle = vanilla
 	end
 
+	-- Main Bar's spacing stays on its art slots in the new style.
+	self:EnforceMainBarArtSpacing()
+
 	self:ForEachBar(function(barId, bar)
 		if bar.config then
 			local i
@@ -746,6 +771,12 @@ end
 function ACAB:ApplyGlobalSpacingToBar(bar)
 	if not (bar and bar.config and ACABDB.globalSpacingEnabled) or
 		ACABDB.useDefaultLayout ~= false then
+		return
+	end
+
+	-- Main Bar's spacing is pinned to its art slots while the art is enabled.
+	if bar.config.id == 1 and self:IsMainBarArtEnabled() then
+		self:EnforceMainBarArtSpacing()
 		return
 	end
 

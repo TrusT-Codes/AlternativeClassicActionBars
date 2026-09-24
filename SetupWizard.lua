@@ -1875,7 +1875,7 @@ end
 -- adjustments. Actual positions are computed separately, live, by ApplyModernLayoutGeometry below -
 -- `data` isn't yet the live ACABDB at this point, so real frame geometry can't be measured against it.
 local function ApplyModernLayoutPreset(state, data)
-	data.disableBlizzardArt = true
+	data.mainBarArtMode = ACAB.MAIN_BAR_ART_MODE_DISABLED
 
 	-- Bag Bar sits exactly flush with the screen's corner - a natural target for Snap to Grid/Snap to
 	-- Adjacent Elements, which would fight any attempt to manually drag it away again afterward.

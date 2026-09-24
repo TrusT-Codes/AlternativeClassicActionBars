@@ -150,7 +150,7 @@ local function EnsureExpBarBottomBorderStrip(frame)
 	return strip
 end
 
--- Mirrors ACAB:ApplyLatencyBarPosition exactly.
+-- Applies ACABDB.expBarPosition to MainMenuExpBar and ensures its overlay, border strip, and hover-only state.
 function ACAB:ApplyExpBarPosition()
 	self:CaptureExpBarPositionIfNeeded()
 
@@ -163,15 +163,19 @@ function ACAB:ApplyExpBarPosition()
 	local pos = ACABDB.expBarPosition
 
 	if pos then
-		frame:ClearAllPoints()
-		self:PixelSetPoint(
-			frame,
-			pos.point or "TOPLEFT",
-			UIParent,
-			pos.relativePoint or "BOTTOMLEFT",
-			pos.x or 0,
-			pos.y or 0
-		)
+		self:ApplySavedPosition(frame, pos)
+	end
+
+	-- Pins Experience Bar to Latency Bar's strata, one frame level below it, so it always renders underneath.
+	do
+		local latencyBarFrame = getglobal(self.LATENCY_BAR_FRAME_NAME)
+
+		if latencyBarFrame then
+			local latencyLevel = latencyBarFrame:GetFrameLevel()
+
+			frame:SetFrameStrata(latencyBarFrame:GetFrameStrata())
+			frame:SetFrameLevel((latencyLevel > 0) and (latencyLevel - 1) or 0)
+		end
 	end
 
 	self:EnsureContainerOverlay(frame, self.StartExpBarDrag, self.StopExpBarDrag, "expbar", self.SetExpBarScale, nil, "Experience Bar")
@@ -263,25 +267,11 @@ end
 
 -- Settings.lua's Experience Bar page "Only show on hover" checkbox/slider.
 function ACAB:SetExpBarHoverOnly(enabled)
-	self:EnsureDB()
-
-	ACABDB.expBarHoverOnly = enabled and true or false
-
-	self:ApplyExpBarPosition()
+	self:SetHoverOnlySetting("expBarHoverOnly", enabled, self.ApplyExpBarPosition)
 end
 
 function ACAB:SetExpBarHoverDuration(duration)
-	self:EnsureDB()
-
-	duration = self:ClampHoverDuration(duration)
-
-	if not duration then
-		return
-	end
-
-	ACABDB.expBarHoverDuration = duration
-
-	self:ApplyExpBarPosition()
+	self:SetHoverDurationSetting("expBarHoverDuration", duration, self.ApplyExpBarPosition)
 end
 
 -- Settings.lua's Experience Bar page "Reset to Vanilla Layout" button - restores position AND scale.
