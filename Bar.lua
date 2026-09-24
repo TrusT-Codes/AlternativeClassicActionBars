@@ -44,17 +44,15 @@ function ACAB:ForEachBar(fn)
 	end
 end
 
--- cfg.spacing may be absent on old saves; default to 0. Main Bar's spacing scales with its own
--- buttonSize, same as the Blizzard art it's grouped with - every other bar's spacing is a flat,
+-- cfg.spacing may be absent on old saves; default to 0. Main Bar's spacing scales with the Blizzard art
+-- it's grouped with (ACAB:GetMainBarEffectiveSpacing) - every other bar's spacing is a flat,
 -- buttonSize-independent gap.
 local function EffectiveSpacing(cfg)
-	local spacing = cfg.spacing or 0
-
 	if cfg.id == 1 then
-		return spacing * (cfg.buttonSize / ACAB.BUTTON_SIZE)
+		return ACAB:GetMainBarEffectiveSpacing(cfg)
 	end
 
-	return spacing
+	return cfg.spacing or 0
 end
 
 local function BarFrameSize(cfg)

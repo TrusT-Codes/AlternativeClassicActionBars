@@ -13,6 +13,10 @@ local ACAB = AlternativeClassicActionBars
 -- Applies ACABDB.bagBarPosition to the real container, and ensures its overlay exists. Assumes
 -- CreateBagBarAndMicroMenu has already run and seeded bagBarPosition.
 function ACAB:ApplyBagBarPosition()
+	if self:ApplyGroupedIfActive("bagbar") then
+		return
+	end
+
 	local pos = ACABDB.bagBarPosition
 	local container = self.bagBarContainer
 
@@ -92,14 +96,13 @@ function ACAB:SetBagBarEnabled(enabled)
 	end
 end
 
--- Settings.lua's Bag Bar page "Only show on hover" checkbox - also governs the Key Ring frame, which has no fields of its own.
+-- Settings.lua's Bag Bar page "Only show on hover" checkbox/slider.
 function ACAB:SetBagBarHoverOnly(enabled)
 	self:EnsureDB()
 
 	ACABDB.bagBarHoverOnly = enabled and true or false
 
 	self:ApplyBagBarPosition()
-	self:ApplyKeyRingPosition()
 end
 
 function ACAB:SetBagBarHoverDuration(duration)
@@ -114,13 +117,16 @@ function ACAB:SetBagBarHoverDuration(duration)
 	ACABDB.bagBarHoverDuration = duration
 
 	self:ApplyBagBarPosition()
-	self:ApplyKeyRingPosition()
 end
 
 -- Re-lays-out the Bag Bar's real buttons from its current saved spacing/orientation/scale.
 -- No-op until CreateBagBarAndMicroMenu has built the container.
 function ACAB:ApplyBagBarShape()
 	self:EnsureDB()
+
+	if self:ApplyGroupedIfActive("bagbar") then
+		return
+	end
 
 	self:ApplyChainAnchoredShape(
 		self.bagBarContainer,
@@ -226,6 +232,10 @@ end
 -------------------------------------------------------------------------
 
 function ACAB:ApplyMicroMenuPosition()
+	if self:ApplyGroupedIfActive("micromenu") then
+		return
+	end
+
 	local pos = ACABDB.microMenuPosition
 	local container = self.microMenuContainer
 
@@ -327,6 +337,10 @@ end
 -- Unlike Bag Bar/Stance Bar, Micro Menu lays out via the fixed-grid function ApplyGridAnchoredShape.
 function ACAB:ApplyMicroMenuShape()
 	self:EnsureDB()
+
+	if self:ApplyGroupedIfActive("micromenu") then
+		return
+	end
 
 	self:ApplyGridAnchoredShape(
 		self.microMenuContainer,
@@ -674,6 +688,10 @@ end
 -- Applies ACABDB.keyRingPosition to the real KeyRingButton and ensures its drag/right-click overlay
 -- exists - mirrors ApplyBagBarPosition's structure against KeyRingButton itself.
 function ACAB:ApplyKeyRingPosition()
+	if self:ApplyGroupedIfActive("keyring") then
+		return
+	end
+
 	self:CaptureKeyRingPositionIfNeeded()
 
 	local frame = getglobal(self.KEYRING_BUTTON_NAME)
@@ -709,14 +727,35 @@ function ACAB:ApplyKeyRingPosition()
 
 	-- level = 150, above the 100 every other overlay uses - Key Ring's native default position overlaps
 	-- the Bag Bar container's own overlay, so this guarantees Key Ring's drag surface wins the overlap.
-	self:EnsureContainerOverlay(frame, self.StartKeyRingDrag, self.StopKeyRingDrag, "bagbar", self.SetKeyRingScale, 150, "Key Ring")
+	self:EnsureContainerOverlay(frame, self.StartKeyRingDrag, self.StopKeyRingDrag, "keyring", self.SetKeyRingScale, 150, "Key Ring")
 
-	-- Shares the Bag Bar's own hoverOnly/hoverDuration fields; no separate Key Ring setting.
-	self:ApplyHoverOnlyState(frame, ACABDB.bagBarHoverOnly, function() return ACABDB.bagBarHoverDuration or 3 end)
+	self:ApplyHoverOnlyState(frame, ACABDB.keyRingHoverOnly, function() return ACABDB.keyRingHoverDuration or 3 end)
 end
 
--- Settings.lua's Bag Bar page "Show Key Ring" checkbox writes through this - independent of the Bag
--- Bar's own enable flag; this element moves/shows/hides independently of the Bag Bar container.
+-- Settings.lua's Key Ring page "Only show on hover" checkbox/slider.
+function ACAB:SetKeyRingHoverOnly(enabled)
+	self:EnsureDB()
+
+	ACABDB.keyRingHoverOnly = enabled and true or false
+
+	self:ApplyKeyRingPosition()
+end
+
+function ACAB:SetKeyRingHoverDuration(duration)
+	self:EnsureDB()
+
+	duration = self:ClampHoverDuration(duration)
+
+	if not duration then
+		return
+	end
+
+	ACABDB.keyRingHoverDuration = duration
+
+	self:ApplyKeyRingPosition()
+end
+
+-- Settings.lua's Key Ring page "Enabled" checkbox - independent of the Bag Bar's own enable flag.
 function ACAB:SetKeyRingEnabled(enabled)
 	self:EnsureDB()
 
@@ -838,6 +877,10 @@ end
 
 function ACAB:StopKeyRingDrag()
 	self:StopSharedDrag()
+
+	if self.RefreshBarSettingsPage then
+		self:RefreshBarSettingsPage("keyring")
+	end
 end
 
 -------------------------------------------------------------------------
@@ -902,6 +945,10 @@ end
 -- Applies ACABDB.latencyBarPosition to the real frame and ensures its drag/right-click overlay exists -
 -- mirrors ApplyKeyRingPosition against MainMenuBarPerformanceBarFrame instead of KeyRingButton.
 function ACAB:ApplyLatencyBarPosition()
+	if self:ApplyGroupedIfActive("latencybar") then
+		return
+	end
+
 	self:CaptureLatencyBarPositionIfNeeded()
 
 	local frame = getglobal(self.LATENCY_BAR_FRAME_NAME)
@@ -1629,10 +1676,18 @@ function ACAB:ApplyPageIndicatorShape()
 
 	self:PixelSetSize(container, width, height)
 
+	if self:ApplyGroupedIfActive("pageindicator") then
+		return
+	end
+
 	container:SetScale(ACABDB.mainBarPageIndicatorScale or 1)
 end
 
 function ACAB:ApplyPageIndicatorPosition()
+	if self:ApplyGroupedIfActive("pageindicator") then
+		return
+	end
+
 	local pos = ACABDB.mainBarPageIndicatorPosition
 	local container = self.pageIndicatorContainer
 
@@ -1675,6 +1730,10 @@ function ACAB:SetPageIndicatorScale(scale)
 	end
 
 	ACABDB.mainBarPageIndicatorScale = scale
+
+	if self:ApplyGroupedIfActive("pageindicator") then
+		return
+	end
 
 	if self.pageIndicatorContainer then
 		self.pageIndicatorContainer:SetScale(scale)
@@ -1896,25 +1955,31 @@ function ACAB:ApplyModernCornerClusterLayout()
 	self:ApplyLatencyBarPosition()
 end
 
--- Settings.lua's Bag Bar page "Reset to Modern Layout Default" button - Bag Bar and Key Ring only
--- (Key Ring has no settings page of its own), independent of Micro Menu/Latency Bar.
+-- Settings.lua's Bag Bar page "Reset to Modern Layout Default" button - flush in the bottom-right corner.
 function ACAB:ApplyModernSingleBagBar()
 	self:EnsureDB()
-
-	local buttonSize, spacing = self:GetModernLayoutSizing()
-	local bagBarWidth = MeasureBagBarFootprint(self, buttonSize, spacing)
 
 	ACABDB.bagBarPosition = {
 		point = "BOTTOMRIGHT", relativePoint = "BOTTOMRIGHT",
 		x = 0, y = 0,
 	}
 
+	self:ApplyBagBarPosition()
+end
+
+-- Settings.lua's Key Ring page "Reset to Modern Layout Default" button - left of Bag Bar's Modern Layout
+-- spot, without moving Bag Bar itself.
+function ACAB:ApplyModernSingleKeyRing()
+	self:EnsureDB()
+
+	local buttonSize, spacing = self:GetModernLayoutSizing()
+	local bagBarWidth = MeasureBagBarFootprint(self, buttonSize, spacing)
+
 	ACABDB.keyRingPosition = {
 		point = "BOTTOMRIGHT", relativePoint = "BOTTOMRIGHT",
 		x = -bagBarWidth, y = 0,
 	}
 
-	self:ApplyBagBarPosition()
 	self:ApplyKeyRingPosition()
 end
 

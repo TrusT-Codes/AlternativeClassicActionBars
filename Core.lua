@@ -1421,11 +1421,8 @@ function ACAB:RunLoginSequence(earlyLeft, earlyTop, settledLeft, settledTop, wai
 
 	ACAB:ApplyBlizzardArtVisibility()
 
-	-- Every element above (Bag Bar/Key Ring/Micro Menu/Latency Bar/Page Indicator) has just applied its
-	-- own saved, ungrouped position - if Main Bar's art mode is grouping them, this immediately re-aligns
-	-- them relative to Main Bar instead of leaving them sitting at their saved position until the next
-	-- drag/buttonSize change/dropdown toggle. Must run after every one of those Apply*Position calls above,
-	-- and after ApplyAllDefaultBars (Main Bar itself needs to be positioned first).
+	-- Final grouped/ungrouped pass for Bag Bar/Key Ring/Micro Menu/Latency Bar/Page Indicator, once Main
+	-- Bar and every element above are positioned.
 	if ACAB.ApplyMainBarGroupedElements then
 		ACAB:ApplyMainBarGroupedElements()
 	end
@@ -1473,7 +1470,8 @@ local SETTINGS_PAGE_ALIASES = {
 
 	bags = { page = "bagbar" },
 	bagbar = { page = "bagbar" },
-	keyring = { page = "bagbar" },
+	keyring = { page = "keyring" },
+	keys = { page = "keyring" },
 	micro = { page = "micromenu" },
 	micromenu = { page = "micromenu" },
 	latency = { page = "latencybar" },

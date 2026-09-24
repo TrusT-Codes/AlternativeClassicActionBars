@@ -1377,6 +1377,18 @@ function ACAB:EnsureDB()
 		end
 	end
 
+	-- Obsolete live-captured grouped-element baselines - now derived from native anchors every call.
+	ACABDB.groupedElementOffsets = nil
+
+	-- Key Ring used to share Bag Bar's hover-only settings - seeded from them once.
+	if ACABDB.keyRingHoverOnly == nil then
+		ACABDB.keyRingHoverOnly = ACABDB.bagBarHoverOnly == true
+	end
+
+	if ACABDB.keyRingHoverDuration == nil then
+		ACABDB.keyRingHoverDuration = ACABDB.bagBarHoverDuration or 3
+	end
+
 	if ACABDB.snapToAdjacentElements == nil then
 		ACABDB.snapToAdjacentElements = true
 	end
