@@ -529,7 +529,7 @@ local GROUPABLE_ELEMENTS = {
 		hoverDurationField = "bagBarHoverDuration",
 		getFrame = function() return ACAB.bagBarContainer end,
 		applyScale = function(frame, scale)
-			ACAB:ApplyChainAnchoredShape(frame, ACABDB.bagBarSpacing or 0, ACABDB.bagBarOrientation == true, scale)
+			ACAB:ApplyChainAnchoredShape(frame, ACABDB.bagBarSpacing or 0, ACAB:GetBagBarEffectiveVertical(), scale)
 		end,
 		applyUngrouped = function() ACAB:SetBagBarScale(ACABDB.bagBarScale or 1) end,
 	},

@@ -8,6 +8,7 @@
 - Each anchored element has a lock icon (on its settings page and in Edit Layout mode) to unlock it and move it freely; re-locking snaps it back
 - Controls that would break the alignment are locked while the art is shown (Main Bar grid/spacing, anchored elements' position/scale/reset buttons); hovering explains why, clicking jumps to the setting
 - Main Bar (12x1) and anchored Micro Menu (8x1) use the vanilla grid while the art is shown, but keep your chosen grid and restore it once the art is disabled or the element is unlocked
+- Bag Bar gets a Grid Layout option (5x1 or 1x5); it uses 5x1 while anchored to Main Bar and restores your choice once unlocked
 - Key Ring gets its own settings page with its own position, scale, hover-only and reset options
 - Reset to Vanilla/Modern Layout now restore default button size, spacing and scale (Modern button style uses size 40, spacing 2)
 - Fix default bars' saved native position being recaptured wrong after the art moved

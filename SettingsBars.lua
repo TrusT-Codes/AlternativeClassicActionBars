@@ -36,6 +36,12 @@ local MICRO_MENU_GRID_PRESETS = {
 	{ rows = 8, cols = 1 },
 }
 
+-- Bag Bar's 5 buttons: horizontal or vertical (stored as ACABDB.bagBarOrientation).
+local BAG_BAR_GRID_PRESETS = {
+	{ rows = 1, cols = 5 },
+	{ rows = 5, cols = 1 },
+}
+
 -- Stance Bar's usable form count varies per class/talent, so its preset list can't be a static table.
 -- Returns every exact factor-pair (rows, cols) of the given live count N, e.g. N=4 -> 4x1, 2x2, 1x4.
 -- Empty table for N <= 0.
@@ -67,6 +73,10 @@ local function GetGridPresetsForBar(barId)
 
 	if barId == "micromenu" then
 		return MICRO_MENU_GRID_PRESETS
+	end
+
+	if barId == "bagbar" then
+		return BAG_BAR_GRID_PRESETS
 	end
 
 	if barId == ACAB.STANCE_BAR_ID then
@@ -651,6 +661,8 @@ local function GridSwatch_OnClick()
 		-- page.isDefault is unconditionally true for every simple page - must be checked before the
 		-- page.isDefault branch below or this would wrongly call ACAB:SetDefaultBarLayout.
 		ACAB:SetMicroMenuLayout(this.cols, this.rows)
+	elseif barId == "bagbar" then
+		ACAB:SetBagBarOrientation(this.cols == 1)
 	elseif page.isDefault then
 		ACAB:SetDefaultBarLayout(barId, this.cols, this.rows)
 	else
@@ -741,7 +753,7 @@ local function InstallMainBarArtGuard(page, control, lockedText)
 	)
 end
 
--- Grid Layout locks, keyed by page barId: Main Bar's while its art is enabled, Micro Menu's while grouped.
+-- Grid Layout locks, keyed by page barId: Main Bar's while its art is enabled, Micro Menu's/Bag Bar's while grouped.
 local GRID_LAYOUT_LOCKS = {
 	[1] = {
 		isLocked = function() return ACAB:IsMainBarArtEnabled() end,
@@ -752,6 +764,12 @@ local GRID_LAYOUT_LOCKS = {
 	micromenu = {
 		isLocked = function() return ACAB:IsElementGrouped("micromenu") end,
 		text = "Grid Layout cant be changed while Micro Menu is grouped with Main Bar.",
+		onLockedClick = function() ACAB:HighlightMainBarArtModeDropdownFromElsewhere() end,
+	},
+
+	bagbar = {
+		isLocked = function() return ACAB:IsElementGrouped("bagbar") end,
+		text = "Grid Layout cant be changed while Bag Bar is grouped with Main Bar.",
 		onLockedClick = function() ACAB:HighlightMainBarArtModeDropdownFromElsewhere() end,
 	},
 }
@@ -950,7 +968,7 @@ function ACAB:ApplySimpleElementGroupedLock(page)
 		end
 	end
 
-	-- Micro Menu's Grid Layout swatches.
+	-- Micro Menu's/Bag Bar's Grid Layout swatches.
 	ApplyGridLayoutLock(page)
 
 	for i = 1, table.getn(GROUP_LOCK_TEXT_NAMES) do
@@ -2609,7 +2627,7 @@ local function CreateSimpleBarPage(key)
 	end
 
 	-------------------------------------------------------------------------
-	-- Grid Layout (Micro Menu only - config.hasGrid). Fixed preset swatch picker, same mechanism as
+	-- Grid Layout (Micro Menu/Bag Bar - config.hasGrid). Fixed preset swatch picker, same mechanism as
 	-- the full grid pages, reusing RebuildGridSwatches/RefreshGridSwatchSelection directly.
 	-------------------------------------------------------------------------
 
@@ -3396,9 +3414,9 @@ ACAB.simpleBarPageConfigs["bagbar"] = {
 	hasScale = true,
 	getScale = function() return ACABDB.bagBarScale end,
 	setScale = function(v) ACAB:SetBagBarScale(v) end,
-	hasOrientation = true,
-	getOrientation = function() return ACABDB.bagBarOrientation end,
-	setOrientation = function(v) ACAB:SetBagBarOrientation(v) end,
+	hasGrid = true,
+	-- GridSwatch_OnClick calls ACAB:SetBagBarOrientation directly; getGridLayout syncs swatch selection.
+	getGridLayout = function() return ACAB:GetBagBarEffectiveGrid() end,
 	hasHoverOnly = true,
 	getHoverOnly = function() return ACABDB.bagBarHoverOnly end,
 	setHoverOnly = function(v) ACAB:SetBagBarHoverOnly(v) end,
