@@ -284,6 +284,15 @@ function ACAB:SetMicroMenuHoverDuration(duration)
 	self:SetHoverDurationSetting("microMenuHoverDuration", duration, self.ApplyMicroMenuPosition)
 end
 
+-- Grid Micro Menu lays out with: 8x1 while grouped with Main Bar, keeping its saved cols/rows.
+function ACAB:GetMicroMenuEffectiveGrid()
+	if self:IsElementGrouped("micromenu") then
+		return 8, 1
+	end
+
+	return ACABDB.microMenuCols or 8, ACABDB.microMenuRows or 1
+end
+
 -- Unlike Bag Bar/Stance Bar, Micro Menu lays out via the fixed-grid function ApplyGridAnchoredShape.
 function ACAB:ApplyMicroMenuShape()
 	self:EnsureDB()
@@ -1688,7 +1697,7 @@ end
 -- netting out the gap between Micro Menu's container and its trimmed overlay hitbox.
 local function MeasureMicroMenuStackAnchors(self, buttonSize, spacing, bagBarHeight)
 	local microMenuWidth = (self.microMenuContainer and self.microMenuContainer:GetWidth())
-		or ((ACABDB.microMenuCols or 8) * (buttonSize + spacing))
+		or ((self:GetMicroMenuEffectiveGrid()) * (buttonSize + spacing))
 	local microMenuHeight = (self.microMenuContainer and self.microMenuContainer:GetHeight()) or buttonSize
 
 	local microMenuOverlayTopGap = 0
