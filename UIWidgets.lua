@@ -1,38 +1,55 @@
 -- UIWidgets.lua
--- Reusable Mixin-based dialog/dropdown widget kit, built on ClassicAPI's
--- Mixin/CreateFromMixins primitives.
---
--- Engine-invoked script handlers (OnClick, OnShow, OnHide) receive the
--- frame via the global `this`, never as a `self` parameter.
+-- Mixin-based widget kit: shared backdrops, inline dropdowns, modern buttons, sliders, checkboxes, color
+-- swatches, dialogs, fade strips and list rows. Script handlers use the global `this`; `:` methods use `self`.
 
 local ACAB = AlternativeClassicActionBars
 
--- Shared accent/hover colors for the fade-strip treatment below.
+-- Shared accent/hover colors for fade-strip highlights.
 ACAB.UI_ACCENT_COLOR = { 1, 0.82, 0 }
 ACAB.UI_HOVER_COLOR = { 1, 1, 1 }
 
+-- Shared backdrop tables, passed as-is to SetBackdrop - never mutate them.
+-- Tooltip skin for modern buttons, the dialog text area and settings scrollbars.
+ACAB.MODERN_BACKDROP = {
+	bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+	edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+	tile = true,
+	tileSize = 16,
+	edgeSize = 12,
+	insets = { left = 3, right = 3, top = 3, bottom = 3 },
+}
+
+-- Small tooltip skin for color swatches and modern preview slots.
+ACAB.SMALL_BACKDROP = {
+	bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+	edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+	tile = true,
+	tileSize = 8,
+	edgeSize = 8,
+	insets = { left = 1, right = 1, top = 1, bottom = 1 },
+}
+
+-- Dialog-box skin for the settings window, dialogs and the setup wizard.
+ACAB.DIALOG_BACKDROP = {
+	bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+	edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+	tile = true,
+	tileSize = 32,
+	edgeSize = 32,
+	insets = { left = 11, right = 12, top = 12, bottom = 11 },
+}
+
 -------------------------------------------------------------------------
--- ACABInlineDropdownMixin
---
--- Wraps the native UIDropDownMenuTemplate as a persistent in-panel
--- selector instead of a transient right-click popup.
+-- ACABInlineDropdownMixin: UIDropDownMenuTemplate as a persistent in-panel selector
 -------------------------------------------------------------------------
 
 ACABInlineDropdownMixin = {}
 
--- parent: frame to anchor into. name: REQUIRED - UIDropDownMenuTemplate's
--- native FrameXML machinery builds internal sub-widget references by
--- string-concatenating this frame's own GetName() (UIDropDownMenu_
--- Initialize/SetWidth/etc.); a nameless dropdown fails with "attempt to
--- concatenate a nil value".
--- Returns the created dropdown frame with this mixin applied.
+-- name is required: the template's native code builds sub-widget names from GetName().
 function ACAB:CreateInlineDropdown(parent, widthPixels, name)
 	local dropdown = CreateFrame("Frame", name, parent, "UIDropDownMenuTemplate")
 
-	-- CreateFrame only applies `parent` the first time a given global
-	-- `name` is created - on reuse it keeps whatever parent it already
-	-- had. Must SetParent explicitly here or a reused dropdown stays
-	-- attached to an orphaned old frame and stops rendering reliably.
+	-- Explicit re-parent; see known-problems.md: "Inline dropdown SetParent after CreateFrame".
 	dropdown:SetParent(parent)
 
 	Mixin(dropdown, ACABInlineDropdownMixin)
@@ -49,9 +66,7 @@ function ACABInlineDropdownMixin:OnLoad(widthPixels)
 
 	UIDropDownMenu_SetWidth(self.widthPixels, self)
 
-	-- Re-applied on OnShow too: a dropdown built while its page is still
-	-- hidden can end up with fragmented skin pieces and a stale/blank
-	-- label otherwise.
+	-- must reapply width/label on show, or a dropdown built while hidden renders fragmented/blank
 	self:SetScript("OnShow", function()
 		UIDropDownMenu_SetWidth(this.widthPixels, this)
 
@@ -69,8 +84,7 @@ function ACABInlineDropdownMixin:OnLoad(widthPixels)
 		for i = 1, table.getn(dropdown.options) do
 			local option = dropdown.options[i]
 
-			-- option is either a plain string, or a { text =, value = }
-			-- table when the stored value isn't a sensible display label.
+			-- option is a plain string or a { text =, value = } table.
 			local optionText = (type(option) == "table") and option.text or option
 			local optionValue = (type(option) == "table") and option.value or option
 
@@ -90,14 +104,12 @@ function ACABInlineDropdownMixin:OnLoad(widthPixels)
 	end)
 end
 
--- options: array of strings, or { text = "...", value = ... } tables when
--- the value isn't itself a usable label.
+-- options: array of strings or { text = "...", value = ... } tables.
 function ACABInlineDropdownMixin:SetOptions(options)
 	self.options = options or {}
 end
 
--- displayText is optional - when omitted, `value` itself is shown (plain-
--- string options) or looked up from a matching { text=, value= } entry.
+-- Selects value; displayText defaults to the matching option's text (or value itself).
 function ACABInlineDropdownMixin:SetSelected(value, displayText)
 	self.selected = value
 
@@ -119,7 +131,7 @@ function ACABInlineDropdownMixin:SetSelected(value, displayText)
 		end
 	end
 
-	-- Cached so OnShow can reapply the label after this frame becomes visible.
+	-- Cached for the OnShow reapply.
 	self.selectedDisplayText = displayText or value
 
 	UIDropDownMenu_SetText(self.selectedDisplayText, self)
@@ -130,29 +142,15 @@ function ACABInlineDropdownMixin:GetSelected()
 end
 
 -------------------------------------------------------------------------
--- Modern button styling
---
--- Backdrop-based button styling (not UIPanelButtonTemplate) that scales
--- cleanly to arbitrary widths.
+-- Modern button styling (backdrop-based, scales to any width)
 -------------------------------------------------------------------------
 
--- Turns a plain, template-less Button frame into a modern-styled one.
--- Caller still creates the frame and sets its own SetHeight/OnClick/etc
--- as normal - this applies the visuals and installs a :SetText that
--- resizes the button to fit its label (ACAB_BUTTON_PADDING_X either side),
--- clamped to [minWidth, maxWidth]. Pass 0/math.huge (or omit) for no
--- clamping on that side.
+-- Horizontal label padding added by the styled SetText.
 local ACAB_BUTTON_PADDING_X = 32
 
+-- Styles a template-less Button; SetText fits width to the label within [minWidth, maxWidth] (0/nil = none).
 function ACAB:StyleModernButton(button, minWidth, maxWidth)
-	button:SetBackdrop({
-		bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-		edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-		tile = true,
-		tileSize = 16,
-		edgeSize = 12,
-		insets = { left = 3, right = 3, top = 3, bottom = 3 },
-	})
+	button:SetBackdrop(ACAB.MODERN_BACKDROP)
 
 	button:SetBackdropColor(0.08, 0.08, 0.08, 0.85)
 	button:SetBackdropBorderColor(0.55, 0.55, 0.55, 1)
@@ -166,8 +164,7 @@ function ACAB:StyleModernButton(button, minWidth, maxWidth)
 	button.minWidth = minWidth or 0
 	button.maxWidth = maxWidth or 0
 
-	-- Overrides the native Button:SetText - a template-less Button has no
-	-- font region wired to it by default.
+	-- Replaces native SetText (a template-less Button has no font region).
 	button.SetText = function(self, value)
 		text:SetText(value or "")
 
@@ -202,8 +199,7 @@ function ACAB:StyleModernButton(button, minWidth, maxWidth)
 		this.text:SetPoint("CENTER", this, "CENTER", 0, 0)
 	end)
 
-	-- Dims backdrop/text to match native Disable/Enable's grey-out, since
-	-- this button has no UIPanelButtonTemplate texture to grey out itself.
+	-- Disable/Enable also dim/restore the backdrop and label.
 	local nativeDisable = button.Disable
 	local nativeEnable = button.Enable
 
@@ -220,8 +216,22 @@ function ACAB:StyleModernButton(button, minWidth, maxWidth)
 	end
 end
 
+local DANGER_COLOR = { 0.6, 0.08, 0.08 }
+
+-- Flat red backdrop for a modern button (destructive actions).
+function ACAB:ApplyDangerButtonHighlight(button)
+	button:SetBackdropColor(DANGER_COLOR[1], DANGER_COLOR[2], DANGER_COLOR[3], 0.9)
+end
+
+local PROMINENT_COLOR = { 0.12, 0.35, 0.68 }
+
+-- Flat blue backdrop for a modern button (primary choice).
+function ACAB:ApplyProminentButtonHighlight(button)
+	button:SetBackdropColor(PROMINENT_COLOR[1], PROMINENT_COLOR[2], PROMINENT_COLOR[3], 0.9)
+end
+
 -------------------------------------------------------------------------
--- Slider construction shared by every settings page builder.
+-- Sliders
 -------------------------------------------------------------------------
 
 function ACAB:CreateSettingSlider(parent, name, width)
@@ -240,8 +250,7 @@ function ACAB:CreateSettingSlider(parent, name, width)
 	return slider
 end
 
--- Sets an OptionsSliderTemplate slider's auto-created end labels
--- (its "$parentLow"/"$parentHigh" FontStrings).
+-- Sets an OptionsSliderTemplate slider's "$parentLow"/"$parentHigh" end labels.
 function ACAB:SetSliderEndLabels(slider, lowText, highText)
 	local low = getglobal(slider:GetName() .. "Low")
 
@@ -257,15 +266,11 @@ function ACAB:SetSliderEndLabels(slider, lowText, highText)
 end
 
 -------------------------------------------------------------------------
--- Position slider stepper buttons + click-to-edit value readout, shared
--- by every X/Y position slider. Drag, stepper click and typed edit all
--- funnel through slider:SetValue(); its OnValueChanged applies the change.
+-- Position sliders: stepper buttons + click-to-edit readout. Drag, stepper and typed edit all go
+-- through slider:SetValue(); OnValueChanged applies the change.
 -------------------------------------------------------------------------
 
--- PixelUtil.SetPoint rounds X/Y to whole physical screen pixels
--- (UIParent:GetEffectiveScale()), so a flat sub-pixel step can produce no
--- visible change. Returns position units per one real screen pixel, read
--- live so it tracks UI Scale changes without a reload.
+-- Position units per one physical screen pixel (read live, tracks UI Scale).
 function ACAB:GetPixelStep()
 	local scale = UIParent:GetEffectiveScale()
 
@@ -276,48 +281,53 @@ function ACAB:GetPixelStep()
 	return 1 / scale
 end
 
--- Nearest multiple of `step` to `value` (round-half-up). Used only to
--- snap DRAG-driven changes onto the pixel grid - never applied to a
--- stepper-button or typed-edit value, which must move/land exactly
--- where the user asked.
+-- Nearest multiple of step (round-half-up); only used for drag-driven slider changes.
 function ACAB:RoundToStep(value, step)
 	return math.floor(value / step + 0.5) * step
 end
 
--- WARNING: Slider:SetValueStep(step) immediately re-snaps the slider's
--- current value to its step grid, which isn't pixel-aligned. Keep these
--- X/Y sliders at step 0 permanently; pixel snapping on drag is done
--- manually in OnValueChanged (guarded by this.suppressSnap so stepper/
--- edit-box commits keep their exact value) - or values silently drift.
-
--- Bumped on every call so each set of stepper buttons gets unique frame names.
+-- Suffix counter; keeps every stepper button's frame name unique.
 local positionStepperCounter = 0
 
--- Sets `slider`'s value without the drag-snap-to-0.5 logic in its
--- OnValueChanged handler touching it - used by every stepper/edit-box
--- commit so their exact target value sticks.
+-- Sets slider's value without the drag pixel-snap in its OnValueChanged.
 function ACAB:SetSliderValueUnsnapped(slider, value)
 	slider.suppressSnap = true
 	slider:SetValue(value)
 	slider.suppressSnap = nil
 end
 
--- Adds "--"/"-"/"+"/"++" buttons flanking `slider` (stepping by 10 and 1
--- real screen pixels respectively - see GetPixelStep), anchored to it
--- directly so they track any later reflow of the slider itself without
--- separate registration. namePrefix should already be unique to the
--- owning page. Returns bigMinus, minus, plus, bigPlus.
+-- Sets slider's value without running its onChange apply; valueText (optional) gets text or tostring(value).
+function ACAB:SetSliderValueSilently(slider, value, valueText, text)
+	slider.suppressApply = true
+	slider:SetValue(value)
+
+	if valueText then
+		valueText:SetText(text or tostring(value))
+	end
+
+	slider.suppressApply = nil
+end
+
+-- Clamps value to slider's min/max.
+local function ClampToSliderRange(slider, value)
+	local min, max = slider:GetMinMaxValues()
+
+	if value < min then
+		return min
+	elseif value > max then
+		return max
+	end
+
+	return value
+end
+
+-- Adds "--"/"-"/"+"/"++" (10/1 screen pixels) buttons around slider. Returns bigMinus, minus, plus, bigPlus.
 function ACAB:CreatePositionStepperButtons(page, slider, namePrefix)
 	positionStepperCounter = positionStepperCounter + 1
 
 	local suffix = tostring(positionStepperCounter)
 
-	-- pixels: how many real screen pixels this button shifts the
-	-- slider's current value by, per click (converted to position units
-	-- live via GetPixelStep, so it stays correct if UI Scale changes),
-	-- clamped to the slider's own min/max. width: forced button width -
-	-- "++"/"--" need more room than "+"/"-" to render centered rather
-	-- than clipped/overflowing a width sized for a single character.
+	-- pixels: screen pixels per click; width: fixed button width.
 	local function MakeStepButton(name, label, pixels, width)
 		local button = CreateFrame("Button", namePrefix .. name .. suffix, page)
 
@@ -326,16 +336,9 @@ function ACAB:CreatePositionStepperButtons(page, slider, namePrefix)
 		button:SetText(label)
 
 		button:SetScript("OnClick", function()
-			local min, max = slider:GetMinMaxValues()
 			local target = slider:GetValue() + (pixels * ACAB:GetPixelStep())
 
-			if target < min then
-				target = min
-			elseif target > max then
-				target = max
-			end
-
-			ACAB:SetSliderValueUnsnapped(slider, target)
+			ACAB:SetSliderValueUnsnapped(slider, ClampToSliderRange(slider, target))
 		end)
 
 		return button
@@ -360,14 +363,10 @@ function ACAB:CreatePositionStepperButtons(page, slider, namePrefix)
 	return bigMinus, minus, plus, bigPlus
 end
 
--- Bumped on every call so each EditBox gets a unique frame name.
+-- Suffix counter; keeps every value EditBox's frame name unique.
 local positionEditBoxCounter = 0
 
--- Turns `valueText` into a click-to-edit control: an invisible click-
--- catcher Button overlays the FontString (which can't receive clicks
--- itself) and swaps in an EditBox on click. Enter applies the typed value
--- (clamped to the slider's min/max), Escape/focus-loss cancels. Returns
--- the click-catcher (for lock-gating) and the EditBox.
+-- Click-to-edit overlay for valueText (Enter commits clamped, Escape cancels). Returns clickCatcher, editBox.
 function ACAB:MakePositionValueEditable(page, valueText, slider, namePrefix)
 	positionEditBoxCounter = positionEditBoxCounter + 1
 
@@ -384,11 +383,7 @@ function ACAB:MakePositionValueEditable(page, valueText, slider, namePrefix)
 	clickCatcher:SetPoint("CENTER", valueText, "CENTER", 0, 0)
 	clickCatcher:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
 
-	-- The next axis's slider sits close below this readout and defaults to
-	-- the same frame level (both are plain children of `page`) - without
-	-- outranking it explicitly, that neighboring slider's hit region can
-	-- win the mouse hit-test over this one whenever they're close enough
-	-- to overlap, silently swallowing clicks meant for this button.
+	-- must outrank the next axis's slider, or its overlapping hit region swallows these clicks
 	clickCatcher:SetFrameLevel(slider:GetFrameLevel() + 5)
 
 	local editBox = CreateFrame(
@@ -416,15 +411,7 @@ function ACAB:MakePositionValueEditable(page, valueText, slider, namePrefix)
 		local parsed = tonumber(editBox:GetText())
 
 		if parsed then
-			local min, max = slider:GetMinMaxValues()
-
-			if parsed < min then
-				parsed = min
-			elseif parsed > max then
-				parsed = max
-			end
-
-			ACAB:SetSliderValueUnsnapped(slider, parsed)
+			ACAB:SetSliderValueUnsnapped(slider, ClampToSliderRange(slider, parsed))
 		end
 
 		editBox:ClearFocus()
@@ -447,17 +434,11 @@ function ACAB:MakePositionValueEditable(page, valueText, slider, namePrefix)
 end
 
 -------------------------------------------------------------------------
--- ACAB:CreatePositionAxisSlider
---
--- One X or Y position-slider column (slider, end labels, steppers,
--- click-to-edit readout). Stores each widget onto page[axisKey.."Slider"/
--- "ValueText"/"StepperBigMinus"/...] for RefreshBarSettingsPage/
--- RefreshSimpleBarPage/RefreshPositionSliderRange to read.
---
--- config = { axisKey = "x"|"y", namePrefix, anchor = {point, relativeTo,
---   relativePoint, x, y}, min, max, lowText, highText,
---   onApply = function(appliedValue) end }
--- Also registers with ACAB:AddHoverOnlyReflowRow. Returns the slider.
+-- ACAB:CreatePositionAxisSlider: one X or Y position column (slider, end labels, steppers,
+-- click-to-edit readout), stored on page[axisKey .. "Slider"/"ValueText"/"StepperMinus"/...].
+-- config = { axisKey = "x"|"y", namePrefix, anchor = {point, relativeTo, relativePoint, x, y},
+--   min, max, lowText, highText, onApply = function(appliedValue) end }
+-- Registers with ACAB:AddHoverOnlyReflowRow. Returns the slider.
 -------------------------------------------------------------------------
 
 function ACAB:CreatePositionAxisSlider(page, config)
@@ -469,7 +450,7 @@ function ACAB:CreatePositionAxisSlider(page, config)
 	slider:SetPoint(unpack(config.anchor))
 	slider:SetMinMaxValues(config.min, config.max)
 
-	-- Continuous, not stepped - see GetPixelStep/RoundToStep's own comment above.
+	-- must stay 0: SetValueStep re-snaps the value to a non-pixel grid and positions drift
 	slider:SetValueStep(0)
 
 	ACAB:SetSliderEndLabels(slider, config.lowText, config.highText)
@@ -499,9 +480,7 @@ function ACAB:CreatePositionAxisSlider(page, config)
 			return
 		end
 
-		-- Only a real mouse drag reaches this un-snapped - every
-		-- stepper/edit-box commit sets suppressSnap around its own
-		-- SetValue() so its exact value passes through untouched.
+		-- Drag values snap to the pixel grid; stepper/edit commits set suppressSnap to keep theirs exact.
 		local applied = value
 
 		if not this.suppressSnap then
@@ -525,17 +504,10 @@ function ACAB:CreatePositionAxisSlider(page, config)
 end
 
 -------------------------------------------------------------------------
--- ACAB:CreateLabeledSlider
---
--- One title-less slider + centered live-value readout, for non-position
--- sliders (Button Size, Spacing, Scale, font-size, etc). Caller owns the
--- section title above it.
---
--- config = { width (default 300), anchor = {point, relativeTo,
---   relativePoint, x, y} (required), min, max, step (default 0),
---   lowText, highText, initialText (default ""),
---   round = function(value) end, format = function(value) end,
---   onChange = function(value, suppressApply) end }
+-- ACAB:CreateLabeledSlider: title-less slider + centered live-value readout.
+-- config = { width (300), anchor = {point, relativeTo, relativePoint, x, y} (required), min, max,
+--   step (0), lowText, highText, initialText (""), round = function(value) end,
+--   format = function(value) end, onChange = function(value, suppressApply) end }
 -- Returns slider, valueText, lowLabel, highLabel.
 -------------------------------------------------------------------------
 
@@ -586,17 +558,11 @@ function ACAB:CreateLabeledSlider(parent, name, config)
 end
 
 -------------------------------------------------------------------------
--- ACAB:CreateLabeledCheckbox
---
--- UICheckButtonTemplate CheckButton with label/anchor/OnClick/tooltip
--- wired from `config`, for on/off toggles across the settings window.
---
--- config = { width (24), height (24), anchor = {point, relativeTo,
---   relativePoint, x, y} (required), label, onClick = function() end,
+-- ACAB:CreateLabeledCheckbox: UICheckButtonTemplate checkbox with label/anchor/OnClick/tooltip.
+-- config = { width (24), height (24), anchor = {point, relativeTo, relativePoint, x, y} (required),
+--   label, onClick = function() end, onLockedClick = function() end,
 --   tooltip = { title, lines = {...} },
---   lockedText (single red line shown instead of `tooltip` whenever the
---   checkbox's own .ACABLocked field is true - see
---   ACAB:LockControlKeepingTooltip, Settings.lua) }
+--   lockedText (string or function; red tooltip shown instead while checkbox.ACABLocked) }
 -- Returns the checkbox.
 -------------------------------------------------------------------------
 
@@ -613,14 +579,7 @@ function ACAB:CreateLabeledCheckbox(parent, name, config)
 	if config.onClick then
 		local onClick = config.onClick
 
-		-- The engine already flips this CheckButton's own checked state
-		-- before OnClick fires - while ACABLocked (ACAB:LockControlKeepingTooltip),
-		-- revert that flip and never call through to `onClick`, instead of
-		-- the usual :Disable() (confirmed live on this client to also
-		-- swallow OnEnter/OnLeave, killing the locked-reason tooltip).
-		-- config.onLockedClick (optional) runs instead - e.g. jumping the
-		-- user to whatever setting is actually blocking this one, same as
-		-- the lock banner's own click (ACAB:HandleLockReasonClick).
+		-- While ACABLocked: revert the engine's check flip and run onLockedClick instead of onClick.
 		checkbox:SetScript("OnClick", function()
 			if this.ACABLocked then
 				this:SetChecked(not this:GetChecked())
@@ -648,17 +607,11 @@ function ACAB:CreateLabeledCheckbox(parent, name, config)
 		local tooltip = config.tooltip
 		local lockedText = config.lockedText
 
-		-- checkbox.ACABLocked is read live (not captured here) - a caller
-		-- like ACAB:LockControlKeepingTooltip stamps it whenever the lock
-		-- state changes, so this always shows the CURRENT reason without
-		-- needing to re-wire the tooltip script on every refresh.
+		-- ACABLocked is read live, so the tooltip always reflects the current lock state.
 		checkbox:SetScript("OnEnter", function()
 			GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
 
 			if this.ACABLocked and lockedText then
-				-- config.lockedText may be a function instead of a plain
-				-- string, so the shown text can branch on whichever lock
-				-- reason is CURRENTLY active rather than a fixed string.
 				local resolvedText = lockedText
 
 				if type(lockedText) == "function" then
@@ -688,12 +641,8 @@ function ACAB:CreateLabeledCheckbox(parent, name, config)
 end
 
 -------------------------------------------------------------------------
--- ACAB:CreateResetButton
---
--- StyleModernButton-styled "Reset ..." button. Caller positions it via
--- config.anchor.
---
--- config = { text ("Reset"), height (22), minWidth (90), maxWidth (90),
+-- ACAB:CreateResetButton: modern-styled "Reset ..." button.
+-- config = { name, text ("Reset"), height (22), minWidth (90), maxWidth (90),
 --   anchor = {point, relativeTo, relativePoint, x, y}, onClick = function() end }
 -- Returns the button.
 -------------------------------------------------------------------------
@@ -720,13 +669,7 @@ function ACAB:CreateResetButton(parent, config)
 end
 
 -------------------------------------------------------------------------
--- ACAB:CreateLockToggleButton
---
--- Small 16x16 padlock icon button (General tab's per-bar Spacing/
--- ButtonSize global-override opt-out). Locked shows a closed padlock,
--- unlocked an open one; caller drives the displayed state via
--- button:SetLocked(bool) and supplies onClick.
---
+-- ACAB:CreateLockToggleButton: 16x16 padlock button; caller drives it via button:SetLocked(bool).
 -- config = { anchor = {point, relativeTo, relativePoint, x, y} (required),
 --   tooltipTitle, lockedLine, unlockedLine, onClick = function() end }
 -- Returns the button.
@@ -784,13 +727,76 @@ function ACAB:CreateLockToggleButton(parent, name, config)
 end
 
 -------------------------------------------------------------------------
--- ACABDialogMixin
---
--- Reusable dialog frame: mode = "confirm" (title/message + buttons),
--- "textinput" (adds EditBox), "dropdown" (adds inline dropdown), or
--- "textarea" (scrollable multi-line EditBox). One frame instance is
--- created lazily (ACAB.activeDialog) and reconfigured per ACAB:ShowDialog
--- call; only one dialog is ever open at a time.
+-- Color swatches + the native ColorPickerFrame
+-------------------------------------------------------------------------
+
+-- 24x24 bordered button with a solid WHITE8X8 fill tinted to the color it represents.
+function ACAB:CreateColorSwatch(parent, name)
+	local swatch = CreateFrame("Button", name, parent)
+
+	swatch:SetWidth(24)
+	swatch:SetHeight(24)
+
+	swatch:SetBackdrop(ACAB.SMALL_BACKDROP)
+	swatch:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+
+	local tex = swatch:CreateTexture(nil, "ARTWORK")
+
+	tex:SetTexture("Interface\\Buttons\\WHITE8X8")
+	tex:SetPoint("TOPLEFT", swatch, "TOPLEFT", 2, -2)
+	tex:SetPoint("BOTTOMRIGHT", swatch, "BOTTOMRIGHT", -2, 2)
+
+	swatch.colorTexture = tex
+
+	return swatch
+end
+
+-- Tints swatch to color ({ r, g, b }, missing channels = 1); no-op without a color.
+function ACAB:SetColorSwatchColor(swatch, color)
+	if not swatch or not swatch.colorTexture or not color then
+		return
+	end
+
+	swatch.colorTexture:SetVertexColor(color.r or 1, color.g or 1, color.b or 1)
+end
+
+-- Opens the native ColorPickerFrame on getter()'s color, beside anchorFrame; setter(r, g, b) gets live
+-- drags and Cancel's restore, and swatch follows along.
+function ACAB:OpenColorPicker(swatch, getter, setter, anchorFrame)
+	local current = getter() or { r = 1, g = 1, b = 1 }
+
+	ColorPickerFrame.func = function()
+		local r, g, b = ColorPickerFrame:GetColorRGB()
+
+		setter(r, g, b)
+		ACAB:SetColorSwatchColor(swatch, getter())
+	end
+
+	-- No alpha channel; opacityFunc is still a no-op in case the client calls it anyway.
+	ColorPickerFrame.opacityFunc = function() end
+	ColorPickerFrame.hasOpacity = false
+
+	ColorPickerFrame.cancelFunc = function(previousValues)
+		if previousValues then
+			setter(previousValues.r, previousValues.g, previousValues.b)
+			ACAB:SetColorSwatchColor(swatch, getter())
+		end
+	end
+
+	ColorPickerFrame.previousValues = { r = current.r, g = current.g, b = current.b }
+	ColorPickerFrame:SetColorRGB(current.r, current.g, current.b)
+
+	-- One strata above the DIALOG-strata settings window.
+	ColorPickerFrame:ClearAllPoints()
+	ColorPickerFrame:SetPoint("TOPLEFT", anchorFrame, "TOPRIGHT", 10, 0)
+	ColorPickerFrame:SetFrameStrata("FULLSCREEN_DIALOG")
+
+	ShowUIPanel(ColorPickerFrame)
+end
+
+-------------------------------------------------------------------------
+-- ACABDialogMixin: one lazily-created dialog (ACAB.activeDialog), reconfigured per ACAB:ShowDialog.
+-- mode = "confirm" | "textinput" (EditBox) | "dropdown" (inline dropdown) | "textarea" (scrolling EditBox)
 -------------------------------------------------------------------------
 
 ACABDialogMixin = {}
@@ -798,9 +804,7 @@ ACABDialogMixin = {}
 local DIALOG_WIDTH = 360
 local DIALOG_BUTTON_HEIGHT = 22
 local DIALOG_BUTTON_MIN_WIDTH = 100
--- "prominent"/"minor" button.variant sizing (ACAB:ShowDialog's
--- buttonConfig.variant) - prominent is the visually dominant primary
--- choice, minor a smaller de-emphasized one, e.g. the first-login dialog.
+-- Sizes for buttonConfig.variant "prominent" (primary choice) and "minor" (de-emphasized).
 local DIALOG_BUTTON_HEIGHT_PROMINENT = 34
 local DIALOG_BUTTON_MIN_WIDTH_PROMINENT = 220
 local DIALOG_BUTTON_HEIGHT_MINOR = 18
@@ -808,25 +812,14 @@ local DIALOG_BUTTON_MIN_WIDTH_MINOR = 80
 local DIALOG_TEXTAREA_HEIGHT = 160
 local DIALOG_ERROR_BANNER_HEIGHT = 54
 local DIALOG_TEXTAREA_SCROLLBAR_RESERVE = 28
--- Fixed scroll-child height rather than measuring wrapped line count -
--- covers any export size, at the cost of the scrollbar thumb not
--- reflecting short texts proportionally.
+-- Fixed text-area scroll-child height (not measured from the text).
 local DIALOG_TEXTAREA_CONTENT_HEIGHT = 4000
 
--- Creates the scrollable multi-line EditBox backing mode == "textarea"
--- (profile export/import). Built once and reused, same as the dialog
--- frame itself - see EnsureDialogFrame's own header comment.
+-- Creates the scrolling multi-line EditBox used by mode == "textarea".
 local function CreateDialogTextArea(dialog)
 	local scrollFrame = ACAB:CreateScrollFrame(dialog, "ACABDialogTextAreaScrollFrame")
 
-	scrollFrame:SetBackdrop({
-		bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-		edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-		tile = true,
-		tileSize = 16,
-		edgeSize = 12,
-		insets = { left = 3, right = 3, top = 3, bottom = 3 },
-	})
+	scrollFrame:SetBackdrop(ACAB.MODERN_BACKDROP)
 	scrollFrame:SetBackdropColor(0.05, 0.05, 0.05, 0.9)
 
 	local editBox = CreateFrame("EditBox", "ACABDialogTextAreaEditBox", scrollFrame)
@@ -835,9 +828,7 @@ local function CreateDialogTextArea(dialog)
 	editBox:SetAutoFocus(false)
 	editBox:SetFontObject(ChatFontNormal)
 	editBox:SetMaxLetters(0)
-	-- No template (unlike InputBoxTemplate) means no built-in text padding -
-	-- without this the text starts flush at the scroll child's raw left
-	-- edge, underneath the scrollFrame backdrop's own left border inset.
+	-- Keeps text off the backdrop border (no template padding).
 	editBox:SetTextInsets(6, 6, 4, 4)
 	editBox:SetScript("OnEscapePressed", function() this:ClearFocus() end)
 
@@ -863,21 +854,13 @@ local function EnsureDialogFrame()
 end
 
 function ACABDialogMixin:OnLoad()
-	-- FULLSCREEN_DIALOG: renders above Settings.lua's DIALOG-strata window.
+	-- Above the DIALOG-strata settings window.
 	self:SetFrameStrata("FULLSCREEN_DIALOG")
 	self:SetWidth(DIALOG_WIDTH)
 	self:SetHeight(160)
 	self:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
 
-	-- Matches CreateSettingsFrame's own backdrop (Settings.lua).
-	self:SetBackdrop({
-		bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-		edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-		tile = true,
-		tileSize = 32,
-		edgeSize = 32,
-		insets = { left = 11, right = 12, top = 12, bottom = 11 },
-	})
+	self:SetBackdrop(ACAB.DIALOG_BACKDROP)
 
 	self:EnableMouse(true)
 	self:SetMovable(true)
@@ -894,8 +877,7 @@ function ACABDialogMixin:OnLoad()
 	self.messageText:SetWidth(DIALOG_WIDTH - 40)
 	self.messageText:SetJustifyH("CENTER")
 
-	-- Optional red warning line (e.g. profile import's override warning),
-	-- shown only when config.warningText is set.
+	-- Optional red line under the message (config.warningText).
 	self.warningText = self:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 	self.warningText:SetWidth(DIALOG_WIDTH - 40)
 	self.warningText:SetJustifyH("CENTER")
@@ -905,8 +887,7 @@ function ACABDialogMixin:OnLoad()
 	self.textArea = CreateDialogTextArea(self)
 	self.textArea:Hide()
 
-	-- Inline validation-error banner - same red backdrop treatment as
-	-- Settings.lua's profile-lock banner (ACAB:CreateProfileLockWarning).
+	-- Inline validation-error banner (red backdrop).
 	local errorBanner = CreateFrame("Frame", nil, self)
 
 	errorBanner:SetBackdrop({
@@ -931,8 +912,7 @@ function ACABDialogMixin:OnLoad()
 
 	self.errorBanner = errorBanner
 
-	-- InputBoxTemplate: standard vanilla FrameXML EditBox. Created hidden;
-	-- shown only for mode == "textinput".
+	-- Single-line input for mode == "textinput".
 	self.editBox = CreateFrame("EditBox", "ACABDialogEditBox", self, "InputBoxTemplate")
 	self.editBox:SetWidth(DIALOG_WIDTH - 80)
 	self.editBox:SetHeight(20)
@@ -947,8 +927,7 @@ function ACABDialogMixin:OnLoad()
 	self.dropdown = ACAB:CreateInlineDropdown(self, DIALOG_WIDTH - 80, "ACABDialogDropdown")
 	self.dropdown:Hide()
 
-	-- Up to 4 buttons - the first-login dialog needs 3 plus a conditional
-	-- 4th ("use existing profile").
+	-- Fixed pool of 4 buttons; height/minWidth are set per variant in Init.
 	self.buttons = {}
 
 	local i
@@ -956,8 +935,6 @@ function ACABDialogMixin:OnLoad()
 	for i = 1, 4 do
 		local button = CreateFrame("Button", nil, self)
 
-		-- Height/minWidth are set per-config in Init instead (variant
-		-- support) - only the maxWidth clamp and visuals are fixed here.
 		ACAB:StyleModernButton(button, DIALOG_BUTTON_MIN_WIDTH, DIALOG_WIDTH - 40)
 		button:Hide()
 
@@ -969,15 +946,13 @@ end
 
 -- config = {
 --   title, message, mode = "confirm"|"textinput"|"dropdown"|"textarea",
---   defaultText,       -- textinput/textarea starting value
---   options = {...},   -- dropdown selectable values
---   warningText,       -- optional red line under the message
+--   defaultText,                -- textinput/textarea starting value
+--   options = {...},            -- dropdown values
+--   warningText,                -- optional red line under the message
 --   reserveErrorBanner = true,  -- reserves space for :ShowInlineError
 --   liveValidate = function(value) return ok, errorMessage end, -- textarea only
 --   buttons = { { text, isDefault, danger, keepOpen,
---     variant = "prominent"|"minor",  -- optional size/color emphasis;
---       prominent = taller + wider + blue, minor = shorter + narrower + red
---       (same red as danger - no need to also set danger for a minor button)
+--     variant = "prominent"|"minor",  -- prominent = larger + blue, minor = smaller + red
 --     validate = function(value) return ok, errorMessage end,
 --     onClick = function(value) end }, ... },
 -- }
@@ -1029,9 +1004,7 @@ function ACABDialogMixin:Init(config)
 		self.textArea.editBox:SetText(config.defaultText or "")
 		self.textArea.editBox:HighlightText()
 
-		-- Sets up the scrollbar's range/visibility (ACAB:UpdateScrollFrame,
-		-- Settings.lua) - it also resets the scroll child's width to the
-		-- scrollFrame's own, so the EditBox is narrowed back down after.
+		-- UpdateScrollFrame resets the EditBox to the scrollFrame's width; narrowed again right after.
 		ACAB:UpdateScrollFrame(
 			self.textArea,
 			self.textArea.editBox,
@@ -1073,8 +1046,7 @@ function ACABDialogMixin:Init(config)
 		self.errorBanner.text:SetWidth(DIALOG_WIDTH - 56)
 	end
 
-	-- Buttons wrap into as many centered rows as needed, each row centered
-	-- on the dialog's own horizontal center.
+	-- Buttons wrap into rows, each row centered on the dialog.
 	local BUTTON_GAP_X = 12
 	local BUTTON_ROW_GAP_Y = 8
 	local availableWidth = DIALOG_WIDTH - 40
@@ -1083,9 +1055,7 @@ function ACABDialogMixin:Init(config)
 	local count = table.getn(self.buttonConfigs)
 	self.defaultButtonIndex = nil
 
-	-- Pass 1: configure each visible button so its content-fit width
-	-- (ACAB:StyleModernButton's SetText override) is known before
-	-- row-packing below.
+	-- Pass 1: configure each button so its label-fit width is known before row packing.
 	for i = 1, 4 do
 		local button = self.buttons[i]
 		local buttonConfig = self.buttonConfigs[i]
@@ -1093,10 +1063,7 @@ function ACABDialogMixin:Init(config)
 		if buttonConfig then
 			local variant = buttonConfig.variant
 
-			-- Buttons are reused across dialogs (self.buttons is a fixed
-			-- pool), so height/minWidth must be reset here per variant or
-			-- a plain button can inherit a previous dialog's prominent/
-			-- minor sizing.
+			-- Pooled buttons: size and color are reset every Init.
 			if variant == "prominent" then
 				button:SetHeight(DIALOG_BUTTON_HEIGHT_PROMINENT)
 				button.minWidth = DIALOG_BUTTON_MIN_WIDTH_PROMINENT
@@ -1112,9 +1079,6 @@ function ACABDialogMixin:Init(config)
 
 			button:SetText(buttonConfig.text or "")
 
-			-- Buttons are reused across dialogs (self.buttons is a fixed
-			-- pool), so a non-danger/non-prominent button must reset its
-			-- color here or it can inherit a previous dialog's color.
 			if buttonConfig.danger or variant == "minor" then
 				ACAB:ApplyDangerButtonHighlight(button)
 			elseif variant == "prominent" then
@@ -1135,15 +1099,9 @@ function ACABDialogMixin:Init(config)
 					end
 				end
 
-				if buttonConfig.keepOpen then
-					if buttonConfig.onClick then
-						buttonConfig.onClick(value)
-					end
-
-					return
+				if not buttonConfig.keepOpen then
+					ACAB.activeDialog:Hide()
 				end
-
-				ACAB.activeDialog:Hide()
 
 				if buttonConfig.onClick then
 					buttonConfig.onClick(value)
@@ -1164,10 +1122,7 @@ function ACABDialogMixin:Init(config)
 		self.defaultButtonIndex = 1
 	end
 
-	-- Pass 2: greedily wrap buttons 1..count into rows - rows[r] is an
-	-- array of button indices, rowWidths[r] that row's total width,
-	-- rowHeights[r] that row's tallest button (rows can mix variant
-	-- heights, so this can no longer assume a flat DIALOG_BUTTON_HEIGHT).
+	-- Pass 2: greedily pack buttons into rows (button indices, total width, tallest height per row).
 	local rows = {}
 	local rowWidths = {}
 	local rowHeights = {}
@@ -1177,23 +1132,14 @@ function ACABDialogMixin:Init(config)
 		local button = self.buttons[i]
 		local width = button:GetWidth()
 		local height = button:GetHeight()
-		local addWidth = width
+		local addWidth = BUTTON_GAP_X + width
 
-		if rowCount > 0 and table.getn(rows[rowCount]) > 0 then
-			addWidth = BUTTON_GAP_X + width
-
-			if (rowWidths[rowCount] + addWidth) > availableWidth then
-				rowCount = rowCount + 1
-				rows[rowCount] = {}
-				rowWidths[rowCount] = 0
-				rowHeights[rowCount] = 0
-				addWidth = width
-			end
-		else
+		if rowCount == 0 or (rowWidths[rowCount] + addWidth) > availableWidth then
 			rowCount = rowCount + 1
 			rows[rowCount] = {}
 			rowWidths[rowCount] = 0
 			rowHeights[rowCount] = 0
+			addWidth = width
 		end
 
 		table.insert(rows[rowCount], i)
@@ -1204,8 +1150,7 @@ function ACABDialogMixin:Init(config)
 		end
 	end
 
-	-- Each row is anchored off self's own TOP with a precomputed offset,
-	-- independent of vertical stacking order.
+	-- Rows anchor off the dialog's TOP at offsets summed from the content above.
 	local TOP_OFFSET = 18
 	local BOTTOM_PADDING = 20
 
@@ -1270,8 +1215,7 @@ function ACABDialogMixin:GetValue()
 	return nil
 end
 
--- Shows the reserved inline red error banner (config.reserveErrorBanner)
--- with `message`. No-op if the current dialog didn't reserve one.
+-- Shows message in the reserved error banner; no-op without config.reserveErrorBanner.
 function ACABDialogMixin:ShowInlineError(message)
 	if not self.hasErrorBannerSlot then
 		return
@@ -1281,8 +1225,7 @@ function ACABDialogMixin:ShowInlineError(message)
 	self.errorBanner:Show()
 end
 
--- Invokes the default button's own OnClick handler directly rather than
--- via :Click().
+-- Calls the default button's OnClick handler directly.
 function ACABDialogMixin:ClickDefaultButton()
 	local index = self.defaultButtonIndex
 	local button = index and self.buttons[index]
@@ -1296,9 +1239,7 @@ function ACABDialogMixin:ClickDefaultButton()
 	end
 end
 
--- Named Display, not Show - Mixin() copies this directly onto the frame's
--- table, which would shadow the native :Show() and make it unreachable if
--- this were named Show.
+-- must not be named Show: Mixin copies it onto the frame and would shadow the native Show
 function ACABDialogMixin:Display()
 	self:Show()
 
@@ -1309,8 +1250,7 @@ function ACABDialogMixin:Display()
 	end
 end
 
--- The one entry point every caller uses for every dialog need. Reuses the
--- lazily-created dialog frame (EnsureDialogFrame above).
+-- Opens the shared dialog configured by config (see ACABDialogMixin:Init). Returns the dialog.
 function ACAB:ShowDialog(config)
 	local dialog = EnsureDialogFrame()
 
@@ -1321,24 +1261,31 @@ function ACAB:ShowDialog(config)
 end
 
 -------------------------------------------------------------------------
--- ACABFadeStripMixin / ACAB:CreateFadeStrip
---
--- Horizontal fade highlight. Textures are owned directly by `parent`
--- (not a child frame) and drawn on ARTWORK, so they render behind
--- `parent`'s own OVERLAY text - draw order between different frames is by
--- frame level, not layer, so a child frame's ARTWORK would still cover it.
---
--- Two shapes via options.inverted: normal (default) fades transparent ->
--- solid -> transparent (3 textures); inverted fades solid -> transparent
--- -> solid (4 textures, since SetGradientAlpha only does 2-stop gradients).
--- options.edgeFraction: each edge's share of total width (default 0.1).
+-- ACABFadeStripMixin / ACAB:CreateFadeStrip: horizontal fade highlight built from ARTWORK textures
+-- owned by `parent` itself (see known-problems.md: "Fade strip textures live on the parent").
+-- Normal: clear -> solid -> clear (3 textures); options.inverted: solid -> clear -> solid (4).
+-- options.edgeFraction: each edge's share of the width (default 0.1).
 -------------------------------------------------------------------------
 
 ACABFadeStripMixin = {}
 
--- parent: frame to own the strip's textures. width/height: the strip's
--- initial pixel size (see :SetStripWidth to resize later without
--- recreating textures).
+local function CreateStripTexture(parent)
+	local texture = parent:CreateTexture(nil, "ARTWORK")
+
+	texture:SetTexture("Interface\\Buttons\\WHITE8X8")
+
+	return texture
+end
+
+-- Anchors texture to the right of previous and sizes it.
+local function ChainStripTexture(texture, previous, width, height)
+	texture:ClearAllPoints()
+	texture:SetPoint("TOPLEFT", previous, "TOPRIGHT", 0, 0)
+	texture:SetWidth(width)
+	texture:SetHeight(height)
+end
+
+-- width/height: initial strip size (resize later via SetStripWidth/SetStripHeight).
 function ACAB:CreateFadeStrip(parent, width, height, options)
 	options = options or {}
 
@@ -1352,18 +1299,12 @@ function ACAB:CreateFadeStrip(parent, width, height, options)
 	strip.edgeFraction = options.edgeFraction or 0.1
 	strip.inverted = options.inverted and true or false
 
-	strip.leftTex = parent:CreateTexture(nil, "ARTWORK")
-	strip.leftTex:SetTexture("Interface\\Buttons\\WHITE8X8")
-
-	strip.midTex = parent:CreateTexture(nil, "ARTWORK")
-	strip.midTex:SetTexture("Interface\\Buttons\\WHITE8X8")
-
-	strip.rightTex = parent:CreateTexture(nil, "ARTWORK")
-	strip.rightTex:SetTexture("Interface\\Buttons\\WHITE8X8")
+	strip.leftTex = CreateStripTexture(parent)
+	strip.midTex = CreateStripTexture(parent)
+	strip.rightTex = CreateStripTexture(parent)
 
 	if strip.inverted then
-		strip.midRightTex = parent:CreateTexture(nil, "ARTWORK")
-		strip.midRightTex:SetTexture("Interface\\Buttons\\WHITE8X8")
+		strip.midRightTex = CreateStripTexture(parent)
 	end
 
 	strip:SetStripWidth(width)
@@ -1372,10 +1313,7 @@ function ACAB:CreateFadeStrip(parent, width, height, options)
 	return strip
 end
 
--- strip isn't a real Frame/Region (its textures are owned by `parent`
--- instead), so SetPoint/ClearAllPoints/Show/Hide/IsShown are reimplemented
--- here rather than inherited - all operate on leftTex, whose own anchor is
--- what every other texture in the strip chains off of.
+-- Region-like API; every other texture chains off leftTex's anchor.
 function ACABFadeStripMixin:SetPoint(...)
 	self.leftTex:SetPoint(unpack(arg))
 end
@@ -1416,52 +1354,34 @@ function ACABFadeStripMixin:SetShown(shown)
 	end
 end
 
--- Recomputes the texture split for the strip's current width - kept
--- separate from color/alpha updates so ACABListRowMixin:SetVisualWidth can
--- resize an already-colored strip without touching its color.
+-- Recomputes the texture split for width (color untouched).
 function ACABFadeStripMixin:SetStripWidth(width)
 	self.width = width
 
 	local height = self.height or 0
 	local edgeWidth = width * self.edgeFraction
+	local midWidth = width - (edgeWidth * 2)
+
+	if self.inverted then
+		midWidth = midWidth / 2
+	end
 
 	self.leftTex:SetWidth(edgeWidth)
 	self.leftTex:SetHeight(height)
 
+	ChainStripTexture(self.midTex, self.leftTex, midWidth, height)
+
+	local previous = self.midTex
+
 	if self.inverted then
-		local midWidth = (width - (edgeWidth * 2)) / 2
-
-		self.midTex:ClearAllPoints()
-		self.midTex:SetPoint("TOPLEFT", self.leftTex, "TOPRIGHT", 0, 0)
-		self.midTex:SetWidth(midWidth)
-		self.midTex:SetHeight(height)
-
-		self.midRightTex:ClearAllPoints()
-		self.midRightTex:SetPoint("TOPLEFT", self.midTex, "TOPRIGHT", 0, 0)
-		self.midRightTex:SetWidth(midWidth)
-		self.midRightTex:SetHeight(height)
-
-		self.rightTex:ClearAllPoints()
-		self.rightTex:SetPoint("TOPLEFT", self.midRightTex, "TOPRIGHT", 0, 0)
-		self.rightTex:SetWidth(edgeWidth)
-		self.rightTex:SetHeight(height)
-	else
-		local midWidth = width - (edgeWidth * 2)
-
-		self.midTex:ClearAllPoints()
-		self.midTex:SetPoint("TOPLEFT", self.leftTex, "TOPRIGHT", 0, 0)
-		self.midTex:SetWidth(midWidth)
-		self.midTex:SetHeight(height)
-
-		self.rightTex:ClearAllPoints()
-		self.rightTex:SetPoint("TOPLEFT", self.midTex, "TOPRIGHT", 0, 0)
-		self.rightTex:SetWidth(edgeWidth)
-		self.rightTex:SetHeight(height)
+		ChainStripTexture(self.midRightTex, self.midTex, midWidth, height)
+		previous = self.midRightTex
 	end
+
+	ChainStripTexture(self.rightTex, previous, edgeWidth, height)
 end
 
--- Resizes just the height - SetStripWidth recomputes height too, but
--- nothing re-runs it when only the strip's height changes.
+-- Resizes only the height.
 function ACABFadeStripMixin:SetStripHeight(height)
 	self.height = height
 
@@ -1474,9 +1394,7 @@ function ACABFadeStripMixin:SetStripHeight(height)
 	end
 end
 
--- Re-runs the gradient/solid-color calls with the current r/g/b/peakAlpha -
--- shared by SetFadeColor and SetPeakAlpha so each only has to update the
--- one field it owns before calling this.
+-- Reapplies gradients/solid colors from r/g/b/peakAlpha.
 function ACABFadeStripMixin:ApplyFadeColors()
 	local r, g, b, a = self.r, self.g, self.b, self.peakAlpha
 
@@ -1502,42 +1420,17 @@ function ACABFadeStripMixin:SetPeakAlpha(a)
 	self:ApplyFadeColors()
 end
 
--- Gives a ACAB:StyleModernButton-styled button a plain solid red "danger"
--- background (destructive actions, e.g. Delete Profile) - just a flat
--- backdrop color swap; StyleModernButton's own gold hover-border behavior
--- is left untouched.
-local DANGER_COLOR = { 0.6, 0.08, 0.08 }
-
-function ACAB:ApplyDangerButtonHighlight(button)
-	button:SetBackdropColor(DANGER_COLOR[1], DANGER_COLOR[2], DANGER_COLOR[3], 0.9)
-end
-
--- Same idea as ApplyDangerButtonHighlight, for a "prominent"-variant button
--- (e.g. the first-login dialog's primary choice) - flat blue background.
-local PROMINENT_COLOR = { 0.12, 0.35, 0.68 }
-
-function ACAB:ApplyProminentButtonHighlight(button)
-	button:SetBackdropColor(PROMINENT_COLOR[1], PROMINENT_COLOR[2], PROMINENT_COLOR[3], 0.9)
-end
-
 -------------------------------------------------------------------------
--- ACABListRowMixin
---
--- Generic list-row widget: two ACABFadeStripMixin layers (selectStrip,
--- hoverStrip) for rest/hover/selected/selected+hover/disabled states.
--- Disabled always wins - hides both strips and blocks onClick.
+-- ACABListRowMixin: list row with select/hover fade strips; disabled hides both and blocks onClick.
 -------------------------------------------------------------------------
 
 ACABListRowMixin = {}
 
--- parent: frame to anchor into. name: optional.
+-- name is optional.
 function ACAB:CreateListRow(parent, name)
 	local row = CreateFrame("Button", name, parent)
 
-	-- Must capture BEFORE Mixin below overwrites row.SetWidth/SetHeight
-	-- with ACABListRowMixin's own overrides - capturing after Mixin grabs
-	-- the mixin's own override instead of the native method, causing
-	-- infinite recursion the moment SetWidth/SetHeight is called.
+	-- must capture native SetWidth/SetHeight BEFORE Mixin, or the overrides recurse infinitely
 	row.nativeSetWidth = row.SetWidth
 	row.nativeSetHeight = row.SetHeight
 
@@ -1562,7 +1455,7 @@ function ACABListRowMixin:OnLoad()
 	self.selectStrip:SetPeakAlpha(0.35)
 	self.selectStrip:Hide()
 
-	-- Created after selectStrip so it draws on top when both are shown.
+	-- Created after selectStrip so it draws on top.
 	self.hoverStrip = ACAB:CreateFadeStrip(self, width, height)
 	self.hoverStrip:SetPoint("LEFT", self, "LEFT", 0, 0)
 	self.hoverStrip:SetFadeColor(ACAB.UI_HOVER_COLOR[1], ACAB.UI_HOVER_COLOR[2], ACAB.UI_HOVER_COLOR[3])
@@ -1603,21 +1496,13 @@ function ACABListRowMixin:SetSelected(selected)
 	self:UpdateVisualState()
 end
 
-function ACABListRowMixin:IsRowSelected()
-	return self.isSelected
-end
-
--- Disabled overrides hover/selected visuals and blocks onClick; OnEnter/
--- OnLeave still fire so a disabled row can still show a tooltip.
+-- Disabled overrides hover/selected visuals and blocks onClick (OnEnter/OnLeave still fire).
 function ACABListRowMixin:SetDisabled(disabled)
 	self.isDisabled = disabled and true or false
 	self:UpdateVisualState()
 end
 
--- Resizes/repositions only the fade strips, not the row's own hit-box -
--- lets the highlight extend across a sibling checkbox or align to a wider
--- container without changing what area responds to clicks. offsetX
--- shifts both strips' LEFT anchor relative to the row.
+-- Resizes/offsets only the fade strips, not the row's hit box.
 function ACABListRowMixin:SetVisualWidth(width, offsetX)
 	offsetX = offsetX or 0
 
@@ -1630,9 +1515,7 @@ function ACABListRowMixin:SetVisualWidth(width, offsetX)
 	self.hoverStrip:SetStripWidth(width)
 end
 
--- Overrides the native Button:SetWidth (captured as self.nativeSetWidth in
--- ACAB:CreateListRow) so a row with no inline checkbox keeps its strips
--- sized to match without a separate SetVisualWidth call.
+-- Native SetWidth plus strip width sync.
 function ACABListRowMixin:SetWidth(width)
 	self.nativeSetWidth(self, width)
 
@@ -1642,9 +1525,7 @@ function ACABListRowMixin:SetWidth(width)
 	end
 end
 
--- Same technique as SetWidth, for height - without this the strips stay
--- stuck at whatever height OnLoad captured (typically 0, since OnLoad
--- runs before the caller ever calls SetHeight), rendering invisible.
+-- Native SetHeight plus strip height sync.
 function ACABListRowMixin:SetHeight(height)
 	self.nativeSetHeight(self, height)
 
@@ -1654,9 +1535,7 @@ function ACABListRowMixin:SetHeight(height)
 	end
 end
 
--- Factored out of OnEnter/OnLeave (see OnLoad) so another frame - e.g. a
--- sibling checkbox sharing this row's hover fade - can call it directly
--- without needing `this` to be the row itself.
+-- Hover enter/leave; also called by sibling frames that share this row's hover highlight.
 function ACABListRowMixin:OnRowEnter()
 	self.isHovering = true
 	self:UpdateVisualState()

@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.2.0-beta
+
+### Features
+
+- **GryphON or GryphOFF:** With the new Gryphon / Background Settings Dropdown on Mainbar's Settings-Page you can decide if you want the Gryphons, just the background, or everything disabled for a more modern & clean look.
+- Blizzard's Main Bar art now moves and scales with Main Bar, in both Vanilla and Modern button style.
+- While the art is shown, Bag Bar, Key Ring, Micro Menu, Latency Bar and Page Indicator stay in their vanilla spots on Main Bar; unlock any of them via its lock icon (settings page or Edit Layout mode) to move it freely.
+- Settings that would break the art's alignment are locked while it's shown - hover to see why, click to jump to the responsible setting. Your own grid choices return once the art is off.
+- Page Indicator now sits right of Main Bar, vertically centered, and follows it through any grid, size or move - until you drag it somewhere else.
+- Bag Bar gets a Grid Layout option (5x1 or 1x5).
+- Key Ring gets its own settings page (position, scale, hover-only, reset).
+- Position X/Y are now measured from screen center to each element's visible center: 0/0 is dead center for every element, whatever its border style, grid or scale.
+- Button spacing now scales with button size on every bar, so identically configured bars are always exactly the same size.
+- Styled Pet Bar and Stance Bar get "Reset to Modern Layout Default"; all Vanilla/Modern resets now also restore default button size, spacing and scale.
+
+### Bugfixes
+
+- Fix Setup Wizard's "Keep Vanilla Layout" turning Page/Stance Swap back on after you disabled them.
+- Fix styled Stance Bar's Reset to Vanilla Layout sizing it for 10 stances instead of your actual forms.
+- Fix `/acab profile copy/import/export` overwriting the locked Default profile - now refused in chat.
+- Fix a profile deleted on one character being recreated with defaults on another - now falls back to Default.
+- Fix early XP/rest events on login touching settings before the profile loaded (errors on fresh installs).
+- Fix hoverbind saving other buttons' temporary stance-swap keybinds, leaving native keys unbound after relog.
+- Fix Extra Bars' action slots overlapping after shrinking a bar.
+- Fix color picker Cancel not restoring the previous color; color options now grey out with Better Experience Bar off.
+- Fix Setup Wizard slider readouts staying blank, and early finishes (Lock down / Keep Vanilla Layout) now reset global spacing/size to defaults.
+- Fix spacing max: 20 in both button styles, no more shrink or overshoot when switching style.
+- Fix Force Vanilla Layout not switching a styled Pet/Stance Bar to native - prompts a reload, settings page matches.
+- Fix bar 5's Modern reset doing nothing with bar 4 disabled; Modern resets now restore bars 4/5 to 1x12.
+- Fix Tooltip scale sticking to button and settings tooltips.
+- Fix a click without moving dropping Page Indicator's follow-Main-Bar mode with snapping on.
+- Fix the Main Bar art-dropdown highlight flickering on repeated clicks.
+
 ## 1.1.1-beta
 
 - Add lightweight update checker (peer-announce over addon chat, nags once per session on a newer version)
