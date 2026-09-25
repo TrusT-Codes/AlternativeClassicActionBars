@@ -1,10 +1,20 @@
 -- Menu.lua
--- Context menu opened by the minimap button, built on vanilla's native
--- UIDropDownMenuTemplate system.
+-- Minimap-button context menu, built on vanilla's native UIDropDownMenuTemplate.
 
 local ACAB = AlternativeClassicActionBars
 
 ACAB.menuFrame = CreateFrame("Frame", "ACABDropDownMenu", UIParent, "UIDropDownMenuTemplate")
+
+-- Checkbox entry that keeps the menu open on click.
+local function NewToggleInfo(text, checked, func)
+	return {
+		text = text,
+		isNotRadio = true,
+		checked = checked,
+		func = func,
+		keepShownOnClick = true,
+	}
+end
 
 local function InitializeMenu()
 	local info = {}
@@ -14,12 +24,7 @@ local function InitializeMenu()
 	info.func = function() ACAB:ToggleSettingsFrame() end
 	UIDropDownMenu_AddButton(info)
 
-	info = {}
-	info.text = "Configure Layout"
-	info.isNotRadio = true
-	info.checked = ACAB:IsEditMode()
-	info.func = function() ACAB:ToggleEditMode() end
-	info.keepShownOnClick = true
+	info = NewToggleInfo("Configure Layout", ACAB:IsEditMode(), function() ACAB:ToggleEditMode() end)
 
 	if ACAB:IsDefaultProfileActive() then
 		info.disabled = 1
@@ -31,29 +36,14 @@ local function InitializeMenu()
 
 	UIDropDownMenu_AddButton(info)
 
-	info = {}
-	info.text = "Lock Action Bars"
-	info.isNotRadio = true
-	info.checked = ACAB:IsLockActionBars()
-	info.func = function() ACAB:ToggleLockActionBars() end
-	info.keepShownOnClick = true
-	UIDropDownMenu_AddButton(info)
+	UIDropDownMenu_AddButton(NewToggleInfo("Lock Action Bars", ACAB:IsLockActionBars(),
+		function() ACAB:ToggleLockActionBars() end))
 
-	info = {}
-	info.text = "Hoverbind"
-	info.isNotRadio = true
-	info.checked = ACAB:IsHoverBindMode()
-	info.func = function() ACAB:ToggleHoverBindMode() end
-	info.keepShownOnClick = true
-	UIDropDownMenu_AddButton(info)
+	UIDropDownMenu_AddButton(NewToggleInfo("Hoverbind", ACAB:IsHoverBindMode(),
+		function() ACAB:ToggleHoverBindMode() end))
 
-	info = {}
-	info.text = "Always Show Action Bars"
-	info.isNotRadio = true
-	info.checked = ACAB:IsAlwaysShowMultibars()
-	info.func = function() ACAB:ToggleAlwaysShowMultibars() end
-	info.keepShownOnClick = true
-	UIDropDownMenu_AddButton(info)
+	UIDropDownMenu_AddButton(NewToggleInfo("Always Show Action Bars", ACAB:IsAlwaysShowMultibars(),
+		function() ACAB:ToggleAlwaysShowMultibars() end))
 end
 
 UIDropDownMenu_Initialize(ACAB.menuFrame, InitializeMenu, "MENU")

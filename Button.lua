@@ -1,45 +1,18 @@
 -- Button.lua
--- Single action-slot-backed button, driven through native
--- UseAction/PlaceAction/PickupAction/HasAction. Pet Bar buttons
--- (self.isPetSlot) are backed by a pet slot (1-10) instead, driven through
--- CastPetAction/GetPetActionInfo/GetPetActionCooldown/TogglePetAutocast.
---
--- Engine-invoked script handlers receive the frame via global `this`, not
--- `self`. Methods called with `:` receive `self`.
+-- Pool button backed by an action slot (UseAction/PlaceAction/PickupAction/HasAction), a pet slot (isPetSlot)
+-- or a shapeshift form index (isStanceSlot). Script handlers use global `this`; `:` methods use `self`.
 
 local ACAB = AlternativeClassicActionBars
 
--- Hotkey/Count/Macro text's inset from the button's edges, by border style.
--- Applied by ApplyButtonTextInsets, read back by SetTruncatedButtonText.
+-- Hotkey/count/macro text inset from the button's edges, by border style.
 ACAB.BUTTON_TEXT_INSET_VANILLA = 0
 ACAB.BUTTON_TEXT_INSET_MODERN = 2
 
--- Gets the quality color for an action slot holding an equipped item.
--- Matches the action slot's texture against each inventory slot's texture
--- to find which equipment slot the item is in, then reads its quality.
-local EQUIP_SLOTS_TO_SCAN = {
-	0,  -- ammo
-	1,  -- head
-	2,  -- neck
-	3,  -- shoulder
-	4,  -- shirt
-	5,  -- chest
-	6,  -- waist
-	7,  -- legs
-	8,  -- feet
-	9,  -- wrist
-	10, -- hands
-	11, -- finger1
-	12, -- finger2
-	13, -- trinket1
-	14, -- trinket2
-	15, -- back
-	16, -- mainhand
-	17, -- offhand
-	18, -- ranged
-	19, -- tabard
-}
+-- Equipment slots scanned by GetActionItemQualityColor: 0 (ammo) through 19 (tabard).
+local FIRST_EQUIP_SLOT = 0
+local LAST_EQUIP_SLOT = 19
 
+-- Quality color of the equipped item an action slot holds, found by matching its texture against each equipment slot.
 function ACAB:GetActionItemQualityColor(actionSlot)
 	if not GetInventoryItemQuality or not GetInventoryItemTexture or not GetActionTexture or not GetItemQualityColor then
 		return nil
@@ -48,10 +21,9 @@ function ACAB:GetActionItemQualityColor(actionSlot)
 	if not actionTexture then
 		return nil
 	end
-	-- Lowercases both sides since texture path casing varies by call site.
+	-- Case-insensitive: texture path casing varies by source.
 	local actionTexLower = string.lower(actionTexture)
-	for i = 1, table.getn(EQUIP_SLOTS_TO_SCAN) do
-		local invSlot = EQUIP_SLOTS_TO_SCAN[i]
+	for invSlot = FIRST_EQUIP_SLOT, LAST_EQUIP_SLOT do
 		local invTex = GetInventoryItemTexture("player", invSlot)
 		if invTex and string.lower(invTex) == actionTexLower then
 			local quality = GetInventoryItemQuality("player", invSlot)
@@ -63,18 +35,17 @@ function ACAB:GetActionItemQualityColor(actionSlot)
 	return nil
 end
 
--- ALWAYS_SHOW_MULTIBARS is Blizzard's "Always Show Action Bars" global (string "1" when checked, not a CVar).
+-- Blizzard's "Always Show Action Bars" global (not a CVar).
 local function IsAlwaysShowMultibars()
 	return ALWAYS_SHOW_MULTIBARS == "1" or ALWAYS_SHOW_MULTIBARS == 1
 end
 
--- Exposed as a ACAB: method too so Menu.lua's minimap-dropdown toggle can read the same check.
 ACAB.IsAlwaysShowMultibars = IsAlwaysShowMultibars
 
--- Mirrors native ACTIONBAR_SHOWGRID/HIDEGRID state for custom-bar buttons, which don't register for those events.
+-- Native ACTIONBAR_SHOWGRID/HIDEGRID state (set by Events.lua), for pool buttons.
 ACAB.isShowingActionGrid = false
 
--- Calls fn(btn) for every pool button across every bar. Hot per-tick sweep, no table allocation.
+-- Calls fn(btn) for every pool button across every bar, without allocating.
 function ACAB:ForEachPoolButton(fn)
 	local barId
 	local bar
@@ -94,7 +65,7 @@ function ACAB:ForEachPoolButton(fn)
 	end
 end
 
--- Re-evaluates UpdateGridVisibility on every live custom-bar button.
+-- Re-evaluates UpdateGridVisibility on every pool button and re-lays out each bar.
 function ACAB:SweepCustomBarGridVisibility()
 	local barId
 
@@ -110,41 +81,43 @@ function ACAB:SweepCustomBarGridVisibility()
 				end
 			end
 
-			-- Re-flow too: Pet Bar's condensed layout suspends itself while isShowingActionGrid is true.
+			-- Pet Bar's condensed layout suspends itself while isShowingActionGrid is true.
 			ACAB:LayoutButtons(bar)
 		end
 	end
 end
 
--- Re-sweeps every live button's UpdateRange.
 function ACAB:SweepAllButtonRangeTint()
 	ACAB:ForEachPoolButton(function(btn)
 		btn:UpdateRange()
 	end)
 end
 
--- Toggles the global and forces an immediate visual refresh on default and custom bars.
+-- Toggles the global and refreshes native multibars and pool buttons immediately.
 function ACAB:ToggleAlwaysShowMultibars()
 	local newState = not IsAlwaysShowMultibars()
 
 	ALWAYS_SHOW_MULTIBARS = newState and "1" or nil
 
-	-- Default bars: drives MultiActionBarButton grid visibility.
 	if MultiActionBar_UpdateGridVisibility then
 		MultiActionBar_UpdateGridVisibility()
 	end
 
-	-- Custom bars: no native equivalent, sweep them directly.
 	ACAB:SweepCustomBarGridVisibility()
 end
 
 ACABButtonMixin = {}
 
--- Native hotkey/count font default (path/size/flags), captured once via GetFont() on the first button created.
+-- Native hotkey/count/macro fonts are captured once, on the first button created.
 local hasCapturedFontDefaults = false
 
--- One shared ticker covers every button's range/usability + grid-visibility refresh; started lazily, never cancelled.
+-- One shared ticker refreshes every button's range/usability and grid visibility; started lazily, never cancelled.
 local sharedRangeTicker
+
+local function RefreshButtonRangeAndGrid(btn)
+	btn:UpdateRange()
+	btn:UpdateGridVisibility()
+end
 
 local function EnsureSharedRangeTicker()
 	if sharedRangeTicker or not (C_Timer and C_Timer.NewTicker) then
@@ -152,11 +125,57 @@ local function EnsureSharedRangeTicker()
 	end
 
 	sharedRangeTicker = C_Timer.NewTicker(0.2, function()
-		ACAB:ForEachPoolButton(function(btn)
-			btn:UpdateRange()
-			btn:UpdateGridVisibility()
-		end)
+		ACAB:ForEachPoolButton(RefreshButtonRangeAndGrid)
 	end)
+end
+
+-- Creates the vanilla-style border texture (UI-Quickslot2, centered with native 0/-1 offset, below other overlays).
+local function CreateNativeBorder(btn)
+	btn.border = btn:CreateTexture(nil, "OVERLAY")
+	btn.border:SetDrawLayer("OVERLAY", -1)
+	btn.border:SetTexture("Interface\\Buttons\\UI-Quickslot2")
+	btn.border:SetPoint("CENTER", btn, "CENTER", 0, -1)
+end
+
+-- Anchors the icon: inset 2px in modern style so the backdrop border shows, flush in vanilla style.
+local function AnchorIcon(btn)
+	local iconInset = btn.hasNativeBorder and 0 or 2
+
+	btn.icon:SetPoint("TOPLEFT", btn, "TOPLEFT", iconInset, -iconInset)
+	btn.icon:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -iconInset, iconInset)
+end
+
+-- Anchors the autocast Model to match the vanilla border's 0/-1 offset, or the modern backdrop's 1px inset.
+local function AnchorAutoCastModel(btn, model)
+	local modelInset = btn.hasNativeBorder and 0 or 1
+	local modelYShift = btn.hasNativeBorder and -1 or 0
+
+	model:ClearAllPoints()
+	model:SetPoint("TOPLEFT", btn, "TOPLEFT", modelInset, -modelInset + modelYShift)
+	model:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -modelInset, modelInset + modelYShift)
+end
+
+-- Sets the backdrop template for the current border style, fully transparent; UpdateBackdropVisibility colors it.
+local function ApplyButtonBackdrop(btn)
+	local backdropInset = btn.hasNativeBorder and 0 or 1
+
+	btn:SetBackdrop({
+		bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+		edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+		tile = true,
+		tileSize = 8,
+		edgeSize = 8,
+		insets = { left = backdropInset, right = backdropInset, top = backdropInset, bottom = backdropInset },
+	})
+	btn:SetBackdropColor(0, 0, 0, 0)
+	btn:SetBackdropBorderColor(0, 0, 0, 0)
+end
+
+-- Bar 1 keeps empty slots shown/bordered while useDefaultLayout is on, like native vanilla.
+-- Must check id == 1, not dynamicDefaultBar (set for bars 1-5).
+local function IsMainBarShowingEmpty(btn)
+	return btn.parentBar and btn.parentBar.config and btn.parentBar.config.id == 1
+		and ACABDB and ACABDB.useDefaultLayout ~= false
 end
 
 function ACABButtonMixin:Init(parent, actionSlot, slotIndex)
@@ -164,91 +183,64 @@ function ACABButtonMixin:Init(parent, actionSlot, slotIndex)
 	self.parentBar = parent
 	self.slotIndex = slotIndex
 
-	-- Pet Bar buttons: self.actionSlot holds a pet slot (1-10, GetPetActionInfo/
-	-- CastPetAction/GetPetActionCooldown), not a real vanilla action slot -
-	-- every action-slot-system call below branches on this flag instead.
+	-- Pet Bar: actionSlot is a pet slot (1-10), not a vanilla action slot.
 	self.isPetSlot = parent.config and parent.config.isPetBar and true or false
 
-	-- Stance Bar (styled mode) buttons: self.actionSlot holds a shapeshift
-	-- form index (1-10, GetShapeshiftFormInfo/CastShapeshiftForm/
-	-- GetShapeshiftFormCooldown), not a real vanilla action slot - every
-	-- action-slot-system call below branches on this flag instead.
+	-- Styled Stance Bar: actionSlot is a shapeshift form index (1-10), not a vanilla action slot.
 	self.isStanceSlot = parent.config and parent.config.isStanceBar and true or false
 
-	-- Sets frame strata explicitly rather than relying on inheriting it
-	-- from the parent bar frame, which is unconfirmed on this client.
+	-- Set explicitly; strata inheritance from the parent bar isn't relied on.
 	self:SetFrameStrata("HIGH")
 
-	-- Default bars (1-5) show their real native keybind action name as their
-	-- home identity; SyncDefaultBarBindingRedirect below moves the physical
-	-- key off it onto ACABBIND<n> while this button's slot is swapped.
+	-- Default bars (1-5): native binding action name (e.g. ACTIONBUTTON1) is the button's home binding identity.
 	if parent.config and (parent.config.fixedActionSlots or parent.config.dynamicDefaultBar) and slotIndex then
-		local prefix = ACAB.DEFAULT_BAR_BINDING_PREFIXES and
-			ACAB.DEFAULT_BAR_BINDING_PREFIXES[parent.config.id]
+		local prefix = ACAB.DEFAULT_BAR_BINDING_PREFIXES[parent.config.id]
 
 		if prefix then
 			self.nativeBindingId = prefix .. tostring(slotIndex)
 		end
 	end
 
-	-- Registers as the live target for HoverBind.lua's ACABBIND<n> dispatch (n = actionSlot - 72), keyed by action slot.
-	-- Default-bar buttons register here too when swapped into this range - see SyncDefaultBarBindingRedirect.
+	-- Live target for HoverBind.lua's ACABBIND<actionSlot - 72> dispatch.
 	if actionSlot >= ACAB.ACTION_SLOT_START then
-		ACAB.customBindTargets = ACAB.customBindTargets or {}
 		ACAB.customBindTargets[actionSlot - 72] = self
 	end
 
-	-- Default-bar buttons: redirects the physical key off its native binding action
-	-- and onto ACABBIND<n> whenever the swapped-in content lives outside its home slot.
 	if self.nativeBindingId then
 		ACAB:SyncDefaultBarBindingRedirect(self)
 	end
 
-	-- Registers as the live target for HoverBind.lua's ACABPETBIND<n> dispatch, keyed by pet slot (1-10).
+	-- Live target for ACABPETBIND<petSlot> / ACABSTANCEBIND<formIndex> dispatch.
 	if self.isPetSlot then
-		ACAB.petBindTargets = ACAB.petBindTargets or {}
 		ACAB.petBindTargets[actionSlot] = self
 	end
 
-	-- Same, for ACABSTANCEBIND<n> dispatch, keyed by shapeshift form index (1-10).
 	if self.isStanceSlot then
-		ACAB.stanceBindTargets = ACAB.stanceBindTargets or {}
 		ACAB.stanceBindTargets[actionSlot] = self
 	end
 
-	-- Equipped-item ring, quality-colored.
-	-- Must be created before ApplySize runs below, or it stays unsized/invisible until the bar next resizes.
+	-- Quality-colored equipped-item ring. Must exist before ApplySize below, or it stays unsized.
 	self.equipRing = self:CreateTexture(nil, "OVERLAY")
 	self.equipRing:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
 	self.equipRing:SetBlendMode("ADD")
 	self.equipRing:SetPoint("CENTER", self, "CENTER", 0, 0)
 	self.equipRing:Hide()
 
-	-- Native-accurate button border, default bars 1-5 only. Custom bars use the SetBackdrop-drawn border instead.
+	-- Vanilla style draws a native border texture; modern style uses the backdrop border.
 	self.hasNativeBorder = ACAB:IsVanillaBorderStyle()
 
 	if self.hasNativeBorder then
-		-- Sublevel -1, still above self.icon's "ARTWORK" layer, so the border frames the icon.
-		self.border = self:CreateTexture(nil, "OVERLAY")
-		self.border:SetDrawLayer("OVERLAY", -1)
-		self.border:SetTexture("Interface\\Buttons\\UI-Quickslot2")
-		-- Real vanilla border art is centered with a y = -1 offset.
-		self.border:SetPoint("CENTER", self, "CENTER", 0, -1)
+		CreateNativeBorder(self)
 	end
 
-	-- Initialize from the parent bar's configured size, not the global default, since bars can inherit a resized value.
 	self:ApplySize((parent.config and parent.config.buttonSize) or ACAB.BUTTON_SIZE)
 	self:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 	self:RegisterForDrag("LeftButton")
 	self:EnableMouse(true)
 	self:EnableMouseWheel(true)
 
-	-- Modern-style buttons inset the icon so the backdrop border stays visible; vanilla-style icon stays flush.
-	local iconInset = self.hasNativeBorder and 0 or 2
-
 	self.icon = self:CreateTexture(nil, "ARTWORK")
-	self.icon:SetPoint("TOPLEFT", self, "TOPLEFT", iconInset, -iconInset)
-	self.icon:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", -iconInset, iconInset)
+	AnchorIcon(self)
 	self.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
 
 	-- "Current action" glow, replicating a native CheckButton's CheckedTexture.
@@ -259,7 +251,7 @@ function ACABButtonMixin:Init(parent, actionSlot, slotIndex)
 	self.glow:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", 0, 0)
 	self.glow:Hide()
 
-	-- Pet Bar autocast-enabled indicator, gold-tinted to read distinctly from the white glow above.
+	-- Static gold autocast indicator (Pet Bar).
 	self.autoCastGlow = self:CreateTexture(nil, "OVERLAY")
 	self.autoCastGlow:SetTexture("Interface\\Buttons\\CheckButtonHilight")
 	self.autoCastGlow:SetBlendMode("ADD")
@@ -268,28 +260,21 @@ function ACABButtonMixin:Init(parent, actionSlot, slotIndex)
 	self.autoCastGlow:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", 0, 0)
 	self.autoCastGlow:Hide()
 
-	-- Animated autocast glow, Pet Bar only: reparents the native PetActionButton<n>AutoCast Model onto this button.
-	-- A freshly created Model with SetModel+SetSequence renders as a flat white plane, so reuse the native one.
+	-- Animated autocast glow (Pet Bar): reparents the native PetActionButton<n>AutoCast Model onto this button.
+	-- A fresh Model with SetModel renders a flat white plane, so the native one is reused.
 	if self.isPetSlot then
 		local nativeModel = getglobal("PetActionButton" .. tostring(actionSlot) .. "AutoCast")
 
 		if nativeModel then
-			-- Native size (~27px), used to scale the glow proportionally in UpdateAutoCastGlowScale.
+			-- Native size, the base for UpdateAutoCastGlowScale.
 			self.autoCastGlowModelNativeSize = nativeModel:GetWidth() or 27
 
-			-- Matches self.border's (0, -1) vanilla offset, or the backdrop border's inset in modern style.
-			local modelInset = self.hasNativeBorder and 0 or 1
-			local modelYShift = self.hasNativeBorder and -1 or 0
-
 			nativeModel:SetParent(self)
-			nativeModel:ClearAllPoints()
-			nativeModel:SetPoint("TOPLEFT", self, "TOPLEFT", modelInset, -modelInset + modelYShift)
-			nativeModel:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", -modelInset, modelInset + modelYShift)
+			AnchorAutoCastModel(self, nativeModel)
 			nativeModel:SetFrameStrata("HIGH")
 			nativeModel:SetFrameLevel(self:GetFrameLevel())
 
-			-- Never call :SetModel() on this frame again - resets the reparented model to a blank white plane.
-			-- Use SetModelScale (UpdateAutoCastGlowScale) to resize instead.
+			-- Never call :SetModel() on this frame again (resets it to a blank white plane); resize via SetModelScale.
 			nativeModel:Hide()
 
 			self.autoCastGlowModel = nativeModel
@@ -298,38 +283,22 @@ function ACABButtonMixin:Init(parent, actionSlot, slotIndex)
 		end
 	end
 
-	-- Vanilla 1.12's cooldown spiral is a Model frame using CooldownFrameTemplate, not a "Cooldown" widget type.
+	-- Cooldown spiral: a Model frame from CooldownFrameTemplate (no "Cooldown" widget type on 1.12).
 	self.cooldown = CreateFrame("Model", nil, self, "CooldownFrameTemplate")
 	self.cooldown:ClearAllPoints()
 	self.cooldown:SetPoint("TOPLEFT", self, "TOPLEFT", 2, -2)
 	self.cooldown:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", -2, 2)
 
-	-- Must match this button's "HIGH" strata, or the cooldown swipe defaults to "MEDIUM" and renders behind the icon.
+	-- Must match the button's HIGH strata, or the swipe defaults to MEDIUM and renders behind the icon.
 	self.cooldown:SetFrameStrata("HIGH")
 	self.cooldown:SetFrameLevel(self:GetFrameLevel() + 1)
 
-	-- Backdrop template set once here; color/border alpha toggled later by UpdateBackdropVisibility.
-	local backdropInset = self.hasNativeBorder and 0 or 1
+	ApplyButtonBackdrop(self)
 
-	self:SetBackdrop({
-		bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-		edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-		tile = true,
-		tileSize = 8,
-		edgeSize = 8,
-		insets = { left = backdropInset, right = backdropInset, top = backdropInset, bottom = backdropInset },
-	})
-	self:SetBackdropColor(0, 0, 0, 0)
-	self:SetBackdropBorderColor(0, 0, 0, 0)
-
-	-- Anchored by ApplyButtonTextInsets below.
 	self.count = self:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
-
-	-- Keybind hotkey text, top-right.
 	self.hotkey = self:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
 
-	-- Captures both font templates' native (path, size, flags) once.
-	-- Must run after both FontStrings are created and before the SetFont calls below.
+	-- Captures the native fonts once. Must run after both FontStrings exist and before the SetFont calls below.
 	if not hasCapturedFontDefaults then
 		local hkPath, hkSize, hkFlags = self.hotkey:GetFont()
 		local cntPath, cntSize, cntFlags = self.count:GetFont()
@@ -337,7 +306,7 @@ function ACABButtonMixin:Init(parent, actionSlot, slotIndex)
 		ACAB.NATIVE_HOTKEY_FONT = { path = hkPath, size = hkSize, flags = hkFlags }
 		ACAB.NATIVE_COUNT_FONT = { path = cntPath, size = cntSize, flags = cntFlags }
 
-		-- Real vanilla macro-name font, captured from a native action button's Name region; falls back to hotkey font.
+		-- Macro-name font from a native action button's Name region; falls back to the hotkey font.
 		local macroFontFrame = getglobal("ActionButton1Name")
 
 		if macroFontFrame and macroFontFrame.GetFont then
@@ -347,14 +316,14 @@ function ACABButtonMixin:Init(parent, actionSlot, slotIndex)
 			ACAB.NATIVE_MACRO_FONT = ACAB.NATIVE_HOTKEY_FONT
 		end
 
-		-- Hotkey text's default color, used to reset the out-of-range tint back to normal.
+		-- Default hotkey color, restored after an out-of-range tint.
 		local hkR, hkG, hkB = self.hotkey:GetTextColor()
 		ACAB.NATIVE_HOTKEY_TEXT_COLOR = { r = hkR, g = hkG, b = hkB }
 
 		hasCapturedFontDefaults = true
 	end
 
-	-- Applies the saved font size, falling back to the captured native size.
+	-- Saved font sizes, falling back to the native size.
 	self.hotkey:SetFont(
 		ACAB.NATIVE_HOTKEY_FONT.path,
 		(ACABDB and ACABDB.hotkeyFontSize) or ACAB.NATIVE_HOTKEY_FONT.size,
@@ -367,7 +336,6 @@ function ACABButtonMixin:Init(parent, actionSlot, slotIndex)
 		ACAB.NATIVE_COUNT_FONT.flags
 	)
 
-	-- Macro name text, bottom-left. Anchored by ApplyButtonTextInsets below.
 	self.macroText = self:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
 	self.macroText:SetJustifyH("LEFT")
 	self.macroText:SetFont(
@@ -376,8 +344,7 @@ function ACABButtonMixin:Init(parent, actionSlot, slotIndex)
 		ACAB.NATIVE_MACRO_FONT.flags
 	)
 
-	-- Anchors all three now that they all exist and self.hasNativeBorder
-	-- (set earlier in Init) is known.
+	-- Anchors hotkey (top-right), count (bottom-right) and macro text (bottom-left).
 	self:ApplyButtonTextInsets()
 
 	self:SetScript("OnClick", ACABButtonMixin.OnClick)
@@ -390,8 +357,7 @@ function ACABButtonMixin:Init(parent, actionSlot, slotIndex)
 	self:SetScript("OnMouseDown", ACABButtonMixin.OnMouseDown)
 
 	self:RegisterEvent("ACTIONBAR_SLOT_CHANGED")
-	-- Drives the item stack-count text when bag count changes without a
-	-- slot being re-placed (using/gaining/losing stacks of a consumable).
+	-- Stack-count text.
 	self:RegisterEvent("BAG_UPDATE")
 	self:RegisterEvent("BAG_UPDATE_COOLDOWN")
 	self:RegisterEvent("SPELL_UPDATE_COOLDOWN")
@@ -400,23 +366,22 @@ function ACABButtonMixin:Init(parent, actionSlot, slotIndex)
 	self:RegisterEvent("SPELL_UPDATE_USABLE")
 	self:RegisterEvent("PLAYER_TARGET_CHANGED")
 	self:RegisterEvent("PLAYER_ENTERING_WORLD")
-	-- Drives the equip-quality-ring, fires on equip/unequip.
+	-- Equip-quality ring.
 	self:RegisterEvent("UNIT_INVENTORY_CHANGED")
-	-- Drives the checked/glow state. CRAFT/TRADE_SKILL events cover a profession window's active action.
+	-- Checked/glow state, including a profession window's active action.
 	self:RegisterEvent("ACTIONBAR_UPDATE_STATE")
 	self:RegisterEvent("CRAFT_SHOW")
 	self:RegisterEvent("CRAFT_CLOSE")
 	self:RegisterEvent("TRADE_SKILL_SHOW")
 	self:RegisterEvent("TRADE_SKILL_CLOSE")
 
-	-- Pet Bar content has no ACTIONBAR_SLOT_CHANGED equivalent; these drive its refresh instead.
 	if self.isPetSlot then
 		self:RegisterEvent("PET_BAR_UPDATE")
 		self:RegisterEvent("PET_BAR_UPDATE_COOLDOWN")
 		self:RegisterEvent("UNIT_PET")
 	end
 
-	-- UPDATE_SHAPESHIFT_FORM/_FORMS never fire on this client when toggling forms; PLAYER_AURAS_CHANGED drives the refresh.
+	-- UPDATE_SHAPESHIFT_FORM/_FORMS never fire here on form toggles (kept anyway); PLAYER_AURAS_CHANGED drives refresh.
 	if self.isStanceSlot then
 		self:RegisterEvent("UPDATE_SHAPESHIFT_FORMS")
 		self:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
@@ -429,11 +394,11 @@ function ACABButtonMixin:Init(parent, actionSlot, slotIndex)
 
 	self:Refresh()
 
-	-- Covers range/usability changes with no dedicated event (e.g. walking toward/away from a target).
+	-- Covers range/usability changes with no event (e.g. moving relative to the target).
 	EnsureSharedRangeTicker()
 end
 
--- Resizes the button. icon/glow auto-track via anchors; equipRing/border are CENTER-anchored, resized explicitly.
+-- Resizes the button; CENTER-anchored equipRing/border are sized explicitly, the rest follow via anchors.
 function ACABButtonMixin:ApplySize(size)
 	self.buttonSize = size
 	self:SetWidth(size)
@@ -497,8 +462,7 @@ function ACABButtonMixin:ApplyButtonTextInsets()
 	end
 end
 
--- Re-applies the current global border style to an already-created button without recreating the frame.
--- Must stay in lockstep with every self.hasNativeBorder-gated block in Init.
+-- Re-applies the current global border style to an existing button (same helpers as Init).
 function ACABButtonMixin:ApplyBorderStyle()
 	self.hasNativeBorder = ACAB:IsVanillaBorderStyle()
 
@@ -506,10 +470,7 @@ function ACABButtonMixin:ApplyBorderStyle()
 
 	if self.hasNativeBorder then
 		if not self.border then
-			self.border = self:CreateTexture(nil, "OVERLAY")
-			self.border:SetDrawLayer("OVERLAY", -1)
-			self.border:SetTexture("Interface\\Buttons\\UI-Quickslot2")
-			self.border:SetPoint("CENTER", self, "CENTER", 0, -1)
+			CreateNativeBorder(self)
 		end
 
 		self.border:Show()
@@ -517,94 +478,62 @@ function ACABButtonMixin:ApplyBorderStyle()
 		self.border:Hide()
 	end
 
-	-- Reuses ApplySize's own border-sizing math.
+	-- Re-sizes the border too.
 	self:ApplySize(self.buttonSize or ACAB.BUTTON_SIZE)
 
-	local iconInset = self.hasNativeBorder and 0 or 2
 	self.icon:ClearAllPoints()
-	self.icon:SetPoint("TOPLEFT", self, "TOPLEFT", iconInset, -iconInset)
-	self.icon:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", -iconInset, iconInset)
+	AnchorIcon(self)
 
-	local backdropInset = self.hasNativeBorder and 0 or 1
-	self:SetBackdrop({
-		bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-		edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-		tile = true,
-		tileSize = 8,
-		edgeSize = 8,
-		insets = { left = backdropInset, right = backdropInset, top = backdropInset, bottom = backdropInset },
-	})
+	ApplyButtonBackdrop(self)
 
-	-- Resets to transparent; real on/off state decided by UpdateBackdropVisibility below.
-	self:SetBackdropColor(0, 0, 0, 0)
-	self:SetBackdropBorderColor(0, 0, 0, 0)
-
-	-- Matches the autocast glow Model's Init-time anchor math for the current border style.
 	if self.autoCastGlowModel then
-		local modelInset = self.hasNativeBorder and 0 or 1
-		local modelYShift = self.hasNativeBorder and -1 or 0
-
-		self.autoCastGlowModel:ClearAllPoints()
-		self.autoCastGlowModel:SetPoint("TOPLEFT", self, "TOPLEFT", modelInset, -modelInset + modelYShift)
-		self.autoCastGlowModel:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", -modelInset, modelInset + modelYShift)
+		AnchorAutoCastModel(self, self.autoCastGlowModel)
 	end
 
 	self:UpdateBackdropVisibility()
 end
 
--- Shows/hides this pool slot without destroying it, for when buttonCount is smaller than the pool size.
+-- Shows/hides this pool slot without destroying it (buttonCount below pool size).
 function ACABButtonMixin:SetSlotVisible(visible)
 	self.slotVisible = visible and true or false
 	self:UpdateGridVisibility()
 end
 
--- Final on-screen Show/Hide state, combining slotVisible (grid-shape membership) with content/ALWAYS_SHOW_MULTIBARS.
+-- Final Show/Hide state: slotVisible combined with content, always-show rules, action-grid preview and edit mode.
 function ACABButtonMixin:UpdateGridVisibility()
 	local hasContent = self:IsSlotFilled() and true or false
 
-	-- Bar 1 never hides an empty button under Force Vanilla Layout Mode, unlike bars 2-5.
-	-- Must check id == 1, not cfg.dynamicDefaultBar (true for bars 1-5 now).
-	local isMainBar = self.parentBar and self.parentBar.config and self.parentBar.config.id == 1
-		and ACABDB and ACABDB.useDefaultLayout ~= false
+	local isMainBar = IsMainBarShowingEmpty(self)
 
-	-- Real vanilla's Pet Bar always shows all 10 slots; condensing empty slots is opt-in.
+	-- Pet Bar shows all 10 slots like vanilla unless condensing is on.
 	local petBarShowEmpty = self.isPetSlot and not ACAB:ShouldCondensePetBarSlots()
 
-	-- ALWAYS_SHOW_MULTIBARS only ever governed the real Blizzard multi
-	-- bars (2-5) in native vanilla, never the Pet Bar - excluded here so
-	-- that global checkbox (commonly on by default) can't override the
-	-- Pet Bar's own dedicated Condense checkbox.
+	-- ALWAYS_SHOW_MULTIBARS never applies to the Pet Bar, so it can't override the Condense option.
 	local alwaysShowMultibars = (not self.isPetSlot) and IsAlwaysShowMultibars()
 
-	-- ACAB.isShowingActionGrid makes an empty slot temporarily reappear
-	-- while something is picked up to place, matching native behavior.
-	-- ACAB:IsEditMode() is ORed in too so every slot is interactable
-	-- (right-click-for-settings) while in edit mode, matching how default
-	-- bars' overlay owns mouse interaction across the whole bar area.
+	-- Empty slots reappear while placing an action (action grid) and in edit mode.
 	if self.slotVisible and (isMainBar or petBarShowEmpty or hasContent or alwaysShowMultibars or ACAB.isShowingActionGrid or ACAB:IsEditMode()) then
 		self:Show()
 	else
 		self:Hide()
 	end
 
-	-- Backdrop visibility must NOT include ACAB:IsEditMode(), or every empty slot's border reappears in edit mode.
+	-- Backdrop visibility must NOT include edit mode, or every empty slot's border reappears in edit mode.
 	self:UpdateBackdropVisibility()
 end
 
--- Toggles only the backdrop's color/border alpha; the template set in Init is never touched again.
+-- Toggles the backdrop's color/border alpha and the native border texture.
 function ACABButtonMixin:UpdateBackdropVisibility()
 	local hasContent = self:IsSlotFilled() and true or false
 
-	-- Same Main Bar exemption as UpdateGridVisibility.
-	local isMainBar = self.parentBar and self.parentBar.config and self.parentBar.config.id == 1
-		and ACABDB and ACABDB.useDefaultLayout ~= false
+	local isMainBar = IsMainBarShowingEmpty(self)
 
 	local shown = self.slotVisible and (isMainBar or hasContent or IsAlwaysShowMultibars() or ACAB.isShowingActionGrid)
 
 	if shown then
 		self:SetBackdropColor(0, 0, 0, 0.75)
 
-		-- Vanilla-style buttons have their own border texture; skip the backdrop's border edge to avoid doubling it.
+		-- Vanilla style has its own border texture; don't double it with the backdrop edge.
 		if not self.hasNativeBorder then
 			self:SetBackdropBorderColor(1, 1, 1, 1)
 		end
@@ -613,7 +542,7 @@ function ACABButtonMixin:UpdateBackdropVisibility()
 		self:SetBackdropBorderColor(0, 0, 0, 0)
 	end
 
-	-- Guarded on hasNativeBorder too, or a leftover texture reappears after switching to modern style.
+	-- Guarded on hasNativeBorder, or a leftover texture reappears after switching to modern style.
 	if self.border and self.hasNativeBorder then
 		if shown then
 			self.border:Show()
@@ -623,24 +552,22 @@ function ACABButtonMixin:UpdateBackdropVisibility()
 	end
 end
 
--- Re-points this button at a different action slot when a bar's slotStart/grid/page state changes.
--- Only ACAB.customBindTargets' old/new slot indices need updating to follow it.
+-- Re-points this button at a different slot (bar slotStart/grid/page change) and moves its bind-target entry.
 function ACABButtonMixin:Rebind(newActionSlot)
 	local oldActionSlot = self.actionSlot
 
-	-- Clears the old index first so a stale entry never briefly points at a button that no longer owns that slot.
-	if ACAB.customBindTargets and oldActionSlot and oldActionSlot >= ACAB.ACTION_SLOT_START then
+	-- Must clear the old entry before setting the new one (both can be the same slot).
+	if oldActionSlot and oldActionSlot >= ACAB.ACTION_SLOT_START then
 		ACAB.customBindTargets[oldActionSlot - 72] = nil
 	end
 
 	self.actionSlot = newActionSlot
 
 	if newActionSlot >= ACAB.ACTION_SLOT_START then
-		ACAB.customBindTargets = ACAB.customBindTargets or {}
 		ACAB.customBindTargets[newActionSlot - 72] = self
 	end
 
-	-- Default-bar buttons: keeps the physical key following whichever bar (home or swapped-in) this slot now shows.
+	-- Default-bar buttons: the physical key follows whichever bar this slot now shows.
 	if self.nativeBindingId then
 		ACAB:SyncDefaultBarBindingRedirect(self)
 	end
@@ -648,13 +575,13 @@ function ACABButtonMixin:Rebind(newActionSlot)
 	self:Refresh()
 end
 
--- Named IsSlotFilled, not HasAction, to avoid confusion with the vanilla API function it wraps.
+-- True when the slot holds content (HasAction for action slots).
 function ACABButtonMixin:IsSlotFilled()
 	if self.isPetSlot then
 		return GetPetActionInfo and GetPetActionInfo(self.actionSlot) ~= nil
 	end
 
-	-- Stance Bar has no unassigned-slot concept; every visible pool button corresponds to a real, available form.
+	-- Every stance pool button maps to a real, available form.
 	if self.isStanceSlot then
 		return true
 	end
@@ -662,10 +589,10 @@ function ACABButtonMixin:IsSlotFilled()
 	return HasAction and HasAction(self.actionSlot)
 end
 
+-- Checked glow and (Pet Bar) autocast indicators.
 function ACABButtonMixin:UpdateState()
-	-- Pet Bar: GetPetActionInfo's isActive is IsCurrentAction's equivalent.
 	if self.isPetSlot then
-		-- Call directly, not "X and X(...)" - and/or collapse a multi-return call to one value.
+		-- Must not use "X and X(...)": and/or truncate a multi-return call to one value.
 		local isActive, autoCastEnabled
 
 		if GetPetActionInfo then
@@ -683,7 +610,7 @@ function ACABButtonMixin:UpdateState()
 		local petCfg = ACABDB and ACABDB.defaultBars and ACABDB.defaultBars[ACAB.PET_BAR_ID]
 		local animate = petCfg and petCfg.animateAutoCastGlow == true
 
-		-- The Model self-animates once shown - just Show/Hide, no ticker.
+		-- The Model animates by itself while shown.
 		if autoCastEnabled and animate and self.autoCastGlowModel then
 			self.autoCastGlow:Hide()
 			self.autoCastGlowModel:Show()
@@ -702,7 +629,7 @@ function ACABButtonMixin:UpdateState()
 		return
 	end
 
-	-- GetShapeshiftForm() returns nil on this client even while a form is active; use GetShapeshiftFormInfo's isActive.
+	-- Must use GetShapeshiftFormInfo's isActive: GetShapeshiftForm() returns nil here even while a form is active.
 	if self.isStanceSlot then
 		local isActive
 
@@ -720,7 +647,7 @@ function ACABButtonMixin:UpdateState()
 		return
 	end
 
-	-- Same logic as vanilla ActionButton_UpdateState, driving self.glow directly instead of SetChecked.
+	-- Vanilla ActionButton_UpdateState, driving self.glow instead of SetChecked.
 	if (IsCurrentAction and IsCurrentAction(self.actionSlot)) or (IsAutoRepeatAction and IsAutoRepeatAction(self.actionSlot)) then
 		self.glow:Show()
 	else
@@ -729,7 +656,6 @@ function ACABButtonMixin:UpdateState()
 end
 
 function ACABButtonMixin:UpdateEquipRing()
-	-- Pet/stance actions have no equip-quality concept.
 	if self.isPetSlot or self.isStanceSlot then
 		self.equipRing:Hide()
 		return
@@ -745,12 +671,12 @@ function ACABButtonMixin:UpdateEquipRing()
 		self.equipRing:SetVertexColor(r, g, b)
 		self.equipRing:Show()
 	else
-		-- Quality unresolved (item not yet cached) - stay hidden rather than show a wrongly-colored ring.
+		-- Quality unresolved (item not cached yet).
 		self.equipRing:Hide()
 	end
 end
 
--- Item stack-count text. A stackable action with 1 charge still shows "1"; a non-stacking action stays blank.
+-- Stack-count text: a consumable/stackable action with 1 left shows "1", a non-stacking action stays blank.
 function ACABButtonMixin:UpdateCount()
 	if not self.count then
 		return
@@ -758,7 +684,6 @@ function ACABButtonMixin:UpdateCount()
 
 	local text = ""
 
-	-- Pet/stance actions never stack - no count concept.
 	if not self.isPetSlot and not self.isStanceSlot and GetActionCount and self:IsSlotFilled() then
 		local count = GetActionCount(self.actionSlot)
 
@@ -781,7 +706,7 @@ local HOTKEY_MODIFIER_ABBREVIATIONS = {
 	CTRL = "c",
 }
 
--- Compacts mouse-button bindings ("BUTTON5") to "MB5" so they fit the button; other tokens pass through unchanged.
+-- Compacts mouse-button keys ("BUTTON5" -> "MB5"); other tokens pass through.
 local function CompactFinalKeyToken(finalToken)
 	local _, _, mouseButtonNumber = string.find(finalToken, "^BUTTON(%d+)$")
 
@@ -797,7 +722,6 @@ local function CompactBindingKeyText(key)
 		return ""
 	end
 
-	-- Lua 5.0 has no string.gmatch; string.gfind is the 5.0 equivalent.
 	local tokens = {}
 	local n = 0
 	local token
@@ -823,7 +747,7 @@ local function CompactBindingKeyText(key)
 	return table.concat(parts, "-")
 end
 
--- Keybind hotkey text; see HoverBind.lua's ACAB:GetHoverBindingId for binding-action name resolution.
+-- Hotkey text for the button's live binding action (activeBindingId or GetHoverBindingId).
 function ACABButtonMixin:UpdateHotkeyText()
 	if not self.hotkey then
 		return
@@ -850,7 +774,7 @@ local function SetTruncatedText(fontString, text, maxWidth)
 	end
 end
 
--- Shared by hotkey/count/macro text: hides fontString for blank text, otherwise truncates to the button's width and shows it.
+-- Hides fontString for blank text, otherwise truncates it to the button's inner width and shows it.
 function ACABButtonMixin:SetTruncatedButtonText(fontString, text)
 	if not text or text == "" then
 		fontString:Hide()
@@ -864,13 +788,12 @@ function ACABButtonMixin:SetTruncatedButtonText(fontString, text)
 	fontString:Show()
 end
 
--- Shows the macro name for a macro action, truncated to fit, while ACABDB.showMacroText is on.
+-- Macro name text for action slots, while ACABDB.showMacroText is on.
 function ACABButtonMixin:UpdateMacroText()
 	if not self.macroText then
 		return
 	end
 
-	-- Pet/stance actions have no macro/name-text concept shown on this button.
 	if self.isPetSlot or self.isStanceSlot or not (ACABDB and ACABDB.showMacroText) then
 		self.macroText:Hide()
 		return
@@ -883,7 +806,7 @@ end
 
 function ACABButtonMixin:Refresh()
 	if self.isPetSlot then
-		-- Call directly, not "X and X(...)" - subtext (2nd) must stay captured or texture (3rd) shifts position.
+		-- Must not use "X and X(...)", and must keep the subtext (2nd) position or texture shifts.
 		local name, texture, isToken
 
 		if GetPetActionInfo then
@@ -891,7 +814,7 @@ function ACABButtonMixin:Refresh()
 		end
 
 		if name then
-			-- Special command slots return a global-name token instead of a real texture; getglobal resolves it.
+			-- Command slots (isToken) return a global name instead of a texture path.
 			if isToken then
 				texture = getglobal(texture) or texture
 			end
@@ -902,7 +825,7 @@ function ACABButtonMixin:Refresh()
 
 		self.equipRing:Hide()
 	elseif self.isStanceSlot then
-		-- GetShapeshiftFormInfo(index) = texture, name, isActive, isCastable.
+		-- GetShapeshiftFormInfo(index) returns texture, name, isActive, isCastable.
 		local texture
 
 		if GetShapeshiftFormInfo then
@@ -927,73 +850,53 @@ function ACABButtonMixin:Refresh()
 	self:UpdateHotkeyText()
 	self:UpdateMacroText()
 
-	-- Re-evaluates final Show/Hide state now that content may have changed.
 	self:UpdateGridVisibility()
 
-	-- Pet Bar condense mode: content change can change which slots are filled, so recompute the compacted layout.
+	-- Pet Bar condense layout depends on which slots are filled.
 	if self.isPetSlot and self.parentBar then
 		ACAB:LayoutButtons(self.parentBar)
 	end
 end
 
+-- Cooldown spiral from the pet, shapeshift or action cooldown (all plain start, duration, enable).
 function ACABButtonMixin:UpdateCooldown()
 	if not self.actionSlot or not CooldownFrame_SetTimer then
 		return
 	end
+
+	local start, duration, enable
 
 	if self.isPetSlot then
 		if not GetPetActionCooldown then
 			return
 		end
 
-		local start, duration, enable = GetPetActionCooldown(self.actionSlot)
-		CooldownFrame_SetTimer(self.cooldown, start or 0, duration or 0, enable or 0)
-		return
-	end
-
-	-- GetShapeshiftFormCooldown returns a plain (start, duration, enable) triple.
-	if self.isStanceSlot then
+		start, duration, enable = GetPetActionCooldown(self.actionSlot)
+	elseif self.isStanceSlot then
 		if not GetShapeshiftFormCooldown then
 			return
 		end
 
-		local start, duration, enable = GetShapeshiftFormCooldown(self.actionSlot)
-		CooldownFrame_SetTimer(self.cooldown, start or 0, duration or 0, enable or 0)
-		return
+		start, duration, enable = GetShapeshiftFormCooldown(self.actionSlot)
+	else
+		if not GetActionCooldown then
+			return
+		end
+
+		start, duration, enable = GetActionCooldown(self.actionSlot)
 	end
 
-	if not GetActionCooldown then
-		return
-	end
-
-	local start, duration, enable = GetActionCooldown(self.actionSlot)
 	CooldownFrame_SetTimer(self.cooldown, start or 0, duration or 0, enable or 0)
 end
 
+-- Range/usability icon tint (or hotkey-only red tint); untinted for pet/stance/empty slots.
 function ACABButtonMixin:UpdateRange()
-	-- Hoverbind mode owns icon tinting outright while active (HoverBind.lua's
-	-- ApplyHoverBindVisual/tint pass) - short-circuit here so range/usability
-	-- tinting can't fight it. Normal tinting resumes as soon as hoverbind
-	-- mode turns off, since events keep calling UpdateRange throughout.
+	-- Hoverbind mode owns icon tinting while active.
 	if ACAB:IsHoverBindMode() then
 		return
 	end
 
-	-- Pet actions have no range/usability concept - icon stays plain white.
-	if self.isPetSlot then
-		self.icon:SetVertexColor(1, 1, 1)
-		self:ResetHotkeyRangeColor()
-		return
-	end
-
-	-- Stance actions: no range concept; usability tinting deferred, icon stays plain white.
-	if self.isStanceSlot then
-		self.icon:SetVertexColor(1, 1, 1)
-		self:ResetHotkeyRangeColor()
-		return
-	end
-
-	if not self:IsSlotFilled() then
+	if self.isPetSlot or self.isStanceSlot or not self:IsSlotFilled() then
 		self.icon:SetVertexColor(1, 1, 1)
 		self:ResetHotkeyRangeColor()
 		return
@@ -1010,7 +913,7 @@ function ACABButtonMixin:UpdateRange()
 		usable, noMana = IsUsableAction(self.actionSlot)
 	end
 
-	-- Real Blizzard buttons only tint the hotkey text red on out-of-range; ACABDB.tintWholeButtonOnRange opts into whole-icon tint.
+	-- tintWholeButtonOnRange (default on) tints the icon; off tints only the hotkey red, like Blizzard buttons.
 	local outOfRange = (inRange == 0)
 	local tintWholeButton = ACABDB == nil or ACABDB.tintWholeButtonOnRange ~= false
 
@@ -1033,7 +936,7 @@ function ACABButtonMixin:UpdateRange()
 	end
 end
 
--- Restores self.hotkey to its captured native default color, or plain white if none captured yet.
+-- Restores the hotkey's native color (white if not captured yet).
 function ACABButtonMixin:ResetHotkeyRangeColor()
 	local c = ACAB.NATIVE_HOTKEY_TEXT_COLOR
 
@@ -1045,7 +948,7 @@ function ACABButtonMixin:ResetHotkeyRangeColor()
 end
 
 function ACABButtonMixin:PlaceCursor()
-	-- Pet/Stance Bar slots are fixed by the game; dropping a cursor onto one is a no-op.
+	-- Pet/stance slots are fixed by the game.
 	if self.isPetSlot or self.isStanceSlot then
 		return
 	end
@@ -1056,7 +959,7 @@ function ACABButtonMixin:PlaceCursor()
 	end
 end
 
--- Plain functions from here down: engine-invoked script handlers, using global `this`.
+-- Script handlers below use global `this`.
 
 function ACABButtonMixin.OnEvent()
 	if event == "ACTIONBAR_SLOT_CHANGED" then
@@ -1066,9 +969,11 @@ function ACABButtonMixin.OnEvent()
 		end
 	elseif event == "BAG_UPDATE" then
 		this:UpdateCount()
-	elseif event == "ACTIONBAR_UPDATE_COOLDOWN" or event == "SPELL_UPDATE_COOLDOWN" or event == "BAG_UPDATE_COOLDOWN" then
+	elseif event == "ACTIONBAR_UPDATE_COOLDOWN" or event == "SPELL_UPDATE_COOLDOWN" or event == "BAG_UPDATE_COOLDOWN"
+		or event == "PET_BAR_UPDATE_COOLDOWN" or event == "UPDATE_SHAPESHIFT_COOLDOWN" then
 		this:UpdateCooldown()
-	elseif event == "ACTIONBAR_UPDATE_USABLE" or event == "SPELL_UPDATE_USABLE" or event == "PLAYER_TARGET_CHANGED" then
+	elseif event == "ACTIONBAR_UPDATE_USABLE" or event == "SPELL_UPDATE_USABLE" or event == "PLAYER_TARGET_CHANGED"
+		or event == "UPDATE_SHAPESHIFT_USABLE" then
 		this:UpdateRange()
 	elseif event == "ACTIONBAR_UPDATE_STATE" or event == "CRAFT_SHOW" or event == "CRAFT_CLOSE" or event == "TRADE_SKILL_SHOW" or event == "TRADE_SKILL_CLOSE" then
 		this:UpdateState()
@@ -1076,38 +981,25 @@ function ACABButtonMixin.OnEvent()
 		if arg1 == "player" then
 			this:UpdateEquipRing()
 		end
-	elseif event == "PLAYER_ENTERING_WORLD" then
-		this:Refresh()
-	elseif event == "PET_BAR_UPDATE" then
-		this:Refresh()
-	elseif event == "PET_BAR_UPDATE_COOLDOWN" then
-		this:UpdateCooldown()
 	elseif event == "UNIT_PET" then
 		if arg1 == "player" then
 			this:Refresh()
 		end
-	elseif event == "UPDATE_SHAPESHIFT_FORMS" then
-		this:Refresh()
-	elseif event == "UPDATE_SHAPESHIFT_FORM" then
-		-- Full Refresh, not just UpdateState - some forms swap their icon art on activation, not just the glow overlay.
-		this:Refresh()
-	elseif event == "UPDATE_SHAPESHIFT_COOLDOWN" then
-		this:UpdateCooldown()
-	elseif event == "UPDATE_SHAPESHIFT_USABLE" then
-		this:UpdateRange()
-	elseif event == "PLAYER_AURAS_CHANGED" then
+	elseif event == "PLAYER_ENTERING_WORLD" or event == "PET_BAR_UPDATE" or event == "PLAYER_AURAS_CHANGED"
+		or event == "UPDATE_SHAPESHIFT_FORMS" or event == "UPDATE_SHAPESHIFT_FORM" then
+		-- Full Refresh: some forms also swap their icon on activation.
 		this:Refresh()
 	end
 end
 
+-- Uses/casts the slot, or places the cursor's action. Edit mode never reaches here (bar overlay covers the button).
 function ACABButtonMixin.OnClick()
-	-- Edit-mode interaction is owned by Bar.lua's per-bar overlay (TOOLTIP strata above this button), so never fires while editing.
 	if ACAB:ButtonHasCursor() then
 		this:PlaceCursor()
 	elseif this.isPetSlot then
-		-- Matches vanilla PetActionButton_OnClick: left click casts, right click toggles autocast.
+		-- Like vanilla PetActionButton_OnClick: left click casts, right click toggles autocast.
 		if arg1 == "RightButton" then
-			-- Call directly, not "X and X(...)" - autoCastAllowed is the 6th return value.
+			-- Must not use "X and X(...)": autoCastAllowed is the 6th return value.
 			local autoCastAllowed
 
 			if GetPetActionInfo then
@@ -1131,12 +1023,12 @@ function ACABButtonMixin.OnClick()
 		this:UpdateState()
 	elseif this:IsSlotFilled() and UseAction then
 		UseAction(this.actionSlot, 0, 0)
-		-- Matches real ActionButtonUp: update the glow immediately instead of waiting on ACTIONBAR_UPDATE_STATE.
+		-- Like ActionButtonUp: update the glow now instead of waiting on ACTIONBAR_UPDATE_STATE.
 		this:UpdateState()
 	end
 end
 
--- OnClick only fires for LeftButton/RightButton; Middle/Button4/5 still reach OnMouseDown, which hoverbind mode uses to capture them.
+-- Hoverbind capture for Middle/Button4/Button5, which never reach OnClick.
 function ACABButtonMixin.OnMouseDown()
 	if not ACAB:IsHoverBindMode() then
 		return
@@ -1144,24 +1036,20 @@ function ACABButtonMixin.OnMouseDown()
 	if arg1 == "LeftButton" or arg1 == "RightButton" then
 		return
 	end
-	if ACAB.HandleHoverBindMouseButton then
-		ACAB:HandleHoverBindMouseButton(this, arg1)
-	end
+	ACAB:HandleHoverBindMouseButton(this, arg1)
 end
 
--- No edit-mode guard needed below: Bar.lua's per-bar overlay wins every hit-test within the bar while editing.
+-- Drag handlers need no edit-mode guard: the bar overlay covers the buttons while editing.
 function ACABButtonMixin.OnReceiveDrag()
 	this:PlaceCursor()
 end
 
+-- Picks up the slot's action unless it's a pet/stance slot or Lock Action Bars (LOCK_ACTIONBAR) is on.
 function ACABButtonMixin.OnDragStart()
-	-- Pet/Stance Bar slots are fixed by the game, not drag-reassignable.
 	if this.isPetSlot or this.isStanceSlot then
 		return
 	end
 
-	-- Lock Action Bars gates whether dragging a filled button picks up its
-	-- action, backed by the real Blizzard global LOCK_ACTIONBAR.
 	if ACAB:IsLockActionBars() then
 		return
 	end
@@ -1176,33 +1064,13 @@ function ACABButtonMixin.OnDragStop()
 end
 
 function ACABButtonMixin.OnMouseWheel()
-	if not ACAB:IsEditMode() then
-		return
-	end
-	-- arg1 is the scroll delta: positive = scroll up, negative = scroll down.
-	local delta = arg1 or 0
-	local bar = this.parentBar
-	if not bar or not bar.config then
-		return
-	end
-
-	-- Default-bar-family bars (1-5, Pet Bar) respect useDefaultLayout's resize lock; custom bars never gated here.
-	local barId = bar.config.id
-
-	if ACAB:IsDefaultBarFamilyId(barId) and
-		ACABDB and ACABDB.useDefaultLayout ~= false then
-		return
-	end
-
-	local step = 2
-	local newSize = bar.config.buttonSize + (delta * step)
-	ACAB:SetBarButtonSize(bar, newSize)
+	ACAB:ResizeBarFromWheel(this.parentBar, arg1)
 end
 
 function ACABButtonMixin.OnEnter()
 	GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
 	if this.isPetSlot then
-		-- Special command slots are isToken actions, not real pet spells; SetPetAction can't tooltip those, build by hand.
+		-- Command slots (isToken) aren't real pet spells; SetPetAction can't show them, so the tooltip is built by hand.
 		local name, subtext, isToken
 
 		if GetPetActionInfo then
@@ -1221,7 +1089,6 @@ function ACABButtonMixin.OnEnter()
 			GameTooltip:SetText("AlternativeClassicActionBars")
 		end
 	elseif this.isStanceSlot then
-		-- SetShapeshift exists on this client; hand-built fallback covers the case where it doesn't.
 		if GameTooltip.SetShapeshift then
 			GameTooltip:SetShapeshift(this.actionSlot)
 		else
@@ -1242,8 +1109,7 @@ function ACABButtonMixin.OnEnter()
 	end
 	GameTooltip:Show()
 
-	-- No-op unless hoverbind mode is on.
-	if ACAB:IsHoverBindMode() and ACAB.SetHoverBindHoveredCustomButton then
+	if ACAB:IsHoverBindMode() then
 		ACAB:SetHoverBindHoveredCustomButton(this)
 	end
 end
@@ -1251,11 +1117,12 @@ end
 function ACABButtonMixin.OnLeave()
 	GameTooltip:Hide()
 
-	if ACAB:IsHoverBindMode() and ACAB.ClearHoverBindHoveredButton then
+	if ACAB:IsHoverBindMode() then
 		ACAB:ClearHoverBindHoveredButton(this)
 	end
 end
 
+-- True when the cursor holds a spell, item or macro.
 function ACAB:ButtonHasCursor()
 	if GetCursorInfo then
 		local cursorType = GetCursorInfo()
@@ -1275,8 +1142,8 @@ function ACAB:ButtonHasCursor()
 	return false
 end
 
+-- Creates one pool button; its frame name is fixed per bar/slot index since each pool slot is created once.
 function ACAB:CreateActionButton(parent, actionSlot, slotIndex)
-	-- Frame names are stable for the bar's lifetime: one button object per pool slot, created exactly once.
 	local frameName =
 		"ACABButton" ..
 		tostring(parent.config.id) ..
@@ -1289,13 +1156,7 @@ function ACAB:CreateActionButton(parent, actionSlot, slotIndex)
 		parent
 	)
 
-	if Mixin then
-		Mixin(button, ACABButtonMixin)
-	else
-		for k, v in pairs(ACABButtonMixin) do
-			button[k] = v
-		end
-	end
+	Mixin(button, ACABButtonMixin)
 
 	button:Init(parent, actionSlot, slotIndex)
 
@@ -1303,84 +1164,48 @@ function ACAB:CreateActionButton(parent, actionSlot, slotIndex)
 end
 
 -------------------------------------------------------------------------
--- Global hotkey/count font size (Settings.lua's General tab)
---
--- Sweeps every live button in ACAB.bars.
+-- Global hotkey/count/macro font size and macro text toggle
 -------------------------------------------------------------------------
 
-function ACAB:SetHotkeyFontSize(size)
-	self:EnsureDB()
+-- Saves a rounded font size, then re-applies it (and re-truncates) on every pool button's regionKey FontString.
+-- Before the native font is captured, the saved value is picked up by the next button Init.
+local function SetPoolButtonFontSize(dbKey, nativeFontKey, regionKey, refreshMethod, size)
+	ACAB:EnsureDB()
 
-	-- Rounds to an integer since GetFont() can return a float size.
+	-- GetFont() can return a float size.
 	size = math.floor(size + 0.5)
 
-	ACABDB.hotkeyFontSize = size
+	ACABDB[dbKey] = size
 
-	-- Nothing captured yet this session - the write above is enough, the next button Init picks it up.
-	if not ACAB.NATIVE_HOTKEY_FONT then
+	local nativeFont = ACAB[nativeFontKey]
+
+	if not nativeFont then
 		return
 	end
 
-	local path = ACAB.NATIVE_HOTKEY_FONT.path
-	local flags = ACAB.NATIVE_HOTKEY_FONT.flags
+	local path = nativeFont.path
+	local flags = nativeFont.flags
 
 	ACAB:ForEachPoolButton(function(btn)
-		if btn.hotkey then
-			btn.hotkey:SetFont(path, size, flags)
+		local fontString = btn[regionKey]
 
-			-- SetFont alone doesn't re-run truncation.
-			btn:UpdateHotkeyText()
+		if fontString then
+			fontString:SetFont(path, size, flags)
+			btn[refreshMethod](btn)
 		end
 	end)
+end
+
+function ACAB:SetHotkeyFontSize(size)
+	SetPoolButtonFontSize("hotkeyFontSize", "NATIVE_HOTKEY_FONT", "hotkey", "UpdateHotkeyText", size)
 end
 
 function ACAB:SetCountFontSize(size)
-	self:EnsureDB()
-
-	-- Rounds to an integer since GetFont() can return a float size.
-	size = math.floor(size + 0.5)
-
-	ACABDB.countFontSize = size
-
-	if not ACAB.NATIVE_COUNT_FONT then
-		return
-	end
-
-	local path = ACAB.NATIVE_COUNT_FONT.path
-	local flags = ACAB.NATIVE_COUNT_FONT.flags
-
-	ACAB:ForEachPoolButton(function(btn)
-		if btn.count then
-			btn.count:SetFont(path, size, flags)
-			btn:UpdateCount()
-		end
-	end)
+	SetPoolButtonFontSize("countFontSize", "NATIVE_COUNT_FONT", "count", "UpdateCount", size)
 end
 
 function ACAB:SetMacroFontSize(size)
-	self:EnsureDB()
-
-	-- Rounds to an integer since GetFont() can return a float size.
-	size = math.floor(size + 0.5)
-
-	ACABDB.macroFontSize = size
-
-	-- Nothing captured yet this session - the write above is enough, the next button Init picks it up.
-	if not ACAB.NATIVE_MACRO_FONT then
-		return
-	end
-
-	local path = ACAB.NATIVE_MACRO_FONT.path
-	local flags = ACAB.NATIVE_MACRO_FONT.flags
-
-	ACAB:ForEachPoolButton(function(btn)
-		if btn.macroText then
-			btn.macroText:SetFont(path, size, flags)
-
-			-- SetFont alone doesn't re-run truncation.
-			btn:UpdateMacroText()
-		end
-	end)
+	SetPoolButtonFontSize("macroFontSize", "NATIVE_MACRO_FONT", "macroText", "UpdateMacroText", size)
 end
 
 function ACAB:SetMacroTextEnabled(enabled)

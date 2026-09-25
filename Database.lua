@@ -1,21 +1,29 @@
 -- Database.lua
--- SavedVariable lifecycle: schema/seeding constants, native-anchor/
--- spacing/action-slot capture, default- and extra-bar seeding,
--- ACAB:EnsureDB (migration-safe defaults), and the full profile system
--- (create/delete/copy/export/import). Loads right after Core.lua.
+-- SavedVariable lifecycle: native-anchor/spacing/action-slot capture, default- and extra-bar seeding,
+-- ACAB:EnsureDB (migration-safe defaults), and the profile system (create/delete/copy/export/import).
 
 local ACAB = AlternativeClassicActionBars
 
--- Schema version for ACABDB.defaultBars/bars. Bumping this reseeds
--- default bars and wipes ACABDB.bars - see EnsureDB below.
+-- Bumping this reseeds ACABDB.defaultBars and wipes ACABDB.bars (see EnsureDB).
 ACAB.SCHEMA_VERSION = 8
 
--- One-shot per session (login/reload), not per EnsureDB call - see
--- EnsureDB's hoverBindMode reset.
+-- EnsureDB resets hoverBindMode once per session (login/reload), not per call.
 local hasResetHoverBindModeThisSession = false
 
--- Captures a default bar's on-screen position from its first real Blizzard button frame, expressed as a
--- UIParent-relative TOPLEFT/BOTTOMLEFT anchor.
+-- Returns a fresh { 1, 2, ..., count } identity slot map.
+local function IdentitySlots(count)
+	local slots = {}
+	local i
+
+	for i = 1, count do
+		slots[i] = i
+	end
+
+	return slots
+end
+
+-- Captures a default bar's on-screen position from its first real Blizzard button, as a UIParent-relative
+-- TOPLEFT/BOTTOMLEFT anchor.
 function ACAB:CaptureNativeAnchor(id)
 	local buttons = self.GetDefaultBarButtons and self:GetDefaultBarButtons(id)
 
@@ -54,9 +62,7 @@ function ACAB:CaptureNativeAnchor(id)
 	}
 end
 
--- Captures the native gap between adjacent buttons on default bar `id`.
--- Returns spacing (rounded to the nearest pixel), isUniform, and the raw
--- gaps array.
+-- Captures the native gap between adjacent buttons on default bar `id`, rounded to the nearest pixel.
 local function CaptureNativeSpacing(self, id, grid)
 	local buttons = self.GetDefaultBarButtons and self:GetDefaultBarButtons(id)
 
@@ -145,8 +151,6 @@ local function CaptureNativeSpacing(self, id, grid)
 		end
 	end
 
-	local uniform = table.getn(buckets) == 1
-
 	-- Convert from the native button family's scale to the bar frame's scale (== UIParent's).
 	local buttonScale = buttons[1]:GetEffectiveScale()
 	local targetScale = UIParent:GetEffectiveScale()
@@ -161,11 +165,10 @@ local function CaptureNativeSpacing(self, id, grid)
 		spacing = 0
 	end
 
-	return spacing, uniform, gaps
+	return spacing
 end
 
--- Discovers default bar `id`'s (2-5) 12 real action-slot numbers from its live button frames (btn.action),
--- falling back to the known fixed multibar slot offsets if that field is missing.
+-- Fixed multibar slot offsets, used when a button's btn.action is missing.
 local FIXED_SLOT_FALLBACK_OFFSET = {
 	[2] = 60, -- MultiBarBottomLeft
 	[3] = 48, -- MultiBarBottomRight
@@ -173,6 +176,7 @@ local FIXED_SLOT_FALLBACK_OFFSET = {
 	[5] = 24, -- MultiBarLeft
 }
 
+-- Discovers default bar `id`'s (2-5) 12 real action slots from its live buttons. Returns slots, usedFallback.
 local function CaptureFixedActionSlots(self, id)
 	local buttons = self.GetDefaultBarButtons and self:GetDefaultBarButtons(id)
 
@@ -212,8 +216,7 @@ local function CaptureFixedActionSlots(self, id)
 	return slots, usedFallback
 end
 
--- Fallback anchor only used if CaptureNativeAnchor can't read a real
--- Blizzard frame at all.
+-- Used only when CaptureNativeAnchor can't read a real Blizzard button this session.
 local FALLBACK_ANCHOR = {
 	[1] = { point = "BOTTOM", relativePoint = "BOTTOM", x = 0, y = 0 },
 	[2] = { point = "BOTTOM", relativePoint = "BOTTOM", x = 0, y = 42 },
@@ -221,7 +224,6 @@ local FALLBACK_ANCHOR = {
 	[4] = { point = "RIGHT", relativePoint = "RIGHT", x = -18, y = 0 },
 	[5] = { point = "RIGHT", relativePoint = "RIGHT", x = -58, y = 0 },
 	[ACAB.PET_BAR_ID] = { point = "BOTTOM", relativePoint = "BOTTOM", x = -200, y = 130 },
-	-- Only used if CaptureNativeAnchor can't read a real ShapeshiftButton1 this session.
 	[ACAB.STANCE_BAR_ID] = { point = "BOTTOM", relativePoint = "BOTTOM", x = 0, y = 90 },
 }
 
@@ -229,18 +231,13 @@ local FALLBACK_ANCHOR = {
 local function SeedOneDefaultBar(self, id)
 	local grid = self.DEFAULT_BAR_GRID[id]
 	local anchor = self:CaptureNativeAnchor(id) or FALLBACK_ANCHOR[id]
-
-	local spacing = CaptureNativeSpacing(self, id, grid)
-
-	spacing = spacing or 0
-
-	-- NOT read from ACAB.SHOW_MULTI_ACTIONBAR_GLOBAL - that global doesn't survive a logout on this client.
-	local enabled = grid.enabled
+	local spacing = CaptureNativeSpacing(self, id, grid) or 0
 
 	local cfg = {
 		id = id,
 
-		enabled = enabled,
+		-- Must not read ACAB.SHOW_MULTI_ACTIONBAR_GLOBAL - it doesn't survive a logout on this client.
+		enabled = grid.enabled,
 		point = anchor.point,
 		relativePoint = anchor.relativePoint,
 		x = anchor.x,
@@ -289,51 +286,28 @@ local function SeedOneDefaultBar(self, id)
 		end
 	end
 
-	-- Pet Bar: pet slots 1-10 are an identity map (pool index N drives pet slot N).
+	-- Pet Bar: pool index N drives pet slot N (1-10).
 	if id == self.PET_BAR_ID then
 		cfg.isPetBar = true
+		cfg.fixedActionSlots = IdentitySlots(10)
 
-		local petSlots = {}
-		local ps
-
-		for ps = 1, 10 do
-			petSlots[ps] = ps
-		end
-
-		cfg.fixedActionSlots = petSlots
-
-		-- Default off: matches real vanilla's Pet Bar, always showing all 10 slots blank where unassigned.
+		-- Default off: all 10 slots shown, blank where unassigned (vanilla look).
 		cfg.condenseEmptyPetSlots = false
 	end
 
-	-- Stance Bar (styled mode): pool index N drives shapeshift form index N directly, no "empty slot" concept.
-	-- cfg.buttonCount tracks the live GetNumShapeshiftForms() count, recomputed on UPDATE_SHAPESHIFT_FORMS.
+	-- Stance Bar (styled mode): pool index N drives shapeshift form index N; buttonCount tracks the live form count.
 	if id == self.STANCE_BAR_ID then
 		cfg.isStanceBar = true
+		cfg.fixedActionSlots = IdentitySlots(self.MAX_STANCE_BUTTONS)
 
-		local stanceSlots = {}
-		local ss
-
-		for ss = 1, self.MAX_STANCE_BUTTONS do
-			stanceSlots[ss] = ss
-		end
-
-		cfg.fixedActionSlots = stanceSlots
-
-		local liveCount = GetNumShapeshiftForms and GetNumShapeshiftForms() or 0
-
-		if liveCount > self.MAX_STANCE_BUTTONS then
-			liveCount = self.MAX_STANCE_BUTTONS
-		end
+		local liveCount = self:GetClampedLiveStanceCount()
 
 		cfg.cols = liveCount > 0 and liveCount or 1
 		cfg.rows = 1
 		cfg.buttonCount = liveCount
 
-		-- Defaults on so an existing user sees no change until they opt into styled mode.
-		if cfg.useNativeStanceBar == nil then
-			cfg.useNativeStanceBar = true
-		end
+		-- Native mode by default; styled mode is opt-in.
+		cfg.useNativeStanceBar = true
 	end
 
 	return cfg
@@ -353,7 +327,7 @@ local function seedDefaultBars(self)
 	return result
 end
 
--- On-demand recapture of every default bar's native anchor/spacing, run synchronously. Reapplies live if bars exist.
+-- On-demand synchronous recapture of every default bar's native anchor/spacing; reapplies live if bars exist.
 function ACAB:RecaptureDefaultBarNativeAnchors()
 	self:EnsureDB()
 
@@ -362,15 +336,13 @@ function ACAB:RecaptureDefaultBarNativeAnchors()
 	local fresh = seedDefaultBars(self)
 	local i
 
-	-- Updates each existing cfg table in place instead of replacing ACABDB.defaultBars wholesale, since
-	-- self.bars[id].config is the same table reference captured at login. Only anchor/spacing/slots are copied.
+	-- Must update each cfg in place (anchor/spacing/slots only) - self.bars[id].config holds the same table.
 	for i = 1, table.getn(self.DEFAULT_BAR_IDS) do
 		local id = self.DEFAULT_BAR_IDS[i]
 		local oldCfg = ACABDB.defaultBars[id]
 		local newCfg = fresh[id]
 
-		-- Pet Bar/Stance Bar in native mode reparent their real buttons into our own container, so
-		-- GetLeft()/GetTop() reports our applied position, not Blizzard's native one - skip recapturing then.
+		-- Native-mode Pet/Stance Bar buttons live in our own container, so they'd only read back our position.
 		local selfReferencing =
 			(id == self.PET_BAR_ID and self.petBarNativeContainer) or
 			(id == self.STANCE_BAR_ID and self.stanceBarContainer)
@@ -398,8 +370,8 @@ function ACAB:RecaptureDefaultBarNativeAnchors()
 	self:ReapplyAfterNativeRecapture()
 end
 
--- Re-applies the default bars and every bar derived from their native anchors (Pet Bar X, Extra Bars
--- 1-4). No-op until bars are built - the login sequence calls it again once they are.
+-- Re-applies the default bars and everything derived from their native anchors (Pet Bar X, Extra Bars 1-4).
+-- No-op until bars are built.
 function ACAB:ReapplyAfterNativeRecapture()
 	if not (self.bars and self.bars[1]) then
 		return
@@ -419,7 +391,7 @@ function ACAB:ReapplyAfterNativeRecapture()
 		self:ReflowPetBarForBar3Toggle(bar3Cfg and bar3Cfg.enabled)
 	end
 
-	-- Extra Bar 1-4's default layout is relative to a default bar's nativeAnchor - re-derive now that's refreshed.
+	-- Extra Bar 1-4's default layout is relative to a default bar's nativeAnchor.
 	if self.ResetExtraBarLayout then
 		for i = self.EXTRA_BAR_ID_START, self.EXTRA_BAR_ID_START + self.EXTRA_BAR_COUNT - 1 do
 			self:ResetExtraBarLayout(i)
@@ -429,8 +401,8 @@ function ACAB:ReapplyAfterNativeRecapture()
 	self:Print("All Bars and UI-Elements applied to their correct position after recapture.")
 end
 
--- Clears the stored native anchor + position for every single-real-frame wrapped element (Key Ring/Latency
--- Bar/Exp Bar/Cast Bar). These ARE the real Blizzard frame, so only a fresh read on next reload gets the real position.
+-- Clears the stored native anchor + position of Key Ring/Latency Bar/Exp Bar/Cast Bar so the next reload
+-- recaptures them.
 function ACAB:RecaptureWrappedNativeFrameAnchors()
 	self:EnsureDB()
 
@@ -449,13 +421,13 @@ function ACAB:RecaptureWrappedNativeFrameAnchors()
 	self:Print("Key Ring/Latency Bar/Exp Bar/Cast Bar native anchors cleared - /reload now to capture them fresh.")
 end
 
--- Fallback only, used if the referenced default bar's native anchor isn't captured yet. Stacked vertically by index.
+-- Fallback Extra Bar position (stacked vertically by index) when the reference bar's native anchor is missing.
 local function GetFallbackExtraBarPosition(self, index)
 	return 20, 150 + (index * ((self.BUTTON_ROWS * self.BUTTON_SIZE) + 40))
 end
 
--- Extra Bar N's default position sits one (or two, for Extra Bar 4) pitch to the given side of a reference
--- default bar's own native position, matching its grid/spacing/size. Index is 0-3 for Extra Bar 1-4.
+-- Extra Bar default positions: pitchCount button pitches to `side` of a reference default bar's native
+-- position. Keyed by index 0-3 (Extra Bar 1-4).
 local EXTRA_BAR_DEFAULT_REFERENCE = {
 	[0] = { refId = 2, side = "above", pitchCount = 1 }, -- Extra Bar 1: above Action Bar 1.
 	[1] = { refId = 3, side = "above", pitchCount = 1 }, -- Extra Bar 2: above Action Bar 2.
@@ -463,8 +435,7 @@ local EXTRA_BAR_DEFAULT_REFERENCE = {
 	[3] = { refId = 5, side = "left",  pitchCount = 2 }, -- Extra Bar 4: left of Right Action Bar 2 (double pitch, i.e. left of Extra Bar 3).
 }
 
--- Shared between seedExtraBarConfig and ACAB:ResetExtraBarLayout so both land in the same place.
--- Returns x, y, cols, rows, buttonSize, spacing.
+-- Extra Bar `index`'s default layout (seeding and ResetExtraBarLayout). Returns x, y, cols, rows, buttonSize, spacing.
 function ACAB:GetDefaultExtraBarLayout(index)
 	local ref = EXTRA_BAR_DEFAULT_REFERENCE[index]
 	local refCfg = ref and ACABDB.defaultBars and ACABDB.defaultBars[ref.refId]
@@ -491,15 +462,8 @@ function ACAB:GetDefaultExtraBarLayout(index)
 	return x, y, grid.cols, grid.rows, buttonSize, spacing
 end
 
--- Extra bar's live vertical footprint (real frame height, not the seeded
--- default) plus the same gap-to-reference-bar spacing GetDefaultExtraBarLayout
--- above used to seed its position - 0 if the extra bar doesn't exist, isn't
--- enabled, or is no longer at its own default position (bar.config.
--- usesDefaultPosition == false - the user dragged/slider-moved it away from
--- its seeded slot above Action Bar 1/2, so it no longer reads as stacked
--- there regardless of enabled state). Used by Stance/Pet/Cast Bar baseline
--- reflow to stack above an enabled Extra Bar the same way they already
--- stack above Action Bar 1/2.
+-- Extra Bar's live height plus its reference-bar gap, for Stance/Pet/Cast Bar stacking. 0 if the bar is
+-- missing, disabled, or moved off its default position.
 function ACAB:GetExtraBarStackPitch(extraBarId)
 	local bar = self.bars and self.bars[extraBarId]
 
@@ -516,8 +480,7 @@ function ACAB:GetExtraBarStackPitch(extraBarId)
 	return (bar:GetHeight() or 0) + gap
 end
 
--- Nudges Stance/Pet/Cast Bar to resettle when Extra Bar 1/2's stacking contribution changes.
--- Each Reflow* call below already no-ops on its own guard, so always safe to call.
+-- Resettles Stance/Pet/Cast Bar when Extra Bar 1/2's stacking contribution changes (each Reflow* self-guards).
 function ACAB:ReflowExtraBarDependants(extraBarId)
 	local index = extraBarId - self.EXTRA_BAR_ID_START
 
@@ -574,9 +537,7 @@ local function seedExtraBarConfig(self, id)
 	}
 end
 
--- One-time migration: converts a legacy CENTER-anchored Extra Bar to the
--- TOPLEFT/BOTTOMLEFT convention every other Action Bar uses, preserving its
--- real on-screen position. No-op once already migrated.
+-- Converts a legacy (non-canonical) CENTER-anchored Extra Bar to TOPLEFT/BOTTOMLEFT, keeping its on-screen position.
 function ACAB:MigrateExtraBarAnchor(cfg)
 	if not cfg or cfg.point ~= "CENTER" or self:IsCanonicalPosition(cfg) then
 		return
@@ -629,21 +590,13 @@ end
 
 -------------------------------------------------------------------------
 -- Profiles
---
--- ACABDB is always the active profile's live data. ACABProfilesDB
--- (account-wide) stores every profile's data keyed by name.
--- ACABCharDB (per-character) stores which profile this character
--- currently uses.
+-- ACABDB = active profile's live data; ACABProfilesDB (account-wide) = every profile's data by name;
+-- ACABCharDB (per-character) = which profile this character uses.
 -------------------------------------------------------------------------
 
 ACAB.DEFAULT_PROFILE_NAME = "Default"
 
--- Reserved profile name - never user-selectable, kept so no user profile
--- can ever collide with it. "Reset to Modern Layout Default" no longer
--- reads a cached snapshot under this name (ACAB:ApplyModernMainActionBarsLayout
--- and friends compute it live, off real bar geometry, at click time
--- instead) - this exclusion is kept in GetProfileNames/ProfileNameTaken
--- purely as future-proofing for the name itself.
+-- Reserved name: hidden from GetProfileNames and rejected by ProfileNameTaken.
 ACAB.MODERN_BASE_PROFILE_NAME = "ModernBase"
 
 -- Plain recursive deep copy - ACABDB only ever holds plain data.
@@ -687,9 +640,8 @@ function ACAB:GetProfileNames()
 	return result
 end
 
--- Resolves which profile this character uses, migrates any pre-existing
--- account data into Default exactly once, and loads the resolved
--- profile's data into ACABDB. Must run before EnsureDB.
+-- Resolves this character's profile, migrates pre-profile account data into Default once, and loads the
+-- profile into ACABDB. Must run before EnsureDB.
 function ACAB:ResolveActiveProfile()
 	if not ACABCharDB then
 		ACABCharDB = {
@@ -733,8 +685,7 @@ function ACAB:SaveActiveProfileData()
 	ACABProfilesDB[self.activeProfileName] = self:DeepCopyTable(ACABDB)
 end
 
--- Case-insensitive check against every existing profile name (including
--- Default), so "MyProfile" and "myprofile" can't coexist as two profiles.
+-- Case-insensitive check against every existing profile name (including Default and the reserved name).
 function ACAB:ProfileNameTaken(name)
 	if not name or name == "" then
 		return false
@@ -758,18 +709,8 @@ function ACAB:ProfileNameTaken(name)
 	return false
 end
 
--- Creates a new profile seeded from Default's current data. On a
--- brand-new SavedVariables file, ACABProfilesDB[Default] doesn't exist yet
--- (it's only written by SaveActiveProfileData, on logout or an explicit
--- profile switch) - falls back to the live ACABDB instead of an empty
--- table, since RunLoginSequence's ACAB:EnsureDB() has already fully
--- seeded it by the time any UI that could call this has loaded. An empty
--- fallback here left new profiles with no defaultBars entries at all,
--- which self-healed for bars 1-5 (SetupWizard.lua's FinishWizard leaves
--- their bar.config pointed at the old, already-seeded table when no
--- matching cfg exists to re-point to) but not for native-mode Pet/Stance
--- Bar, whose reset functions read ACABDB.defaultBars[id] directly with no
--- such fallback and silently no-op on a nil cfg.
+-- Creates a new profile seeded from Default's saved data, or from the live ACABDB if Default isn't saved yet.
+-- Must not fall back to an empty table - native-mode Pet/Stance Bar resets no-op without defaultBars entries.
 function ACAB:CreateProfile(name)
 	if not name or name == "" then
 		return false, "Profile name cannot be empty."
@@ -793,8 +734,7 @@ function ACAB:CreateProfile(name)
 	return true
 end
 
--- Deletes a profile. Default is never deletable; deleting the active
--- profile falls the character back to Default.
+-- Deletes a profile (never Default); deleting the active profile falls this character back to Default.
 function ACAB:DeleteProfile(name)
 	if not name or name == self.DEFAULT_PROFILE_NAME then
 		return false, "The Default profile cannot be deleted."
@@ -809,9 +749,7 @@ function ACAB:DeleteProfile(name)
 	if ACABCharDB and ACABCharDB.activeProfile == name then
 		ACABCharDB.activeProfile = self.DEFAULT_PROFILE_NAME
 
-		-- Also update the live in-memory pointer, not just ACABCharDB's -
-		-- otherwise a later SaveActiveProfileData saves ACABDB back
-		-- under the just-deleted name, resurrecting it.
+		-- Must also update the live pointer, or SaveActiveProfileData resurrects the deleted profile.
 		self.activeProfileName = self.DEFAULT_PROFILE_NAME
 		ACABDB = self:DeepCopyTable(ACABProfilesDB[self.DEFAULT_PROFILE_NAME] or {})
 	end
@@ -840,10 +778,8 @@ end
 
 -------------------------------------------------------------------------
 -- Profile export/import
---
--- A profile's data is serialized as this addon's own compact table-literal
--- syntax (a signature prefix followed by nested [key]=value pairs), not
--- executed as Lua - importing never runs loadstring on pasted text.
+-- Format: PROFILE_EXPORT_PREFIX + a compact [key]=value table literal. Import is parsed by hand, never
+-- loadstring'd (pasted text is untrusted). Keep the format stable so existing exports still import.
 -------------------------------------------------------------------------
 
 local PROFILE_EXPORT_PREFIX = "TBVPROFILE1:"
@@ -852,6 +788,7 @@ ACAB.PROFILE_IMPORT_ERROR_MESSAGE =
 	"Invalid Profile Import Syntax, please double check you copied all " ..
 	"Text correctly on your Export and try again"
 
+-- Escapes backslash, quote, and \n \r \t (ParseImportString's inverse).
 local function EscapeExportString(s)
 	s = string.gsub(s, "\\", "\\\\")
 	s = string.gsub(s, "\"", "\\\"")
@@ -862,6 +799,7 @@ local function EscapeExportString(s)
 	return s
 end
 
+-- Appends `value`'s serialized form to `parts`; unsupported types serialize as nil.
 local function SerializeValue(value, parts)
 	if type(value) == "table" then
 		table.insert(parts, "{")
@@ -890,8 +828,7 @@ local function SerializeValue(value, parts)
 	end
 end
 
--- Serializes the currently active profile's live settings into a single
--- exportable string.
+-- Serializes the active profile's live ACABDB into one exportable string.
 function ACAB:ExportActiveProfileString()
 	local parts = {}
 
@@ -900,9 +837,7 @@ function ACAB:ExportActiveProfileString()
 	return PROFILE_EXPORT_PREFIX .. table.concat(parts, "")
 end
 
--- Manual recursive-descent parser matching SerializeValue's exact grammar -
--- a hand-rolled table literal ([key]=value pairs, quoted strings, numbers,
--- booleans), never Lua source that gets executed.
+-- Recursive-descent parser for SerializeValue's grammar. Parse functions return value, or nil, errorString.
 local function NewImportParser(str)
 	return { str = str, pos = 1, len = string.len(str) }
 end
@@ -921,6 +856,7 @@ end
 
 local ParseImportValue
 
+-- Parses a quoted string starting at the opening quote.
 local function ParseImportString(p)
 	p.pos = p.pos + 1
 
@@ -963,6 +899,7 @@ local function ParseImportString(p)
 	return table.concat(resultParts, "")
 end
 
+-- Parses a bare token up to the next , } or ] as true/false/nil or a number.
 local function ParseImportNumberOrKeyword(p)
 	local startPos = p.pos
 
@@ -995,6 +932,7 @@ local function ParseImportNumberOrKeyword(p)
 	return num
 end
 
+-- Parses a {[key]=value,...} table starting at the opening brace; nil keys are skipped.
 local function ParseImportTable(p)
 	p.pos = p.pos + 1
 
@@ -1090,6 +1028,7 @@ ParseImportValue = function(p)
 	end
 end
 
+-- Parses one whole value; nil on any error or trailing input.
 local function ParseImportBody(body)
 	local p = NewImportParser(body)
 	local value, err = ParseImportValue(p)
@@ -1107,8 +1046,7 @@ local function ParseImportBody(body)
 	return value
 end
 
--- Validates and parses an exported profile string without applying it.
--- Returns true, dataTable on success or false, errorMessage on failure.
+-- Validates and parses an exported profile string without applying it. Returns true, data or false, errorMessage.
 function ACAB:ParseProfileImportString(str)
 	if type(str) ~= "string" then
 		return false, self.PROFILE_IMPORT_ERROR_MESSAGE
@@ -1130,10 +1068,8 @@ function ACAB:ParseProfileImportString(str)
 	return true, result
 end
 
--- Overwrites the currently active profile (live data and its saved-profile
--- entry) with already-parsed import data - mirrors CopyProfileInto's dual
--- write so a PLAYER_LOGOUT-triggered SaveActiveProfileData right before the
--- caller's ReloadUI() can't clobber it.
+-- Overwrites the active profile's live data and saved entry with parsed import data.
+-- Must write both, or the logout-time SaveActiveProfileData before ReloadUI clobbers the import.
 function ACAB:ApplyImportedProfileData(data)
 	ACABDB = self:DeepCopyTable(data)
 
@@ -1158,8 +1094,7 @@ function ACAB:SwitchProfile(name)
 	return true
 end
 
--- Shared "enter a new profile name" dialog used by both the Profiles tab
--- and the first-login dialog.
+-- Shared "enter a new profile name" dialog; creates the profile and switches to it.
 function ACAB:ShowCreateProfileDialog(onCreated)
 	self:ShowDialog({
 		title = "New Profile",
@@ -1188,10 +1123,7 @@ function ACAB:ShowCreateProfileDialog(onCreated)
 	})
 end
 
--- First-ever-login-with-profiles dialog for this character. Trimmed to the
--- setup wizard entry point plus the "stay on default" escape hatches - the
--- old inline "named profile"/"character profile" flows now live inside the
--- wizard itself (ACAB:ShowSetupWizard, SetupWizard.lua).
+-- This character's first-login dialog: setup wizard, use an existing profile, or stay on Default.
 function ACAB:ShowFirstLoginDialog()
 	local buttons = {
 		{
@@ -1250,51 +1182,39 @@ function ACAB:ShowFirstLoginDialog()
 	})
 end
 
+-------------------------------------------------------------------------
+-- EnsureDB: migration-safe defaults. Order matters - never reorder, change a default, or reset a one-shot flag.
+-------------------------------------------------------------------------
+
+-- One-shot forced default-bar anchor recaptures, applied in this order.
+local ANCHOR_RECAPTURE_FLAGS = {
+	"anchorRecaptureDone",
+	"anchorScaleFixDone",
+	"anchorTimingFixDone",
+	"anchorEnterWorldFixDone",
+}
+
 function ACAB:EnsureDB()
 	if not ACABDB then
 		ACABDB = {}
 	end
-	if ACABDB.editMode == nil then
-		ACABDB.editMode = false
-	end
-	if ACABDB.minimapAngle == nil then
-		ACABDB.minimapAngle = 200
-	end
 
-	if ACABDB.useDefaultLayout == nil then
-		ACABDB.useDefaultLayout = true
-	end
-
-	if ACABDB.modernBorderStyle == nil then
-		ACABDB.modernBorderStyle = false
-	end
-
-	if ACABDB.bypassRightActionBar2Dependency == nil then
-		ACABDB.bypassRightActionBar2Dependency = false
-	end
+	if ACABDB.editMode == nil then ACABDB.editMode = false end
+	if ACABDB.minimapAngle == nil then ACABDB.minimapAngle = 200 end
+	if ACABDB.useDefaultLayout == nil then ACABDB.useDefaultLayout = true end
+	if ACABDB.modernBorderStyle == nil then ACABDB.modernBorderStyle = false end
+	if ACABDB.bypassRightActionBar2Dependency == nil then ACABDB.bypassRightActionBar2Dependency = false end
 
 	if ACABDB.lastAppliedVanillaStyle == nil then
 		ACABDB.lastAppliedVanillaStyle = ACAB:IsVanillaBorderStyle()
 	end
 
-	if ACABDB.globalSpacingEnabled == nil then
-		ACABDB.globalSpacingEnabled = false
-	end
+	if ACABDB.globalSpacingEnabled == nil then ACABDB.globalSpacingEnabled = false end
+	if ACABDB.globalSpacingValue == nil then ACABDB.globalSpacingValue = 0 end
+	if ACABDB.globalButtonSizeEnabled == nil then ACABDB.globalButtonSizeEnabled = false end
+	if ACABDB.globalButtonSizeValue == nil then ACABDB.globalButtonSizeValue = ACAB.BUTTON_SIZE end
 
-	if ACABDB.globalSpacingValue == nil then
-		ACABDB.globalSpacingValue = 0
-	end
-
-	if ACABDB.globalButtonSizeEnabled == nil then
-		ACABDB.globalButtonSizeEnabled = false
-	end
-
-	if ACABDB.globalButtonSizeValue == nil then
-		ACABDB.globalButtonSizeValue = ACAB.BUTTON_SIZE
-	end
-
-	-- Gates pagination/stance-swap for every default bar (1-5); falls back
-	-- to any existing mainBarPaginationEnabled/mainBarStanceSwapEnabled value, else true.
+	-- Default-bar (1-5) pagination/stance-swap gates, migrated from the old bar-1-only fields, else true.
 	if ACABDB.defaultBarPaginationEnabled == nil then
 		if ACABDB.mainBarPaginationEnabled ~= nil then
 			ACABDB.defaultBarPaginationEnabled = ACABDB.mainBarPaginationEnabled
@@ -1310,8 +1230,8 @@ function ACAB:EnsureDB()
 		end
 	end
 
-	-- Nested per default-bar-id: [id] -> assignedId, [id][stanceIndex] ->
-	-- assignedId. Migrates any existing bar-1-only value in.
+	-- Per default-bar id: [id] -> assignedId, [id][stanceIndex] -> assignedId; nil = No Pageswap.
+	-- Migrates the old bar-1-only value in.
 	if not ACABDB.defaultBarPageBarAssignment then
 		ACABDB.defaultBarPageBarAssignment = {}
 
@@ -1328,11 +1248,7 @@ function ACAB:EnsureDB()
 		end
 	end
 
-	-- defaultBarStanceBarAssignment[id]/defaultBarPageBarAssignment[id] stay
-	-- nil (No Pageswap) until explicitly assigned.
-
-	-- One-time: sets bar 1's nil page/stance assignments to -1 (Default).
-	-- Must run only once - never reset this flag.
+	-- One-time: sets bar 1's nil page/stance assignments to -1 (Default). Never reset this flag.
 	if not ACABDB.migratedDefaultBarSwapSentinel then
 		ACABDB.migratedDefaultBarSwapSentinel = true
 
@@ -1344,12 +1260,7 @@ function ACAB:EnsureDB()
 			ACABDB.defaultBarStanceBarAssignment[1] = {}
 		end
 
-		local liveCount = GetNumShapeshiftForms and GetNumShapeshiftForms() or 0
-
-		if liveCount > self.MAX_STANCE_BUTTONS then
-			liveCount = self.MAX_STANCE_BUTTONS
-		end
-
+		local liveCount = self:GetClampedLiveStanceCount()
 		local s
 
 		for s = 1, liveCount do
@@ -1359,28 +1270,18 @@ function ACAB:EnsureDB()
 		end
 	end
 
-	if ACABDB.mainBarPageIndicatorScale == nil then
-		ACABDB.mainBarPageIndicatorScale = 1
-	end
+	if ACABDB.mainBarPageIndicatorScale == nil then ACABDB.mainBarPageIndicatorScale = 1 end
+	-- Page Indicator follows Main Bar until dragged away.
+	if ACABDB.mainBarPageIndicatorFollowsMainBar == nil then ACABDB.mainBarPageIndicatorFollowsMainBar = true end
 
-	-- Page Indicator sits right of Main Bar (any grid) until dragged away.
-	if ACABDB.mainBarPageIndicatorFollowsMainBar == nil then
-		ACABDB.mainBarPageIndicatorFollowsMainBar = true
-	end
-
-	-- stanceBarPosition/stanceBarNativeAnchor are captured lazily on
-	-- first real build (DefaultBars.lua), not seeded here.
-
-	-- Self-heal a corrupted stanceBarNativeGap value every EnsureDB call
-	-- (a bad capture nils it so the next login attempts a real capture).
+	-- stanceBarPosition/stanceBarNativeAnchor are captured lazily on first build, not seeded here.
+	-- Nils a corrupted stanceBarNativeGap so the next login recaptures it.
 	if ACABDB.stanceBarNativeGap
 		and (ACABDB.stanceBarNativeGap <= 0 or ACABDB.stanceBarNativeGap >= self.BUTTON_SIZE) then
 		ACABDB.stanceBarNativeGap = nil
 	end
 
-	if ACABDB.tintWholeButtonOnRange == nil then
-		ACABDB.tintWholeButtonOnRange = true
-	end
+	if ACABDB.tintWholeButtonOnRange == nil then ACABDB.tintWholeButtonOnRange = true end
 
 	-- One-time migration from the old boolean ACABDB.disableBlizzardArt (left in place, no longer read).
 	if ACABDB.mainBarArtMode == nil then
@@ -1403,181 +1304,76 @@ function ACAB:EnsureDB()
 		ACABDB.keyRingHoverDuration = ACABDB.bagBarHoverDuration or 3
 	end
 
-	if ACABDB.snapToAdjacentElements == nil then
-		ACABDB.snapToAdjacentElements = true
-	end
+	if ACABDB.snapToAdjacentElements == nil then ACABDB.snapToAdjacentElements = true end
 
-	-- One-time correction for saves that already had this explicitly
-	-- false from before the default flipped to true.
+	-- One-time: forces snapToAdjacentElements on for saves predating the true default.
 	if not ACABDB.snapDefaultCorrectedOnce then
 		ACABDB.snapDefaultCorrectedOnce = true
 		ACABDB.snapToAdjacentElements = true
 	end
 
-	if ACABDB.showLayoutGrid == nil then
-		ACABDB.showLayoutGrid = true
-	end
+	if ACABDB.showLayoutGrid == nil then ACABDB.showLayoutGrid = true end
+	if ACABDB.snapToGrid == nil then ACABDB.snapToGrid = true end
+	if ACABDB.useCustomGridSize == nil then ACABDB.useCustomGridSize = false end
 
-	if ACABDB.snapToGrid == nil then
-		ACABDB.snapToGrid = true
-	end
+	if ACABDB.bagBarEnabled == nil then ACABDB.bagBarEnabled = true end
+	if ACABDB.microMenuEnabled == nil then ACABDB.microMenuEnabled = true end
+	if ACABDB.stanceBarEnabled == nil then ACABDB.stanceBarEnabled = true end
+	if ACABDB.keyRingEnabled == nil then ACABDB.keyRingEnabled = true end
+	if ACABDB.latencyBarEnabled == nil then ACABDB.latencyBarEnabled = true end
+	if ACABDB.latencyBarScale == nil then ACABDB.latencyBarScale = 1 end
 
-	if ACABDB.useCustomGridSize == nil then
-		ACABDB.useCustomGridSize = false
-	end
+	if ACABDB.tooltipEnabled == nil then ACABDB.tooltipEnabled = false end
+	if ACABDB.tooltipScale == nil then ACABDB.tooltipScale = 1 end
+	if ACABDB.tooltipAnchorCorner == nil then ACABDB.tooltipAnchorCorner = "BOTTOMRIGHT" end
 
-	if ACABDB.bagBarEnabled == nil then
-		ACABDB.bagBarEnabled = true
-	end
-	if ACABDB.microMenuEnabled == nil then
-		ACABDB.microMenuEnabled = true
-	end
+	if ACABDB.expBarEnabled == nil then ACABDB.expBarEnabled = true end
+	if ACABDB.expBarScale == nil then ACABDB.expBarScale = 1 end
 
-	if ACABDB.stanceBarEnabled == nil then
-		ACABDB.stanceBarEnabled = true
-	end
+	-- Stance/Cast Bar "at default position" flags (Pet Bar's lives on its cfg); cleared on user drag/slider move.
+	if ACABDB.stanceBarUsesDefaultPosition == nil then ACABDB.stanceBarUsesDefaultPosition = true end
+	if ACABDB.castBarUsesDefaultPosition == nil then ACABDB.castBarUsesDefaultPosition = true end
 
-	if ACABDB.keyRingEnabled == nil then
-		ACABDB.keyRingEnabled = true
-	end
-	if ACABDB.latencyBarEnabled == nil then
-		ACABDB.latencyBarEnabled = true
-	end
-	if ACABDB.latencyBarScale == nil then
-		ACABDB.latencyBarScale = 1
-	end
+	-- Only-show-on-hover for simple elements (Bag Bar's pair also governs Key Ring); grid bars use cfg fields.
+	if ACABDB.bagBarHoverOnly == nil then ACABDB.bagBarHoverOnly = false end
+	if ACABDB.bagBarHoverDuration == nil then ACABDB.bagBarHoverDuration = 3 end
+	if ACABDB.microMenuHoverOnly == nil then ACABDB.microMenuHoverOnly = false end
+	if ACABDB.microMenuHoverDuration == nil then ACABDB.microMenuHoverDuration = 3 end
+	if ACABDB.latencyBarHoverOnly == nil then ACABDB.latencyBarHoverOnly = false end
+	if ACABDB.latencyBarHoverDuration == nil then ACABDB.latencyBarHoverDuration = 3 end
+	if ACABDB.expBarHoverOnly == nil then ACABDB.expBarHoverOnly = false end
+	if ACABDB.expBarHoverDuration == nil then ACABDB.expBarHoverDuration = 3 end
 
-	if ACABDB.tooltipEnabled == nil then
-		ACABDB.tooltipEnabled = false
-	end
-	if ACABDB.tooltipScale == nil then
-		ACABDB.tooltipScale = 1
-	end
-	if ACABDB.tooltipAnchorCorner == nil then
-		ACABDB.tooltipAnchorCorner = "BOTTOMRIGHT"
-	end
+	if ACABDB.castBarScale == nil then ACABDB.castBarScale = 1 end
 
-	if ACABDB.expBarEnabled == nil then
-		ACABDB.expBarEnabled = true
-	end
-	if ACABDB.expBarScale == nil then
-		ACABDB.expBarScale = 1
-	end
+	if ACABDB.betterExpBarEnabled == nil then ACABDB.betterExpBarEnabled = false end
+	if ACABDB.expBarShowCurrentOverMax == nil then ACABDB.expBarShowCurrentOverMax = true end
+	if ACABDB.expBarShowPercent == nil then ACABDB.expBarShowPercent = true end
+	if ACABDB.expBarShowLevel == nil then ACABDB.expBarShowLevel = true end
+	if ACABDB.expBarShowRestedPercent == nil then ACABDB.expBarShowRestedPercent = true end
+	if ACABDB.expBarShowRestedTotal == nil then ACABDB.expBarShowRestedTotal = true end
 
-	-- Stance Bar/Cast Bar "at default position" flags (Pet Bar's own lives
-	-- on its cfg table instead - defaultBars[PET_BAR_ID].usesDefaultPosition,
-	-- nil-safe read like every other grid-bar cfg field, no seeding here).
-	-- ReflowStanceBarForBar2Toggle/ReflowCastBarForStackToggle only ever
-	-- move Y while this stays true - flips false the moment the user drags
-	-- or slider-edits that element's own position.
-	if ACABDB.stanceBarUsesDefaultPosition == nil then
-		ACABDB.stanceBarUsesDefaultPosition = true
-	end
-
-	if ACABDB.castBarUsesDefaultPosition == nil then
-		ACABDB.castBarUsesDefaultPosition = true
-	end
-
-	-- Only-show-on-hover for simple elements (Bag Bar's pair also governs the Key Ring frame). Grid-bar cfg tables use nil-safe cfg.hoverOnly/cfg.hoverDuration reads instead.
-	if ACABDB.bagBarHoverOnly == nil then
-		ACABDB.bagBarHoverOnly = false
-	end
-	if ACABDB.bagBarHoverDuration == nil then
-		ACABDB.bagBarHoverDuration = 3
-	end
-
-	if ACABDB.microMenuHoverOnly == nil then
-		ACABDB.microMenuHoverOnly = false
-	end
-	if ACABDB.microMenuHoverDuration == nil then
-		ACABDB.microMenuHoverDuration = 3
-	end
-
-	if ACABDB.latencyBarHoverOnly == nil then
-		ACABDB.latencyBarHoverOnly = false
-	end
-	if ACABDB.latencyBarHoverDuration == nil then
-		ACABDB.latencyBarHoverDuration = 3
-	end
-
-	if ACABDB.expBarHoverOnly == nil then
-		ACABDB.expBarHoverOnly = false
-	end
-	if ACABDB.expBarHoverDuration == nil then
-		ACABDB.expBarHoverDuration = 3
-	end
-
-	if ACABDB.castBarScale == nil then
-		ACABDB.castBarScale = 1
-	end
-
-	if ACABDB.betterExpBarEnabled == nil then
-		ACABDB.betterExpBarEnabled = false
-	end
-
-	if ACABDB.expBarShowCurrentOverMax == nil then
-		ACABDB.expBarShowCurrentOverMax = true
-	end
-	if ACABDB.expBarShowPercent == nil then
-		ACABDB.expBarShowPercent = true
-	end
-	if ACABDB.expBarShowLevel == nil then
-		ACABDB.expBarShowLevel = true
-	end
-	if ACABDB.expBarShowRestedPercent == nil then
-		ACABDB.expBarShowRestedPercent = true
-	end
-	if ACABDB.expBarShowRestedTotal == nil then
-		ACABDB.expBarShowRestedTotal = true
-	end
-
-	-- expBarColorEarned/Rested (+ native snapshots) and expBarFontSize are
-	-- captured lazily from the live frame, not seeded here.
-
+	-- expBarColorEarned/Rested (+ native snapshots) and expBarFontSize are captured lazily, not seeded here.
 	if not ACABDB.expBarTextColor then
 		ACABDB.expBarTextColor = { r = 1, g = 0.82, b = 0 }
 	end
 
-	if ACABDB.expBarGlowPulseInterval == nil then
-		ACABDB.expBarGlowPulseInterval = 1.5
-	end
+	if ACABDB.expBarGlowPulseInterval == nil then ACABDB.expBarGlowPulseInterval = 1.5 end
 
-	if ACABDB.keyRingScale == nil then
-		ACABDB.keyRingScale = 1
-	end
+	if ACABDB.keyRingScale == nil then ACABDB.keyRingScale = 1 end
+	if ACABDB.bagBarScale == nil then ACABDB.bagBarScale = 1 end
+	if ACABDB.microMenuScale == nil then ACABDB.microMenuScale = 1 end
+	if ACABDB.stanceBarScale == nil then ACABDB.stanceBarScale = 1 end
 
-	if ACABDB.bagBarScale == nil then
-		ACABDB.bagBarScale = 1
-	end
-	if ACABDB.microMenuScale == nil then
-		ACABDB.microMenuScale = 1
-	end
-	if ACABDB.stanceBarScale == nil then
-		ACABDB.stanceBarScale = 1
-	end
+	if ACABDB.bagBarOrientation == nil then ACABDB.bagBarOrientation = false end
+	if ACABDB.stanceBarOrientation == nil then ACABDB.stanceBarOrientation = false end
 
-	if ACABDB.bagBarOrientation == nil then
-		ACABDB.bagBarOrientation = false
-	end
-	if ACABDB.stanceBarOrientation == nil then
-		ACABDB.stanceBarOrientation = false
-	end
+	-- Micro Menu grid (cols x rows), default one row of 8.
+	if ACABDB.microMenuCols == nil then ACABDB.microMenuCols = 8 end
+	if ACABDB.microMenuRows == nil then ACABDB.microMenuRows = 1 end
 
-	-- Micro Menu uses a fixed grid (cols x rows) instead of an
-	-- orientation flag - default is one row of 8, same look as before.
-	if ACABDB.microMenuCols == nil then
-		ACABDB.microMenuCols = 8
-	end
-	if ACABDB.microMenuRows == nil then
-		ACABDB.microMenuRows = 1
-	end
-
-	-- bagBarSpacing/microMenuSpacing/stanceBarSpacing (+ native snapshots)
-	-- are captured lazily on first real container build.
-
-	-- One-time forced recapture of Bag Bar/Micro Menu/Stance Bar spacing,
-	-- so an existing save picks up the corrected median-based capture
-	-- math. Not a schema bump - that would also wipe ACABDB.bars.
+	-- bagBarSpacing/microMenuSpacing/stanceBarSpacing (+ native snapshots) are captured lazily on first build.
+	-- One-time forced recapture of those, without the schema bump that would also wipe ACABDB.bars.
 	if not ACABDB.spacingRecaptureDone then
 		ACABDB.spacingRecaptureDone = true
 
@@ -1589,50 +1385,25 @@ function ACAB:EnsureDB()
 		ACABDB.stanceBarNativeSpacing = nil
 	end
 
-	-- hotkeyFontSize/countFontSize/macroFontSize stay nil until the user
-	-- moves a slider; Button.lua treats nil as "use the captured default".
+	-- hotkeyFontSize/countFontSize/macroFontSize stay nil until a slider moves (nil = captured default).
+	if ACABDB.showMacroText == nil then ACABDB.showMacroText = false end
 
-	if ACABDB.showMacroText == nil then
-		ACABDB.showMacroText = false
-	end
+	-- Each flag forces one default-bar/Page Indicator anchor recapture (reseeds defaultBars, keeps ACABDB.bars).
+	do
+		local f
 
-	-- One-time forced recapture of default-bar native anchors/spacing
-	-- (clears ACABDB.defaultBars so seedDefaultBars reruns), without
-	-- wiping ACABDB.bars the way a schema bump would.
-	if not ACABDB.anchorRecaptureDone then
-		ACABDB.anchorRecaptureDone = true
+		for f = 1, table.getn(ANCHOR_RECAPTURE_FLAGS) do
+			local flag = ANCHOR_RECAPTURE_FLAGS[f]
 
-		ACABDB.defaultBars = nil
+			if not ACABDB[flag] then
+				ACABDB[flag] = true
 
-		ACABDB.mainBarPageIndicatorNativeAnchor = nil
-		ACABDB.mainBarPageIndicatorPosition = nil
-	end
+				ACABDB.defaultBars = nil
 
-	if not ACABDB.anchorScaleFixDone then
-		ACABDB.anchorScaleFixDone = true
-
-		ACABDB.defaultBars = nil
-
-		ACABDB.mainBarPageIndicatorNativeAnchor = nil
-		ACABDB.mainBarPageIndicatorPosition = nil
-	end
-
-	if not ACABDB.anchorTimingFixDone then
-		ACABDB.anchorTimingFixDone = true
-
-		ACABDB.defaultBars = nil
-
-		ACABDB.mainBarPageIndicatorNativeAnchor = nil
-		ACABDB.mainBarPageIndicatorPosition = nil
-	end
-
-	if not ACABDB.anchorEnterWorldFixDone then
-		ACABDB.anchorEnterWorldFixDone = true
-
-		ACABDB.defaultBars = nil
-
-		ACABDB.mainBarPageIndicatorNativeAnchor = nil
-		ACABDB.mainBarPageIndicatorPosition = nil
+				ACABDB.mainBarPageIndicatorNativeAnchor = nil
+				ACABDB.mainBarPageIndicatorPosition = nil
+			end
+		end
 	end
 
 	if not ACABDB.schemaVersion or ACABDB.schemaVersion < self.SCHEMA_VERSION then
@@ -1658,74 +1429,36 @@ function ACAB:EnsureDB()
 		end
 	end
 
-	-- Migration-safe: an existing save from before the Pet Bar existed has
-	-- ACABDB.defaultBars already populated (ids 1-5) but no entry for
-	-- ACAB.PET_BAR_ID - seed just that one id rather than bumping
-	-- SCHEMA_VERSION (which would wipe ACABDB.bars).
+	-- Seeds just the Pet Bar cfg for saves predating it (no schema bump, which would wipe ACABDB.bars).
 	if not ACABDB.defaultBars[self.PET_BAR_ID] then
 		ACABDB.defaultBars[self.PET_BAR_ID] = SeedOneDefaultBar(self, self.PET_BAR_ID)
 	end
 
-	-- Structural constants for the Pet Bar cfg, re-asserted every call so a
-	-- save from before this field existed self-heals without a reseed.
+	-- Pet Bar structural fields re-asserted every call; user-editable ones only nil-seeded.
+	-- Its default position is set later, by SetupPetBarNativeContainer.
 	do
 		local petCfg = ACABDB.defaultBars[self.PET_BAR_ID]
 
 		petCfg.isPetBar = true
+		petCfg.fixedActionSlots = IdentitySlots(10)
 
-		local petSlots = {}
-		local ps
-
-		for ps = 1, 10 do
-			petSlots[ps] = ps
-		end
-
-		petCfg.fixedActionSlots = petSlots
-
-		-- User-editable, so nil-checked rather than reasserted every call
-		-- (unlike isPetBar/fixedActionSlots above), so an existing choice
-		-- persists.
-		if petCfg.condenseEmptyPetSlots == nil then
-			petCfg.condenseEmptyPetSlots = false
-		end
-
-		if petCfg.animateAutoCastGlow == nil then
-			petCfg.animateAutoCastGlow = false
-		end
+		if petCfg.condenseEmptyPetSlots == nil then petCfg.condenseEmptyPetSlots = false end
+		if petCfg.animateAutoCastGlow == nil then petCfg.animateAutoCastGlow = false end
 	end
 
-	-- Pet Bar's own default position is set later, by SetupPetBarNativeContainer.
-
-	-- Migration-safe: an existing save from before the Stance Bar's styled
-	-- mode existed has no entry for ACAB.STANCE_BAR_ID - seed just that one
-	-- id, same treatment as the Pet Bar migration above. This is purely
-	-- additive - the pre-existing native-mode ACABDB.stanceBar* fields
-	-- are never touched here.
+	-- Seeds just the Stance Bar (styled mode) cfg for saves predating it; native-mode stanceBar* fields untouched.
 	if not ACABDB.defaultBars[self.STANCE_BAR_ID] then
 		ACABDB.defaultBars[self.STANCE_BAR_ID] = SeedOneDefaultBar(self, self.STANCE_BAR_ID)
 	end
 
-	-- Structural constants for the Stance Bar cfg, re-asserted every call so
-	-- a save from before this field existed self-heals without a reseed.
+	-- Stance Bar structural fields re-asserted every call; useNativeStanceBar only nil-seeded.
 	do
 		local stanceCfg = ACABDB.defaultBars[self.STANCE_BAR_ID]
 
 		stanceCfg.isStanceBar = true
+		stanceCfg.fixedActionSlots = IdentitySlots(self.MAX_STANCE_BUTTONS)
 
-		local stanceSlots = {}
-		local ss
-
-		for ss = 1, self.MAX_STANCE_BUTTONS do
-			stanceSlots[ss] = ss
-		end
-
-		stanceCfg.fixedActionSlots = stanceSlots
-
-		-- User-editable, so nil-checked rather than reasserted every call -
-		-- an existing choice persists.
-		if stanceCfg.useNativeStanceBar == nil then
-			stanceCfg.useNativeStanceBar = true
-		end
+		if stanceCfg.useNativeStanceBar == nil then stanceCfg.useNativeStanceBar = true end
 	end
 
 	if not ACABDB.bars then
@@ -1734,8 +1467,7 @@ function ACAB:EnsureDB()
 
 	self:EnsureExtraBars()
 
-	-- Force hoverbind off once per session, not on every EnsureDB call
-	-- (which would stomp ACAB:SetHoverBindMode(true) mid-session).
+	-- Once per session only - resetting on every call would stomp SetHoverBindMode(true) mid-session.
 	if not hasResetHoverBindModeThisSession then
 		ACABDB.hoverBindMode = false
 		hasResetHoverBindModeThisSession = true
