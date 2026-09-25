@@ -454,6 +454,7 @@ function ACABSetupWizardMixin:BuildStep2()
 		variant = "danger",
 		onClick = function()
 			ACAB.setupWizard.wizardState.useDefaultLayout = true
+			ACAB.setupWizard.wizardState.generalLayoutFormat = "blizzard"
 			ACAB.setupWizard:FinishWizard()
 		end,
 	})
@@ -1176,8 +1177,10 @@ function ACABSetupWizardMixin:Reset(config)
 
 	local nativeFontSize = ACAB.NATIVE_EXPBAR_FONT and (ACAB.NATIVE_EXPBAR_FONT.size - 1)
 
-	ACAB:SetSliderValueSilently(step7.fontSizeSlider, ACAB:ClampFontSize(ACABDB.expBarFontSize or nativeFontSize or 12))
-	ACAB:SetSliderValueSilently(step7.pulseIntervalSlider, ACABDB.expBarGlowPulseInterval or 1.5)
+	local fontSize = ACAB:ClampFontSize(ACABDB.expBarFontSize or nativeFontSize or 12)
+	local pulseInterval = ACABDB.expBarGlowPulseInterval or 1.5
+	ACAB:SetSliderValueSilently(step7.fontSizeSlider, fontSize, step7.fontSizeValueText, tostring(fontSize))
+	ACAB:SetSliderValueSilently(step7.pulseIntervalSlider, pulseInterval, step7.pulseIntervalValueText, string.format("%.1f", pulseInterval))
 
 	ACAB:SetColorSwatchColor(step7.earnedColorSwatch, ACABDB.expBarColorEarned or { r = 0, g = 1, b = 0 })
 	ACAB:SetColorSwatchColor(step7.restedColorSwatch, ACABDB.expBarColorRested or { r = 0.6, g = 0.2, b = 1 })
@@ -1189,8 +1192,8 @@ function ACABSetupWizardMixin:Reset(config)
 	step8.spacingCheckbox:SetChecked(false)
 	step8.sizeCheckbox:SetChecked(false)
 
-	ACAB:SetSliderValueSilently(step8.spacingSlider, 0)
-	ACAB:SetSliderValueSilently(step8.sizeSlider, ACAB.BUTTON_SIZE)
+	ACAB:SetSliderValueSilently(step8.spacingSlider, 0, step8.spacingValueText, "0")
+	ACAB:SetSliderValueSilently(step8.sizeSlider, ACAB.BUTTON_SIZE, step8.sizeValueText, tostring(ACAB.BUTTON_SIZE))
 
 	self:UpdateStep8SliderVisibility()
 end
@@ -1641,14 +1644,17 @@ local function ApplyWizardStateToProfileData(state, data)
 		data.defaultBarStanceSwapEnabled = state.stanceSwapEnabled
 	end
 
-	if state.globalSpacingEnabled ~= nil then
+	-- Step 8 writes the chosen global spacing/size; earlier finishes force the defaults.
+	if state.finishedFromStep8 then
 		data.globalSpacingEnabled = state.globalSpacingEnabled
 		data.globalSpacingValue = state.globalSpacingValue
-	end
-
-	if state.globalButtonSizeEnabled ~= nil then
 		data.globalButtonSizeEnabled = state.globalButtonSizeEnabled
 		data.globalButtonSizeValue = state.globalButtonSizeValue
+	else
+		data.globalSpacingEnabled = false
+		data.globalSpacingValue = 0
+		data.globalButtonSizeEnabled = false
+		data.globalButtonSizeValue = ACAB.BUTTON_SIZE
 	end
 
 	-- Steps 6-7 only apply to Modern Layout; "blizzard" is reset live in ApplyGeneralLayoutFormat.
@@ -1692,6 +1698,7 @@ end
 -- Creates (or overwrites) the profile from wizardState and reloads; a name clash returns to step 1.
 function ACABSetupWizardMixin:FinishWizard()
 	local state = self.wizardState
+	state.finishedFromStep8 = (self.currentStep == 8)
 
 	if state.overwriteExisting then
 		ACABDB = ACABDB or {}

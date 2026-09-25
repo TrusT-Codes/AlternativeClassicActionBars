@@ -118,6 +118,21 @@ local function UsesSimpleBarPage(barId)
 	return ACAB.simpleBarPageConfigs[barId] ~= nil
 end
 
+-- Hides and uncaches a Pet/Stance page whose kind (simple vs full) no longer matches its native-mode flag.
+local function DropMismatchedBarPage(barId)
+	if barId ~= ACAB.PET_BAR_ID and barId ~= ACAB.STANCE_BAR_ID then
+		return
+	end
+
+	local pages = ACAB.settingsFrame and ACAB.settingsFrame.pages
+	local page = pages and pages[barId]
+
+	if page and (page.acabSimplePage == true) ~= UsesSimpleBarPage(barId) then
+		page:Hide()
+		pages[barId] = nil
+	end
+end
+
 local function GetBarDisplayName(barId)
 	if SIMPLE_BAR_NAMES[barId] then
 		return SIMPLE_BAR_NAMES[barId]
@@ -1055,15 +1070,31 @@ function ACAB:HighlightMainBarArtModeDropdown()
 
 	local strip = row.acabHighlightStrip
 
+	strip.pulseGeneration = (strip.pulseGeneration or 0) + 1
 	strip:Show()
 
-	-- Three on/off pulses.
+	-- Three on/off pulses; steps from an older call are skipped.
 	if C_Timer then
-		C_Timer.After(0.45, function() strip:Hide() end)
-		C_Timer.After(0.75, function() strip:Show() end)
-		C_Timer.After(1.2, function() strip:Hide() end)
-		C_Timer.After(1.5, function() strip:Show() end)
-		C_Timer.After(1.95, function() strip:Hide() end)
+		local generation = strip.pulseGeneration
+		local function Step(show)
+			return function()
+				if strip.pulseGeneration ~= generation then
+					return
+				end
+
+				if show then
+					strip:Show()
+				else
+					strip:Hide()
+				end
+			end
+		end
+
+		C_Timer.After(0.45, Step(false))
+		C_Timer.After(0.75, Step(true))
+		C_Timer.After(1.2, Step(false))
+		C_Timer.After(1.5, Step(true))
+		C_Timer.After(1.95, Step(false))
 	end
 end
 
@@ -1083,6 +1114,8 @@ function ACAB:GetOrCreateBarPage(barId)
 	if not ACAB.settingsFrame then
 		ACAB:CreateSettingsFrame()
 	end
+
+	DropMismatchedBarPage(barId)
 
 	if UsesSimpleBarPage(barId) then
 		return self:GetOrCreateSimpleBarPage(barId)
@@ -1414,10 +1447,10 @@ function ACAB:GetOrCreateBarPage(barId)
 			spacingSliderY,
 			{
 				min = 0,
-				max = ACAB.SPACING_MAX - ACAB:GetSpacingDisplayOffset(),
+				max = ACAB.SPACING_MAX,
 				step = ACAB.SPACING_STEP,
 				lowText = "0",
-				highText = tostring(ACAB.SPACING_MAX - ACAB:GetSpacingDisplayOffset()),
+				highText = tostring(ACAB.SPACING_MAX),
 				initialText = "0",
 				round = function(value) return math.floor(value + 0.5) end,
 				format = tostring,
@@ -1778,6 +1811,7 @@ local function CreateExpBarColorRow(page, y, labelText, swatchName, getter, sett
 	local swatch = ACAB:CreateColorSwatch(page, swatchName)
 
 	swatch:SetPoint("LEFT", label, "RIGHT", 12, 0)
+	swatch.acabLabel = label
 
 	swatch:SetScript("OnClick", function()
 		ACAB:OpenColorPicker(swatch, getter, setter, ACAB.settingsFrame)
@@ -1841,6 +1875,10 @@ local function ApplyBetterExpBarGating(page)
 		if control then
 			control:EnableMouse(interactive)
 			control:SetAlpha(alpha)
+
+			if control.acabLabel then
+				control.acabLabel:SetAlpha(alpha)
+			end
 		end
 	end
 end
@@ -2316,6 +2354,7 @@ local function CreateSimpleBarPage(key)
 
 	page:Hide()
 
+	page.acabSimplePage = true
 	ACAB.settingsFrame.pages[key] = page
 
 	return page
@@ -2325,6 +2364,8 @@ function ACAB:GetOrCreateSimpleBarPage(key)
 	if not ACAB.settingsFrame then
 		ACAB:CreateSettingsFrame()
 	end
+
+	DropMismatchedBarPage(key)
 
 	if ACAB.settingsFrame.pages[key] then
 		return ACAB.settingsFrame.pages[key]
@@ -2337,6 +2378,8 @@ function ACAB:RefreshSimpleBarPage(key)
 	if not ACAB.settingsFrame then
 		return
 	end
+
+	DropMismatchedBarPage(key)
 
 	local page = ACAB.settingsFrame.pages[key]
 	local config = ACAB.simpleBarPageConfigs[key]
@@ -2486,8 +2529,6 @@ function ACAB:RefreshSimpleBarPage(key)
 			ACAB:SetSliderValueSilently(page.expBarGlowPulseIntervalSlider, interval,
 				page.expBarGlowPulseIntervalValueText, string.format("%.1f", interval))
 		end
-
-		ApplyBetterExpBarGating(page)
 	end
 
 	-- Pet Bar/Stance Bar/Cast Bar/Tooltip stay editable under Force Vanilla Layout Mode (they stack
@@ -2497,6 +2538,12 @@ function ACAB:RefreshSimpleBarPage(key)
 	ACAB:ApplyDefaultLayoutGating(page, skipLayoutLock or ACABDB.useDefaultLayout ~= true)
 
 	self:ApplyProfileLockGating(page, not skipLayoutLock)
+
+	-- Must run after ApplyProfileLockGating, which re-enables the Better Experience Bar sub-controls.
+	if page.betterExpBarCheckbox and not self:IsDefaultProfileActive() and
+		(skipLayoutLock or ACABDB.useDefaultLayout ~= true) then
+		ApplyBetterExpBarGating(page)
+	end
 
 	-- The mode checkboxes stay locked by Default Layout/Default Profile even on an unlocked page. Must run
 	-- after ApplyProfileLockGating so it has the final say; keeps the locked-reason tooltip.
@@ -2795,6 +2842,8 @@ function ACAB:RefreshBarSettingsPage(barId)
 		return
 	end
 
+	DropMismatchedBarPage(barId)
+
 	if UsesSimpleBarPage(barId) then
 		self:RefreshSimpleBarPage(barId)
 		return
@@ -2853,17 +2902,17 @@ function ACAB:RefreshBarSettingsPage(barId)
 		local offset = ACAB:GetSpacingDisplayOffset()
 
 		-- The displayed (0-based) range follows the border style's offset, which can change while built.
-		page.spacingSlider:SetMinMaxValues(0, ACAB.SPACING_MAX - offset)
+		page.spacingSlider:SetMinMaxValues(0, ACAB.SPACING_MAX)
 
 		if page.spacingSliderLow then
 			page.spacingSliderLow:SetText("0")
 		end
 
 		if page.spacingSliderHigh then
-			page.spacingSliderHigh:SetText(tostring(ACAB.SPACING_MAX - offset))
+			page.spacingSliderHigh:SetText(tostring(ACAB.SPACING_MAX))
 		end
 
-		local displayed = Clamp(cfg.spacing or 0, ACAB.SPACING_MIN, ACAB.SPACING_MAX) - offset
+		local displayed = Clamp(cfg.spacing or 0, ACAB.SPACING_MIN, ACAB:GetSpacingMax()) - offset
 
 		if displayed < 0 then
 			displayed = 0
@@ -3314,7 +3363,15 @@ function ACAB:ApplyUseDefaultLayoutChange(checked)
 		ACAB:ApplyDefaultLayoutEditVisual()
 	end
 
+	local styledPetOrStance = false
+
 	if (not wasDefault) and checked then
+		local petCfg = ACABDB.defaultBars[ACAB.PET_BAR_ID]
+		local stanceCfg = ACABDB.defaultBars[ACAB.STANCE_BAR_ID]
+
+		styledPetOrStance = (petCfg and petCfg.useNativePetBar ~= true) or
+			(stanceCfg and stanceCfg.useNativeStanceBar ~= true) or false
+
 		ACAB:ResetAllElementsToVanillaLayout()
 
 		-- Clears the modern-style/global-override flags so they don't silently reapply once switched back
@@ -3337,6 +3394,29 @@ function ACAB:ApplyUseDefaultLayoutChange(checked)
 	ACAB:RefreshGeneralPanel()
 
 	ACAB:RefreshAllBarPagesGlobalOverrideGating()
+
+	-- Styled-to-native Pet/Stance switch only takes effect after a reload, same as the Use Vanilla checkbox.
+	if styledPetOrStance then
+		ACAB:ShowDialog({
+			title = "Force Vanilla Layout",
+			message = "The Pet Bar and Stance Bar switch to their vanilla style, which rebuilds their " ..
+				"buttons and requires a UI reload.",
+			mode = "confirm",
+			buttons = {
+				{
+					text = "Reload Now",
+					isDefault = true,
+					onClick = function()
+						ReloadUI()
+					end,
+				},
+				{
+					text = "Later",
+					onClick = function() end,
+				},
+			},
+		})
+	end
 end
 
 -- Resets every default-bar-family id and native element to its captured native layout and disables the

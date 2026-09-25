@@ -1096,14 +1096,21 @@ function ACAB:RefreshGeneralPanel()
 
 	local spacingOffset = ACAB:GetSpacingDisplayOffset()
 
-	panel.globalSpacingSlider:SetMinMaxValues(0, ACAB.SPACING_MAX - spacingOffset)
+	panel.globalSpacingSlider:SetMinMaxValues(0, ACAB.SPACING_MAX)
 
 	if panel.globalSpacingSliderLow then
 		panel.globalSpacingSliderLow:SetText("0")
 	end
 
 	if panel.globalSpacingSliderHigh then
-		panel.globalSpacingSliderHigh:SetText(tostring(ACAB.SPACING_MAX - spacingOffset))
+		panel.globalSpacingSliderHigh:SetText(tostring(ACAB.SPACING_MAX))
+	end
+
+	-- Clamps the saved global spacing to the current style's max and reapplies it.
+	local spacingMaxDisplayed = ACAB.SPACING_MAX
+	if (ACABDB.globalSpacingValue or 0) > spacingMaxDisplayed then
+		ACABDB.globalSpacingValue = spacingMaxDisplayed
+		ACAB:ApplyGlobalSpacing()
 	end
 
 	ACAB:SetSliderValueSilently(panel.globalSpacingSlider, ACABDB.globalSpacingValue or 0, panel.globalSpacingValueText)

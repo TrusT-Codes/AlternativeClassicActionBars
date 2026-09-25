@@ -46,6 +46,11 @@ function ACAB:GetSpacingDisplayOffset()
 	return ACAB:IsVanillaBorderStyle() and ACAB.VANILLA_SPACING_FLOOR or 0
 end
 
+-- Real per-bar spacing max for the current border style (displayed max stays SPACING_MAX).
+function ACAB:GetSpacingMax()
+	return ACAB.SPACING_MAX + ACAB:GetSpacingDisplayOffset()
+end
+
 -- Simple-page configs by page key. must stay a top-level init: SettingsBars.lua fills it at load time.
 ACAB.simpleBarPageConfigs = {}
 

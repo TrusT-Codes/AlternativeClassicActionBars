@@ -1426,22 +1426,30 @@ function ACAB:StartPageIndicatorDrag()
 	self.pageIndicatorFollowedBeforeDrag = ACABDB.mainBarPageIndicatorFollowsMainBar ~= false
 	ACABDB.mainBarPageIndicatorFollowsMainBar = false
 
+	self.pageIndicatorCursorStartX, self.pageIndicatorCursorStartY = GetCursorPosition()
+
 	self:StartSharedDrag("pageIndicator", nil, pos.x or 0, pos.y or 0)
 end
 
 function ACAB:StopPageIndicatorDrag()
 	self:StopSharedDrag()
 
-	-- Unmoved click keeps follow mode.
-	local pos = ACABDB.mainBarPageIndicatorPosition
-	local frame = self:EnsureDragFrame()
+	-- Unmoved click (cursor delta under 3 px) keeps follow mode.
+	local cursorX, cursorY = GetCursorPosition()
+	local startX = self.pageIndicatorCursorStartX or cursorX
+	local startY = self.pageIndicatorCursorStartY or cursorY
 
-	if self.pageIndicatorFollowedBeforeDrag and pos
-		and pos.x == frame.dragStartX and pos.y == frame.dragStartY then
+	if self.pageIndicatorFollowedBeforeDrag
+		and math.abs(cursorX - startX) < 3 and math.abs(cursorY - startY) < 3 then
 		ACABDB.mainBarPageIndicatorFollowsMainBar = true
+		if self.ApplyPageIndicatorPosition then
+			self:ApplyPageIndicatorPosition()
+		end
 	end
 
 	self.pageIndicatorFollowedBeforeDrag = nil
+	self.pageIndicatorCursorStartX = nil
+	self.pageIndicatorCursorStartY = nil
 
 	-- Its Scale slider lives on Main Bar's settings page (barId 1).
 	if self.RefreshBarSettingsPage then
@@ -1811,6 +1819,13 @@ function ACAB:HookGameTooltipDefaultAnchor()
 	end
 
 	self.tooltipDefaultAnchorHooked = true
+
+	-- Every SetOwner resets scale 1; the SetDefaultAnchor post-hook below reapplies the custom scale.
+	local nativeSetOwner = GameTooltip.SetOwner
+	GameTooltip.SetOwner = function(tooltip, a1, a2, a3, a4)
+		tooltip:SetScale(1)
+		return nativeSetOwner(tooltip, a1, a2, a3, a4)
+	end
 
 	hooksecurefunc("GameTooltip_SetDefaultAnchor", function(tooltip, owner)
 		if tooltip ~= GameTooltip then
