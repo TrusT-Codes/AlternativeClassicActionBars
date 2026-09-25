@@ -1,28 +1,20 @@
 -- ExperienceBar.lua
--- Experience Bar subsystem: position/enable/scale, bar-fill colors, the rested-XP overlay/tick/glow-pulse
--- ticker, and the "Better Experience Bar" text overlay. Built on DefaultBars.lua's shared single-native-
--- frame container engine - must load after DefaultBars.lua.
+-- Experience Bar: position/enable/scale, bar-fill colors, rested-XP overlay/tick/glow pulse, and the
+-- "Better Experience Bar" text overlay. Built on DefaultBars.lua's single-native-frame container engine.
 
 local ACAB = AlternativeClassicActionBars
 
 -------------------------------------------------------------------------
--- Experience Bar
--- MainMenuExpBar is a single self-contained frame whose child regions (MainMenuBarOverlayFrame,
--- ExhaustionLevelFillBar/ExhaustionTick/ExhaustionTickGlow for "rested") all anchor relative to it, so
--- repositioning/scaling this one frame carries the whole native visual along.
--- Every accessor is defensively nil-checked via getglobal.
--- Movable/scalable via the same EnsureContainerOverlay treatment as Latency Bar/Key Ring, always -
--- independent of ACABDB.betterExpBarEnabled (the text overlay further below).
+-- Experience Bar (MainMenuExpBar) - single native frame; its rested/text regions move and scale with it.
+-- Movable/scalable via EnsureContainerOverlay regardless of ACABDB.betterExpBarEnabled.
 -------------------------------------------------------------------------
 
 ACAB.EXP_BAR_FRAME_NAME = "MainMenuExpBar"
 
--- The native "XP current / max" label lives on a FontString region owned by MainMenuBarOverlayFrame -
--- there is no separately-named MainMenuExpText global on this client.
+-- Owns the native "XP current / max" FontString (there is no MainMenuExpText global on this client).
 ACAB.EXP_OVERLAY_FRAME_NAME = "MainMenuBarOverlayFrame"
 
--- Resolves MainMenuBarOverlayFrame's native "XP current / max" FontString region (found via
--- GetObjectType(), never a hardcoded index), caching the result on self once found.
+-- Returns (and caches) MainMenuBarOverlayFrame's first FontString region - matched by type, never by index.
 function ACAB:GetNativeExpOverlayText()
 	if self.nativeExpOverlayText then
 		return self.nativeExpOverlayText
@@ -49,13 +41,10 @@ function ACAB:GetNativeExpOverlayText()
 	return nil
 end
 
--- Native "how far the rested bonus would carry the player" blue overlay region on MainMenuExpBar.
--- It's a Texture with a solid-color fill, not a StatusBar, so SetVertexColor/GetVertexColor is the
--- correct color API (not SetStatusBarColor/GetStatusBarColor).
+-- Native rested-bonus fill on MainMenuExpBar. A Texture, not a StatusBar - color it via Set/GetVertexColor.
 ACAB.EXP_RESTED_FRAME_NAME = "ExhaustionLevelFillBar"
 
--- Mirrors CaptureLatencyBarPositionIfNeeded/CaptureKeyRingPositionIfNeeded, converted through
--- GetEffectiveScale since MainMenuExpBar's cluster can differ in scale from UIParent.
+-- Captures MainMenuExpBar's position once (scale-converted to UIParent units) plus its native GetPoint(1) anchor.
 function ACAB:CaptureExpBarPositionIfNeeded()
 	self:EnsureDB()
 
@@ -95,50 +84,29 @@ function ACAB:CaptureExpBarPositionIfNeeded()
 
 	ACABDB.expBarPosition = anchor
 
-	-- Permanent pristine snapshot (Reset to Vanilla Layout) - stores the frame's true native anchor via
-	-- GetPoint(1) rather than the absolute snapshot above. Captured once, never written again.
+	-- Permanent pristine snapshot for "Reset to Vanilla Layout"; captured once, never rewritten.
 	if not ACABDB.expBarNativeAnchor then
-		local point, relativeTo, relativePoint, nx, ny = frame:GetPoint(1)
-
-		if point and relativePoint and nx and ny then
-			local relativeToName = "UIParent"
-
-			if relativeTo and relativeTo.GetName and relativeTo:GetName() then
-				relativeToName = relativeTo:GetName()
-			end
-
-			ACABDB.expBarNativeAnchor = {
-				point = point,
-				relativeTo = relativeToName,
-				relativePoint = relativePoint,
-				x = nx,
-				y = ny,
-			}
-		end
+		ACABDB.expBarNativeAnchor = self:ReadNativeAnchor(frame)
 	end
 end
 
--- MainMenuXPBarTexture0-3 (native race-themed border art) anchor "BOTTOM" at y=+3, leaving the real
--- y=0-to-+3 strip permanently uncovered once the bar moves off its fixed native position.
--- Covered by a custom gradient strip below - do not try cloning the native border texture instead,
--- it renders duplicated/distorted.
+-- Gradient strip covering the bottom 3 units of MainMenuExpBar that its native border art leaves bare.
+-- Do not replace with a clone of MainMenuXPBarTexture0-3 - that renders duplicated/distorted.
 local function EnsureExpBarBottomBorderStrip(frame)
 	if frame.ACABBottomBorderStrip then
 		return frame.ACABBottomBorderStrip
 	end
 
-	-- "OVERLAY": must render on top of the bar's fill texture layer, or the strip gets painted over.
+	-- Must be "OVERLAY", or the bar's fill paints over it.
 	local strip = frame:CreateTexture(nil, "OVERLAY")
 	strip:SetTexture("Interface\\Buttons\\WHITE8X8")
 
-	-- BOTTOMLEFT/BOTTOMRIGHT dual anchor auto-tracks any width/scale change. 4 units overshoots the
-	-- 3-unit-tall y=0-to-+3 native gap.
+	-- Spans the bar's full width at any scale; 4 units tall.
 	strip:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
 	strip:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
 	strip:SetHeight(4)
 
-	-- SetGradientAlpha gives a light-to-dark vertical fade for a beveled look; falls back to a solid
-	-- dark-gray SetVertexColor if unavailable.
+	-- Vertical dark gradient, or solid dark gray without SetGradientAlpha.
 	if strip.SetGradientAlpha then
 		strip:SetGradientAlpha("VERTICAL", 0.05, 0.05, 0.05, 0.85, 0.25, 0.25, 0.25, 0.55)
 	else
@@ -150,7 +118,7 @@ local function EnsureExpBarBottomBorderStrip(frame)
 	return strip
 end
 
--- Mirrors ACAB:ApplyLatencyBarPosition exactly.
+-- Applies ACABDB.expBarPosition to MainMenuExpBar and ensures its overlay, border strip, and hover-only state.
 function ACAB:ApplyExpBarPosition()
 	self:CaptureExpBarPositionIfNeeded()
 
@@ -163,39 +131,35 @@ function ACAB:ApplyExpBarPosition()
 	local pos = ACABDB.expBarPosition
 
 	if pos then
-		frame:ClearAllPoints()
-		self:PixelSetPoint(
-			frame,
-			pos.point or "TOPLEFT",
-			UIParent,
-			pos.relativePoint or "BOTTOMLEFT",
-			pos.x or 0,
-			pos.y or 0
-		)
+		self:ApplySavedPosition(frame, pos)
+	end
+
+	-- Pins Experience Bar to Latency Bar's strata, one frame level below it.
+	do
+		local latencyBarFrame = getglobal(self.LATENCY_BAR_FRAME_NAME)
+
+		if latencyBarFrame then
+			local latencyLevel = latencyBarFrame:GetFrameLevel()
+
+			frame:SetFrameStrata(latencyBarFrame:GetFrameStrata())
+			frame:SetFrameLevel((latencyLevel > 0) and (latencyLevel - 1) or 0)
+		end
 	end
 
 	self:EnsureContainerOverlay(frame, self.StartExpBarDrag, self.StopExpBarDrag, "expbar", self.SetExpBarScale, nil, "Experience Bar")
 	EnsureExpBarBottomBorderStrip(frame)
 
-	-- The rested-glow pulse child texture inherits this frame's alpha automatically, no separate handling needed.
+	-- Also fades the rested-glow child texture (it inherits this frame's alpha).
 	self:ApplyHoverOnlyState(frame, ACABDB.expBarHoverOnly, function() return ACABDB.expBarHoverDuration or 3 end)
 end
 
 function ACAB:SetExpBarPosition(x, y)
-	x = tonumber(x)
-	y = tonumber(y)
-
-	if not x or not y or not ACABDB.expBarPosition then
-		return
+	if self:WriteSavedPositionXY("expBarPosition", x, y) then
+		self:ApplyExpBarPosition()
 	end
-
-	ACABDB.expBarPosition.x = x
-	ACABDB.expBarPosition.y = y
-
-	self:ApplyExpBarPosition()
 end
 
--- Mirrors SetLatencyBarEnabled's structure - core UI element, default true, independently toggleable.
+-- Shows/hides MainMenuExpBar together with its drag overlay and text overlay.
 function ACAB:SetExpBarEnabled(enabled)
 	self:EnsureDB()
 
@@ -205,52 +169,28 @@ function ACAB:SetExpBarEnabled(enabled)
 
 	local frame = getglobal(self.EXP_BAR_FRAME_NAME)
 
-	if frame then
+	self:SetElementShown(frame, enabled)
+
+	-- Must re-show explicitly, or the text overlay stays hidden after a disable/re-enable cycle.
+	if frame and frame.ACABTextOverlay then
 		if enabled then
-			frame:Show()
-
-			-- Text overlay isn't edit-mode-gated like frame.ACABOverlay, so it must be re-shown here
-			-- explicitly or it stays invisible after a disable/re-enable cycle.
-			if frame.ACABTextOverlay then
-				frame.ACABTextOverlay:Show()
-			end
+			frame.ACABTextOverlay:Show()
 		else
-			frame:Hide()
-
-			-- EnsureContainerOverlay's overlay is parented to UIParent, not `frame`, so hiding the real
-			-- frame alone doesn't cascade to hide it.
-			if frame.ACABOverlay then
-				frame.ACABOverlay:Hide()
-				frame.ACABOverlay:EnableMouse(false)
-			end
-
-			-- Same cascade problem/fix for the "Better Experience Bar" text overlay.
-			if frame.ACABTextOverlay then
-				frame.ACABTextOverlay:Hide()
-			end
+			frame.ACABTextOverlay:Hide()
 		end
 	end
 end
 
--- Mirrors SetLatencyBarScale/SetKeyRingScale's clamp/write/apply template.
+-- Clamps, compensates the saved position around the bar's center, then applies the new scale.
 function ACAB:SetExpBarScale(scale)
-	self:EnsureDB()
+	local frame = getglobal(self.EXP_BAR_FRAME_NAME)
+	local pos
 
-	scale = self:ClampScaleSetting(scale)
+	scale, pos = self:StoreCompensatedScale("expBarScale", "expBarPosition", frame, scale)
 
 	if not scale then
 		return
 	end
-
-	local oldScale = ACABDB.expBarScale or 1
-	local pos = ACABDB.expBarPosition
-	local frame = getglobal(self.EXP_BAR_FRAME_NAME)
-
-	if pos and frame then
-		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "BOTTOMLEFT", nil, frame:GetHeight())
-	end
-
-	ACABDB.expBarScale = scale
 
 	if frame then
 		frame:SetScale(scale)
@@ -261,43 +201,20 @@ function ACAB:SetExpBarScale(scale)
 	end
 end
 
--- Settings.lua's Experience Bar page "Only show on hover" checkbox/slider.
+-- Experience Bar settings page "Only show on hover" checkbox/slider.
 function ACAB:SetExpBarHoverOnly(enabled)
-	self:EnsureDB()
-
-	ACABDB.expBarHoverOnly = enabled and true or false
-
-	self:ApplyExpBarPosition()
+	self:SetHoverOnlySetting("expBarHoverOnly", enabled, self.ApplyExpBarPosition)
 end
 
 function ACAB:SetExpBarHoverDuration(duration)
-	self:EnsureDB()
-
-	duration = self:ClampHoverDuration(duration)
-
-	if not duration then
-		return
-	end
-
-	ACABDB.expBarHoverDuration = duration
-
-	self:ApplyExpBarPosition()
+	self:SetHoverDurationSetting("expBarHoverDuration", duration, self.ApplyExpBarPosition)
 end
 
--- Settings.lua's Experience Bar page "Reset to Vanilla Layout" button - restores position AND scale.
+-- "Reset to Vanilla Layout": restores native position and scale 1.
 function ACAB:ResetExpBarLayout()
 	local native = ACABDB.expBarNativeAnchor
 	local frame = getglobal(self.EXP_BAR_FRAME_NAME)
-
-	-- Direct write, not SetExpBarScale(1) - that setter compensates the stored position using the OLD
-	-- scale, which would inflate the native position we're about to restore. Set before resolving it.
-	ACABDB.expBarScale = 1
-
-	if frame then
-		frame:SetScale(1)
-	end
-
-	local resolved = self:ResolveNativeAnchorToAbsolute(frame, native)
+	local resolved = self:ResetScaleAndResolveNative(frame, "expBarScale", native)
 
 	if resolved then
 		ACABDB.expBarPosition = resolved
@@ -315,18 +232,7 @@ function ACAB:StartExpBarDrag()
 		return
 	end
 
-	local cx, cy = self:GetCursorPositionUIScale()
-
-	local frame = self:EnsureDragFrame()
-
-	frame.dragKind = "expBar"
-	frame.dragStartCursorX = cx
-	frame.dragStartCursorY = cy
-	frame.dragStartX = pos.x or 0
-	frame.dragStartY = pos.y or 0
-
-	frame:SetScript("OnUpdate", self.DefaultBarDrag_OnUpdate)
-	frame:Show()
+	self:StartSharedDrag("expBar", nil, pos.x or 0, pos.y or 0)
 end
 
 function ACAB:StopExpBarDrag()
@@ -339,14 +245,11 @@ end
 
 -------------------------------------------------------------------------
 -- Bar-fill colors
--- MainMenuExpBar's StatusBar fill and ExhaustionLevelFillBar's Texture fill are each independently
--- recolorable via Settings.lua's color-picker swatches. Native baseline captured lazily from the live
--- frames rather than seeded in Core.lua's EnsureDB, since the color getters return nothing meaningful
--- until these frames exist.
--- ExhaustionLevelFillBar is a Texture, so it uses SetVertexColor/GetVertexColor; MainMenuExpBar uses
--- SetStatusBarColor/GetStatusBarColor.
+-- Earned fill = MainMenuExpBar StatusBar color; rested fill = ExhaustionLevelFillBar vertex color.
+-- Both native baselines are captured lazily from the live frames, not seeded in EnsureDB.
 -------------------------------------------------------------------------
 
+-- Captures the earned/rested colors and their permanent native snapshots once.
 function ACAB:CaptureExpBarColorsIfNeeded()
 	self:EnsureDB()
 
@@ -358,16 +261,14 @@ function ACAB:CaptureExpBarColorsIfNeeded()
 			r, g, b = frame:GetStatusBarColor()
 		end
 
-		-- Fallback: a reasonable vanilla-matching purple/violet, only used
-		-- if the live frame isn't available yet at capture time.
+		-- Fallback purple if the live frame isn't available yet.
 		ACABDB.expBarColorEarned = {
 			r = r or 0.58,
 			g = g or 0.0,
 			b = b or 0.55,
 		}
 
-		-- Permanent pristine snapshot ("Reset Colors to Default"), mirroring
-		-- Same capture-once/never-rewritten pattern as expBarNativeAnchor above.
+		-- Permanent pristine snapshot for "Reset Colors to Default"; captured once, never rewritten.
 		ACABDB.expBarNativeColorEarned = {
 			r = ACABDB.expBarColorEarned.r,
 			g = ACABDB.expBarColorEarned.g,
@@ -383,7 +284,7 @@ function ACAB:CaptureExpBarColorsIfNeeded()
 			r, g, b = restedFrame:GetVertexColor()
 		end
 
-		-- Fallback: real vanilla's own rested-bonus blue.
+		-- Fallback: vanilla's rested-bonus blue.
 		ACABDB.expBarColorRested = {
 			r = r or 0.0,
 			g = g or 0.39,
@@ -398,40 +299,26 @@ function ACAB:CaptureExpBarColorsIfNeeded()
 	end
 end
 
--- When the feature is off, explicitly reverts both frames to their captured native baseline color
--- rather than leaving them untouched. Single choke point for the login sequence, color-picker
--- live-preview func/cancelFunc, "Reset Colors to Default", and the "Enable Better Experience Bar" checkbox.
+-- Applies the custom colors while Better Experience Bar is on, else reverts both fills to the native
+-- snapshot; then refreshes the custom rested-XP overlay (which also uses expBarColorRested).
 function ACAB:ApplyExpBarColors()
 	self:CaptureExpBarColorsIfNeeded()
 
 	local frame = getglobal(self.EXP_BAR_FRAME_NAME)
 	local restedFrame = getglobal(self.EXP_RESTED_FRAME_NAME)
+	local earned, rested
 
-	if not ACABDB.betterExpBarEnabled then
-		local nativeEarned = ACABDB.expBarNativeColorEarned
-		local nativeRested = ACABDB.expBarNativeColorRested
-
-		if frame and frame.SetStatusBarColor and nativeEarned then
-			frame:SetStatusBarColor(nativeEarned.r, nativeEarned.g, nativeEarned.b)
-		end
-
-		if restedFrame and restedFrame.SetVertexColor and nativeRested then
-			restedFrame:SetVertexColor(nativeRested.r, nativeRested.g, nativeRested.b)
-		end
-
-		-- The custom rested-XP overlay reuses this same expBarColorRested field.
-		self:ApplyExpBarRestedOverlay()
-
-		return
+	if ACABDB.betterExpBarEnabled then
+		earned = ACABDB.expBarColorEarned
+		rested = ACABDB.expBarColorRested
+	else
+		earned = ACABDB.expBarNativeColorEarned
+		rested = ACABDB.expBarNativeColorRested
 	end
-
-	local earned = ACABDB.expBarColorEarned
 
 	if frame and frame.SetStatusBarColor and earned then
 		frame:SetStatusBarColor(earned.r, earned.g, earned.b)
 	end
-
-	local rested = ACABDB.expBarColorRested
 
 	if restedFrame and restedFrame.SetVertexColor and rested then
 		restedFrame:SetVertexColor(rested.r, rested.g, rested.b)
@@ -440,8 +327,7 @@ function ACAB:ApplyExpBarColors()
 	self:ApplyExpBarRestedOverlay()
 end
 
--- Settings.lua's color-picker swatches call these directly from
--- ColorPickerFrame.func/cancelFunc.
+-- Color-picker swatch setters (ColorPickerFrame.func/cancelFunc).
 function ACAB:SetExpBarColorEarned(r, g, b)
 	self:CaptureExpBarColorsIfNeeded()
 
@@ -458,7 +344,7 @@ function ACAB:SetExpBarColorRested(r, g, b)
 	self:ApplyExpBarColors()
 end
 
--- Settings.lua's "Reset Colors to Default" button.
+-- "Reset Colors to Default": copies the native snapshots back into the custom colors.
 function ACAB:ResetExpBarColors()
 	self:CaptureExpBarColorsIfNeeded()
 
@@ -485,11 +371,9 @@ function ACAB:ResetExpBarColors()
 end
 
 -------------------------------------------------------------------------
--- Custom rested-XP overlay
--- Replaces ExhaustionLevelFillBar's own native width, which degenerates to ~8 units wide whenever
--- UnitXP+GetXPExhaustion exceeds UnitXPMax (a large banked rested pool) - a custom Texture is drawn on
--- top instead. Formula ported from BEB/BEB.lua's BEB.UpdateElement("BEBRestedXpBar")/"BEBXpBar" branches.
--- Gated on ACABDB.betterExpBarEnabled and GetRestState() == 1; native ExhaustionLevelFillBar untouched when off.
+-- Custom rested-XP overlay, drawn over ExhaustionLevelFillBar (whose native width breaks with a large
+-- rested pool). Fill and tick formulas ported from BEB/BEB.lua. Shown only while Better Experience Bar is
+-- on and GetRestState() == 1; the native fill is never touched.
 -------------------------------------------------------------------------
 
 local function EnsureExpBarRestedOverlay(frame)
@@ -497,7 +381,7 @@ local function EnsureExpBarRestedOverlay(frame)
 		return frame.ACABRestedOverlay
 	end
 
-	-- "ARTWORK": above the native StatusBar fill, below "OVERLAY" so the Better Exp Bar text stays on top.
+	-- "ARTWORK": above the native StatusBar fill, below the "OVERLAY" text.
 	local tex = frame:CreateTexture(nil, "ARTWORK")
 	tex:SetTexture("Interface\\Buttons\\WHITE8X8")
 
@@ -506,12 +390,7 @@ local function EnsureExpBarRestedOverlay(frame)
 	return tex
 end
 
--- Rested-XP boundary tick: ports BEB's custom art (BEB_TICK_TEXTURE/BEB_TICK_GLOW_TEXTURE below) and
--- its multi-level-crossing position/texcoord logic from BEB/BEB.lua's BEB.UpdateElement
--- "BEBRestedXpTick"/"BEBRestedXpTickGlow" branches. "ARTWORK" (tick) below "OVERLAY" (glow) reproduces
--- BEB's own frame-level ordering (glow renders on top of tick).
-
--- BEB/BEB.lua's own BEB.XpPerLvl table, ported verbatim (index N = XP required from level N to N+1).
+-- BEB's XpPerLvl table (index N = XP required from level N to N+1).
 ACAB.XP_PER_LEVEL = {
 	400, 900, 1400, 2100, 2800, 3600, 4400, 5400, 6500, 7600,
 	8800, 10100, 11400, 12900, 14400, 16000, 17700, 19400, 21300, 23200,
@@ -521,15 +400,15 @@ ACAB.XP_PER_LEVEL = {
 	153900, 160400, 167100, 173900, 180800, 187900, 195000, 202300, 209800, 217400,
 }
 
--- SetTexture paths must resolve against the in-game AddOns folder name, "AlternativeClassicActionBars".
+-- Paths must use the in-game AddOns folder name, "AlternativeClassicActionBars".
 local BEB_TICK_TEXTURE = "Interface\\AddOns\\AlternativeClassicActionBars\\Textures\\BEB-ExhaustionTicks"
 local BEB_TICK_GLOW_TEXTURE = "Interface\\AddOns\\AlternativeClassicActionBars\\Textures\\BEB-ExhaustionTicksGlow"
 
--- BEB's own default BEBRestedXpTick size - the tick/glow art is a hand-drawn 2x2 quadrant sheet, so its
--- pixel dimensions are tied to that art, not to MainMenuExpBar's own native height.
+-- BEB's tick size, tied to its 2x2 quadrant art sheet.
 local BEB_TICK_WIDTH = 27
 local BEB_TICK_HEIGHT = 26
 
+-- Rested-boundary tick ("ARTWORK") with its glow ("OVERLAY") on top.
 local function EnsureExpBarRestedTick(frame)
 	if frame.ACABRestedTick then
 		return frame.ACABRestedTick, frame.ACABRestedTickGlow
@@ -540,7 +419,7 @@ local function EnsureExpBarRestedTick(frame)
 	tick:SetWidth(BEB_TICK_WIDTH)
 	tick:SetHeight(BEB_TICK_HEIGHT)
 
-	-- Glow covers tick's own bounds exactly (SetAllPoints(tick) below, once tick is positioned/sized).
+	-- Sized/anchored later via SetAllPoints(tick).
 	local glow = frame:CreateTexture(nil, "OVERLAY")
 	glow:SetTexture(BEB_TICK_GLOW_TEXTURE)
 
@@ -550,20 +429,18 @@ local function EnsureExpBarRestedTick(frame)
 	return tick, glow
 end
 
--- Rested-XP tick glow pulse: looping alpha animation driven by C_Timer.NewTicker (BEB's source has no
--- such animation). Only the glow's alpha is animated; the tick texture stays constant.
+-- Glow pulse: C_Timer ticker animating only the glow's alpha along a sine wave.
 local EXP_BAR_RESTED_GLOW_PULSE_INTERVAL = 0.05
 local EXP_BAR_RESTED_GLOW_PULSE_LOW_ALPHA = 0.35
 local EXP_BAR_RESTED_GLOW_PULSE_HIGH_ALPHA = 1.0
 
--- Full fade-in/fade-out cycle, seconds - fallback for saves that predate ACABDB.expBarGlowPulseInterval.
--- The ticker callback reads the DB field fresh every tick so the Settings.lua slider can change speed live.
+-- Full pulse cycle in seconds when ACABDB.expBarGlowPulseInterval is unset.
 local EXP_BAR_RESTED_GLOW_PULSE_PERIOD_DEFAULT = 1.5
 
 local expBarRestedGlowPulseTicker
 local expBarRestedGlowPulseStartTime
 
--- Cancels the ticker outright (Cancel()-and-nil, not a pause flag) whenever the glow isn't shown.
+-- Cancels and nils the pulse ticker.
 local function StopExpBarRestedGlowPulse()
 	if expBarRestedGlowPulseTicker then
 		expBarRestedGlowPulseTicker:Cancel()
@@ -571,8 +448,7 @@ local function StopExpBarRestedGlowPulse()
 	end
 end
 
--- Idempotent - a call while already running is a no-op, so repeated ApplyExpBarRestedOverlay calls
--- while resting never restart/stutter the animation.
+-- Starts the pulse ticker; no-op while already running.
 local function StartExpBarRestedGlowPulse(glow)
 	if expBarRestedGlowPulseTicker or not C_Timer or not C_Timer.NewTicker then
 		return
@@ -583,8 +459,7 @@ local function StartExpBarRestedGlowPulse(glow)
 	expBarRestedGlowPulseTicker = C_Timer.NewTicker(EXP_BAR_RESTED_GLOW_PULSE_INTERVAL, function()
 		local elapsed = GetTime() - expBarRestedGlowPulseStartTime
 
-		-- Sine-wave oscillation, t sweeps 0..1..0 once per `period` seconds - read fresh every tick so
-		-- Settings.lua slider changes take effect on the next tick.
+		-- Period read fresh every tick so the settings slider applies live.
 		local period = (ACABDB and ACABDB.expBarGlowPulseInterval)
 			or EXP_BAR_RESTED_GLOW_PULSE_PERIOD_DEFAULT
 
@@ -596,8 +471,29 @@ local function StartExpBarRestedGlowPulse(glow)
 	end)
 end
 
--- Called from ACAB:ApplyExpBarColors, ACAB:ApplyBetterExpBarVisual, and Events.lua's
--- betterExpBarEventFrame OnEvent handler - safe to call unconditionally from all of them.
+-- Hides the tick and glow (if created) and stops the pulse.
+local function HideExpBarRestedTick(tick, glow)
+	if tick then
+		tick:Hide()
+	end
+
+	if glow then
+		glow:Hide()
+	end
+
+	StopExpBarRestedGlowPulse()
+end
+
+-- Hides the rested fill, tick, and glow (if created) and stops the pulse.
+local function HideExpBarRestedOverlay(tex, tick, glow)
+	if tex then
+		tex:Hide()
+	end
+
+	HideExpBarRestedTick(tick, glow)
+end
+
+-- Lays out (or hides) the rested fill, tick, and glow pulse. Safe to call unconditionally.
 function ACAB:ApplyExpBarRestedOverlay()
 	self:EnsureDB()
 
@@ -612,55 +508,31 @@ function ACAB:ApplyExpBarRestedOverlay()
 	local glow = frame.ACABRestedTickGlow
 
 	if not ACABDB.betterExpBarEnabled or not GetRestState or GetRestState() ~= 1 then
-		if tex then
-			tex:Hide()
-		end
-
-		if tick then
-			tick:Hide()
-		end
-
-		if glow then
-			glow:Hide()
-		end
-
-		StopExpBarRestedGlowPulse()
+		HideExpBarRestedOverlay(tex, tick, glow)
 
 		return
 	end
 
-	-- GetWidth() is unaffected by SetScale (which only changes rendering), same as the native fill uses.
+	-- Unscaled local width, same as the native fill uses.
 	local barWidth = frame:GetWidth()
 	local xpMax = UnitXPMax and UnitXPMax("player")
 	local xp = UnitXP and UnitXP("player")
 	local exhaustion = GetXPExhaustion and GetXPExhaustion()
 
 	if not barWidth or barWidth <= 0 or not xpMax or xpMax <= 0 or not xp or not exhaustion then
-		if tex then
-			tex:Hide()
-		end
-
-		if tick then
-			tick:Hide()
-		end
-
-		if glow then
-			glow:Hide()
-		end
-
-		StopExpBarRestedGlowPulse()
+		HideExpBarRestedOverlay(tex, tick, glow)
 
 		return
 	end
 
-	-- Earned-XP fill width; the rested overlay's left edge starts where this ends.
+	-- Earned-XP fill width; the rested fill starts where it ends.
 	local scale = barWidth / xpMax
 	local xpWidth = (xp == 0) and 1 or (scale * xp)
 
 	local width
 
 	if (xp + exhaustion) > xpMax then
-		-- Exceeds max: fill the entire remainder of the bar.
+		-- Rested pool passes this level: fill the rest of the bar.
 		width = barWidth - xpWidth
 	else
 		local restedEdge = (xp + exhaustion) * scale
@@ -668,19 +540,7 @@ function ACAB:ApplyExpBarRestedOverlay()
 	end
 
 	if not width or width <= 0 then
-		if tex then
-			tex:Hide()
-		end
-
-		if tick then
-			tick:Hide()
-		end
-
-		if glow then
-			glow:Hide()
-		end
-
-		StopExpBarRestedGlowPulse()
+		HideExpBarRestedOverlay(tex, tick, glow)
 
 		return
 	end
@@ -699,20 +559,11 @@ function ACAB:ApplyExpBarRestedOverlay()
 	tex:SetHeight(frame:GetHeight())
 	tex:Show()
 
-	-- The tick's position is independent of the rested-overlay fill's boundaryX above - it can represent
-	-- progress into the next (or next-next) level's XP requirement, as a fraction of the same bar width.
+	-- Tick position may be progress into the next (or next-next) level, as a fraction of the bar width.
 	local level = UnitLevel and UnitLevel("player")
 
 	if not level or level < 1 or not ACAB.XP_PER_LEVEL[1] then
-		if tick then
-			tick:Hide()
-		end
-
-		if glow then
-			glow:Hide()
-		end
-
-		StopExpBarRestedGlowPulse()
+		HideExpBarRestedTick(tick, glow)
 
 		return
 	end
@@ -720,8 +571,7 @@ function ACAB:ApplyExpBarRestedOverlay()
 	local position
 	local restState
 
-	-- Ported from BEB/BEB.lua's "BEBRestedXpTick" branch - three level brackets (< 59 / == 59 / == 60),
-	-- each with within-level / crosses-one-level / crosses-two-levels sub-branching.
+	-- BEB's "BEBRestedXpTick" logic: restState 1 = within this level, 2 = crosses one level, 3 = two levels.
 	if level < 59 then
 		if (xp + exhaustion - xpMax) > ACAB.XP_PER_LEVEL[level + 1] then
 			position = ((xp + exhaustion - xpMax - ACAB.XP_PER_LEVEL[level + 1]) / ACAB.XP_PER_LEVEL[level + 2]) * barWidth
@@ -734,8 +584,7 @@ function ACAB:ApplyExpBarRestedOverlay()
 			restState = 1
 		end
 	elseif level == 59 then
-		-- Same 3 states, but ACAB.XP_PER_LEVEL has no level 61 entry to measure fractional progress
-		-- against, so the "crosses two levels" case clamps to the bar's right edge instead.
+		-- No level-61 entry, so state 3 clamps to the bar's right edge.
 		if (xp + exhaustion - xpMax) > ACAB.XP_PER_LEVEL[level + 1] then
 			position = barWidth
 			restState = 3
@@ -747,7 +596,7 @@ function ACAB:ApplyExpBarRestedOverlay()
 			restState = 1
 		end
 	else
-		-- level == 60 (vanilla cap, 2 states) - also the fallback for level > 60, clamped to the bar's right edge.
+		-- Level 60+: two states, state 2 clamps to the bar's right edge.
 		if (xp + exhaustion) > xpMax then
 			position = barWidth
 			restState = 2
@@ -759,7 +608,7 @@ function ACAB:ApplyExpBarRestedOverlay()
 
 	tick, glow = EnsureExpBarRestedTick(frame)
 
-	-- BEB's texcoord selection: a 2x2 quadrant sheet, same mapping for both tick and glow.
+	-- Quadrant of the 2x2 art sheet per restState, shared by tick and glow.
 	local left, right, top, bottom
 
 	if restState == 3 then
@@ -780,8 +629,7 @@ function ACAB:ApplyExpBarRestedOverlay()
 	glow:ClearAllPoints()
 	glow:SetAllPoints(tick)
 
-	-- IsResting() reports standing in a rest area right now (distinct from GetRestState(), which stays
-	-- 1 for banked rest XP even after leaving the inn).
+	-- Glow pulses only while in a rest area right now (IsResting), not merely with banked rest XP.
 	if IsResting and IsResting() == 1 then
 		glow:Show()
 		StartExpBarRestedGlowPulse(glow)
@@ -793,30 +641,24 @@ end
 
 -------------------------------------------------------------------------
 -- "Better Experience Bar" text overlay
--- Modeled on the BEB reference addon's TextVars.lua formulas - a single centered FontString assembled
--- from up to 5 independently toggleable segments, kept live via PLAYER_XP_UPDATE/UPDATE_EXHAUSTION/
--- PLAYER_LEVEL_UP, all registered unconditionally.
--- Entirely independent of the Experience Bar container above - follows MainMenuExpBar's position/scale.
--- The FontString lives on its own dedicated "HIGH"-strata overlay frame rather than directly on
--- MainMenuExpBar, since that frame sits below MainMenuBarArtFrame within the "MEDIUM" strata tier.
+-- One centered FontString built from up to 5 toggleable segments (BEB TextVars.lua formulas), kept live by
+-- Events.lua's betterExpBarEventFrame. Lives on its own "HIGH"-strata child frame of MainMenuExpBar so
+-- MainMenuBarArtFrame (same "MEDIUM" tier as the bar) can't cover it.
 -------------------------------------------------------------------------
 
--- Dedicated overlay frame the text FontString is created on; SetAllPoints(frame) tracks MainMenuExpBar's
--- own position/size. Reads the live ACABDB.expBarEnabled flag at creation time so a bar that starts
--- disabled doesn't leave this text floating (created lazily, so SetExpBarEnabled can't reach it earlier).
+-- Text overlay frame tracking MainMenuExpBar via SetAllPoints; starts hidden if the bar is disabled.
 local function EnsureExpBarTextOverlay(frame)
 	if frame.ACABTextOverlay then
 		return frame.ACABTextOverlay
 	end
 
-	-- Parented to `frame` (MainMenuExpBar), not UIParent, so it doesn't drift off-center; a child
-	-- frame's strata/level is independent of its parent's, so this doesn't reintroduce art-masking.
+	-- Must be parented to MainMenuExpBar, not UIParent, or its size/centering drifts.
 	local overlay = CreateFrame("Frame", "ACABExpBarTextOverlay", frame)
 
 	overlay:SetFrameStrata("HIGH")
 	overlay:SetAllPoints(frame)
 
-	-- Matches whatever SetExpBarEnabled would already have set had this overlay existed at login time.
+	-- Same state SetExpBarEnabled would have set had the overlay existed already.
 	if ACABDB and ACABDB.expBarEnabled == false then
 		overlay:Hide()
 	end
@@ -826,13 +668,12 @@ local function EnsureExpBarTextOverlay(frame)
 	return overlay
 end
 
--- Lua 5.0 has no math.round - same floor(x + 0.5) idiom used throughout this addon.
+-- Rounds to the nearest integer.
 local function ExpBarRound(n)
 	return math.floor(n + 0.5)
 end
 
--- Assembles only the currently-enabled segments into one space-joined line (each segment is already
--- self-labeled, e.g. "Lvl 2", "26/900", "3%"). Ported from BEB/TextVars.lua's "$plv"/"$pdl"/"$prt"/"$rxp".
+-- Joins the enabled, self-labeled segments ("Lvl 2", "26/900", "3%", ...) with spaces.
 local function ComputeBetterExpBarText()
 	local cur = UnitXP and UnitXP("player")
 	local max = UnitXPMax and UnitXPMax("player")
@@ -881,11 +722,10 @@ local function ComputeBetterExpBarText()
 	return table.concat(segments, " ")
 end
 
--- A plain Hide() call does not stick - native code re-Shows this FontString on other triggers.
--- Neutering Show() itself fixes it, but must be reversible: captured once, lazily, restored when the
--- feature turns back off.
+-- Native text's real Show method, captured once before it gets neutered; restored when the feature is off.
 local realExpOverlayTextShow
 
+-- Refreshes the overlay text and keeps the native label hidden while the feature is on.
 local function UpdateBetterExpBarText()
 	local text = ACAB.betterExpBarText
 
@@ -893,7 +733,6 @@ local function UpdateBetterExpBarText()
 		text:SetText(ComputeBetterExpBarText())
 	end
 
-	-- Show() itself is neutered while the feature is on, so this Hide() call is defense-in-depth.
 	local nativeText = ACAB:GetNativeExpOverlayText()
 
 	if nativeText and ACABDB.betterExpBarEnabled then
@@ -901,16 +740,13 @@ local function UpdateBetterExpBarText()
 	end
 end
 
--- Shared OnEvent handler for Events.lua's betterExpBarEventFrame watcher - refreshes both the text
--- overlay and the custom rested-XP overlay, since both are gated on the same enable toggle.
+-- Events.lua's betterExpBarEventFrame handler: refreshes the text and the rested-XP overlay.
 function ACAB:BetterExpBarOnEvent()
 	UpdateBetterExpBarText()
 	self:ApplyExpBarRestedOverlay()
 end
 
--- Creates (once)/shows/hides/live-updates the text overlay per ACABDB.betterExpBarEnabled.
--- GameFontNormalSmall supports GetFont() with no FontString instance required, so it's read lazily here
--- (the overlay itself may not exist yet to sample a size from).
+-- Returns (and caches) GameFontNormalSmall's path/size; a Font object, so no FontString is needed.
 function ACAB:CaptureNativeExpBarFontIfNeeded()
 	if self.NATIVE_EXPBAR_FONT then
 		return self.NATIVE_EXPBAR_FONT
@@ -931,6 +767,7 @@ function ACAB:CaptureNativeExpBarFontIfNeeded()
 	return self.NATIVE_EXPBAR_FONT
 end
 
+-- Creates (once)/shows/hides the text overlay per ACABDB.betterExpBarEnabled, swapping the native label.
 function ACAB:ApplyBetterExpBarVisual()
 	self:EnsureDB()
 
@@ -942,11 +779,10 @@ function ACAB:ApplyBetterExpBarVisual()
 
 	local nativeText = self:GetNativeExpOverlayText()
 
-	-- Captured unconditionally so ACAB.NATIVE_EXPBAR_FONT is populated on every login regardless of
-	-- whether the feature is currently on.
+	-- Captured on every login regardless of the feature state.
 	self:CaptureNativeExpBarFontIfNeeded()
 
-	-- Captures the real Show method exactly once, lazily - must happen before it's ever neutered below.
+	-- Must capture the real Show before it is ever neutered below.
 	if nativeText and not realExpOverlayTextShow then
 		realExpOverlayTextShow = nativeText.Show
 	end
@@ -956,8 +792,7 @@ function ACAB:ApplyBetterExpBarVisual()
 			self.betterExpBarText:Hide()
 		end
 
-		-- Reversible restore: undo the Show() neutering below before calling Show(), so the native
-		-- label comes back rather than silently no-oping against its own neutered method.
+		-- Restore the real Show before calling it.
 		if nativeText then
 			if realExpOverlayTextShow then
 				nativeText.Show = realExpOverlayTextShow
@@ -966,14 +801,13 @@ function ACAB:ApplyBetterExpBarVisual()
 			nativeText:Show()
 		end
 
-		-- Hides the custom rested-XP overlay too - gated on this same toggle.
 		self:ApplyExpBarRestedOverlay()
 
 		return
 	end
 
 	if nativeText then
-		-- Neuters Show() itself so no native handler can re-show this label - a plain Hide() doesn't stick.
+		-- Neuters Show - native code re-shows this label, so a plain Hide() doesn't stick.
 		if realExpOverlayTextShow then
 			nativeText.Show = function() end
 		end
@@ -982,19 +816,14 @@ function ACAB:ApplyBetterExpBarVisual()
 	end
 
 	if not self.betterExpBarText then
-		-- Created on the dedicated text-overlay frame, not on `frame` directly (see section header).
-		-- The overlay SetAllPoints(frame), so anchoring CENTER to the overlay's CENTER lands this
-		-- exactly in the middle of the bar.
 		local textOverlay = EnsureExpBarTextOverlay(frame)
 		local text = textOverlay:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 
 		text:SetPoint("CENTER", textOverlay, "CENTER", 0, 0)
 
-		-- OUTLINE flag keeps this readable regardless of the fill color underneath it.
 		local fontPath, fontSize = text:GetFont()
 
-		-- Starts one size smaller than the native default until ACABDB.expBarFontSize holds a real
-		-- saved value (same lazy-default idiom as ACABDB.hotkeyFontSize/countFontSize).
+		-- Saved size, else one below the native size; always OUTLINE.
 		local applySize = ACABDB.expBarFontSize
 
 		if not applySize and self.NATIVE_EXPBAR_FONT then
@@ -1005,8 +834,6 @@ function ACAB:ApplyBetterExpBarVisual()
 			text:SetFont(fontPath, applySize or fontSize, "OUTLINE")
 		end
 
-		-- ACABDB.expBarTextColor has no native equivalent to preserve/revert to (this addon's own
-		-- FontString, not a native region), so a straight default is seeded rather than captured.
 		local textColor = ACABDB.expBarTextColor
 
 		if textColor then
@@ -1014,25 +841,19 @@ function ACAB:ApplyBetterExpBarVisual()
 		end
 
 		self.betterExpBarText = text
-
-		-- Events.lua's betterExpBarEventFrame watcher is created unconditionally at file load, not
-		-- lazily here - it no-ops safely via self.betterExpBarText's own nil-checks while the feature is off.
 	end
 
 	self.betterExpBarText:Show()
 	UpdateBetterExpBarText()
 
-	-- Shows/refreshes the custom rested-XP overlay immediately rather than waiting for the next event.
 	self:ApplyExpBarRestedOverlay()
 end
 
--- Settings.lua's Experience Bar page Font Size slider calls this directly on every OnValueChanged -
--- mirrors Button.lua's SetHotkeyFontSize/SetCountFontSize's round-then-write template (GetFont() has
--- float imprecision on this client, e.g. 11.999999726451 instead of 12).
+-- Font Size slider: rounds (GetFont sizes come back as floats) and applies.
 function ACAB:SetExpBarFontSize(size)
 	self:EnsureDB()
 
-	size = math.floor(size + 0.5)
+	size = ExpBarRound(size)
 
 	ACABDB.expBarFontSize = size
 
@@ -1041,9 +862,7 @@ function ACAB:SetExpBarFontSize(size)
 	end
 end
 
--- Settings.lua's Experience Bar page Pulse Interval slider calls this directly - rounds to 1 decimal and
--- clamps to 0.5-5.0 so a stray write can't hand the sine formula a zero/negative period. The ticker
--- callback reads this field fresh every tick, so writing it here is enough to reach the running animation.
+-- Pulse Interval slider: rounds to 1 decimal and clamps to 0.5-5 (the running ticker reads it every tick).
 function ACAB:SetExpBarGlowPulseInterval(interval)
 	self:EnsureDB()
 
@@ -1053,7 +872,7 @@ function ACAB:SetExpBarGlowPulseInterval(interval)
 		return
 	end
 
-	interval = math.floor((interval * 10) + 0.5) / 10
+	interval = ExpBarRound(interval * 10) / 10
 
 	if interval < 0.5 then
 		interval = 0.5
@@ -1066,8 +885,7 @@ function ACAB:SetExpBarGlowPulseInterval(interval)
 	ACABDB.expBarGlowPulseInterval = interval
 end
 
--- Settings.lua's text-color swatch calls this from ColorPickerFrame.func/cancelFunc - same mechanic as
--- SetExpBarColorEarned/SetExpBarColorRested above, against this addon's own FontString via SetTextColor.
+-- Text color swatch setter (ColorPickerFrame.func/cancelFunc).
 function ACAB:SetExpBarTextColor(r, g, b)
 	self:EnsureDB()
 

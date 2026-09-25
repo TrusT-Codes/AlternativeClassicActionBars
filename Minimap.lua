@@ -1,13 +1,14 @@
 -- Minimap.lua
--- Minimap button that opens the main context menu on click. Positioned by
--- angle around the minimap's circumference, draggable to reposition.
+-- Minimap launcher button: opens the context menu, placed by angle around the minimap, draggable.
 
 local ACAB = AlternativeClassicActionBars
 
 local MINIMAP_ICON_RADIUS = 80 -- distance from minimap center, in pixels
+local DEFAULT_MINIMAP_ANGLE = 200 -- degrees
 
+-- Anchors the button on the minimap's rim at ACABDB.minimapAngle.
 local function ApplyMinimapPosition(button)
-	local angle = ACABDB.minimapAngle or 200
+	local angle = ACABDB.minimapAngle or DEFAULT_MINIMAP_ANGLE
 	local rad = angle * (math.pi / 180)
 	local x = math.cos(rad) * MINIMAP_ICON_RADIUS
 	local y = math.sin(rad) * MINIMAP_ICON_RADIUS
@@ -50,12 +51,13 @@ local function Minimap_OnLeave()
 	GameTooltip:Hide()
 end
 
+-- Builds the minimap button once; returns it.
 function ACAB:CreateMinimapButton()
 	if self.minimapButton then
 		return self.minimapButton
 	end
 	if ACABDB.minimapAngle == nil then
-		ACABDB.minimapAngle = 200
+		ACABDB.minimapAngle = DEFAULT_MINIMAP_ANGLE
 	end
 
 	local button = CreateFrame("Button", "ACABMinimapButton", Minimap)
