@@ -64,6 +64,8 @@ end
 ACAB.currentVersion = GetAddOnMetadata("AlternativeClassicActionBars", "Version") or "0.0.0"
 
 local notifiedThisSession = false
+local REPLY_COOLDOWN = 60
+local lastReplyAt = {}
 
 -- Broadcasts this client's version on every announce channel (called once at the end of login).
 function ACAB:CheckForUpdates()
@@ -72,13 +74,32 @@ function ACAB:CheckForUpdates()
 	end
 end
 
--- Nags once per session if remoteVersion is newer than this client's own version.
-function ACAB:HandleVersionAnnouncement(remoteVersion)
+-- Replies with this client's version on `channel`, at most once per REPLY_COOLDOWN seconds per channel.
+local function ReplyWithOwnVersion(channel)
+	if not channel then
+		return
+	end
+	local now = GetTime()
+	if lastReplyAt[channel] and now - lastReplyAt[channel] < REPLY_COOLDOWN then
+		return
+	end
+	lastReplyAt[channel] = now
+	SendAddonMessage(MSG_PREFIX, ACAB.currentVersion, channel)
+end
+
+-- Nags once per session if remoteVersion is newer; answers older peers so they learn about this version.
+function ACAB:HandleVersionAnnouncement(remoteVersion, channel)
+	local cmp = ACAB:CompareVersions(remoteVersion, ACAB.currentVersion)
+	if cmp < 0 then
+		ReplyWithOwnVersion(channel)
+		return
+	end
+
 	if notifiedThisSession then
 		return
 	end
 
-	if ACAB:CompareVersions(remoteVersion, ACAB.currentVersion) > 0 then
+	if cmp > 0 then
 		notifiedThisSession = true
 		ACAB:Print("A newer version (" .. remoteVersion .. ") is available - you're on " .. ACAB.currentVersion ..
 			". Get it at https://github.com/TrusT-Codes/AlternativeClassicActionBars/releases")
@@ -89,8 +110,8 @@ end
 local listenerFrame = CreateFrame("Frame")
 listenerFrame:RegisterEvent("CHAT_MSG_ADDON")
 listenerFrame:SetScript("OnEvent", function()
-	if event ~= "CHAT_MSG_ADDON" or arg1 ~= MSG_PREFIX then
+	if event ~= "CHAT_MSG_ADDON" or arg1 ~= MSG_PREFIX or arg4 == UnitName("player") then
 		return
 	end
-	ACAB:HandleVersionAnnouncement(arg2)
+	ACAB:HandleVersionAnnouncement(arg2, arg3)
 end)
