@@ -1450,6 +1450,9 @@ function ACAB:ApplyModernVerticalBarClusterLayout()
 	cfg4.buttonSize = buttonSize
 	cfg4.spacing = spacing
 
+	self:SetBarLayout(bar4, 1, 12)
+	self:SetBarLayout(bar5, 1, 12)
+
 	-- Shared row Y for the whole six-bar cluster.
 	local rowY = self:GetModernVerticalBarCenteredY(buttonSize, spacing)
 
@@ -1548,6 +1551,7 @@ function ACAB:ApplyModernSingleVerticalBar(id)
 	if id == 4 then
 		cfg.buttonSize = buttonSize
 		cfg.spacing = spacing
+		self:SetBarLayout(bar, 1, 12)
 
 		-- Flush against the screen's right edge.
 		local _, insetRight = self:GetElementVisualInset(bar)
@@ -1565,17 +1569,15 @@ function ACAB:ApplyModernSingleVerticalBar(id)
 
 		cfg.buttonSize = buttonSize
 		cfg.spacing = spacing
+		self:SetBarLayout(bar, 1, 12)
 
+		-- Falls back to bar 4's saved x when it has no rect, same as the cluster layout.
 		local bar4Left = self:GetElementRealEdges(bar4)
 		local _, insetRight = self:GetElementVisualInset(bar)
 
-		if not bar4Left then
-			return
-		end
-
 		cfg.point = "BOTTOMLEFT"
 		cfg.relativePoint = "BOTTOMLEFT"
-		cfg.x = bar4Left - insetRight - buttonSize
+		cfg.x = (bar4Left or bar4.config.x) - insetRight - buttonSize
 		cfg.y = rowY
 	end
 

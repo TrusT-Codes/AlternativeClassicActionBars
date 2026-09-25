@@ -118,6 +118,21 @@ local function UsesSimpleBarPage(barId)
 	return ACAB.simpleBarPageConfigs[barId] ~= nil
 end
 
+-- Hides and uncaches a Pet/Stance page whose kind (simple vs full) no longer matches its native-mode flag.
+local function DropMismatchedBarPage(barId)
+	if barId ~= ACAB.PET_BAR_ID and barId ~= ACAB.STANCE_BAR_ID then
+		return
+	end
+
+	local pages = ACAB.settingsFrame and ACAB.settingsFrame.pages
+	local page = pages and pages[barId]
+
+	if page and (page.acabSimplePage == true) ~= UsesSimpleBarPage(barId) then
+		page:Hide()
+		pages[barId] = nil
+	end
+end
+
 local function GetBarDisplayName(barId)
 	if SIMPLE_BAR_NAMES[barId] then
 		return SIMPLE_BAR_NAMES[barId]
@@ -1055,15 +1070,31 @@ function ACAB:HighlightMainBarArtModeDropdown()
 
 	local strip = row.acabHighlightStrip
 
+	strip.pulseGeneration = (strip.pulseGeneration or 0) + 1
 	strip:Show()
 
-	-- Three on/off pulses.
+	-- Three on/off pulses; steps from an older call are skipped.
 	if C_Timer then
-		C_Timer.After(0.45, function() strip:Hide() end)
-		C_Timer.After(0.75, function() strip:Show() end)
-		C_Timer.After(1.2, function() strip:Hide() end)
-		C_Timer.After(1.5, function() strip:Show() end)
-		C_Timer.After(1.95, function() strip:Hide() end)
+		local generation = strip.pulseGeneration
+		local function Step(show)
+			return function()
+				if strip.pulseGeneration ~= generation then
+					return
+				end
+
+				if show then
+					strip:Show()
+				else
+					strip:Hide()
+				end
+			end
+		end
+
+		C_Timer.After(0.45, Step(false))
+		C_Timer.After(0.75, Step(true))
+		C_Timer.After(1.2, Step(false))
+		C_Timer.After(1.5, Step(true))
+		C_Timer.After(1.95, Step(false))
 	end
 end
 
@@ -1083,6 +1114,8 @@ function ACAB:GetOrCreateBarPage(barId)
 	if not ACAB.settingsFrame then
 		ACAB:CreateSettingsFrame()
 	end
+
+	DropMismatchedBarPage(barId)
 
 	if UsesSimpleBarPage(barId) then
 		return self:GetOrCreateSimpleBarPage(barId)
@@ -2316,6 +2349,7 @@ local function CreateSimpleBarPage(key)
 
 	page:Hide()
 
+	page.acabSimplePage = true
 	ACAB.settingsFrame.pages[key] = page
 
 	return page
@@ -2325,6 +2359,8 @@ function ACAB:GetOrCreateSimpleBarPage(key)
 	if not ACAB.settingsFrame then
 		ACAB:CreateSettingsFrame()
 	end
+
+	DropMismatchedBarPage(key)
 
 	if ACAB.settingsFrame.pages[key] then
 		return ACAB.settingsFrame.pages[key]
@@ -2337,6 +2373,8 @@ function ACAB:RefreshSimpleBarPage(key)
 	if not ACAB.settingsFrame then
 		return
 	end
+
+	DropMismatchedBarPage(key)
 
 	local page = ACAB.settingsFrame.pages[key]
 	local config = ACAB.simpleBarPageConfigs[key]
@@ -2794,6 +2832,8 @@ function ACAB:RefreshBarSettingsPage(barId)
 	if not ACAB.settingsFrame then
 		return
 	end
+
+	DropMismatchedBarPage(barId)
 
 	if UsesSimpleBarPage(barId) then
 		self:RefreshSimpleBarPage(barId)
