@@ -19,19 +19,6 @@ None of these were fixed during the refactor. Each has a repro or a `/run` check
 - **What:** The allocator counts a bar as `slotStart .. slotStart + cols*rows - 1`. Every one of the `MAX_BAR_BUTTONS` pool buttons (hidden ones too) binds `slotStart + i - 1` and registers in `customBindTargets`. A shrunk bar plus a later-seeded Extra Bar can overlap. Low impact, since Extra Bars normally seed once.
 - **Verify:** `/run local c=ACABDB.bars for i=1,table.getn(c) do DEFAULT_CHAT_FRAME:AddMessage(c[i].id.." "..tostring(c[i].slotStart).." "..(c[i].cols*c[i].rows)) end`. Two slotStarts less than 12 apart confirm an overlap. Fix: count `MAX_BAR_BUTTONS` for pool-backed bars.
 
-### Pet/Stance Bar page can be the wrong kind after a runtime native-mode flip
-- **Status:** fixed on `bugfix/known-problems-first-pass`, awaiting live verify. Delete entry once confirmed.
-- **Where:** `SettingsBars.lua` — `UsesSimpleBarPage` / `GetOrCreateBarPage` / `GetOrCreateSimpleBarPage`; trigger `ResetAllElementsToVanillaLayout`
-- **What:** The styled (full) and native (simple) Pet/Stance pages share one cache key (`settingsFrame.pages[PET_BAR_ID]`). Force Vanilla Layout Mode sets `useNativePetBar/useNativeStanceBar = true` without a reload. An already-built styled page is then refreshed as the native page: stale Button Size/Spacing/Grid controls, and X/Y driven by the native container.
-- **Verify:** On a non-Default profile with styled Pet Bar, open its page, turn Force Vanilla Layout on, reopen the page. `/run local A=AlternativeClassicActionBars local p=A.settingsFrame.pages[A.PET_BAR_ID] DEFAULT_CHAT_FRAME:AddMessage(tostring(p and p.buttonSizeSlider~=nil))` prints `true` if stale. Fix: separate cache keys, or drop the page when the flag flips.
-
-
-### Global spacing readout can exceed the slider's max after a border-style switch
-- **Status:** fixed on `bugfix/known-problems-first-pass`, awaiting live verify. Delete entry once confirmed.
-- **Where:** `SettingsGeneral.lua` — `RefreshGeneralPanel`
-- **What:** `globalSpacingValue` is stored in displayed units; its max is 20 in modern style and 16 in vanilla style. Switching to vanilla with 20 saved clamps the thumb to 16, but the readout says "20" and `ApplyGlobalSpacingToBar` applies 20 + 4 = 24 real spacing, above `SPACING_MAX`.
-- **Verify:** With modern style on and global spacing at 20, uncheck "Use Modern Button Style". Readout still says 20. `/run print(ACABDB.globalSpacingValue)` → `20`.
-
 ### Stance Bar rebuild relies on UPDATE_SHAPESHIFT_FORMS, which may never fire here
 - **Status:** still untested live. Flagged for later review.
 - **Where:** `Events.lua` — `stanceFormEventFrame`; `PetStanceBars.lua` — `RebuildStanceBarContainer`
