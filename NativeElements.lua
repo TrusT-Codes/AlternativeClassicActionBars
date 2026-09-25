@@ -1452,6 +1452,8 @@ function ACAB:CreatePageIndicatorContainer()
 	self.pageIndicatorDown = down
 	self.pageIndicatorText = text
 
+	self:ApplyPageIndicatorStrata()
+
 	if not ACABDB.mainBarPageIndicatorNativeAnchor then
 		ACABDB.mainBarPageIndicatorNativeAnchor = {
 			point = "TOPLEFT",
@@ -1590,7 +1592,31 @@ function ACAB:ApplyPageIndicatorShape()
 	container:SetScale(ACABDB.mainBarPageIndicatorScale or 1)
 end
 
+-- Up/Down above MainMenuBarArtFrame (MEDIUM) - they keep the art's strata after reparenting otherwise.
+function ACAB:ApplyPageIndicatorStrata()
+	local container = self.pageIndicatorContainer
+
+	if not container then
+		return
+	end
+
+	container:SetFrameStrata("HIGH")
+	container:SetFrameLevel(11)
+
+	if self.pageIndicatorUp then
+		self.pageIndicatorUp:SetFrameStrata("HIGH")
+		self.pageIndicatorUp:SetFrameLevel(12)
+	end
+
+	if self.pageIndicatorDown then
+		self.pageIndicatorDown:SetFrameStrata("HIGH")
+		self.pageIndicatorDown:SetFrameLevel(12)
+	end
+end
+
 function ACAB:ApplyPageIndicatorPosition()
+	self:ApplyPageIndicatorStrata()
+
 	if self:ApplyGroupedIfActive("pageindicator") then
 		return
 	end

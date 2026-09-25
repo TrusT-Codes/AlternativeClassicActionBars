@@ -1645,10 +1645,10 @@ function ACAB:GetOrCreateBarPage(barId)
 			self:AddHoverOnlyReflowRow(page, resetPositionButton, ACAB.INDENT_INPUT, resetButtonY)
 
 			-- Bars 1-5: Main Bar/Action Bar 1/Action Bar 2 stack (1-3) and the right vertical bar
-			-- cluster (4-5, ResetBarLayoutToModernBase dispatches each id to the right shared function).
+			-- cluster (4-5, ResetBarLayoutToModernBase dispatches each id). Styled Pet/Stance Bar: their own resets.
 			local nextY = resetButtonY
 
-			if barId >= 1 and barId <= 5 then
+			if (barId >= 1 and barId <= 5) or barId == ACAB.PET_BAR_ID or barId == ACAB.STANCE_BAR_ID then
 				local resetModernY = resetButtonY - 30
 
 				local resetModernButton = ACAB:CreateResetButton(page, {
@@ -1657,7 +1657,13 @@ function ACAB:GetOrCreateBarPage(barId)
 					maxWidth = 200,
 					text = "Reset to Modern Layout Default",
 					onClick = function()
-						ACAB:ResetBarLayoutToModernBase(page.barId)
+						if page.barId == ACAB.PET_BAR_ID then
+							ACAB:ResetPetBarLayoutToModernBase()
+						elseif page.barId == ACAB.STANCE_BAR_ID then
+							ACAB:ResetStanceBarPositionToModernBase()
+						else
+							ACAB:ResetBarLayoutToModernBase(page.barId)
+						end
 
 						-- Page Indicator visually anchors off Main Bar's own position - reset it alongside Main Bar.
 						if page.barId == 1 and ACAB.ResetPageIndicatorToModernBase then
