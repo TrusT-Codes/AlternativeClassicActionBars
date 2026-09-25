@@ -1811,6 +1811,7 @@ local function CreateExpBarColorRow(page, y, labelText, swatchName, getter, sett
 	local swatch = ACAB:CreateColorSwatch(page, swatchName)
 
 	swatch:SetPoint("LEFT", label, "RIGHT", 12, 0)
+	swatch.acabLabel = label
 
 	swatch:SetScript("OnClick", function()
 		ACAB:OpenColorPicker(swatch, getter, setter, ACAB.settingsFrame)
@@ -1874,6 +1875,10 @@ local function ApplyBetterExpBarGating(page)
 		if control then
 			control:EnableMouse(interactive)
 			control:SetAlpha(alpha)
+
+			if control.acabLabel then
+				control.acabLabel:SetAlpha(alpha)
+			end
 		end
 	end
 end
