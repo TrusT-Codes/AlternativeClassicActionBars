@@ -783,6 +783,7 @@ function ACAB:OpenColorPicker(swatch, getter, setter, anchorFrame)
 		end
 	end
 
+	ColorPickerFrame.previousValues = { r = current.r, g = current.g, b = current.b }
 	ColorPickerFrame:SetColorRGB(current.r, current.g, current.b)
 
 	-- One strata above the DIALOG-strata settings window.

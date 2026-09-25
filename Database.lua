@@ -664,6 +664,13 @@ function ACAB:ResolveActiveProfile()
 
 	local activeProfile = ACABCharDB.activeProfile or self.DEFAULT_PROFILE_NAME
 
+	-- Falls back to Default when the saved profile was deleted on another character.
+	if activeProfile ~= self.DEFAULT_PROFILE_NAME and not ACABProfilesDB[activeProfile] then
+		self:Print("Profile \"" .. activeProfile .. "\" no longer exists - switched to \"" .. self.DEFAULT_PROFILE_NAME .. "\".")
+		activeProfile = self.DEFAULT_PROFILE_NAME
+		ACABCharDB.activeProfile = activeProfile
+	end
+
 	self.activeProfileName = activeProfile
 
 	local snapshot = ACABProfilesDB[activeProfile]
