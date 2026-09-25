@@ -63,34 +63,160 @@ end
 
 ACAB.currentVersion = GetAddOnMetadata("AlternativeClassicActionBars", "Version") or "0.0.0"
 
-local notifiedThisSession = false
+local VERSION_CHANNEL = "ACABVersion"
+local CHANNEL_MSG_PREFIX = "ACABv:"
+local CHANNEL_JOIN_DELAY = 10
+local REPLY_COOLDOWN = 60
+local REPLY_MIN_DELAY = 1
+local REPLY_MAX_DELAY = 6
 
--- Broadcasts this client's version on every announce channel (called once at the end of login).
-function ACAB:CheckForUpdates()
-	for i = 1, table.getn(ANNOUNCE_CHANNELS) do
-		SendAddonMessage(MSG_PREFIX, ACAB.currentVersion, ANNOUNCE_CHANNELS[i])
-	end
+local notifiedThisSession = false
+local lastReplyAt = {}
+local pendingReplies = {}
+
+-- Returns true if channelName is the hidden version channel.
+local function IsVersionChannel(channelName)
+	return channelName and string.lower(channelName) == string.lower(VERSION_CHANNEL)
 end
 
--- Nags once per session if remoteVersion is newer than this client's own version.
-function ACAB:HandleVersionAnnouncement(remoteVersion)
+-- Sends this client's version on one distribution ("CHANNEL" uses the hidden version channel).
+local function SendOwnVersion(distribution)
+	if distribution == "CHANNEL" then
+		local channelId = GetChannelName(VERSION_CHANNEL)
+		if channelId and channelId > 0 then
+			SendChatMessage(CHANNEL_MSG_PREFIX .. ACAB.currentVersion, "CHANNEL", nil, channelId)
+		end
+		return
+	end
+	SendAddonMessage(MSG_PREFIX, ACAB.currentVersion, distribution)
+end
+
+-- Prints the update nag once per session.
+local function NotifyNewerVersion(remoteVersion)
 	if notifiedThisSession then
 		return
 	end
+	notifiedThisSession = true
+	ACAB:Print("A newer version (" .. remoteVersion .. ") is available - you're on " .. ACAB.currentVersion ..
+		". Get it at https://github.com/TrusT-Codes/AlternativeClassicActionBars/releases")
+end
 
-	if ACAB:CompareVersions(remoteVersion, ACAB.currentVersion) > 0 then
-		notifiedThisSession = true
-		ACAB:Print("A newer version (" .. remoteVersion .. ") is available - you're on " .. ACAB.currentVersion ..
-			". Get it at https://github.com/TrusT-Codes/AlternativeClassicActionBars/releases")
+-- Stores remoteVersion as the newest seen version if it beats the saved one.
+local function RememberVersion(remoteVersion)
+	if not ACABDB then
+		return
+	end
+	if not ACABDB.latestSeenVersion or ACAB:CompareVersions(remoteVersion, ACABDB.latestSeenVersion) > 0 then
+		ACABDB.latestSeenVersion = remoteVersion
 	end
 end
 
--- Listens for peers' version announcements.
-local listenerFrame = CreateFrame("Frame")
-listenerFrame:RegisterEvent("CHAT_MSG_ADDON")
-listenerFrame:SetScript("OnEvent", function()
-	if event ~= "CHAT_MSG_ADDON" or arg1 ~= MSG_PREFIX then
+-- Nags on login if a previously seen version is newer than this one; clears it once caught up.
+local function CheckSavedLatestVersion()
+	if not ACABDB or not ACABDB.latestSeenVersion then
 		return
 	end
-	ACAB:HandleVersionAnnouncement(arg2)
+	if ACAB:CompareVersions(ACABDB.latestSeenVersion, ACAB.currentVersion) > 0 then
+		NotifyNewerVersion(ACABDB.latestSeenVersion)
+	else
+		ACABDB.latestSeenVersion = nil
+	end
+end
+
+-- Schedules a reply after a random delay; cancelled if another peer answers with >= our version first.
+local function ScheduleReply(distribution)
+	if not distribution or pendingReplies[distribution] then
+		return
+	end
+	local now = GetTime()
+	if lastReplyAt[distribution] and now - lastReplyAt[distribution] < REPLY_COOLDOWN then
+		return
+	end
+	local delay = REPLY_MIN_DELAY + math.random() * (REPLY_MAX_DELAY - REPLY_MIN_DELAY)
+	pendingReplies[distribution] = C_Timer.NewTimer(delay, function()
+		pendingReplies[distribution] = nil
+		lastReplyAt[distribution] = GetTime()
+		SendOwnVersion(distribution)
+	end)
+end
+
+-- Cancels a pending reply on distribution.
+local function CancelReply(distribution)
+	local timer = pendingReplies[distribution]
+	if timer then
+		timer:Cancel()
+		pendingReplies[distribution] = nil
+	end
+end
+
+-- Joins the hidden version channel and removes it from every chat frame.
+local function JoinVersionChannel()
+	JoinChannelByName(VERSION_CHANNEL)
+	for i = 1, NUM_CHAT_WINDOWS do
+		local chatFrame = getglobal("ChatFrame" .. i)
+		if chatFrame then
+			ChatFrame_RemoveChannel(chatFrame, VERSION_CHANNEL)
+		end
+	end
+end
+
+-- Checks the saved newest version, then announces on group channels and (after a delay) the hidden channel.
+function ACAB:CheckForUpdates()
+	CheckSavedLatestVersion()
+
+	for i = 1, table.getn(ANNOUNCE_CHANNELS) do
+		SendOwnVersion(ANNOUNCE_CHANNELS[i])
+	end
+
+	C_Timer.After(CHANNEL_JOIN_DELAY, function()
+		JoinVersionChannel()
+		C_Timer.After(2, function()
+			SendOwnVersion("CHANNEL")
+		end)
+	end)
+end
+
+-- Handles a peer's version: nags if newer, replies if older, cancels our reply if a peer already answered.
+function ACAB:HandleVersionAnnouncement(remoteVersion, distribution)
+	local cmp = ACAB:CompareVersions(remoteVersion, ACAB.currentVersion)
+	if cmp < 0 then
+		ScheduleReply(distribution)
+		return
+	end
+
+	CancelReply(distribution)
+	if cmp > 0 then
+		RememberVersion(remoteVersion)
+		NotifyNewerVersion(remoteVersion)
+	end
+end
+
+-- Suppresses all chat-frame output for the hidden version channel.
+local origChatFrameOnEvent = ChatFrame_OnEvent
+ChatFrame_OnEvent = function(ev)
+	if string.find(ev, "^CHAT_MSG_CHANNEL") and IsVersionChannel(arg9) then
+		return
+	end
+	return origChatFrameOnEvent(ev)
+end
+
+-- Listens for peers' version announcements on addon messages and the hidden channel.
+local listenerFrame = CreateFrame("Frame")
+listenerFrame:RegisterEvent("CHAT_MSG_ADDON")
+listenerFrame:RegisterEvent("CHAT_MSG_CHANNEL")
+listenerFrame:SetScript("OnEvent", function()
+	if event == "CHAT_MSG_ADDON" then
+		if arg1 ~= MSG_PREFIX or arg4 == UnitName("player") then
+			return
+		end
+		ACAB:HandleVersionAnnouncement(arg2, arg3)
+	elseif event == "CHAT_MSG_CHANNEL" then
+		if not IsVersionChannel(arg9) or arg2 == UnitName("player") then
+			return
+		end
+		local _, _, remoteVersion = string.find(arg1 or "", "^" .. CHANNEL_MSG_PREFIX .. "(%S+)$")
+		if remoteVersion then
+			ACAB:HandleVersionAnnouncement(remoteVersion, "CHANNEL")
+		end
+	end
 end)
