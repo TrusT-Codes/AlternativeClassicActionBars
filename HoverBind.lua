@@ -144,6 +144,32 @@ function ACAB:SyncDefaultBarBindingRedirect(btn)
 	btn.activeBindingId = targetId
 end
 
+-- Calls fn(btn) for every default-bar pool button, hidden ones included.
+local function ForEachDefaultBarButton(fn)
+	local barId
+	for barId, bar in pairs(ACAB.bars) do
+		if bar and bar.buttons then
+			local i
+			for i = 1, table.getn(bar.buttons) do
+				local btn = bar.buttons[i]
+				if btn and btn.nativeBindingId then
+					fn(btn)
+				end
+			end
+		end
+	end
+end
+
+-- Rehomes every default-bar button's key onto its native action.
+local function RehomeAllDefaultBarBindings()
+	ForEachDefaultBarButton(function(btn) ACAB:RehomeDefaultBarBinding(btn) end)
+end
+
+-- Re-applies every default-bar button's swap redirect.
+local function SyncAllDefaultBarBindingRedirects()
+	ForEachDefaultBarButton(function(btn) ACAB:SyncDefaultBarBindingRedirect(btn) end)
+end
+
 -------------------------------------------------------------------------
 -- Bound check
 -------------------------------------------------------------------------
@@ -273,10 +299,8 @@ end
 
 -- Binds combo to the hovered button's action (replacing its old keys), saves, and refreshes it.
 local function ApplyHoverBindKey(hovered, combo)
-	-- Must rehome first: a swap may have moved the live key onto ACABBIND<n>.
-	if hovered.fixedSlotBar then
-		ACAB:RehomeDefaultBarBinding(hovered.frame)
-	end
+	-- Must rehome all first, or SaveBindings persists session-only ACABBIND<n> redirects.
+	RehomeAllDefaultBarBindings()
 
 	local previousAction = GetBindingAction(combo)
 	if previousAction and previousAction ~= "" and previousAction ~= hovered.bindingId then
@@ -298,26 +322,20 @@ local function ApplyHoverBindKey(hovered, combo)
 
 	SaveBindings(GetCurrentBindingSet())
 
-	-- Re-applies the swap redirect after saving.
-	if hovered.fixedSlotBar then
-		ACAB:SyncDefaultBarBindingRedirect(hovered.frame)
-	end
+	SyncAllDefaultBarBindingRedirects()
 
 	RefreshHoverBindTarget(hovered)
 end
 
 -- Removes the hovered button's keybinds (Escape).
 local function ClearHoverBindKey(hovered)
-	if hovered.fixedSlotBar then
-		ACAB:RehomeDefaultBarBinding(hovered.frame)
-	end
+	-- Must rehome all first, or SaveBindings persists session-only ACABBIND<n> redirects.
+	RehomeAllDefaultBarBindings()
 
 	local existingKey1, existingKey2 = GetBindingKey(hovered.bindingId)
 
 	if not existingKey1 and not existingKey2 then
-		if hovered.fixedSlotBar then
-			ACAB:SyncDefaultBarBindingRedirect(hovered.frame)
-		end
+		SyncAllDefaultBarBindingRedirects()
 		return
 	end
 
@@ -332,9 +350,7 @@ local function ClearHoverBindKey(hovered)
 
 	ACAB:Print("Cleared keybind for " .. hovered.bindingId)
 
-	if hovered.fixedSlotBar then
-		ACAB:SyncDefaultBarBindingRedirect(hovered.frame)
-	end
+	SyncAllDefaultBarBindingRedirects()
 
 	RefreshHoverBindTarget(hovered)
 end
