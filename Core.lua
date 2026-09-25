@@ -1869,6 +1869,13 @@ function ACAB:HandleProfileCommand(rest)
 
 	subcommand = string.lower(subcommand or "")
 
+	-- Mirrors the Profiles tab hiding Export/Copy/Import on Default.
+	if (subcommand == "copy" or subcommand == "import" or subcommand == "export")
+		and self:IsDefaultProfileActive() then
+		self:Print("The Default profile cannot be copied, imported or exported. Switch to or create another profile first (" .. ColorKeyName("/acab profile add <name>") .. ").")
+		return
+	end
+
 	if subcommand == "" then
 		PrintProfileStatus()
 	elseif subcommand == "list" then
