@@ -1523,7 +1523,7 @@ function ACABSetupWizardMixin:UpdateStep8SliderVisibility()
 
 	self:ReflowStep8Preview()
 
-	if state.finishedFromStep8 then
+	if self.currentStep == 8 then
 		self:FitHeightToStep(8)
 	end
 end
@@ -1643,12 +1643,17 @@ local function ApplyWizardStateToProfileData(state, data)
 		data.defaultBarStanceSwapEnabled = state.stanceSwapEnabled
 	end
 
-	-- Global spacing/size only written when finishing from step 8.
+	-- Step 8 writes the chosen global spacing/size; earlier finishes force the defaults.
 	if state.finishedFromStep8 then
 		data.globalSpacingEnabled = state.globalSpacingEnabled
 		data.globalSpacingValue = state.globalSpacingValue
 		data.globalButtonSizeEnabled = state.globalButtonSizeEnabled
 		data.globalButtonSizeValue = state.globalButtonSizeValue
+	else
+		data.globalSpacingEnabled = false
+		data.globalSpacingValue = 0
+		data.globalButtonSizeEnabled = false
+		data.globalButtonSizeValue = ACAB.BUTTON_SIZE
 	end
 
 	-- Steps 6-7 only apply to Modern Layout; "blizzard" is reset live in ApplyGeneralLayoutFormat.

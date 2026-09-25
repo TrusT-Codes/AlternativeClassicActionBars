@@ -25,10 +25,6 @@ None of these were fixed during the refactor. Each has a repro or a `/run` check
 - **What:** The styled (full) and native (simple) Pet/Stance pages share one cache key (`settingsFrame.pages[PET_BAR_ID]`). Force Vanilla Layout Mode sets `useNativePetBar/useNativeStanceBar = true` without a reload. An already-built styled page is then refreshed as the native page: stale Button Size/Spacing/Grid controls, and X/Y driven by the native container.
 - **Verify:** On a non-Default profile with styled Pet Bar, open its page, turn Force Vanilla Layout on, reopen the page. `/run local A=AlternativeClassicActionBars local p=A.settingsFrame.pages[A.PET_BAR_ID] DEFAULT_CHAT_FRAME:AddMessage(tostring(p and p.buttonSizeSlider~=nil))` prints `true` if stale. Fix: separate cache keys, or drop the page when the flag flips.
 
-### Wizard always writes global spacing/button size, even on paths that never show step 8
-- **Where:** `SetupWizard.lua` — `ApplyWizardStateToProfileData`
-- **What:** `globalSpacingEnabled`/`globalButtonSizeEnabled` are written behind `~= nil` gates, but `Reset` seeds them `false`, so the gate always passes. Finishing early (step 2 "Lock down" or step 5 "Keep Vanilla Layout") turns off a profile's existing global spacing/size. `modernBorderStyle` is seeded `nil` and handled correctly. **May be intended**, since the overwrite dialog says it overwrites "global spacing/size". Ask the owner.
-- **Verify:** Enable global spacing on a non-Default profile, run the wizard in overwrite mode, pick "Keep Vanilla Layout". After the reload, `/run DEFAULT_CHAT_FRAME:AddMessage(tostring(ACABDB.globalSpacingEnabled))` → `false` confirms.
 
 ### Global spacing readout can exceed the slider's max after a border-style switch
 - **Status:** fixed on `bugfix/known-problems-first-pass`, awaiting live verify. Delete entry once confirmed.
