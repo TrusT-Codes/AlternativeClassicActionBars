@@ -108,8 +108,7 @@ function ACAB:CreatePetBarNativeContainer()
 	self:SetDefaultBarEnabled(self.PET_BAR_ID, cfg.enabled)
 end
 
--- Uses cfg.point/cfg.relativePoint directly (same defaults as Bar.lua's ApplyBarPosition) rather than
--- Bag Bar's hardcoded TOPLEFT/BOTTOMLEFT - this cfg is shared with the custom-styled mode.
+-- Same cfg (and legacy TOPLEFT relativePoint default) as the custom-styled mode's Bar.lua ApplyBarPosition.
 function ACAB:ApplyPetBarNativePosition()
 	local cfg = ACABDB and ACABDB.defaultBars and ACABDB.defaultBars[self.PET_BAR_ID]
 	local container = self.petBarNativeContainer
@@ -118,17 +117,7 @@ function ACAB:ApplyPetBarNativePosition()
 		return
 	end
 
-	self:NormalizePositionAnchor(container, cfg, self.CANONICAL_ANCHOR_PET_BAR, nil, nil, "TOPLEFT")
-
-	container:ClearAllPoints()
-	self:PixelSetPoint(
-		container,
-		cfg.point or "TOPLEFT",
-		UIParent,
-		cfg.relativePoint or "TOPLEFT",
-		cfg.x or 0,
-		cfg.y or 0
-	)
+	self:ApplyPositionToFrame(container, cfg, "TOPLEFT")
 
 	self:EnsureContainerOverlay(container, self.StartPetBarNativeDrag, self.StopPetBarNativeDrag, self.PET_BAR_ID, self.SetPetBarNativeScale, nil, "Pet Bar", not self:ShouldCondensePetBarSlots())
 
@@ -211,7 +200,7 @@ function ACAB:SetPetBarNativeScale(scale)
 	local oldScale = cfg.scale or 1
 
 	if self.petBarNativeContainer then
-		self:CompensateScaleKeepingCornerFixed(cfg, oldScale, scale, "BOTTOMLEFT", self.petBarNativeContainer:GetWidth(), self.petBarNativeContainer:GetHeight())
+		self:CompensateScaleKeepingCornerFixed(cfg, oldScale, scale, "CENTER", self.petBarNativeContainer:GetWidth(), self.petBarNativeContainer:GetHeight())
 	end
 
 	cfg.scale = scale
@@ -636,17 +625,7 @@ function ACAB:ApplyStanceBarPosition()
 		return
 	end
 
-	self:NormalizePositionAnchor(container, pos, self.CANONICAL_ANCHOR_STANCE_BAR, nil, nil, "BOTTOMLEFT")
-
-	container:ClearAllPoints()
-	self:PixelSetPoint(
-		container,
-		pos.point or "TOPLEFT",
-		UIParent,
-		pos.relativePoint or "BOTTOMLEFT",
-		pos.x or 0,
-		pos.y or 0
-	)
+	self:ApplyPositionToFrame(container, pos, "BOTTOMLEFT")
 
 	self:EnsureContainerOverlay(container, self.StartStanceBarDrag, self.StopStanceBarDrag, self.STANCE_BAR_ID, self.SetStanceBarScale, nil, "Stance Bar")
 
@@ -1020,7 +999,7 @@ function ACAB:SetStanceBarScale(scale)
 	local pos = ACABDB.stanceBarPosition
 
 	if pos and self.stanceBarContainer then
-		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "BOTTOMLEFT", self.stanceBarContainer:GetWidth(), self.stanceBarContainer:GetHeight())
+		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "CENTER", self.stanceBarContainer:GetWidth(), self.stanceBarContainer:GetHeight())
 	end
 
 	ACABDB.stanceBarScale = scale

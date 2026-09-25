@@ -24,7 +24,6 @@ function ACAB:ApplyBagBarPosition()
 		return
 	end
 
-	self:NormalizePositionAnchor(container, pos, self.CANONICAL_ANCHOR_BAG_BAR)
 	self:ApplySavedPosition(container, pos)
 	self:EnsureElementOverlayAndHover("bagbar", container)
 end
@@ -159,7 +158,7 @@ function ACAB:SetBagBarScale(scale)
 	local pos = ACABDB.bagBarPosition
 
 	if pos and self.bagBarContainer then
-		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "BOTTOMLEFT", self.bagBarContainer:GetWidth(), self.bagBarContainer:GetHeight())
+		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "CENTER", self.bagBarContainer:GetWidth(), self.bagBarContainer:GetHeight())
 	end
 
 	ACABDB.bagBarScale = scale
@@ -237,7 +236,6 @@ function ACAB:ApplyMicroMenuPosition()
 		return
 	end
 
-	self:NormalizePositionAnchor(container, pos, self.CANONICAL_ANCHOR_MICRO_MENU)
 	self:ApplySavedPosition(container, pos)
 	self:EnsureElementOverlayAndHover("micromenu", container)
 end
@@ -391,7 +389,7 @@ function ACAB:SetMicroMenuScale(scale)
 	local pos = ACABDB.microMenuPosition
 
 	if pos and self.microMenuContainer then
-		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "BOTTOMLEFT", self.microMenuContainer:GetWidth(), self.microMenuContainer:GetHeight())
+		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "CENTER", self.microMenuContainer:GetWidth(), self.microMenuContainer:GetHeight())
 	end
 
 	ACABDB.microMenuScale = scale
@@ -690,7 +688,6 @@ function ACAB:ApplyKeyRingPosition()
 	local pos = ACABDB.keyRingPosition
 
 	if pos then
-		self:NormalizePositionAnchor(frame, pos, self.CANONICAL_ANCHOR_KEY_RING)
 		self:ApplySavedPosition(frame, pos)
 	end
 
@@ -785,7 +782,7 @@ function ACAB:SetKeyRingScale(scale)
 	local frame = getglobal(self.KEYRING_BUTTON_NAME)
 
 	if pos and frame then
-		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "BOTTOMLEFT", frame:GetWidth(), frame:GetHeight())
+		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "CENTER", frame:GetWidth(), frame:GetHeight())
 	end
 
 	ACABDB.keyRingScale = scale
@@ -902,8 +899,10 @@ function ACAB:ApplyLatencyBarPosition()
 
 	local pos = ACABDB.latencyBarPosition
 
+	-- Visual center reads the overlay inset - set before the first apply, not only by the overlay setup.
+	frame.overlayInset = self.LATENCY_BAR_OVERLAY_INSET
+
 	if pos then
-		self:NormalizePositionAnchor(frame, pos, self.CANONICAL_ANCHOR_LATENCY_BAR)
 		self:ApplySavedPosition(frame, pos, "ACABApplyingLatencyBarPosition")
 	end
 
@@ -963,7 +962,7 @@ function ACAB:SetLatencyBarScale(scale)
 	local frame = getglobal(self.LATENCY_BAR_FRAME_NAME)
 
 	if pos and frame then
-		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "BOTTOMLEFT", frame:GetWidth(), frame:GetHeight())
+		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "CENTER", frame:GetWidth(), frame:GetHeight())
 	end
 
 	ACABDB.latencyBarScale = scale
@@ -1145,7 +1144,7 @@ function ACAB:SetCastBarScale(scale)
 	local frame = getglobal(self.CAST_BAR_FRAME_NAME)
 
 	if pos and frame then
-		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "BOTTOMLEFT", frame:GetWidth(), frame:GetHeight())
+		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "CENTER", frame:GetWidth(), frame:GetHeight())
 	end
 
 	ACABDB.castBarScale = scale
@@ -1208,9 +1207,11 @@ function ACAB:CaptureCastBarStackBaseYIfNeeded()
 	self:CaptureCastBarPositionIfNeeded()
 
 	local pos = ACABDB.castBarPosition
+	local frame = getglobal(self.CAST_BAR_FRAME_NAME)
 
-	if pos and pos.y then
-		ACABDB.castBarStackBaseY = pos.y
+	-- Floor is a TOPLEFT/BOTTOMLEFT top-edge y, whatever format the saved position is in.
+	if pos and pos.y and frame then
+		ACABDB.castBarStackBaseY = self:GetPositionInAnchor(frame, pos, "TOPLEFT", "BOTTOMLEFT").y
 	end
 end
 
@@ -1276,10 +1277,14 @@ function ACAB:ReflowCastBarForStackToggle()
 
 	local pos = ACABDB.castBarPosition
 	local y = self:GetCastBarBaselineY()
+	local frame = getglobal(self.CAST_BAR_FRAME_NAME)
 
-	if not pos or not y then
+	if not pos or not y or not frame then
 		return
 	end
+
+	-- y is a top edge - written in TOPLEFT/BOTTOMLEFT terms, ApplyCastBarPosition converts back.
+	self:ConvertPositionAnchor(frame, pos, "TOPLEFT", "BOTTOMLEFT")
 
 	pos.y = y
 
@@ -1597,7 +1602,6 @@ function ACAB:ApplyPageIndicatorPosition()
 		return
 	end
 
-	self:NormalizePositionAnchor(container, pos, self.CANONICAL_ANCHOR_PAGE_INDICATOR)
 	self:ApplySavedPosition(container, pos)
 	self:EnsureElementOverlayAndHover("pageindicator", container)
 end

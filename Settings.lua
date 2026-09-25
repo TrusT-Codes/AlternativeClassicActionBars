@@ -154,109 +154,53 @@ function ACAB:GetScreenCoordinateRange()
 end
 
 -------------------------------------------------------------------------
--- Action-bar-specific X/Y position clamp range
--- Computed per-bar (depends on buttonSize/buttonCount/border style), kept live via
--- RefreshPositionSliderRange below. Bars anchor TOPLEFT-to-UIParent's BOTTOMLEFT, y=0 at the screen
--- bottom, increasing upward.
--- WARNING: use GetScreenWidth()/GetScreenHeight() for the screen-bounds terms, not
--- UIParent:GetWidth()/GetHeight() - UIParent has a non-1 self-scale, so its own GetWidth()/GetHeight()
--- undershoots the real screen edges.
---
--- xMin = 0
--- xMax = GetScreenWidth() - barWidth - borderSize
--- yMin = barHeight + borderSize
--- yMax = GetScreenHeight()
--- (barWidth/barHeight include inter-button spacing; use cols/rows, not
--- buttonCount, since a multi-row bar isn't buttonCount cells wide)
+-- Action-bar X/Y position clamp range
+-- Canonical positions: x/y = the bar's visual (overlay) center relative to the screen's center, so the
+-- range is symmetric - half the screen minus half the bar's visual footprint on each axis.
 -------------------------------------------------------------------------
 
--- 4-unit vanilla action-button border vs. 1-unit modern/minimal border.
-local function GetActionBarBorderSize()
-	return ACAB:IsVanillaBorderStyle() and 4 or 1
-end
-
 function ACAB:GetActionBarCoordinateRange(cfg)
-	-- Screen bounds come from GetScreenWidth()/GetScreenHeight(), not UIParent:GetWidth()/GetHeight().
-	local screenWidthUnits = GetScreenWidth()
-	local screenHeightUnits = GetScreenHeight()
+	local screenWidth, screenHeight = ACAB:GetUIParentAnchorSize()
 
-	if not screenWidthUnits or screenWidthUnits <= 0 then
-		screenWidthUnits = 1024
+	if not cfg or not cfg.buttonSize then
+		return -screenWidth / 2, screenWidth / 2, -screenHeight / 2, screenHeight / 2
 	end
 
-	if not screenHeightUnits or screenHeightUnits <= 0 then
-		screenHeightUnits = 768
-	end
+	local barWidth, barHeight = ACAB:GetBarFrameSize(cfg)
+	local insetLeft, insetRight, insetTop, insetBottom = ACAB:GetElementVisualInset({ config = cfg })
 
-	local buttonSize = (cfg and cfg.buttonSize) or ACAB.BUTTON_SIZE
-	local cols, rows = 1, 1
+	local visualWidth = barWidth + insetLeft + insetRight
+	local visualHeight = barHeight + insetTop + insetBottom
 
-	if cfg then
-		cols, rows = ACAB:GetEffectiveBarGrid(cfg)
-	end
+	-- Pet Bar condense: filled slots compact into the grid's top-left cells, so the far right/bottom
+	-- visible edges sit inside the full overlay - let those edges (not the overlay's) reach the screen.
+	local visibleWidth, visibleHeight = visualWidth, visualHeight
 
-	cols = cols or 1
-	rows = rows or 1
-	local spacing = (cfg and cfg.spacing) or 0
-	local borderSize = GetActionBarBorderSize()
-
-	-- Pet Bar condense: Bar.lua's LayoutButtons compacts filled slots into cfg.cols-wide rows instead
-	-- of reserving every one of the 10 pool slots' own cell - the clamp range must match that shape or the
-	-- bar can never reach screen edges the full uncondensed grid blocked.
-	if cfg and cfg.isPetBar and ACAB:ShouldCondensePetBarSlots() then
+	if cfg.isPetBar and ACAB:ShouldCondensePetBarSlots() then
+		local cols = cfg.cols or 1
 		local filled = ACAB:GetPetBarFilledSlotCount()
+		local usedCols, usedRows = cols, 1
 
 		if filled <= 0 then
-			cols = 1
-			rows = 1
+			usedCols = 1
 		elseif filled < cols then
-			cols = filled
-			rows = 1
+			usedCols = filled
 		else
-			rows = math.ceil(filled / cols)
+			usedRows = math.ceil(filled / cols)
 		end
+
+		local spacing = cfg.spacing or 0
+
+		visibleWidth = (usedCols * cfg.buttonSize) + ((usedCols - 1) * spacing) + insetLeft + insetRight
+		visibleHeight = (usedRows * cfg.buttonSize) + ((usedRows - 1) * spacing) + insetTop + insetBottom
 	end
 
-	local barWidth = (cols * buttonSize) + ((cols - 1) * spacing)
-	local barHeight = (rows * buttonSize) + ((rows - 1) * spacing)
+	local minX = -(screenWidth - visualWidth) / 2
+	local maxX = (screenWidth / 2) + (visualWidth / 2) - visibleWidth
+	local minY = -(screenHeight / 2) - (visualHeight / 2) + visibleHeight
+	local maxY = (screenHeight - visualHeight) / 2
 
-	local minX, maxX
-
-	-- Modern Layout's Right Action Bar 1 (id 4) anchors BOTTOMRIGHT (flush
-	-- to the screen's right edge) instead of every other bar's BOTTOMLEFT -
-	-- mirror the range the same way GetSimpleElementCoordinateRange does
-	-- for the corner cluster, or this slider reads cfg.x's BOTTOMRIGHT
-	-- convention (0 at the right edge, negative moving left) as if it were
-	-- BOTTOMLEFT and clamps it up to 0.
-	if ACAB:IsRightAnchoredPoint(cfg and cfg.point) then
-		minX = -(screenWidthUnits - barWidth - borderSize)
-		maxX = 0
-	elseif ACAB:IsHorizontallyCenteredPoint(cfg and cfg.point) then
-		-- Centered anchor: equal room either side of the center line, so x = 0 sits mid-slider.
-		local halfRange = (screenWidthUnits - barWidth - borderSize) / 2
-
-		minX = -halfRange
-		maxX = halfRange
-	else
-		minX = 0
-		maxX = screenWidthUnits - barWidth - borderSize
-	end
-
-	local minY, maxY
-
-	-- Same BOTTOM-anchor mirroring as the X check above - Right Action
-	-- Bar 1/2 use BOTTOMRIGHT/BOTTOMLEFT under Modern Layout, where y is
-	-- the bar's own bottom edge instead of its top edge.
-	if ACAB:IsBottomAnchoredPoint(cfg and cfg.point) then
-		minY = borderSize
-		maxY = screenHeightUnits - barHeight
-	else
-		minY = barHeight + borderSize
-		maxY = screenHeightUnits
-	end
-
-	-- Never feed SetMinMaxValues a backwards span (max < min) if an
-	-- oversized bar/border combination would otherwise invert it.
+	-- Never feed SetMinMaxValues a backwards span (max < min) if an oversized bar would otherwise invert it.
 	if maxX < minX then
 		maxX = minX
 	end
@@ -303,94 +247,28 @@ function ACAB:RefreshPositionSliderRange(page)
 end
 
 -------------------------------------------------------------------------
--- Native/simple-element X/Y position clamp range (Bag Bar, Micro Menu, Stance/Pet Bar native mode,
--- Experience Bar, Cast Bar - not Latency Bar, whose overlay hitbox is oversized relative to its visual
--- footprint, a separate known issue).
--- Unlike action bars, these elements' footprint isn't formula-derived - read the real rendered size via
--- each element's `.ACABOverlay`, which tracks the trimmed real visual footprint.
--- WARNING - two things action bars don't need:
--- 1. Hit-rect padding: frame:GetWidth()/GetHeight() can exceed the real drawn size - prefer the overlay.
--- 2. Scale: these elements call :SetScale() directly, so pos.x/y are in pre-scale unit space - divide
---    by scale to compare against screenWidth/frameWidth.
--- extraMaxYPixels (optional): extra real screen pixels of headroom added before the scale division.
+-- Native/simple-element X/Y position clamp range (canonical positions: symmetric around the screen's
+-- center, minus half the element's visual footprint - its overlay insets, times its scale).
+-- extraMaxYPixels (optional): extra real screen pixels of headroom above the top edge.
 -------------------------------------------------------------------------
 
--- True for any point string anchored to the screen's right/bottom edge - Modern Layout's corner cluster
--- stores position this way (BOTTOMRIGHT), x=0/y=0 flush against that edge and more negative moving away
--- from it, the mirror image of the BOTTOMLEFT/TOPLEFT convention every X/Y position slider otherwise assumes.
-function ACAB:IsRightAnchoredPoint(point)
-	return point ~= nil and string.find(point, "RIGHT") ~= nil
-end
+function ACAB:GetSimpleElementCoordinateRange(frame, extraMaxYPixels)
+	local screenWidth, screenHeight = ACAB:GetUIParentAnchorSize()
+	local visualWidth, visualHeight = 0, 0
 
-function ACAB:IsBottomAnchoredPoint(point)
-	return point ~= nil and string.find(point, "BOTTOM") ~= nil
-end
+	if frame then
+		local frameScale = frame:GetEffectiveScale()
+		local uiParentScale = UIParent:GetEffectiveScale()
+		local scale = 1
 
--- True for a horizontally centered point (BOTTOM/TOP/CENTER, Modern Layout's Main Bar/Action Bar 1/2):
--- x is the offset from the screen's vertical center line.
-function ACAB:IsHorizontallyCenteredPoint(point)
-	return point ~= nil and string.find(point, "LEFT") == nil and string.find(point, "RIGHT") == nil
-end
-
--- isRightAnchored/isBottomAnchored (optional): mirror minX/maxX and minY/maxY respectively for an
--- element whose stored point anchors to the screen's right and/or bottom edge (0 at that edge, negative
--- moving away from it) instead of the default TOPLEFT convention every other element uses.
--- scaleOverride (optional): the element's true scale when frame:GetScale() isn't it (Key Ring).
-function ACAB:GetSimpleElementCoordinateRange(frame, extraMaxYPixels, isRightAnchored, isBottomAnchored, scaleOverride)
-	local screenWidthUnits = GetScreenWidth()
-	local screenHeightUnits = GetScreenHeight()
-
-	if not screenWidthUnits or screenWidthUnits <= 0 then
-		screenWidthUnits = 1024
-	end
-
-	if not screenHeightUnits or screenHeightUnits <= 0 then
-		screenHeightUnits = 768
-	end
-
-	-- frame:GetWidth()/GetHeight() are scale-independent; multiply by the container's own scale for
-	-- the same space frame:GetLeft()*scale uses.
-	-- WARNING: don't use the overlay's GetWidth()/GetHeight() as the base size - it measures smaller
-	-- than the true footprint once scale isn't 1. The overlay is only used below for the inset correction.
-	local overlay = frame and frame.ACABOverlay
-
-	local scale = scaleOverride or (frame and frame:GetScale()) or 1
-
-	if not scale or scale <= 0 then
-		scale = 1
-	end
-
-	-- Some elements' overlay is trimmed inward from the container's own raw anchor corner - measured
-	-- directly below (container-vs-overlay offset) rather than hardcoded, 0 when there's no trim.
-	local leftInset, rightInset, topInset, bottomInset = 0, 0, 0, 0
-
-	if overlay and frame then
-		-- frame:GetLeft()/GetTop() are in the container's own local unit system; the overlay's scale
-		-- is always 1 - multiply the container's edge by its own scale before diffing against the overlay's.
-		local containerLeft = frame:GetLeft()
-		local overlayLeft = overlay:GetLeft()
-		local containerRight = frame:GetRight()
-		local overlayRight = overlay:GetRight()
-		local containerTop = frame:GetTop()
-		local overlayTop = overlay:GetTop()
-		local containerBottom = frame:GetBottom()
-		local overlayBottom = overlay:GetBottom()
-
-		if containerLeft and overlayLeft then
-			leftInset = overlayLeft - (containerLeft * scale)
+		if frameScale and uiParentScale and uiParentScale ~= 0 then
+			scale = frameScale / uiParentScale
 		end
 
-		if containerRight and overlayRight then
-			rightInset = (containerRight * scale) - overlayRight
-		end
+		local insetLeft, insetRight, insetTop, insetBottom = ACAB:GetVisualInsets(frame)
 
-		if containerTop and overlayTop then
-			topInset = (containerTop * scale) - overlayTop
-		end
-
-		if containerBottom and overlayBottom then
-			bottomInset = overlayBottom - (containerBottom * scale)
-		end
+		visualWidth = ((frame:GetWidth() or 0) - insetLeft - insetRight) * scale
+		visualHeight = ((frame:GetHeight() or 0) - insetTop - insetBottom) * scale
 	end
 
 	local extraY = 0
@@ -399,68 +277,30 @@ function ACAB:GetSimpleElementCoordinateRange(frame, extraMaxYPixels, isRightAnc
 		extraY = extraMaxYPixels * ACAB:GetPixelStep()
 	end
 
-	-- frameWidth/frameHeight convert the container's raw size into the same space as the insets above.
-	-- Real right edge: (x*scale) + frameWidth*scale - rightInset <= screenWidth
-	--   => x <= (screenWidth + rightInset)/scale - frameWidth
-	-- Real top edge:   (x*scale) - topInset <= screenHeight + extra
-	--   => x <= (screenHeight + extra + topInset)/scale
-	-- Real bottom edge (minY): (y - frameHeight)*scale + bottomInset >= 0
-	--   => y >= frameHeight - bottomInset/scale
-	local frameWidth = (frame and frame:GetWidth()) or 0
-	local frameHeight = (frame and frame:GetHeight()) or 0
+	local halfX = (screenWidth - visualWidth) / 2
+	local halfY = (screenHeight - visualHeight) / 2
 
-	local minX, maxX
-
-	if isRightAnchored then
-		-- Mirror image of the LEFT-anchored formula below: 0 flush at the right edge, negative moving
-		-- left - leftInset/rightInset swap roles since "distance from the right edge" reads from the opposite side.
-		minX = -((screenWidthUnits + leftInset) / scale - frameWidth)
-		maxX = 0
-	else
-		minX = 0
-		maxX = (screenWidthUnits + rightInset) / scale - frameWidth
+	if halfX < 0 then
+		halfX = 0
 	end
 
-	local minY, maxY
-
-	if isBottomAnchored then
-		-- Mirror image of the TOP-anchored formula above: y is the frame's own bottom edge (0 flush at
-		-- the screen's bottom) instead of its top edge - topInset/bottomInset swap roles the same way
-		-- leftInset/rightInset do for isRightAnchored above.
-		minY = -bottomInset / scale
-		maxY = (screenHeightUnits + extraY + topInset) / scale - frameHeight
-	else
-		minY = frameHeight - bottomInset / scale
-		maxY = (screenHeightUnits + extraY + topInset) / scale
+	if halfY < 0 then
+		halfY = 0
 	end
 
-	if maxX < minX then
-		maxX = minX
-	end
-
-	if minY < 0 then
-		minY = 0
-	end
-
-	if maxY < minY then
-		maxY = minY
-	end
-
-	return minX, maxX, minY, maxY
+	return -halfX, halfX, -halfY, halfY + extraY
 end
 
--- GetSimpleElementCoordinateRange for a simple page's element frame, using its config's saved anchor
--- side, extraMaxYPixels, and getRangeScale.
+-- GetSimpleElementCoordinateRange for a simple page's element frame - the generic screen range while
+-- its saved position is still legacy (e.g. grouped with Main Bar since before the canonical migration).
 function ACAB:GetSimplePageCoordinateRange(config, frame)
 	local pos = config.getPosition and config.getPosition()
 
-	return self:GetSimpleElementCoordinateRange(
-		frame,
-		config.extraMaxYPixels,
-		self:IsRightAnchoredPoint(pos and pos.point),
-		self:IsBottomAnchoredPoint(pos and pos.point),
-		config.getRangeScale and config.getRangeScale()
-	)
+	if pos and not self:IsCanonicalPosition(pos) then
+		return self:GetScreenCoordinateRange()
+	end
+
+	return self:GetSimpleElementCoordinateRange(frame, config.extraMaxYPixels)
 end
 
 -- Recomputes and re-applies a simple-page element's X/Y slider clamp range from its current rendered
