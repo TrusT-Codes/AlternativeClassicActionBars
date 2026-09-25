@@ -1151,7 +1151,7 @@ function ACAB:SetDefaultBarSpacing(id, spacing)
 	-- Vanilla-only minimum spacing clamp, mirrors Bar.lua's SetBarSpacing.
 	local minSpacing = self:IsVanillaBorderStyle() and self.VANILLA_SPACING_FLOOR or 0
 
-	spacing = self:ClampSpacingSetting(spacing, minSpacing, 20)
+	spacing = self:ClampSpacingSetting(spacing, minSpacing, self:GetSpacingMax())
 
 	if not spacing then
 		return
