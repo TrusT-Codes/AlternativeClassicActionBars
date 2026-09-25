@@ -44,13 +44,9 @@ function ACAB:ForEachBar(fn)
 	end
 end
 
--- Main Bar's spacing scales with its Blizzard art; every other bar's is a flat gap (absent on old saves = 0).
+-- Every bar uses Main Bar's art-scaled spacing formula.
 local function EffectiveSpacing(cfg)
-	if cfg.id == 1 then
-		return ACAB:GetMainBarEffectiveSpacing(cfg)
-	end
-
-	return cfg.spacing or 0
+	return ACAB:GetBarEffectiveSpacing(cfg)
 end
 
 -- Grid a bar actually lays out as: Main Bar uses the vanilla 12x1 while its Blizzard art is shown, keeping
@@ -1098,6 +1094,15 @@ function ACAB:ApplyBarShape(bar)
 	self:ApplyHoverOnlyState(bar, cfg.hoverOnly, function() return cfg.hoverDuration or 3 end)
 
 	self:ApplyEditModeVisual()
+
+	-- Main Bar footprint changed (grid/spacing/art 12x1 toggle): art and grouped elements follow.
+	-- Size-gated so page/stance swaps (which also land here) don't re-run it.
+	if cfg.id == 1 and (bar.ACABFollowerWidth ~= barW or bar.ACABFollowerHeight ~= barH) then
+		bar.ACABFollowerWidth = barW
+		bar.ACABFollowerHeight = barH
+
+		ApplyMainBarFollowers()
+	end
 end
 
 -------------------------------------------------------------------------

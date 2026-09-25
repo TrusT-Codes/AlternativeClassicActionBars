@@ -1956,6 +1956,15 @@ local function ApplyWizardStateToProfileData(state, data)
 	end
 end
 
+-- Re-applies step 4's Page/Stance Swap choices onto the live ACABDB - must run after
+-- ResetAllElementsToVanillaLayout, which forces both back on.
+local function ReapplyWizardSwapChoices(state)
+	if state.useDefaultLayout == false then
+		ACAB:SetDefaultBarPaginationEnabled(state.pageSwapEnabled)
+		ACAB:SetDefaultBarStanceSwapEnabled(state.stanceSwapEnabled)
+	end
+end
+
 -- Creates the profile from wizardState and switches to it (reloads the UI), or - in overwrite mode -
 -- applies wizardState directly onto the already-active profile and reloads. On a name race in create
 -- mode, sends the user back to step 1 with the rejection message shown instead of silently failing.
@@ -1975,6 +1984,7 @@ function ACABSetupWizardMixin:FinishWizard()
 			-- wizard run - runs the same reset cascade "Force Vanilla Layout Mode" uses, so this choice
 			-- always lands on the real vanilla baseline regardless of what the profile had before.
 			ACAB:ResetAllElementsToVanillaLayout()
+			ReapplyWizardSwapChoices(state)
 		end
 
 		ACAB:SaveActiveProfileData()
@@ -2029,6 +2039,7 @@ function ACABSetupWizardMixin:FinishWizard()
 		-- Same reasoning as the overwrite branch above - a brand-new profile can still have inherited
 		-- Modern Layout data, so this choice always resets to the real vanilla baseline.
 		ACAB:ResetAllElementsToVanillaLayout()
+		ReapplyWizardSwapChoices(state)
 	end
 
 	ACABCharDB = ACABCharDB or {}

@@ -189,7 +189,7 @@ function ACAB:GetActionBarCoordinateRange(cfg)
 			usedRows = math.ceil(filled / cols)
 		end
 
-		local spacing = cfg.spacing or 0
+		local spacing = ACAB:GetBarEffectiveSpacing(cfg)
 
 		visibleWidth = (usedCols * cfg.buttonSize) + ((usedCols - 1) * spacing) + insetLeft + insetRight
 		visibleHeight = (usedRows * cfg.buttonSize) + ((usedRows - 1) * spacing) + insetTop + insetBottom
