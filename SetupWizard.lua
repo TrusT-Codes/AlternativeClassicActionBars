@@ -1176,8 +1176,10 @@ function ACABSetupWizardMixin:Reset(config)
 
 	local nativeFontSize = ACAB.NATIVE_EXPBAR_FONT and (ACAB.NATIVE_EXPBAR_FONT.size - 1)
 
-	ACAB:SetSliderValueSilently(step7.fontSizeSlider, ACAB:ClampFontSize(ACABDB.expBarFontSize or nativeFontSize or 12))
-	ACAB:SetSliderValueSilently(step7.pulseIntervalSlider, ACABDB.expBarGlowPulseInterval or 1.5)
+	local fontSize = ACAB:ClampFontSize(ACABDB.expBarFontSize or nativeFontSize or 12)
+	local pulseInterval = ACABDB.expBarGlowPulseInterval or 1.5
+	ACAB:SetSliderValueSilently(step7.fontSizeSlider, fontSize, step7.fontSizeValueText, tostring(fontSize))
+	ACAB:SetSliderValueSilently(step7.pulseIntervalSlider, pulseInterval, step7.pulseIntervalValueText, string.format("%.1f", pulseInterval))
 
 	ACAB:SetColorSwatchColor(step7.earnedColorSwatch, ACABDB.expBarColorEarned or { r = 0, g = 1, b = 0 })
 	ACAB:SetColorSwatchColor(step7.restedColorSwatch, ACABDB.expBarColorRested or { r = 0.6, g = 0.2, b = 1 })
@@ -1189,8 +1191,8 @@ function ACABSetupWizardMixin:Reset(config)
 	step8.spacingCheckbox:SetChecked(false)
 	step8.sizeCheckbox:SetChecked(false)
 
-	ACAB:SetSliderValueSilently(step8.spacingSlider, 0)
-	ACAB:SetSliderValueSilently(step8.sizeSlider, ACAB.BUTTON_SIZE)
+	ACAB:SetSliderValueSilently(step8.spacingSlider, 0, step8.spacingValueText, "0")
+	ACAB:SetSliderValueSilently(step8.sizeSlider, ACAB.BUTTON_SIZE, step8.sizeValueText, tostring(ACAB.BUTTON_SIZE))
 
 	self:UpdateStep8SliderVisibility()
 end
