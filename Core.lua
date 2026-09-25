@@ -1983,6 +1983,7 @@ local function PrintCommandHelp()
 	ACAB:Print("  pages: general, bars, profiles, editmode, main, 1-9/extra1-4, pet, stance, bags, keyring, micro, latency, exp, cast, tooltip")
 	ACAB:Print(ColorKeyName("/acab profile") .. " - show current profile and profile commands")
 	ACAB:Print(ColorKeyName("/acab recapture") .. " - force a fresh capture of default bar native anchors")
+	ACAB:Print(ColorKeyName("/acab version") .. " - show the installed addon version")
 	ACAB:Print(ColorKeyName("/acab help") .. " - show this list")
 end
 
@@ -2020,6 +2021,8 @@ SlashCmdList["ACAB"] = function(msg)
 		end
 
 		ACAB:RecaptureWrappedNativeFrameAnchors()
+	elseif command == "version" then
+		ACAB:Print("Version " .. ACAB.currentVersion)
 	elseif command == "help" then
 		PrintCommandHelp()
 	else
