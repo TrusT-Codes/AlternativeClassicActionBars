@@ -1,7 +1,8 @@
+-- UpdateCheck.lua
+-- Peer version check: announces this client's version over addon messages and nags once if a peer's is newer.
+
 local ACAB = AlternativeClassicActionBars
 
--- No HTTP/socket API exists on this client, so version checks piggyback on other
--- players' running copies via CHAT_MSG_ADDON, the same pattern TWThreat uses.
 local MSG_PREFIX = "ACABVersion"
 local ANNOUNCE_CHANNELS = { "PARTY", "GUILD", "RAID", "BATTLEGROUND" }
 
@@ -64,16 +65,11 @@ ACAB.currentVersion = GetAddOnMetadata("AlternativeClassicActionBars", "Version"
 
 local notifiedThisSession = false
 
--- Broadcasts this client's addon version on every channel it's a member of.
-local function AnnounceOwnVersion()
+-- Broadcasts this client's version on every announce channel (called once at the end of login).
+function ACAB:CheckForUpdates()
 	for i = 1, table.getn(ANNOUNCE_CHANNELS) do
 		SendAddonMessage(MSG_PREFIX, ACAB.currentVersion, ANNOUNCE_CHANNELS[i])
 	end
-end
-
--- Called once from ACAB:RunLoginSequence, after the addon has finished initializing.
-function ACAB:CheckForUpdates()
-	AnnounceOwnVersion()
 end
 
 -- Nags once per session if remoteVersion is newer than this client's own version.
@@ -89,6 +85,7 @@ function ACAB:HandleVersionAnnouncement(remoteVersion)
 	end
 end
 
+-- Listens for peers' version announcements.
 local listenerFrame = CreateFrame("Frame")
 listenerFrame:RegisterEvent("CHAT_MSG_ADDON")
 listenerFrame:SetScript("OnEvent", function()
