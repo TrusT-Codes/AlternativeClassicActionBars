@@ -842,18 +842,17 @@ end
 -- Action-slot pool allocator (ACTION_SLOT_START..ACTION_SLOT_END)
 -------------------------------------------------------------------------
 
--- True when a saved bar's cols*rows slot block covers `slot`.
+-- True when a pool-backed bar's full MAX_BAR_BUTTONS slot block (clamped to the pool end) covers `slot`.
 function ACAB:IsActionSlotUsed(slot, ignoredBarId)
 	local i
 
 	for i = 1, table.getn(ACABDB.bars) do
 		local cfg = ACABDB.bars[i]
 
-		if cfg and cfg.id ~= ignoredBarId then
-			local count = (cfg.cols or 0) * (cfg.rows or 0)
+		if cfg and cfg.id ~= ignoredBarId and not cfg.dynamicDefaultBar and not cfg.fixedActionSlots then
 			local first = cfg.slotStart
 
-			if first and slot >= first and slot <= first + count - 1 then
+			if first and slot >= first and slot <= first + self.MAX_BAR_BUTTONS - 1 and slot <= self.ACTION_SLOT_END then
 				return true
 			end
 		end
@@ -890,10 +889,14 @@ end
 -- Page 10 (109-120) is scanned first, keeping pages 7-9 free for stance/page content.
 local PREFERRED_SLOT_START = 109
 
--- First free contiguous range of `neededCount` slots anywhere in the pool, or nil.
+-- First free contiguous range for a new pool-backed bar (always MAX_BAR_BUTTONS slots), or nil.
 function ACAB:GetNextFreeSlotStart(neededCount)
 	if not neededCount or neededCount < 1 then
 		return nil
+	end
+
+	if neededCount < self.MAX_BAR_BUTTONS then
+		neededCount = self.MAX_BAR_BUTTONS
 	end
 
 	local candidate

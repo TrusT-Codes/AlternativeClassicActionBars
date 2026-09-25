@@ -14,11 +14,13 @@ Read this when something doesn't behave the way the code suggests it should. It 
 None of these were fixed during the refactor. Each has a repro or a `/run` check.
 
 ### `/acab profile copy|import|export` bypass the Default-profile gate
+- **Status:** fixed on `bugfix/known-problems-first-pass`, awaiting live verify. Delete entry once confirmed.
 - **Where:** `Core.lua` — `ACAB:HandleProfileCommand`
 - **What:** The Profiles tab hides Export/Copy/Import/Delete while the Default profile is active, and `IsDefaultProfileActive` states Default can never be edited. The chat commands skip that gate: `copy` and `import` overwrite Default's saved data. `delete` is safe (refuses "Default" by name).
 - **Verify:** On Default, `/acab profile copy <other>`, accept, `/reload`. If Default's layout changed, gate the branches on `self:IsDefaultProfileActive()`. The refusal message text still needs deciding.
 
 ### Early XP/rest events can run EnsureDB before the login sequence
+- **Status:** fixed on `bugfix/known-problems-first-pass`, awaiting live verify. Delete entry once confirmed.
 - **Where:** `ExperienceBar.lua` — `ACAB:BetterExpBarOnEvent` / `UpdateBetterExpBarText`; registered in `Events.lua` (`betterExpBarEventFrame`)
 - **What:** `PLAYER_XP_UPDATE`/`UPDATE_EXHAUSTION`/`PLAYER_LEVEL_UP`/`PLAYER_UPDATE_RESTING` are registered at load, but `ResolveActiveProfile` + `EnsureDB` only run after `PLAYER_ENTERING_WORLD` + the settle poll. An event in that window can:
   - error on a fresh install (`ACABDB` nil)
@@ -28,16 +30,19 @@ None of these were fixed during the refactor. Each has a repro or a `/run` check
 - **Verify:** Temporarily print `event` + `ACAB.activeProfileName` at the top of the Events.lua handler, then `/reload` and log in fresh. Any `prof=nil` line confirms it. Fix: gate on `ACAB.activeProfileName` or on login-sequence completion.
 
 ### Profile deleted on another character is silently recreated with defaults
+- **Status:** fixed on `bugfix/known-problems-first-pass`, awaiting live verify. Delete entry once confirmed.
 - **Where:** `Database.lua` — `ACAB:ResolveActiveProfile`
 - **What:** Char B's `ACABCharDB.activeProfile` names a profile char A deleted. `ACABDB` becomes nil, `EnsureDB` builds fresh defaults, and `activeProfileName` keeps the deleted name. Logout's `SaveActiveProfileData` then resurrects the profile with defaults, and char B loses its layout instead of falling back to Default.
 - **Verify:** Create "X" on A, switch B to "X", delete "X" on A, log into B. `/run print(AlternativeClassicActionBars.activeProfileName)` → `X`. After logout, `/acab profile list` shows "X" again.
 
 ### Hoverbind SaveBindings can persist other buttons' session-only swap redirects
+- **Status:** fixed on `bugfix/known-problems-first-pass`, awaiting live verify. Delete entry once confirmed.
 - **Where:** `HoverBind.lua` — `ApplyHoverBindKey` / `ClearHoverBindKey`, `SyncDefaultBarBindingRedirect`
 - **What:** During a stance/page swap, `SyncDefaultBarBindingRedirect` moves a default-bar button's key from its native action (`ACTIONBUTTON1`) to `ACABBIND<n>`, unsaved on purpose. Hoverbind only rehomes the *hovered* button before `SaveBindings(...)`, so every other redirected button's `ACABBIND<n>` binding gets saved too. After relogging in a non-swapped state, the native action stays unbound. Blizzard's Key Bindings "Okay" does the same.
 - **Verify:** Assign an Extra Bar as a stance source for bar 1. Enter that stance, hoverbind any *other* button, `/reload` in caster form. `GetBindingKey("ACTIONBUTTON1")` nil + key on `ACABBIND<n>` confirms it. Fix: rehome all default-bar buttons before any SaveBindings, then re-sync.
 
 ### Slot allocator reserves cols*rows slots, but a bar's pool binds all 12
+- **Status:** fixed on `bugfix/known-problems-first-pass`, awaiting live verify. Delete entry once confirmed.
 - **Where:** `Bar.lua` — `IsActionSlotUsed`, `ApplyBarShape` / `ResolvePoolSlot`
 - **What:** The allocator counts a bar as `slotStart .. slotStart + cols*rows - 1`. Every one of the `MAX_BAR_BUTTONS` pool buttons (hidden ones too) binds `slotStart + i - 1` and registers in `customBindTargets`. A shrunk bar plus a later-seeded Extra Bar can overlap. Low impact, since Extra Bars normally seed once.
 - **Verify:** `/run local c=ACABDB.bars for i=1,table.getn(c) do DEFAULT_CHAT_FRAME:AddMessage(c[i].id.." "..tostring(c[i].slotStart).." "..(c[i].cols*c[i].rows)) end`. Two slotStarts less than 12 apart confirm an overlap. Fix: count `MAX_BAR_BUTTONS` for pool-backed bars.
@@ -48,6 +53,7 @@ None of these were fixed during the refactor. Each has a repro or a `/run` check
 - **Verify:** On a non-Default profile with styled Pet Bar, open its page, turn Force Vanilla Layout on, reopen the page. `/run local A=AlternativeClassicActionBars local p=A.settingsFrame.pages[A.PET_BAR_ID] DEFAULT_CHAT_FRAME:AddMessage(tostring(p and p.buttonSizeSlider~=nil))` prints `true` if stale. Fix: separate cache keys, or drop the page when the flag flips.
 
 ### Color picker never sets `ColorPickerFrame.previousValues`
+- **Status:** fixed on `bugfix/known-problems-first-pass`, awaiting live verify. Delete entry once confirmed.
 - **Where:** `UIWidgets.lua` — `ACAB:OpenColorPicker` (used by Setup Wizard step 7 and the Experience Bar settings page)
 - **What:** A `cancelFunc(previousValues)` is installed, but `ColorPickerFrame.previousValues` is never assigned before `ShowUIPanel`. Vanilla's Cancel passes that field through, so Cancel restores nothing, or restores another addon's stale value.
 - **Verify:** Open a swatch, drag to a very different color, click Cancel. Swatch keeps the new color → confirmed. Also `/run DEFAULT_CHAT_FRAME:AddMessage(tostring(ColorPickerFrame.previousValues))` while the picker is open. Fix (one line, covers both callers): `ColorPickerFrame.previousValues = { r = current.r, g = current.g, b = current.b }` before `ShowUIPanel`.
