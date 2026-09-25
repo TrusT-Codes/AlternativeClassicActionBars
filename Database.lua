@@ -1363,6 +1363,11 @@ function ACAB:EnsureDB()
 		ACABDB.mainBarPageIndicatorScale = 1
 	end
 
+	-- Page Indicator sits right of Main Bar (any grid) until dragged away.
+	if ACABDB.mainBarPageIndicatorFollowsMainBar == nil then
+		ACABDB.mainBarPageIndicatorFollowsMainBar = true
+	end
+
 	-- stanceBarPosition/stanceBarNativeAnchor are captured lazily on
 	-- first real build (DefaultBars.lua), not seeded here.
 

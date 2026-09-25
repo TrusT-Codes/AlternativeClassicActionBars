@@ -1271,6 +1271,13 @@ function ACAB:GetOrCreateBarPage(barId)
 		end
 
 		dropdown.onSelect = function(value)
+			local mainCfg = ACABDB.defaultBars and ACABDB.defaultBars[1]
+
+			-- Art off -> on: remembers Main Bar's spacing for RestoreMainBarSpacingAfterArt.
+			if mainCfg and not ACAB:IsMainBarArtEnabled() and value ~= ACAB.MAIN_BAR_ART_MODE_DISABLED then
+				mainCfg.spacingBeforeArt = mainCfg.spacing
+			end
+
 			ACABDB.mainBarArtMode = value
 
 			ACAB:ApplyBlizzardArtVisibility()
@@ -1278,6 +1285,8 @@ function ACAB:GetOrCreateBarPage(barId)
 			-- Any visible art lays Main Bar out 12x1 (saved grid kept) with the spacing the art placement assumes.
 			if value ~= ACAB.MAIN_BAR_ART_MODE_DISABLED then
 				ACAB:EnforceMainBarArtSpacing()
+			else
+				ACAB:RestoreMainBarSpacingAfterArt()
 			end
 
 			if ACAB.bars and ACAB.bars[1] then

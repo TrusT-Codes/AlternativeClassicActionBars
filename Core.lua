@@ -283,8 +283,15 @@ end
 function ACAB:GetAllSnapTargetBoxes(excludeElement)
 	local boxes = {}
 
+	-- Main Bar's followers move with it mid-drag - snapping to them feeds back into the drag (jitter).
+	local draggingMainBar = excludeElement ~= nil and self.bars ~= nil and excludeElement == self.bars[1]
+
 	local function AddBox(frame)
 		if not frame or frame == excludeElement then
+			return
+		end
+
+		if draggingMainBar and self:IsMainBarFollower(frame) then
 			return
 		end
 

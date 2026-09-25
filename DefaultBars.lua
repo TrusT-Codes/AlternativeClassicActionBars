@@ -405,7 +405,15 @@ local function GetButton1ScreenAnchor(bar)
 		return nil
 	end
 
-	return (left * barScale) / targetScale, (top * barScale) / targetScale
+	local screenLeft = (left * barScale) / targetScale
+	local screenTop = (top * barScale) / targetScale
+
+	-- Modern style: art (and everything grouped with it) sits 1.5 physical pixels higher to line up with the buttons.
+	if not ACAB:IsVanillaBorderStyle() then
+		screenTop = screenTop + (1.5 * PixelUtil.GetNearestPixelSize(0, targetScale, 1))
+	end
+
+	return screenLeft, screenTop
 end
 
 -- Main Bar's buttonSize as its vanilla-style equivalent (Modern runs MODERN_BUTTON_SIZE_DELTA larger).
@@ -424,8 +432,8 @@ function ACAB:GetMainBarArtScale(cfg)
 	return self:GetMainBarVanillaButtonSize(cfg) / self.BUTTON_SIZE
 end
 
--- Main Bar's button gap, scaled with the art so every button stays on its art slot in both border styles.
-function ACAB:GetMainBarEffectiveSpacing(cfg)
+-- Every bar's laid-out button gap: Main Bar's art-slot formula, shared so equal configs give equal footprints.
+function ACAB:GetBarEffectiveSpacing(cfg)
 	local spacing = (cfg and cfg.spacing) or 0
 	local scale = self:GetMainBarArtScale(cfg)
 
@@ -908,6 +916,29 @@ function ACAB:ApplyMainBarGroupedElements()
 	end
 end
 
+-- True if `frame` moves along with Main Bar: grouped with it, or the Page Indicator in follow mode.
+function ACAB:IsMainBarFollower(frame)
+	if not frame then
+		return false
+	end
+
+	if frame == self.pageIndicatorContainer and ACABDB.mainBarPageIndicatorFollowsMainBar ~= false then
+		return true
+	end
+
+	local i
+
+	for i = 1, table.getn(GROUPABLE_ELEMENT_ORDER) do
+		local elementKey = GROUPABLE_ELEMENT_ORDER[i]
+
+		if self:IsElementGrouped(elementKey) and GROUPABLE_ELEMENTS[elementKey].getFrame() == frame then
+			return true
+		end
+	end
+
+	return false
+end
+
 -- Offset (container units) from container's CENTER to its edit-mode overlay's center, from the same
 -- static trims EnsureContainerOverlay/ApplyChainAnchoredShape/ApplyGridAnchoredShape/overlayInset apply.
 local function GetOverlayCenterOffset(container)
@@ -1085,6 +1116,27 @@ function ACAB:EnforceMainBarArtSpacing()
 
 	if self:IsEditMode() then
 		self:RebuildLayoutGrid()
+	end
+end
+
+-- Art turned off: Main Bar's spacing returns to Global Spacing (if it applies) or its pre-art value
+-- (cfg.spacingBeforeArt, written by the art-mode dropdown on its off -> on switch).
+function ACAB:RestoreMainBarSpacingAfterArt()
+	local cfg = ACABDB.defaultBars and ACABDB.defaultBars[1]
+	local bar = self.bars and self.bars[1]
+
+	if not cfg or not bar or self:IsMainBarArtEnabled() then
+		return
+	end
+
+	local previous = cfg.spacingBeforeArt
+
+	cfg.spacingBeforeArt = nil
+
+	if ACABDB.globalSpacingEnabled and ACABDB.useDefaultLayout == false and not cfg.spacingUnlocked then
+		self:ApplyGlobalSpacingToBar(bar)
+	elseif previous then
+		self:SetDefaultBarSpacing(1, previous)
 	end
 end
 
@@ -1356,7 +1408,8 @@ end
 -- Shared by Right Action Bar 1/2 and Extra Bar 1-4 so the six-bar cluster centers as one row.
 function ACAB:GetModernVerticalBarCenteredY(buttonSize, spacing)
 	local _, screenHeight = self:GetUIParentAnchorSize()
-	local clusterHeight = (buttonSize * 12) + (spacing * 11)
+	local effectiveSpacing = self:GetBarEffectiveSpacing({ buttonSize = buttonSize, spacing = spacing })
+	local clusterHeight = (buttonSize * 12) + (effectiveSpacing * 11)
 
 	return (screenHeight - clusterHeight) / 2
 end
