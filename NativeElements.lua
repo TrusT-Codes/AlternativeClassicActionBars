@@ -1426,24 +1426,38 @@ function ACAB:CreatePageIndicatorContainer()
 	self.pageIndicatorTextFollowsUp = (textRelTo == up)
 	self.pageIndicatorTextFollowsDown = (textRelTo == down)
 
-	-- Sharing Up's relativeTo/relativePoint: re-anchored to Up from the GetPoint offsets alone.
-	-- Must not come from rect reads - right after login Down/Text's rects can still be cached from
-	-- before the art moved (§5af), which put the page number on the wrong side of the arrows.
+	-- Anchored to the same frame as Up (any relativePoint): re-anchored to Up from the GetPoint offsets plus
+	-- the relativeTo's native size. Must not come from rect reads - right after login Down/Text's rects can
+	-- still be cached from before the art moved (§5af), which put the page number left of the arrows.
 	local function SiblingAnchor(point, relTo, relPoint, x, y)
-		if relTo ~= upRelTo or relPoint ~= upRelPoint then
+		if not relTo or relTo ~= upRelTo then
 			return nil
 		end
 
-		return { point = point, x = (x or 0) - (upX or 0), y = (y or 0) - (upY or 0) }
-	end
+		-- MainMenuBarArtFrame natively fills MainMenuBar; its own size is ApplyMainBarArtPosition's
+		-- calibrated value, not the FrameXML layout the GetPoint offsets were written against.
+		local sizeFrame = relTo
 
-	local function DiagName(f)
-		return tostring(f and f.GetName and f:GetName() or f)
-	end
+		if relTo == MainMenuBarArtFrame and MainMenuBar then
+			sizeFrame = MainMenuBar
+		end
 
-	self:Print("diagPI up " .. tostring(upPoint) .. " " .. DiagName(upRelTo) .. " " .. tostring(upRelPoint) .. " " .. tostring(upX) .. " " .. tostring(upY))
-	self:Print("diagPI down " .. tostring(downPoint) .. " " .. DiagName(downRelTo) .. " " .. tostring(downRelPoint) .. " " .. tostring(downX) .. " " .. tostring(downY))
-	self:Print("diagPI text " .. tostring(textPoint) .. " " .. DiagName(textRelTo) .. " " .. tostring(textRelPoint) .. " " .. tostring(textX) .. " " .. tostring(textY) .. " n=" .. tostring(text.GetNumPoints and text:GetNumPoints()) .. " w=" .. tostring(text:GetWidth()) .. " j=" .. tostring(text.GetJustifyH and text:GetJustifyH()))
+		local relWidth = sizeFrame.GetWidth and sizeFrame:GetWidth()
+		local relHeight = sizeFrame.GetHeight and sizeFrame:GetHeight()
+
+		if not relWidth or not relHeight then
+			return nil
+		end
+
+		local fx, fy = self:GetPointFractions(relPoint)
+		local upFx, upFy = self:GetPointFractions(upRelPoint)
+
+		return {
+			point = point,
+			x = ((x or 0) - (upX or 0)) + ((fx - upFx) * relWidth),
+			y = ((y or 0) - (upY or 0)) + ((fy - upFy) * relHeight),
+		}
+	end
 
 	self.pageIndicatorDownAnchor = SiblingAnchor(downPoint, downRelTo, downRelPoint, downX, downY)
 	self.pageIndicatorTextAnchor = SiblingAnchor(textPoint, textRelTo, textRelPoint, textX, textY)
