@@ -235,6 +235,9 @@ function ACAB:ApplyBlizzardArtVisibility()
 	artFrame:SetFrameStrata("MEDIUM")
 	artFrame:SetFrameLevel(5)
 
+	-- Re-asserted with the art's own strata/level.
+	self:ApplyPageIndicatorStrata()
+
 	local mode = ACABDB.mainBarArtMode or self.MAIN_BAR_ART_MODE_FULL
 	local gryphonNames = self.MAIN_BAR_ART_GRYPHON_REGION_NAMES
 
@@ -1165,6 +1168,18 @@ function ACAB:ResetDefaultBarLayout(id)
 	local shift = modern and self.MODERN_BUTTON_SIZE_POSITION_SHIFT or 0
 
 	local grid = self.DEFAULT_BAR_GRID[id]
+
+	-- Stance Bar: one cell per live form, not the 10-slot preset.
+	if id == self.STANCE_BAR_ID then
+		local liveCount = GetNumShapeshiftForms and GetNumShapeshiftForms() or 0
+
+		if liveCount > self.MAX_STANCE_BUTTONS then
+			liveCount = self.MAX_STANCE_BUTTONS
+		end
+
+		grid = { cols = (liveCount > 0) and liveCount or 1, rows = 1 }
+		cfg.buttonCount = liveCount
+	end
 
 	local bar = self.bars and self.bars[id]
 
