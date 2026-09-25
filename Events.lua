@@ -135,7 +135,7 @@ end)
 -- "Better Experience Bar" live updates (ExperienceBar.lua)
 -------------------------------------------------------------------------
 
--- Always registered; BetterExpBarOnEvent's callees are nil-safe and gate on ACABDB.betterExpBarEnabled.
+-- Always registered; no-ops until RunLoginSequence's ResolveActiveProfile sets activeProfileName.
 local betterExpBarEventFrame = CreateFrame("Frame", "ACABBetterExpBarEventFrame")
 betterExpBarEventFrame:RegisterEvent("PLAYER_XP_UPDATE")
 betterExpBarEventFrame:RegisterEvent("UPDATE_EXHAUSTION")
@@ -145,6 +145,10 @@ betterExpBarEventFrame:RegisterEvent("PLAYER_LEVEL_UP")
 betterExpBarEventFrame:RegisterEvent("PLAYER_UPDATE_RESTING")
 
 betterExpBarEventFrame:SetScript("OnEvent", function()
+	if not ACAB.activeProfileName then
+		return
+	end
+
 	ACAB:BetterExpBarOnEvent()
 end)
 
