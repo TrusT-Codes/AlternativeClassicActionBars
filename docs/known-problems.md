@@ -48,6 +48,7 @@ None of these were fixed during the refactor. Each has a repro or a `/run` check
 - **Verify:** `/run local c=ACABDB.bars for i=1,table.getn(c) do DEFAULT_CHAT_FRAME:AddMessage(c[i].id.." "..tostring(c[i].slotStart).." "..(c[i].cols*c[i].rows)) end`. Two slotStarts less than 12 apart confirm an overlap. Fix: count `MAX_BAR_BUTTONS` for pool-backed bars.
 
 ### Pet/Stance Bar page can be the wrong kind after a runtime native-mode flip
+- **Status:** fixed on `bugfix/known-problems-first-pass`, awaiting live verify. Delete entry once confirmed.
 - **Where:** `SettingsBars.lua` — `UsesSimpleBarPage` / `GetOrCreateBarPage` / `GetOrCreateSimpleBarPage`; trigger `ResetAllElementsToVanillaLayout`
 - **What:** The styled (full) and native (simple) Pet/Stance pages share one cache key (`settingsFrame.pages[PET_BAR_ID]`). Force Vanilla Layout Mode sets `useNativePetBar/useNativeStanceBar = true` without a reload. An already-built styled page is then refreshed as the native page: stale Button Size/Spacing/Grid controls, and X/Y driven by the native container.
 - **Verify:** On a non-Default profile with styled Pet Bar, open its page, turn Force Vanilla Layout on, reopen the page. `/run local A=AlternativeClassicActionBars local p=A.settingsFrame.pages[A.PET_BAR_ID] DEFAULT_CHAT_FRAME:AddMessage(tostring(p and p.buttonSizeSlider~=nil))` prints `true` if stale. Fix: separate cache keys, or drop the page when the flag flips.
@@ -59,6 +60,7 @@ None of these were fixed during the refactor. Each has a repro or a `/run` check
 - **Verify:** Open a swatch, drag to a very different color, click Cancel. Swatch keeps the new color → confirmed. Also `/run DEFAULT_CHAT_FRAME:AddMessage(tostring(ColorPickerFrame.previousValues))` while the picker is open. Fix (one line, covers both callers): `ColorPickerFrame.previousValues = { r = current.r, g = current.g, b = current.b }` before `ShowUIPanel`.
 
 ### Wizard slider readouts can stay blank on first open (cosmetic)
+- **Status:** fixed on `bugfix/known-problems-first-pass`, awaiting live verify. Delete entry once confirmed.
 - **Where:** `SetupWizard.lua` — `ACABSetupWizardMixin:Reset` (step 7 font size / pulse interval, step 8 spacing/size)
 - **What:** `Reset` sets these sliders via `ACAB:SetSliderValueSilently(slider, value)` without readout text, relying on `OnValueChanged` to write it. `SetValue` with an unchanged value doesn't fire, and a new slider starts at its min. So a saved value equal to the min (font size 6, pulse 0.5) leaves the readout empty.
 - **Verify:** Set Rested Glow Pulse Interval to 0.5, `/reload`, run the Setup Wizard to step 7 and enable Better Experience Bar. A blank readout confirms it. Fix: pass `valueText` + formatted text to `SetSliderValueSilently`.
@@ -69,11 +71,13 @@ None of these were fixed during the refactor. Each has a repro or a `/run` check
 - **Verify:** Enable global spacing on a non-Default profile, run the wizard in overwrite mode, pick "Keep Vanilla Layout". After the reload, `/run DEFAULT_CHAT_FRAME:AddMessage(tostring(ACABDB.globalSpacingEnabled))` → `false` confirms.
 
 ### Global spacing readout can exceed the slider's max after a border-style switch
+- **Status:** fixed on `bugfix/known-problems-first-pass`, awaiting live verify. Delete entry once confirmed.
 - **Where:** `SettingsGeneral.lua` — `RefreshGeneralPanel`
 - **What:** `globalSpacingValue` is stored in displayed units; its max is 20 in modern style and 16 in vanilla style. Switching to vanilla with 20 saved clamps the thumb to 16, but the readout says "20" and `ApplyGlobalSpacingToBar` applies 20 + 4 = 24 real spacing, above `SPACING_MAX`.
 - **Verify:** With modern style on and global spacing at 20, uncheck "Use Modern Button Style". Readout still says 20. `/run print(ACABDB.globalSpacingValue)` → `20`.
 
 ### ApplyModernSingleVerticalBar(5) and the cluster layout disagree when bar 4 has no rect
+- **Status:** fixed on `bugfix/known-problems-first-pass`, awaiting live verify. Delete entry once confirmed.
 - **Where:** `DefaultBars.lua` — `ApplyModernSingleVerticalBar` vs `ApplyModernVerticalBarClusterLayout`
 - **What:**
   - Bar 5's single Modern reset returns early when bar 4's `GetElementRealEdges` left is nil, after already writing buttonSize/spacing. Bar 5 is left unmoved and unenabled. The wizard's cluster layout falls back to `cfg4.x` instead.
@@ -81,6 +85,7 @@ None of these were fixed during the refactor. Each has a repro or a `/run` check
 - **Verify:** With bar 4 disabled, `/run local A=AlternativeClassicActionBars;print(A:GetElementRealEdges(A.bars[4]))`. `nil` means the early return is reachable. Then press bar 5's "Reset to Modern Layout Default".
 
 ### GameTooltip keeps the custom Tooltip scale for widget-anchored tooltips
+- **Status:** fixed on `bugfix/known-problems-first-pass`, awaiting live verify. Delete entry once confirmed.
 - **Where:** `NativeElements.lua` — `HookGameTooltipDefaultAnchor`
 - **What:** The `GameTooltip_SetDefaultAnchor` hook sets `GameTooltip:SetScale(ACABDB.tooltipScale)`, and nothing resets it. `SetOwner(this, "ANCHOR_RIGHT")` tooltips (action buttons, settings widgets, minimap) never go through SetDefaultAnchor, so they probably keep the last custom scale. Same after disabling the Tooltip element, until reload.
 - **Verify:** Tooltip scale 1.5, hover an NPC, then an action button. `/run print(GameTooltip:GetScale())`.
@@ -91,11 +96,13 @@ None of these were fixed during the refactor. Each has a repro or a `/run` check
 - **Verify:** On a low-level druid/warrior, learn a new form/stance and watch for the button without `/reload`. Or trace `UPDATE_SHAPESHIFT_FORMS` + `SPELLS_CHANGED` / `LEARNED_SPELL_IN_TAB`.
 
 ### Page Indicator: an unmoved click can drop follow mode when snapping is on
+- **Status:** fixed on `bugfix/known-problems-first-pass`, awaiting live verify. Delete entry once confirmed.
 - **Where:** `NativeElements.lua` — `StartPageIndicatorDrag` / `StopPageIndicatorDrag`
 - **What:** Stop restores follow mode only if `pos.x/pos.y` exactly equal the start values. Every drag tick runs `ApplyDragSnap`, so with snap-to-grid (center-lock every tick) a no-move click can still shift `pos`, and follow mode turns off.
 - **Verify:** With Edit Layout + snap-to-grid on and the indicator following Main Bar, click it without moving, then move Main Bar.
 
 ### Main Bar art-dropdown pulse sequences overlap on repeated clicks (cosmetic)
+- **Status:** fixed on `bugfix/known-problems-first-pass`, awaiting live verify. Delete entry once confirmed.
 - **Where:** `SettingsBars.lua` — `ACAB:HighlightMainBarArtModeDropdown`
 - **What:** Each call schedules five uncancelled `C_Timer.After` Show/Hide steps over ~2 s. A second click during a pulse interleaves two sequences and flickers. Fix: a per-strip generation counter checked by each timer.
 
