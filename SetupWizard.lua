@@ -1523,7 +1523,7 @@ function ACABSetupWizardMixin:UpdateStep8SliderVisibility()
 
 	self:ReflowStep8Preview()
 
-	if self.currentStep == 8 then
+	if state.finishedFromStep8 then
 		self:FitHeightToStep(8)
 	end
 end
@@ -1643,12 +1643,10 @@ local function ApplyWizardStateToProfileData(state, data)
 		data.defaultBarStanceSwapEnabled = state.stanceSwapEnabled
 	end
 
-	if state.globalSpacingEnabled ~= nil then
+	-- Global spacing/size only written when finishing from step 8.
+	if state.finishedFromStep8 then
 		data.globalSpacingEnabled = state.globalSpacingEnabled
 		data.globalSpacingValue = state.globalSpacingValue
-	end
-
-	if state.globalButtonSizeEnabled ~= nil then
 		data.globalButtonSizeEnabled = state.globalButtonSizeEnabled
 		data.globalButtonSizeValue = state.globalButtonSizeValue
 	end
@@ -1694,6 +1692,7 @@ end
 -- Creates (or overwrites) the profile from wizardState and reloads; a name clash returns to step 1.
 function ACABSetupWizardMixin:FinishWizard()
 	local state = self.wizardState
+	state.finishedFromStep8 = (self.currentStep == 8)
 
 	if state.overwriteExisting then
 		ACABDB = ACABDB or {}
