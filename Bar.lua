@@ -44,13 +44,9 @@ function ACAB:ForEachBar(fn)
 	end
 end
 
--- Main Bar's spacing scales with its Blizzard art; every other bar's is a flat gap (absent on old saves = 0).
+-- Every bar uses Main Bar's art-scaled spacing formula.
 local function EffectiveSpacing(cfg)
-	if cfg.id == 1 then
-		return ACAB:GetMainBarEffectiveSpacing(cfg)
-	end
-
-	return cfg.spacing or 0
+	return ACAB:GetBarEffectiveSpacing(cfg)
 end
 
 -- Grid a bar actually lays out as: Main Bar uses the vanilla 12x1 while its Blizzard art is shown, keeping
@@ -71,6 +67,11 @@ local function BarFrameSize(cfg)
 	local height = (cfg.buttonSize * rows) + ((rows - 1) * spacing)
 
 	return width, height
+end
+
+-- Bar frame's width/height from its config (effective grid/spacing), before any border overhang.
+function ACAB:GetBarFrameSize(cfg)
+	return BarFrameSize(cfg)
 end
 
 -- Converts a 1-based button index into a 0-based column/row (no % in Lua 5.0).
@@ -97,17 +98,9 @@ function ACAB:ApplyBarPosition(bar)
 	end
 
 	local cfg = bar.config
+	local barW, barH = BarFrameSize(cfg)
 
-	bar:ClearAllPoints()
-
-	PixelSetPoint(
-		bar,
-		cfg.point or "TOPLEFT",
-		UIParent,
-		cfg.relativePoint or "TOPLEFT",
-		cfg.x or 0,
-		cfg.y or 0
-	)
+	self:ApplyPositionToFrame(bar, cfg, "TOPLEFT", barW, barH)
 
 	if cfg.id == 1 then
 		ApplyMainBarFollowers()
@@ -698,8 +691,18 @@ function ACAB:ApplyGlobalButtonStyle()
 			if bar.config and bar.config.buttonSize and
 				not (skipDefaultBars and ACAB:IsDefaultBarFamilyId(barId)) then
 				self:SetBarButtonSize(bar, bar.config.buttonSize + delta)
-				self:SetBarPosition(bar, (bar.config.x or 0) + dx, (bar.config.y or 0) + dy)
+
+				-- Canonical positions are the visual center - only a legacy corner anchor needs the nudge.
+				if not ACAB:IsCanonicalPosition(bar.config) then
+					self:SetBarPosition(bar, (bar.config.x or 0) + dx, (bar.config.y or 0) + dy)
+				end
+
 				self:SetBarSpacing(bar, (bar.config.spacing or 0) + spacingDelta)
+
+				-- Re-centers on the new style's border overhang.
+				if ACAB:IsCanonicalPosition(bar.config) then
+					self:ApplyBarPosition(bar)
+				end
 			end
 		end)
 
@@ -815,7 +818,8 @@ end
 -- Apply position directly from settings
 -------------------------------------------------------------------------
 
-function ACAB:SetBarPosition(bar, x, y)
+-- point/relativePoint (optional): legacy anchor x/y are given in - ApplyBarPosition converts to canonical.
+function ACAB:SetBarPosition(bar, x, y, point, relativePoint)
 	if not bar or not bar.config then
 		return
 	end
@@ -825,6 +829,12 @@ function ACAB:SetBarPosition(bar, x, y)
 
 	if not x or not y then
 		return
+	end
+
+	if point then
+		bar.config.point = point
+		bar.config.relativePoint = relativePoint or point
+		bar.config.visualCenter = nil
 	end
 
 	bar.config.x = x
@@ -1084,6 +1094,15 @@ function ACAB:ApplyBarShape(bar)
 	self:ApplyHoverOnlyState(bar, cfg.hoverOnly, function() return cfg.hoverDuration or 3 end)
 
 	self:ApplyEditModeVisual()
+
+	-- Main Bar footprint changed (grid/spacing/art 12x1 toggle): art and grouped elements follow.
+	-- Size-gated so page/stance swaps (which also land here) don't re-run it.
+	if cfg.id == 1 and (bar.ACABFollowerWidth ~= barW or bar.ACABFollowerHeight ~= barH) then
+		bar.ACABFollowerWidth = barW
+		bar.ACABFollowerHeight = barH
+
+		ApplyMainBarFollowers()
+	end
 end
 
 -------------------------------------------------------------------------
@@ -1249,18 +1268,14 @@ function ACAB:ResetExtraBarLayout(barId)
 	local index = barId - self.EXTRA_BAR_ID_START
 	local x, y, cols, rows, buttonSize, spacing = self:GetDefaultExtraBarLayout(index)
 
-	-- GetDefaultExtraBarLayout's x/y assume TOPLEFT/BOTTOMLEFT (matching
-	-- every nativeAnchor) - Modern Layout's own slot function leaves this
-	-- bar's anchor at BOTTOMLEFT/BOTTOMLEFT, which SetBarPosition below
-	-- doesn't touch, so reset it here too.
-	bar.config.point = "TOPLEFT"
-	bar.config.relativePoint = "BOTTOMLEFT"
-
+	-- Shape first: ApplyBarPosition converts the TOPLEFT x/y below using the bar's final size.
 	self:SetBarLayout(bar, cols, rows)
 	self:SetBarButtonCount(bar, cols * rows)
 	self:SetBarSpacing(bar, spacing)
 	self:SetBarButtonSize(bar, buttonSize)
-	self:SetBarPosition(bar, x, y)
+
+	-- GetDefaultExtraBarLayout's x/y are TOPLEFT/BOTTOMLEFT, like every nativeAnchor.
+	self:SetBarPosition(bar, x, y, "TOPLEFT", "BOTTOMLEFT")
 
 	-- Restore usesDefaultPosition (SetBarPosition above cleared it) so dependants resettle.
 	bar.config.usesDefaultPosition = true
@@ -1387,20 +1402,7 @@ function ACAB:StartBarDrag(bar)
 
 	local cfg = bar.config
 
-	-- Normalize to the TOPLEFT/BOTTOMLEFT anchor convention every chain-anchored element uses.
-	local scale = bar:GetEffectiveScale()
-	local uiParentScale = UIParent:GetEffectiveScale()
-	local left, top = bar:GetLeft(), bar:GetTop()
-
-	if not scale or not uiParentScale or uiParentScale == 0 or not left or not top then
-		return
-	end
-
-	cfg.point = "TOPLEFT"
-	cfg.relativePoint = "BOTTOMLEFT"
-	cfg.x = (left * scale) / uiParentScale
-	cfg.y = (top * scale) / uiParentScale
-
+	-- Normalizes cfg to canonical before the drag reads its x/y.
 	self:ApplyBarPosition(bar)
 
 	self:StartSharedDrag("bar", cfg.id, cfg.x, cfg.y)
