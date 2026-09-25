@@ -529,8 +529,8 @@ function ACAB:SetBarSpacing(bar, spacing)
 		spacing = minSpacing
 	end
 
-	if spacing > 20 then
-		spacing = 20
+	if spacing > self:GetSpacingMax() then
+		spacing = self:GetSpacingMax()
 	end
 
 	bar.config.spacing = spacing
