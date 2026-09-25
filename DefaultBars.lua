@@ -235,6 +235,9 @@ function ACAB:ApplyBlizzardArtVisibility()
 	artFrame:SetFrameStrata("MEDIUM")
 	artFrame:SetFrameLevel(5)
 
+	-- Re-asserted with the art's own strata/level.
+	self:ApplyPageIndicatorStrata()
+
 	local mode = ACABDB.mainBarArtMode or self.MAIN_BAR_ART_MODE_FULL
 	local gryphonNames = self.MAIN_BAR_ART_GRYPHON_REGION_NAMES
 
@@ -402,7 +405,15 @@ local function GetButton1ScreenAnchor(bar)
 		return nil
 	end
 
-	return (left * barScale) / targetScale, (top * barScale) / targetScale
+	local screenLeft = (left * barScale) / targetScale
+	local screenTop = (top * barScale) / targetScale
+
+	-- Modern style: art (and everything grouped with it) sits 1.5 physical pixels higher to line up with the buttons.
+	if not ACAB:IsVanillaBorderStyle() then
+		screenTop = screenTop + (1.5 * PixelUtil.GetNearestPixelSize(0, targetScale, 1))
+	end
+
+	return screenLeft, screenTop
 end
 
 -- Main Bar's buttonSize as its vanilla-style equivalent (Modern runs MODERN_BUTTON_SIZE_DELTA larger).
@@ -421,8 +432,8 @@ function ACAB:GetMainBarArtScale(cfg)
 	return self:GetMainBarVanillaButtonSize(cfg) / self.BUTTON_SIZE
 end
 
--- Main Bar's button gap, scaled with the art so every button stays on its art slot in both border styles.
-function ACAB:GetMainBarEffectiveSpacing(cfg)
+-- Every bar's laid-out button gap: Main Bar's art-slot formula, shared so equal configs give equal footprints.
+function ACAB:GetBarEffectiveSpacing(cfg)
 	local spacing = (cfg and cfg.spacing) or 0
 	local scale = self:GetMainBarArtScale(cfg)
 
@@ -465,10 +476,18 @@ function ACAB:ApplyMainBarArtPosition()
 	artFrame:SetScale(scale)
 	artFrame:ClearAllPoints()
 
-	-- Anchored to UIParent (not `bar`) at button 1's corner; bar.config.x/y only until button 1 resolves.
+	-- Anchored to UIParent (not `bar`) at button 1's corner; the bar's saved top-left only until button 1 resolves.
 	local btn1X, btn1Y = GetButton1ScreenAnchor(bar)
-	local baseX = btn1X or bar.config.x or 0
-	local baseY = btn1Y or bar.config.y or 0
+
+	if not btn1X or not btn1Y then
+		local left, _, _, top = self:GetPositionFrameRect(bar, bar.config, "TOPLEFT")
+
+		btn1X = btn1X or left
+		btn1Y = btn1Y or top
+	end
+
+	local baseX = btn1X or 0
+	local baseY = btn1Y or 0
 
 	-- Measured offset from button 1 at scale 1, plus a residual that grows with (scale - 1).
 	local artX = baseX + 42.7 + 40 * (scale - 1)
@@ -629,23 +648,8 @@ function ACAB:IsElementGrouped(elementKey)
 		and not self:IsElementGroupUnlocked(elementKey)
 end
 
--- Fraction of a rect's width/height a point name sits at (LEFT=0/RIGHT=1, BOTTOM=0/TOP=1).
 local function GetPointFractions(point)
-	local fx, fy = 0.5, 0.5
-
-	if string.find(point, "LEFT") then
-		fx = 0
-	elseif string.find(point, "RIGHT") then
-		fx = 1
-	end
-
-	if string.find(point, "BOTTOM") then
-		fy = 0
-	elseif string.find(point, "TOP") then
-		fy = 1
-	end
-
-	return fx, fy
+	return ACAB:GetPointFractions(point)
 end
 
 -- Snaps an anchor offset to whole physical pixels like PixelSetPoint does at UIParent's effective scale.
@@ -912,6 +916,29 @@ function ACAB:ApplyMainBarGroupedElements()
 	end
 end
 
+-- True if `frame` moves along with Main Bar: grouped with it, or the Page Indicator in follow mode.
+function ACAB:IsMainBarFollower(frame)
+	if not frame then
+		return false
+	end
+
+	if frame == self.pageIndicatorContainer and ACABDB.mainBarPageIndicatorFollowsMainBar ~= false then
+		return true
+	end
+
+	local i
+
+	for i = 1, table.getn(GROUPABLE_ELEMENT_ORDER) do
+		local elementKey = GROUPABLE_ELEMENT_ORDER[i]
+
+		if self:IsElementGrouped(elementKey) and GROUPABLE_ELEMENTS[elementKey].getFrame() == frame then
+			return true
+		end
+	end
+
+	return false
+end
+
 -- Offset (container units) from container's CENTER to its edit-mode overlay's center, from the same
 -- static trims EnsureContainerOverlay/ApplyChainAnchoredShape/ApplyGridAnchoredShape/overlayInset apply.
 local function GetOverlayCenterOffset(container)
@@ -1013,26 +1040,10 @@ function ACAB:PixelSetSize(region, width, height)
 	end
 end
 
--- Pixel-snapped re-anchor of `frame` to UIParent from a saved {point, relativePoint, x, y} table.
+-- Pixel-snapped re-anchor of `frame` to UIParent from a saved position table (canonical or legacy).
 -- guardFlag (optional) is the frame's InstallReanchorGuard flag, set around the call so it isn't swallowed.
 function ACAB:ApplySavedPosition(frame, pos, guardFlag)
-	if guardFlag then
-		frame[guardFlag] = true
-	end
-
-	frame:ClearAllPoints()
-	self:PixelSetPoint(
-		frame,
-		pos.point or "TOPLEFT",
-		UIParent,
-		pos.relativePoint or "BOTTOMLEFT",
-		pos.x or 0,
-		pos.y or 0
-	)
-
-	if guardFlag then
-		frame[guardFlag] = nil
-	end
+	self:ApplyPositionToFrame(frame, pos, "BOTTOMLEFT", nil, nil, guardFlag)
 end
 
 -- Bars 1-5 share Bar.lua's EnsureBarOverlay for edit-mode overlay; Stance Bar uses the chain-anchored-container technique instead (see below).
@@ -1105,6 +1116,27 @@ function ACAB:EnforceMainBarArtSpacing()
 
 	if self:IsEditMode() then
 		self:RebuildLayoutGrid()
+	end
+end
+
+-- Art turned off: Main Bar's spacing returns to Global Spacing (if it applies) or its pre-art value
+-- (cfg.spacingBeforeArt, written by the art-mode dropdown on its off -> on switch).
+function ACAB:RestoreMainBarSpacingAfterArt()
+	local cfg = ACABDB.defaultBars and ACABDB.defaultBars[1]
+	local bar = self.bars and self.bars[1]
+
+	if not cfg or not bar or self:IsMainBarArtEnabled() then
+		return
+	end
+
+	local previous = cfg.spacingBeforeArt
+
+	cfg.spacingBeforeArt = nil
+
+	if ACABDB.globalSpacingEnabled and ACABDB.useDefaultLayout == false and not cfg.spacingUnlocked then
+		self:ApplyGlobalSpacingToBar(bar)
+	elseif previous then
+		self:SetDefaultBarSpacing(1, previous)
 	end
 end
 
@@ -1187,16 +1219,27 @@ function ACAB:ResetDefaultBarLayout(id)
 	local modern = not self:IsVanillaBorderStyle()
 	local shift = modern and self.MODERN_BUTTON_SIZE_POSITION_SHIFT or 0
 
-	cfg.point = cfg.nativeAnchor.point
-	cfg.relativePoint = cfg.nativeAnchor.relativePoint
-	cfg.x = cfg.nativeAnchor.x - shift
-	cfg.y = cfg.nativeAnchor.y + shift
-
 	local grid = self.DEFAULT_BAR_GRID[id]
+
+	-- Stance Bar: one cell per live form, not the 10-slot preset.
+	if id == self.STANCE_BAR_ID then
+		local liveCount = GetNumShapeshiftForms and GetNumShapeshiftForms() or 0
+
+		if liveCount > self.MAX_STANCE_BUTTONS then
+			liveCount = self.MAX_STANCE_BUTTONS
+		end
+
+		grid = { cols = (liveCount > 0) and liveCount or 1, rows = 1 }
+		cfg.buttonCount = liveCount
+	end
 
 	local bar = self.bars and self.bars[id]
 
 	if not bar then
+		cfg.point = cfg.nativeAnchor.point
+		cfg.relativePoint = cfg.nativeAnchor.relativePoint
+		cfg.x = cfg.nativeAnchor.x - shift
+		cfg.y = cfg.nativeAnchor.y + shift
 		return
 	end
 
@@ -1204,8 +1247,7 @@ function ACAB:ResetDefaultBarLayout(id)
 		cfg.spacing = self:GetDefaultBarNativeSpacing(cfg)
 	end
 
-	self:ApplyBarPosition(bar)
-
+	-- Shape first: ApplyBarPosition converts the native anchor to canonical using the bar's final size.
 	if grid then
 		self:SetBarLayout(bar, grid.cols, grid.rows)
 	end
@@ -1214,6 +1256,13 @@ function ACAB:ResetDefaultBarLayout(id)
 
 	-- Ensures restored spacing applies even if SetBarLayout was skipped.
 	self:ApplyBarShape(bar)
+
+	cfg.point = cfg.nativeAnchor.point
+	cfg.relativePoint = cfg.nativeAnchor.relativePoint
+	cfg.x = cfg.nativeAnchor.x - shift
+	cfg.y = cfg.nativeAnchor.y + shift
+
+	self:ApplyBarPosition(bar)
 end
 
 -------------------------------------------------------------------------
@@ -1278,17 +1327,20 @@ function ACAB:GetModernBaseExpBarClearance()
 	end
 
 	local pos = ACABDB.expBarPosition
+	local frame = getglobal(self.EXP_BAR_FRAME_NAME)
 
-	-- Same TOPLEFT/BOTTOMLEFT-of-UIParent convention as every other
-	-- captured anchor (ACAB:CaptureNativeAnchor) - y is the frame's own
-	-- top edge's height above the screen's bottom edge, so under 20px
-	-- means it's genuinely sitting at the bottom.
-	if not pos or not pos.y or pos.y >= 20 then
+	if not pos or not frame then
 		return 0
 	end
 
-	local frame = getglobal(self.EXP_BAR_FRAME_NAME)
-	local height = (frame and frame:GetHeight()) or 20
+	-- Top edge under 20 units above the screen's bottom edge means it's sitting at the bottom.
+	local _, _, _, top = self:GetPositionFrameRect(frame, pos, "BOTTOMLEFT")
+
+	if not top or top >= 20 then
+		return 0
+	end
+
+	local height = frame:GetHeight() or 20
 
 	-- Same rowGap Modern Layout's own preset uses between stacked rows.
 	return height + 6
@@ -1355,8 +1407,9 @@ end
 -- The Y that vertically centers a 12-row, 1-col Modern Layout vertical bar on screen.
 -- Shared by Right Action Bar 1/2 and Extra Bar 1-4 so the six-bar cluster centers as one row.
 function ACAB:GetModernVerticalBarCenteredY(buttonSize, spacing)
-	local screenHeight = UIParent:GetHeight() or 0
-	local clusterHeight = (buttonSize * 12) + (spacing * 11)
+	local _, screenHeight = self:GetUIParentAnchorSize()
+	local effectiveSpacing = self:GetBarEffectiveSpacing({ buttonSize = buttonSize, spacing = spacing })
+	local clusterHeight = (buttonSize * 12) + (effectiveSpacing * 11)
 
 	return (screenHeight - clusterHeight) / 2
 end
@@ -1555,18 +1608,19 @@ function ACAB:ApplyModernSingleVerticalBar(id)
 
 	local buttonSize, spacing = self:GetModernLayoutSizing()
 	local cfg = bar.config
-
-	cfg.buttonSize = buttonSize
-	cfg.spacing = spacing
-	cfg.y = self:GetModernVerticalBarCenteredY(buttonSize, spacing)
+	local rowY = self:GetModernVerticalBarCenteredY(buttonSize, spacing)
 
 	if id == 4 then
-		-- Flush against the screen's right edge - same BOTTOMRIGHT/BOTTOMRIGHT anchor as other flush-corner elements.
+		cfg.buttonSize = buttonSize
+		cfg.spacing = spacing
+
+		-- Flush against the screen's right edge.
 		local _, insetRight = self:GetElementVisualInset(bar)
 
 		cfg.point = "BOTTOMRIGHT"
 		cfg.relativePoint = "BOTTOMRIGHT"
 		cfg.x = -insetRight
+		cfg.y = rowY
 	else
 		local bar4 = self.bars[4]
 
@@ -1574,12 +1628,20 @@ function ACAB:ApplyModernSingleVerticalBar(id)
 			return
 		end
 
+		cfg.buttonSize = buttonSize
+		cfg.spacing = spacing
+
 		local bar4Left = self:GetElementRealEdges(bar4)
 		local _, insetRight = self:GetElementVisualInset(bar)
 
+		if not bar4Left then
+			return
+		end
+
 		cfg.point = "BOTTOMLEFT"
 		cfg.relativePoint = "BOTTOMLEFT"
-		cfg.x = (bar4Left or cfg.x) - insetRight - buttonSize
+		cfg.x = bar4Left - insetRight - buttonSize
+		cfg.y = rowY
 	end
 
 	self:ApplyBarPosition(bar)
@@ -2014,9 +2076,8 @@ end
 -- them. No-ops when the setting is off or the frame can't report a
 -- size/scale yet.
 --
--- pos.point/pos.relativePoint are always "TOPLEFT"/"BOTTOMLEFT" (every
--- caller normalizes to this pair before dragging), so pos.x/pos.y convert
--- to/from screen pixels via this frame's effective scale alone.
+-- pos may use any UIParent-relative anchor - the snap math runs on a
+-- TOPLEFT/BOTTOMLEFT copy, converted back into pos's own anchor after.
 -- centerSnap (Cast Bar only) uses ComputeCenterGridSnapAdjustment instead
 -- of ComputeGridSnapAdjustment.
 function ACAB:ApplyDragSnap(frame, pos, centerSnap)
@@ -2032,13 +2093,15 @@ function ACAB:ApplyDragSnap(frame, pos, centerSnap)
 		return
 	end
 
+	local topLeftPos = self:GetPositionInAnchor(frame, pos, "TOPLEFT", "BOTTOMLEFT")
+
 	-- Inflates the dragged box by its visual inset (Core.lua's GetElementVisualInset, nonzero only for
 	-- default bars 1-5) so it compares border-edge-to-border-edge. Deflated back out before writing to pos.
 	local il, ir, it, ib = ACAB:GetElementVisualInset(frame)
 	local ilPx, irPx, itPx, ibPx = il * scale, ir * scale, it * scale, ib * scale
 
-	local proposedLeft = pos.x * scale - ilPx
-	local proposedTop = pos.y * scale + itPx
+	local proposedLeft = topLeftPos.x * scale - ilPx
+	local proposedTop = topLeftPos.y * scale + itPx
 
 	local boxWidth = width * scale + ilPx + irPx
 	local boxHeight = height * scale + itPx + ibPx
@@ -2075,13 +2138,26 @@ function ACAB:ApplyDragSnap(frame, pos, centerSnap)
 	local adjustedLeft = adjLeft or gridLeft
 	local adjustedTop = adjTop or gridTop
 
+	if not adjustedLeft and not adjustedTop then
+		return
+	end
+
 	if adjustedLeft then
-		pos.x = (adjustedLeft + ilPx) / scale
+		topLeftPos.x = (adjustedLeft + ilPx) / scale
 	end
 
 	if adjustedTop then
-		pos.y = (adjustedTop - itPx) / scale
+		topLeftPos.y = (adjustedTop - itPx) / scale
 	end
+
+	if self:IsCanonicalPosition(pos) then
+		self:ConvertPositionToCanonical(frame, topLeftPos)
+	else
+		self:ConvertPositionAnchor(frame, topLeftPos, pos.point or "TOPLEFT", pos.relativePoint or "BOTTOMLEFT")
+	end
+
+	pos.x = topLeftPos.x
+	pos.y = topLeftPos.y
 end
 
 -- Shared OnUpdate body for every drag kind - `this` is dragFrame itself (engine-invoked handler).
@@ -2209,6 +2285,9 @@ function ACAB:DefaultBarDrag_OnUpdate()
 
 		if bar and bar.config then
 			local pos = {
+				point = bar.config.point or "TOPLEFT",
+				relativePoint = bar.config.relativePoint or "TOPLEFT",
+				visualCenter = bar.config.visualCenter,
 				x = this.dragStartX + dx,
 				y = this.dragStartY + dy,
 			}
@@ -2480,7 +2559,7 @@ end
 
 -- Call before writing a changed scale: adjusts pos.x/pos.y so `corner` (TOPLEFT/TOPRIGHT/BOTTOMLEFT/
 -- BOTTOMRIGHT) stays exactly where it was on screen (a SetPoint offset scales with the frame's own scale).
--- `localWidth`/`localHeight` are the frame's design size; only needed for a RIGHT/BOTTOM corner respectively.
+-- `localWidth`/`localHeight` are the frame's design size. "CENTER" keeps a canonical position unchanged.
 function ACAB:CompensateScaleKeepingCornerFixed(pos, oldScale, newScale, corner, localWidth, localHeight)
 	if not pos or not oldScale or not newScale then
 		return
@@ -2494,16 +2573,20 @@ function ACAB:CompensateScaleKeepingCornerFixed(pos, oldScale, newScale, corner,
 	localWidth = localWidth or 0
 	localHeight = localHeight or 0
 
-	local offsetX = 0
-	local offsetY = 0
+	-- Canonical x/y is the element's center in UIParent units - shift it by the corner's size change.
+	if self:IsCanonicalPosition(pos) then
+		local cornerFx, cornerFy = self:GetPointFractions(corner)
 
-	if corner == "TOPRIGHT" or corner == "BOTTOMRIGHT" then
-		offsetX = localWidth
+		pos.x = (pos.x or 0) + ((cornerFx - 0.5) * localWidth * (oldScale - newScale))
+		pos.y = (pos.y or 0) + ((cornerFy - 0.5) * localHeight * (oldScale - newScale))
+		return
 	end
 
-	if corner == "BOTTOMLEFT" or corner == "BOTTOMRIGHT" then
-		offsetY = -localHeight
-	end
+	local cornerFx, cornerFy = self:GetPointFractions(corner)
+	local pointFx, pointFy = self:GetPointFractions(pos.point or "TOPLEFT")
+
+	local offsetX = (cornerFx - pointFx) * localWidth
+	local offsetY = (cornerFy - pointFy) * localHeight
 
 	pos.x = ((pos.x or 0) + offsetX) * ratio - offsetX
 	pos.y = ((pos.y or 0) + offsetY) * ratio - offsetY
@@ -2541,6 +2624,7 @@ function ACAB:ApplyChainAnchoredShape(container, spacing, orientation, scale, fo
 		-- Every button in this chain is currently hidden - collapse the container instead of leaving it at its last real size.
 		self:PixelSetSize(container, 1, 1)
 		container:SetScale(scale or 1)
+		container.chainVisualInsets = nil
 
 		if container.ACABOverlay then
 			container.ACABOverlay:ClearAllPoints()
@@ -2572,12 +2656,15 @@ function ACAB:ApplyChainAnchoredShape(container, spacing, orientation, scale, fo
 	end
 
 	local prevBtn = first
+	local lastIndex = firstIndex
 
 	for i = firstIndex + 1, table.getn(buttons) do
 		local btn = buttons[i]
 
 		if btn then
 			if forceAllShown or btn:IsShown() then
+				lastIndex = i
+
 				local w = widths[i] or 0
 				local h = heights[i] or 0
 
@@ -2639,6 +2726,26 @@ function ACAB:ApplyChainAnchoredShape(container, spacing, orientation, scale, fo
 
 	self:PixelSetSize(container, totalWidth, totalHeight)
 	container:SetScale(scale or 1)
+
+	-- Overlay edges' distance inside the container (container units), same trims as the overlay below.
+	do
+		local firstLeft, _, firstTop = self:GetHitInsets(first)
+		local _, lastRight, _, lastBottom = self:GetHitInsets(prevBtn)
+		local insets = {
+			left = firstLeft,
+			top = firstTop + (container.overlayTopFudge or 0),
+			right = 0,
+			bottom = 0,
+		}
+
+		if orientation then
+			insets.right = totalWidth - ((widths[lastIndex] or 0) - lastRight)
+		else
+			insets.bottom = totalHeight - ((heights[lastIndex] or 0) - lastBottom)
+		end
+
+		container.chainVisualInsets = insets
+	end
 
 	-- The overlay has no saved-position dependency, so it gets full trimming: `first`'s leading inset
 	-- and `prevBtn`'s (last shown button) trailing inset, re-applied every time this function runs.
@@ -2740,6 +2847,24 @@ function ACAB:ApplyGridAnchoredShape(container, cols, rows, spacing, scale)
 
 	self:PixelSetSize(container, totalWidth, totalHeight)
 	container:SetScale(scale or 1)
+
+	-- Overlay edges' distance inside the container (container units), same trims as the overlay below.
+	container.chainVisualInsets = nil
+
+	if shownCount > 0 then
+		local first = shown[1]
+		local last = shown[shownCount]
+		local firstLeft, _, firstTop = self:GetHitInsets(first)
+		local _, lastRight, _, lastBottom = self:GetHitInsets(last)
+		local lastCol, lastRow = ButtonIndexToGridPos(shownCount, cols)
+
+		container.chainVisualInsets = {
+			left = firstLeft,
+			top = firstTop + (container.overlayTopFudge or 0),
+			right = totalWidth - ((lastCol * colStep) + (last:GetWidth() or cellWidth) - lastRight),
+			bottom = totalHeight - ((lastRow * rowStep) + (last:GetHeight() or cellHeight) - lastBottom),
+		}
+	end
 
 	if container.ACABOverlay then
 		local first = shown[1]

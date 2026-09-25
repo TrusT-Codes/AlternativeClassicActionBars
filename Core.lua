@@ -283,8 +283,15 @@ end
 function ACAB:GetAllSnapTargetBoxes(excludeElement)
 	local boxes = {}
 
+	-- Main Bar's followers move with it mid-drag - snapping to them feeds back into the drag (jitter).
+	local draggingMainBar = excludeElement ~= nil and self.bars ~= nil and excludeElement == self.bars[1]
+
 	local function AddBox(frame)
 		if not frame or frame == excludeElement then
+			return
+		end
+
+		if draggingMainBar and self:IsMainBarFollower(frame) then
 			return
 		end
 
@@ -352,6 +359,322 @@ function ACAB:ConvertUIParentOffsetToOwnScale(container, uiParentOffset)
 	end
 
 	return uiParentOffset / scale
+end
+
+-- Fraction of a rect's width/height a point name sits at (LEFT=0/RIGHT=1, BOTTOM=0/TOP=1, else 0.5).
+function ACAB:GetPointFractions(point)
+	local fx, fy = 0.5, 0.5
+
+	point = point or "TOPLEFT"
+
+	if string.find(point, "LEFT") then
+		fx = 0
+	elseif string.find(point, "RIGHT") then
+		fx = 1
+	end
+
+	if string.find(point, "BOTTOM") then
+		fy = 0
+	elseif string.find(point, "TOP") then
+		fy = 1
+	end
+
+	return fx, fy
+end
+
+-------------------------------------------------------------------------
+-- Element positions
+-- Canonical: { point = "CENTER", relativePoint = "CENTER", visualCenter = true, x, y } - x/y are
+-- UIParent units from the screen's center to the element's visual (overlay) center. Any other table is
+-- a legacy anchor (plain SetPoint offsets in the frame's own units), converted on apply.
+-------------------------------------------------------------------------
+
+function ACAB:IsCanonicalPosition(pos)
+	return pos ~= nil and pos.visualCenter == true and pos.point == "CENTER" and pos.relativePoint == "CENTER"
+end
+
+-- UIParent's real anchoring size in UIParent units, read through a CENTER-anchored probe frame.
+-- WARNING: not UIParent:GetWidth()/GetHeight() - those undershoot the real screen on this client.
+function ACAB:GetUIParentAnchorSize()
+	local probe = self.uiParentCenterProbe
+
+	if not probe then
+		probe = CreateFrame("Frame", nil, UIParent)
+		probe:SetWidth(2)
+		probe:SetHeight(2)
+		probe:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+		self.uiParentCenterProbe = probe
+	end
+
+	-- UIParent first, so the probe resolves against its current rect (§5af).
+	UIParent:GetLeft()
+
+	local centerX, centerY = probe:GetCenter()
+
+	if not centerX or not centerY then
+		return GetScreenWidth() or 1024, GetScreenHeight() or 768
+	end
+
+	return centerX * 2, centerY * 2
+end
+
+-- Visual (overlay) edges' distance inside the frame rect, frame's own units - negative overhangs it:
+-- left, right, top, bottom.
+function ACAB:GetVisualInsets(frame)
+	if not frame then
+		return 0, 0, 0, 0
+	end
+
+	if frame.config and frame.config.id then
+		local left, right, top, bottom = self:GetElementVisualInset(frame)
+
+		return -left, -right, -top, -bottom
+	end
+
+	local insets = frame.chainVisualInsets or frame.overlayInset
+
+	if insets then
+		return insets.left or 0, insets.right or 0, insets.top or 0, insets.bottom or 0
+	end
+
+	return 0, 0, 0, 0
+end
+
+local function RoundPosition(value)
+	return math.floor((value * 100) + 0.5) / 100
+end
+
+-- Frame scale relative to UIParent (s), frame size (w/h), visual insets (l/r/t/b), and - with
+-- needScreen - UIParent's anchoring size (W/H). Bars size from their config, not the live frame.
+local function GetPositionMetrics(self, frame, width, height, needScreen)
+	local frameScale = frame.GetEffectiveScale and frame:GetEffectiveScale()
+	local uiParentScale = UIParent:GetEffectiveScale()
+
+	if not frameScale or frameScale == 0 or not uiParentScale or uiParentScale == 0 then
+		return nil
+	end
+
+	if not width and frame.config and frame.config.buttonSize and self.GetBarFrameSize then
+		width, height = self:GetBarFrameSize(frame.config)
+	end
+
+	local m = {}
+
+	m.s = frameScale / uiParentScale
+	m.w = width or frame:GetWidth() or 0
+	m.h = height or frame:GetHeight() or 0
+	m.l, m.r, m.t, m.b = self:GetVisualInsets(frame)
+
+	if needScreen then
+		m.W, m.H = self:GetUIParentAnchorSize()
+	end
+
+	return m
+end
+
+-- Frame rect's left/bottom in UIParent units for pos (canonical or legacy).
+local function GetFrameLeftBottom(self, m, pos, fallbackRelativePoint)
+	if self:IsCanonicalPosition(pos) then
+		local centerX = (m.W / 2) + (pos.x or 0) - (((m.l - m.r) / 2) * m.s)
+		local centerY = (m.H / 2) + (pos.y or 0) - (((m.b - m.t) / 2) * m.s)
+
+		return centerX - (m.w * m.s / 2), centerY - (m.h * m.s / 2)
+	end
+
+	local pfx, pfy = self:GetPointFractions(pos.point or "TOPLEFT")
+	local rfx, rfy = self:GetPointFractions(pos.relativePoint or fallbackRelativePoint or "BOTTOMLEFT")
+	local anchorX = (rfx * m.W) + ((pos.x or 0) * m.s)
+	local anchorY = (rfy * m.H) + ((pos.y or 0) * m.s)
+
+	return anchorX - (pfx * m.w * m.s), anchorY - (pfy * m.h * m.s)
+end
+
+-- Writes pos from a frame rect's left/bottom (UIParent units) - canonical when point is nil.
+local function SetFrameLeftBottom(self, m, pos, left, bottom, point, relativePoint)
+	if not point then
+		local centerX = left + (m.w * m.s / 2) + (((m.l - m.r) / 2) * m.s)
+		local centerY = bottom + (m.h * m.s / 2) + (((m.b - m.t) / 2) * m.s)
+
+		pos.point = "CENTER"
+		pos.relativePoint = "CENTER"
+		pos.visualCenter = true
+		pos.x = RoundPosition(centerX - (m.W / 2))
+		pos.y = RoundPosition(centerY - (m.H / 2))
+
+		return
+	end
+
+	relativePoint = relativePoint or point
+
+	local pfx, pfy = self:GetPointFractions(point)
+	local rfx, rfy = self:GetPointFractions(relativePoint)
+
+	pos.point = point
+	pos.relativePoint = relativePoint
+	pos.visualCenter = nil
+	pos.x = (left + (pfx * m.w * m.s) - (rfx * m.W)) / m.s
+	pos.y = (bottom + (pfy * m.h * m.s) - (rfy * m.H)) / m.s
+end
+
+-- Rewrites pos in place as a legacy point/relativePoint anchor (frame's own units), same screen spot.
+-- width/height (optional) override the frame's size. fallbackRelativePoint: what the caller's own apply
+-- assumes when a legacy pos.relativePoint is nil.
+function ACAB:ConvertPositionAnchor(frame, pos, point, relativePoint, width, height, fallbackRelativePoint)
+	if not frame or not pos then
+		return false
+	end
+
+	relativePoint = relativePoint or point
+
+	if not self:IsCanonicalPosition(pos)
+		and (pos.point or "TOPLEFT") == point
+		and (pos.relativePoint or fallbackRelativePoint or "BOTTOMLEFT") == relativePoint then
+		pos.point = point
+		pos.relativePoint = relativePoint
+		pos.visualCenter = nil
+		return false
+	end
+
+	local m = GetPositionMetrics(self, frame, width, height, true)
+
+	if not m then
+		return false
+	end
+
+	local left, bottom = GetFrameLeftBottom(self, m, pos, fallbackRelativePoint)
+
+	SetFrameLeftBottom(self, m, pos, left, bottom, point, relativePoint)
+
+	return true
+end
+
+-- Rewrites a legacy pos in place as canonical, same screen spot.
+function ACAB:ConvertPositionToCanonical(frame, pos, width, height, fallbackRelativePoint)
+	if not frame or not pos or self:IsCanonicalPosition(pos) then
+		return false
+	end
+
+	local m = GetPositionMetrics(self, frame, width, height, true)
+
+	if not m then
+		return false
+	end
+
+	local left, bottom = GetFrameLeftBottom(self, m, pos, fallbackRelativePoint)
+
+	SetFrameLeftBottom(self, m, pos, left, bottom, nil)
+
+	return true
+end
+
+-- Copy of pos converted to a legacy point/relativePoint anchor - pos itself is untouched.
+function ACAB:GetPositionInAnchor(frame, pos, point, relativePoint, fallbackRelativePoint)
+	local copy = {
+		point = pos.point,
+		relativePoint = pos.relativePoint,
+		visualCenter = pos.visualCenter,
+		x = pos.x,
+		y = pos.y,
+	}
+
+	self:ConvertPositionAnchor(frame, copy, point, relativePoint, nil, nil, fallbackRelativePoint)
+
+	return copy
+end
+
+-- Frame rect for pos in UIParent units: left, right, bottom, top.
+function ACAB:GetPositionFrameRect(frame, pos, fallbackRelativePoint)
+	if not frame or not pos then
+		return nil
+	end
+
+	local m = GetPositionMetrics(self, frame, nil, nil, true)
+
+	if not m then
+		return nil
+	end
+
+	local left, bottom = GetFrameLeftBottom(self, m, pos, fallbackRelativePoint)
+
+	return left, left + (m.w * m.s), bottom, bottom + (m.h * m.s)
+end
+
+-- Converts a legacy pos to canonical. No-op until the login pass (NormalizeAllPositionAnchors) - frame
+-- sizes aren't final before then - and on a collapsed/unsized frame.
+function ACAB:NormalizePositionAnchor(frame, pos, width, height, fallbackRelativePoint)
+	if not frame or not pos or not self.positionAnchorsNormalized or self:IsCanonicalPosition(pos) then
+		return false
+	end
+
+	local m = GetPositionMetrics(self, frame, width, height, false)
+
+	if not m or m.w <= 1 or m.h <= 1 then
+		return false
+	end
+
+	return self:ConvertPositionToCanonical(frame, pos, m.w, m.h, fallbackRelativePoint)
+end
+
+-- Normalizes pos, then anchors frame to UIParent from it. guardFlag: the frame's InstallReanchorGuard flag.
+function ACAB:ApplyPositionToFrame(frame, pos, fallbackRelativePoint, width, height, guardFlag)
+	if not frame or not pos then
+		return
+	end
+
+	self:NormalizePositionAnchor(frame, pos, width, height, fallbackRelativePoint)
+
+	local point = pos.point or "TOPLEFT"
+	local relativePoint = pos.relativePoint or fallbackRelativePoint or "BOTTOMLEFT"
+	local x = pos.x or 0
+	local y = pos.y or 0
+
+	if self:IsCanonicalPosition(pos) then
+		local m = GetPositionMetrics(self, frame, width, height, false)
+
+		if m then
+			x = (x / m.s) - ((m.l - m.r) / 2)
+			y = (y / m.s) - ((m.b - m.t) / 2)
+		end
+	end
+
+	if guardFlag then
+		frame[guardFlag] = true
+	end
+
+	frame:ClearAllPoints()
+	self:PixelSetPoint(frame, point, UIParent, relativePoint, x, y)
+
+	if guardFlag then
+		frame[guardFlag] = nil
+	end
+end
+
+-- Login pass (end of RunLoginSequence): enables NormalizePositionAnchor and re-applies every element,
+-- migrating older saves into canonical positions without moving anything.
+-- Must run after every element's shape/scale is applied, or the conversion reads stale sizes.
+function ACAB:NormalizeAllPositionAnchors()
+	self.positionAnchorsNormalized = true
+
+	if self.bars then
+		local barId, bar
+
+		for barId, bar in pairs(self.bars) do
+			if bar and bar.config then
+				self:ApplyBarPosition(bar)
+			end
+		end
+	end
+
+	self:ApplyPetBarNativePosition()
+	self:ApplyStanceBarPosition()
+	self:ApplyBagBarPosition()
+	self:ApplyMicroMenuPosition()
+	self:ApplyKeyRingPosition()
+	self:ApplyLatencyBarPosition()
+	self:ApplyPageIndicatorPosition()
+	self:ApplyExpBarPosition()
+	self:ApplyCastBarPosition()
+	self:ApplyTooltipPosition()
 end
 
 -- Computes a snap-adjusted (proposedLeft, proposedTop) against screen edges and every visible element's edges.
@@ -1271,16 +1594,29 @@ function ACAB:SyncPetBarAnchorX()
 		return
 	end
 
-	cfg.point = "TOPLEFT"
-	cfg.relativePoint = "BOTTOMLEFT"
-	cfg.x = anchor.x
+	local petNative = ACAB.petBarNativeContainer
+	local petStyled = ACAB.bars and ACAB.bars[ACAB.PET_BAR_ID]
+	local frame = petNative or petStyled
+
+	-- x is a native left edge - written in TOPLEFT/BOTTOMLEFT terms, the apply below converts back.
+	if frame then
+		ACAB:ConvertPositionAnchor(frame, cfg, "TOPLEFT", "BOTTOMLEFT", nil, nil, "TOPLEFT")
+		cfg.x = anchor.x
+	elseif not ACAB:IsCanonicalPosition(cfg) then
+		cfg.point = "TOPLEFT"
+		cfg.relativePoint = "BOTTOMLEFT"
+		cfg.x = anchor.x
+	end
+
 	cfg.nativeAnchor = cfg.nativeAnchor or {}
 	cfg.nativeAnchor.point = "TOPLEFT"
 	cfg.nativeAnchor.relativePoint = "BOTTOMLEFT"
 	cfg.nativeAnchor.x = anchor.x
 
-	if ACAB.petBarNativeContainer then
+	if petNative then
 		ACAB:ApplyPetBarNativePosition()
+	elseif petStyled then
+		ACAB:ApplyBarPosition(petStyled)
 	end
 end
 
@@ -1291,8 +1627,9 @@ local function SetupPetBarNativeContainer()
 		return
 	end
 
-	ACAB:SyncPetBarAnchorX()
+	-- Container first: SyncPetBarAnchorX converts a canonical cfg through it.
 	ACAB:CreatePetBarNativeContainer()
+	ACAB:SyncPetBarAnchorX()
 
 	if ACABDB.useDefaultLayout ~= false then
 		local bar3Cfg = ACABDB.defaultBars[3]
@@ -1462,6 +1799,9 @@ function ACAB:RunLoginSequence(earlyLeft, earlyTop, settledLeft, settledTop, wai
 	ACAB:ApplyBetterExpBarVisual()
 
 	ACAB:ApplyBlizzardArtVisibility()
+
+	-- Must run after every element above has its final shape/scale.
+	ACAB:NormalizeAllPositionAnchors()
 
 	-- Must run after Main Bar and every element above are positioned.
 	ACAB:ApplyMainBarGroupedElements()

@@ -578,7 +578,7 @@ end
 -- TOPLEFT/BOTTOMLEFT convention every other Action Bar uses, preserving its
 -- real on-screen position. No-op once already migrated.
 function ACAB:MigrateExtraBarAnchor(cfg)
-	if not cfg or cfg.point ~= "CENTER" then
+	if not cfg or cfg.point ~= "CENTER" or self:IsCanonicalPosition(cfg) then
 		return
 	end
 
@@ -1361,6 +1361,11 @@ function ACAB:EnsureDB()
 
 	if ACABDB.mainBarPageIndicatorScale == nil then
 		ACABDB.mainBarPageIndicatorScale = 1
+	end
+
+	-- Page Indicator sits right of Main Bar (any grid) until dragged away.
+	if ACABDB.mainBarPageIndicatorFollowsMainBar == nil then
+		ACABDB.mainBarPageIndicatorFollowsMainBar = true
 	end
 
 	-- stanceBarPosition/stanceBarNativeAnchor are captured lazily on

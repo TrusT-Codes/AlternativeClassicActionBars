@@ -2,16 +2,18 @@
 
 ## Unreleased
 
-- Add "Gryphons / Background Art" setting on the Main Bar page: Fully Enabled, Disable Gryphons, or Fully Disabled
-- Blizzard's Main Bar art now follows Main Bar when moved or resized, in both Vanilla and Modern button style
-- While the art is shown, Bag Bar, Key Ring, Micro Menu, Latency Bar and Page Indicator stay anchored to Main Bar in their vanilla spots, moving and scaling with it
-- Each anchored element has a lock icon (on its settings page and in Edit Layout mode) to unlock it and move it freely; re-locking snaps it back
-- Controls that would break the alignment are locked while the art is shown (Main Bar grid/spacing, anchored elements' position/scale/reset buttons); hovering explains why, clicking jumps to the setting
-- Main Bar (12x1) and anchored Micro Menu (8x1) use the vanilla grid while the art is shown, but keep your chosen grid and restore it once the art is disabled or the element is unlocked
-- Bag Bar gets a Grid Layout option (5x1 or 1x5); it uses 5x1 while anchored to Main Bar and restores your choice once unlocked
-- Key Ring gets its own settings page with its own position, scale, hover-only and reset options
-- Reset to Vanilla/Modern Layout now restore default button size, spacing and scale (Modern button style uses size 40, spacing 2)
-- Fix default bars' saved native position being recaptured wrong after the art moved
+- **GryphON or GryphOFF:** With the new Gryphon / Background Settings Dropdown on Mainbar's Settings-Page you can decide if you want the Gryphons, just the background, or everything disabled for a more modern & clean look.
+- Blizzard's Main Bar art now moves and scales with Main Bar, in both Vanilla and Modern button style.
+- While the art is shown, Bag Bar, Key Ring, Micro Menu, Latency Bar and Page Indicator stay in their vanilla spots on Main Bar; unlock any of them via its lock icon (settings page or Edit Layout mode) to move it freely.
+- Settings that would break the art's alignment are locked while it's shown - hover to see why, click to jump to the responsible setting. Your own grid choices return once the art is off.
+- Page Indicator now sits right of Main Bar, vertically centered, and follows it through any grid, size or move - until you drag it somewhere else.
+- Bag Bar gets a Grid Layout option (5x1 or 1x5).
+- Key Ring gets its own settings page (position, scale, hover-only, reset).
+- Position X/Y are now measured from screen center to each element's visible center: 0/0 is dead center for every element, whatever its border style, grid or scale.
+- Button spacing now scales with button size on every bar, so identically configured bars are always exactly the same size.
+- Styled Pet Bar and Stance Bar get "Reset to Modern Layout Default"; all Vanilla/Modern resets now also restore default button size, spacing and scale.
+- Fix Setup Wizard's "Keep Vanilla Layout" turning Page/Stance Swap back on after you disabled them.
+- Fix styled Stance Bar's Reset to Vanilla Layout sizing it for 10 stances instead of your actual forms.
 
 ## 1.1.1-beta
 

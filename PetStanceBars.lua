@@ -65,6 +65,9 @@ function ACAB:ReflowPetBarForBar3Toggle(bar3Enabled)
 		return
 	end
 
+	-- y is a top edge - write it in TOPLEFT/BOTTOMLEFT terms, ApplyPetBarNativePosition converts back.
+	self:ConvertPositionAnchor(container, cfg, "TOPLEFT", "BOTTOMLEFT", nil, nil, "TOPLEFT")
+
 	cfg.y = y
 
 	if cfg.nativeAnchor then
@@ -105,8 +108,7 @@ function ACAB:CreatePetBarNativeContainer()
 	self:SetDefaultBarEnabled(self.PET_BAR_ID, cfg.enabled)
 end
 
--- Uses cfg.point/cfg.relativePoint directly (same defaults as Bar.lua's ApplyBarPosition) rather than
--- Bag Bar's hardcoded TOPLEFT/BOTTOMLEFT - this cfg is shared with the custom-styled mode.
+-- Same cfg (and legacy TOPLEFT relativePoint default) as the custom-styled mode's Bar.lua ApplyBarPosition.
 function ACAB:ApplyPetBarNativePosition()
 	local cfg = ACABDB and ACABDB.defaultBars and ACABDB.defaultBars[self.PET_BAR_ID]
 	local container = self.petBarNativeContainer
@@ -115,15 +117,7 @@ function ACAB:ApplyPetBarNativePosition()
 		return
 	end
 
-	container:ClearAllPoints()
-	self:PixelSetPoint(
-		container,
-		cfg.point or "TOPLEFT",
-		UIParent,
-		cfg.relativePoint or "TOPLEFT",
-		cfg.x or 0,
-		cfg.y or 0
-	)
+	self:ApplyPositionToFrame(container, cfg, "TOPLEFT")
 
 	self:EnsureContainerOverlay(container, self.StartPetBarNativeDrag, self.StopPetBarNativeDrag, self.PET_BAR_ID, self.SetPetBarNativeScale, nil, "Pet Bar", not self:ShouldCondensePetBarSlots())
 
@@ -206,7 +200,7 @@ function ACAB:SetPetBarNativeScale(scale)
 	local oldScale = cfg.scale or 1
 
 	if self.petBarNativeContainer then
-		self:CompensateScaleKeepingCornerFixed(cfg, oldScale, scale, "BOTTOMLEFT", nil, self.petBarNativeContainer:GetHeight())
+		self:CompensateScaleKeepingCornerFixed(cfg, oldScale, scale, "CENTER", self.petBarNativeContainer:GetWidth(), self.petBarNativeContainer:GetHeight())
 	end
 
 	cfg.scale = scale
@@ -278,8 +272,9 @@ function ACAB:ResetPetBarNativeLayout()
 
 	cfg.usesDefaultPosition = true
 
-	self:ApplyPetBarNativePosition()
+	-- Shape first: ApplyPetBarNativePosition converts to canonical using the container's final size/scale.
 	self:ApplyPetBarNativeShape()
+	self:ApplyPetBarNativePosition()
 end
 
 -- Settings.lua's Pet Bar page "Reset to Modern Layout Default" button -
@@ -630,15 +625,7 @@ function ACAB:ApplyStanceBarPosition()
 		return
 	end
 
-	container:ClearAllPoints()
-	self:PixelSetPoint(
-		container,
-		pos.point or "TOPLEFT",
-		UIParent,
-		pos.relativePoint or "BOTTOMLEFT",
-		pos.x or 0,
-		pos.y or 0
-	)
+	self:ApplyPositionToFrame(container, pos, "BOTTOMLEFT")
 
 	self:EnsureContainerOverlay(container, self.StartStanceBarDrag, self.StopStanceBarDrag, self.STANCE_BAR_ID, self.SetStanceBarScale, nil, "Stance Bar")
 
@@ -729,12 +716,14 @@ function ACAB:ResetStanceBarPositionToModernBase()
 		return
 	end
 
+	local _, _, _, insetBottom = self:GetElementVisualInset(container)
+
+	-- Same Y as Pet Bar's own reset above - both sit flush on Action Bar 2's real top edge.
 	ACABDB.stanceBarPosition = {
 		point = "BOTTOMLEFT",
 		relativePoint = "BOTTOMLEFT",
 		x = self:ConvertUIParentOffsetToOwnScale(container, bar3Left),
-		-- Same 6px row gap Pet Bar's own reset above keeps between Action Bar 2 and the Stance/Pet Bar row.
-		y = self:ConvertUIParentOffsetToOwnScale(container, bar3Top + 6),
+		y = self:ConvertUIParentOffsetToOwnScale(container, bar3Top + insetBottom),
 	}
 
 	ACABDB.stanceBarUsesDefaultPosition = false
@@ -875,6 +864,9 @@ function ACAB:ReflowStanceBarForBar2Toggle(bar2Enabled)
 		return
 	end
 
+	-- y is a top edge - write it in TOPLEFT/BOTTOMLEFT terms, ApplyStanceBarPosition converts back.
+	self:ConvertPositionAnchor(container, pos, "TOPLEFT", "BOTTOMLEFT", nil, nil, "BOTTOMLEFT")
+
 	pos.y = y
 
 	self:ApplyStanceBarPosition()
@@ -1007,7 +999,7 @@ function ACAB:SetStanceBarScale(scale)
 	local pos = ACABDB.stanceBarPosition
 
 	if pos and self.stanceBarContainer then
-		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "BOTTOMLEFT", nil, self.stanceBarContainer:GetHeight())
+		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "CENTER", self.stanceBarContainer:GetWidth(), self.stanceBarContainer:GetHeight())
 	end
 
 	ACABDB.stanceBarScale = scale

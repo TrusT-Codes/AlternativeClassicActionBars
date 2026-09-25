@@ -1271,6 +1271,13 @@ function ACAB:GetOrCreateBarPage(barId)
 		end
 
 		dropdown.onSelect = function(value)
+			local mainCfg = ACABDB.defaultBars and ACABDB.defaultBars[1]
+
+			-- Art off -> on: remembers Main Bar's spacing for RestoreMainBarSpacingAfterArt.
+			if mainCfg and not ACAB:IsMainBarArtEnabled() and value ~= ACAB.MAIN_BAR_ART_MODE_DISABLED then
+				mainCfg.spacingBeforeArt = mainCfg.spacing
+			end
+
 			ACABDB.mainBarArtMode = value
 
 			ACAB:ApplyBlizzardArtVisibility()
@@ -1278,6 +1285,8 @@ function ACAB:GetOrCreateBarPage(barId)
 			-- Any visible art lays Main Bar out 12x1 (saved grid kept) with the spacing the art placement assumes.
 			if value ~= ACAB.MAIN_BAR_ART_MODE_DISABLED then
 				ACAB:EnforceMainBarArtSpacing()
+			else
+				ACAB:RestoreMainBarSpacingAfterArt()
 			end
 
 			if ACAB.bars and ACAB.bars[1] then
@@ -1645,10 +1654,10 @@ function ACAB:GetOrCreateBarPage(barId)
 			self:AddHoverOnlyReflowRow(page, resetPositionButton, ACAB.INDENT_INPUT, resetButtonY)
 
 			-- Bars 1-5: Main Bar/Action Bar 1/Action Bar 2 stack (1-3) and the right vertical bar
-			-- cluster (4-5, ResetBarLayoutToModernBase dispatches each id to the right shared function).
+			-- cluster (4-5, ResetBarLayoutToModernBase dispatches each id). Styled Pet/Stance Bar: their own resets.
 			local nextY = resetButtonY
 
-			if barId >= 1 and barId <= 5 then
+			if (barId >= 1 and barId <= 5) or barId == ACAB.PET_BAR_ID or barId == ACAB.STANCE_BAR_ID then
 				local resetModernY = resetButtonY - 30
 
 				local resetModernButton = ACAB:CreateResetButton(page, {
@@ -1657,7 +1666,13 @@ function ACAB:GetOrCreateBarPage(barId)
 					maxWidth = 200,
 					text = "Reset to Modern Layout Default",
 					onClick = function()
-						ACAB:ResetBarLayoutToModernBase(page.barId)
+						if page.barId == ACAB.PET_BAR_ID then
+							ACAB:ResetPetBarLayoutToModernBase()
+						elseif page.barId == ACAB.STANCE_BAR_ID then
+							ACAB:ResetStanceBarPositionToModernBase()
+						else
+							ACAB:ResetBarLayoutToModernBase(page.barId)
+						end
 
 						-- Page Indicator visually anchors off Main Bar's own position - reset it alongside Main Bar.
 						if page.barId == 1 and ACAB.ResetPageIndicatorToModernBase then
@@ -3097,11 +3112,9 @@ function ACAB:RefreshSimpleBarPage(key)
 			page.xSlider:SetMinMaxValues(minX, maxX)
 			page.ySlider:SetMinMaxValues(minY, maxY)
 
-			-- A scale increase keeps the bottom-left corner fixed and grows toward the top-right, so a
-			-- position that was valid before can push the far edge off-screen after the footprint
-			-- grows - clamp and persist here (not just SetMinMaxValues, which only clamps the slider's
-			-- displayed value, not the saved position).
-			if rawPos and config.setPosition then
+			-- A bigger footprint (scale/spacing/grid) can push an edge off-screen - clamp and persist here
+			-- (not just SetMinMaxValues, which only clamps the slider's displayed value). Canonical only.
+			if rawPos and config.setPosition and ACAB:IsCanonicalPosition(rawPos) then
 				local clampedX = rawPos.x or 0
 				local clampedY = rawPos.y or 0
 
@@ -3431,8 +3444,6 @@ ACAB.simpleBarPageConfigs["keyring"] = {
 	getPosition = function() return ACABDB.keyRingPosition end,
 	setPosition = function(x, y) ACAB:SetKeyRingPosition(x, y) end,
 	getElementFrame = function() return getglobal(ACAB.KEYRING_BUTTON_NAME) end,
-	-- KeyRingButton's GetScale() also cancels its parent's scale, so the range uses the saved scale.
-	getRangeScale = function() return ACABDB.keyRingScale or 1 end,
 	reset = function() ACAB:ResetKeyRingPosition() end,
 	resetModern = function() ACAB:ResetKeyRingLayoutToModernBase() end,
 	getEnabled = function() return ACABDB.keyRingEnabled end,
@@ -4421,20 +4432,21 @@ function ACAB:ResetAllElementsToVanillaLayout()
 
 	ACAB:RefreshBarList()
 
-	if ACAB.ResetBagBarPosition then
-		ACAB:ResetBagBarPosition()
-	end
-
+	-- Layout before position for each element: position converts to canonical at the final size/scale.
 	if ACAB.ResetBagBarLayout then
 		ACAB:ResetBagBarLayout()
 	end
 
-	if ACAB.ResetMicroMenuPosition then
-		ACAB:ResetMicroMenuPosition()
+	if ACAB.ResetBagBarPosition then
+		ACAB:ResetBagBarPosition()
 	end
 
 	if ACAB.ResetMicroMenuLayout then
 		ACAB:ResetMicroMenuLayout()
+	end
+
+	if ACAB.ResetMicroMenuPosition then
+		ACAB:ResetMicroMenuPosition()
 	end
 
 	-- Force native mode's stored flags before anything below reads them - IsPetBarNativeModeEffective/
@@ -4467,12 +4479,12 @@ function ACAB:ResetAllElementsToVanillaLayout()
 		ACAB:CreateStanceBarContainer()
 	end
 
-	if ACAB.ResetStanceBarPosition then
-		ACAB:ResetStanceBarPosition()
-	end
-
 	if ACAB.ResetStanceBarLayout then
 		ACAB:ResetStanceBarLayout()
+	end
+
+	if ACAB.ResetStanceBarPosition then
+		ACAB:ResetStanceBarPosition()
 	end
 
 	if ACAB.ResetLatencyBarLayout then

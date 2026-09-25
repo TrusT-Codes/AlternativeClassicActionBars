@@ -158,7 +158,7 @@ function ACAB:SetBagBarScale(scale)
 	local pos = ACABDB.bagBarPosition
 
 	if pos and self.bagBarContainer then
-		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "BOTTOMLEFT", nil, self.bagBarContainer:GetHeight())
+		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "CENTER", self.bagBarContainer:GetWidth(), self.bagBarContainer:GetHeight())
 	end
 
 	ACABDB.bagBarScale = scale
@@ -389,7 +389,7 @@ function ACAB:SetMicroMenuScale(scale)
 	local pos = ACABDB.microMenuPosition
 
 	if pos and self.microMenuContainer then
-		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "BOTTOMLEFT", nil, self.microMenuContainer:GetHeight())
+		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "CENTER", self.microMenuContainer:GetWidth(), self.microMenuContainer:GetHeight())
 	end
 
 	ACABDB.microMenuScale = scale
@@ -782,7 +782,7 @@ function ACAB:SetKeyRingScale(scale)
 	local frame = getglobal(self.KEYRING_BUTTON_NAME)
 
 	if pos and frame then
-		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "BOTTOMLEFT", nil, frame:GetHeight())
+		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "CENTER", frame:GetWidth(), frame:GetHeight())
 	end
 
 	ACABDB.keyRingScale = scale
@@ -899,6 +899,9 @@ function ACAB:ApplyLatencyBarPosition()
 
 	local pos = ACABDB.latencyBarPosition
 
+	-- Visual center reads the overlay inset - set before the first apply, not only by the overlay setup.
+	frame.overlayInset = self.LATENCY_BAR_OVERLAY_INSET
+
 	if pos then
 		self:ApplySavedPosition(frame, pos, "ACABApplyingLatencyBarPosition")
 	end
@@ -959,7 +962,7 @@ function ACAB:SetLatencyBarScale(scale)
 	local frame = getglobal(self.LATENCY_BAR_FRAME_NAME)
 
 	if pos and frame then
-		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "BOTTOMLEFT", nil, frame:GetHeight())
+		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "CENTER", frame:GetWidth(), frame:GetHeight())
 	end
 
 	ACABDB.latencyBarScale = scale
@@ -1141,7 +1144,7 @@ function ACAB:SetCastBarScale(scale)
 	local frame = getglobal(self.CAST_BAR_FRAME_NAME)
 
 	if pos and frame then
-		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "BOTTOMLEFT", nil, frame:GetHeight())
+		self:CompensateScaleKeepingCornerFixed(pos, oldScale, scale, "CENTER", frame:GetWidth(), frame:GetHeight())
 	end
 
 	ACABDB.castBarScale = scale
@@ -1204,9 +1207,11 @@ function ACAB:CaptureCastBarStackBaseYIfNeeded()
 	self:CaptureCastBarPositionIfNeeded()
 
 	local pos = ACABDB.castBarPosition
+	local frame = getglobal(self.CAST_BAR_FRAME_NAME)
 
-	if pos and pos.y then
-		ACABDB.castBarStackBaseY = pos.y
+	-- Floor is a TOPLEFT/BOTTOMLEFT top-edge y, whatever format the saved position is in.
+	if pos and pos.y and frame then
+		ACABDB.castBarStackBaseY = self:GetPositionInAnchor(frame, pos, "TOPLEFT", "BOTTOMLEFT").y
 	end
 end
 
@@ -1272,10 +1277,14 @@ function ACAB:ReflowCastBarForStackToggle()
 
 	local pos = ACABDB.castBarPosition
 	local y = self:GetCastBarBaselineY()
+	local frame = getglobal(self.CAST_BAR_FRAME_NAME)
 
-	if not pos or not y then
+	if not pos or not y or not frame then
 		return
 	end
+
+	-- y is a top edge - written in TOPLEFT/BOTTOMLEFT terms, ApplyCastBarPosition converts back.
+	self:ConvertPositionAnchor(frame, pos, "TOPLEFT", "BOTTOMLEFT")
 
 	pos.y = y
 
@@ -1339,6 +1348,9 @@ ACAB.PAGE_INDICATOR_TEXT_NAME = "MainMenuBarPageNumber"
 local PAGE_INDICATOR_SHAPE_RETRY_INTERVAL = 0.1
 local PAGE_INDICATOR_SHAPE_RETRY_TIMEOUT = 3
 
+-- CreatePageIndicatorContainer's settle-retry while Up's rect is still unresolved after login.
+local PAGE_INDICATOR_CREATE_RETRY_TIMEOUT = 10
+
 -- This container isn't a single row/column of same-size elements chained edge-to-edge - it's two
 -- stacked arrow buttons plus a text label to their right, vertically centered, so it has its own
 -- dedicated layout (CreatePageIndicatorContainer/ApplyPageIndicatorShape below).
@@ -1374,9 +1386,25 @@ function ACAB:CreatePageIndicatorContainer()
 	local nativeLeft = up:GetLeft()
 	local nativeTop = up:GetTop()
 
+	-- Up's rect reads back nil right after login - retries on a short timer until it resolves.
 	if not nativeLeft or not nativeTop then
+		self.pageIndicatorCreateRetryElapsed = (self.pageIndicatorCreateRetryElapsed or 0)
+			+ PAGE_INDICATOR_SHAPE_RETRY_INTERVAL
+
+		if self.pageIndicatorCreateRetryElapsed >= PAGE_INDICATOR_CREATE_RETRY_TIMEOUT then
+			self.pageIndicatorCreateRetryElapsed = nil
+			self:Print("WARNING: Page Indicator's native position did not resolve in time - it stays at Blizzard's default spot this session.")
+			return
+		end
+
+		C_Timer.After(PAGE_INDICATOR_SHAPE_RETRY_INTERVAL, function()
+			ACAB:CreatePageIndicatorContainer()
+		end)
+
 		return
 	end
+
+	self.pageIndicatorCreateRetryElapsed = nil
 
 	local upScale = up:GetEffectiveScale()
 	local uiParentScale = UIParent:GetEffectiveScale()
@@ -1398,15 +1426,52 @@ function ACAB:CreatePageIndicatorContainer()
 	self.pageIndicatorTextFollowsUp = (textRelTo == up)
 	self.pageIndicatorTextFollowsDown = (textRelTo == down)
 
+	-- Anchored to the same frame as Up (any relativePoint): re-anchored to Up from the GetPoint offsets plus
+	-- the relativeTo's native size. Must not come from rect reads - right after login Down/Text's rects can
+	-- still be cached from before the art moved (§5af), which put the page number left of the arrows.
+	local function SiblingAnchor(point, relTo, relPoint, x, y)
+		if not relTo or relTo ~= upRelTo then
+			return nil
+		end
+
+		-- MainMenuBarArtFrame natively fills MainMenuBar; its own size is ApplyMainBarArtPosition's
+		-- calibrated value, not the FrameXML layout the GetPoint offsets were written against.
+		local sizeFrame = relTo
+
+		if relTo == MainMenuBarArtFrame and MainMenuBar then
+			sizeFrame = MainMenuBar
+		end
+
+		local relWidth = sizeFrame.GetWidth and sizeFrame:GetWidth()
+		local relHeight = sizeFrame.GetHeight and sizeFrame:GetHeight()
+
+		if not relWidth or not relHeight then
+			return nil
+		end
+
+		local fx, fy = self:GetPointFractions(relPoint)
+		local upFx, upFy = self:GetPointFractions(upRelPoint)
+
+		return {
+			point = point,
+			x = ((x or 0) - (upX or 0)) + ((fx - upFx) * relWidth),
+			y = ((y or 0) - (upY or 0)) + ((fy - upFy) * relHeight),
+		}
+	end
+
+	self.pageIndicatorDownAnchor = SiblingAnchor(downPoint, downRelTo, downRelPoint, downX, downY)
+	self.pageIndicatorTextAnchor = SiblingAnchor(textPoint, textRelTo, textRelPoint, textX, textY)
+	self.pageIndicatorUpPoint = upPoint
+
 	local downLeft, downTop = down:GetLeft(), down:GetTop()
 	local textLeft, textTop = text:GetLeft(), text:GetTop()
 
-	if not self.pageIndicatorDownFollowsUp and downLeft and downTop then
+	if not self.pageIndicatorDownFollowsUp and not self.pageIndicatorDownAnchor and downLeft and downTop then
 		self.pageIndicatorDownDeltaX = downLeft - up:GetLeft()
 		self.pageIndicatorDownDeltaY = downTop - up:GetTop()
 	end
 
-	if not (self.pageIndicatorTextFollowsUp or self.pageIndicatorTextFollowsDown)
+	if not (self.pageIndicatorTextFollowsUp or self.pageIndicatorTextFollowsDown or self.pageIndicatorTextAnchor)
 		and textLeft and textTop then
 		self.pageIndicatorTextDeltaX = textLeft - up:GetLeft()
 		self.pageIndicatorTextDeltaY = textTop - up:GetTop()
@@ -1443,6 +1508,8 @@ function ACAB:CreatePageIndicatorContainer()
 	self.pageIndicatorDown = down
 	self.pageIndicatorText = text
 
+	self:ApplyPageIndicatorStrata()
+
 	if not ACABDB.mainBarPageIndicatorNativeAnchor then
 		ACABDB.mainBarPageIndicatorNativeAnchor = {
 			point = "TOPLEFT",
@@ -1470,8 +1537,8 @@ end
 
 -- Up is always reanchored to the container's own TOPLEFT. Down and the page-number text use the real
 -- native relationship CreatePageIndicatorContainer captured via GetPoint(): left untouched if natively
--- anchored directly to Up/Down (SetParent never rewrote that anchor), otherwise reproduced as a
--- TOPLEFT-of-container offset using the real screen-space delta captured at the same time.
+-- anchored directly to Up/Down, re-anchored to Up from the GetPoint offsets if they shared Up's anchor,
+-- otherwise reproduced as a TOPLEFT-of-container offset from the screen-space delta captured at build.
 function ACAB:ApplyPageIndicatorShape()
 	local container = self.pageIndicatorContainer
 	local up = self.pageIndicatorUp
@@ -1485,7 +1552,14 @@ function ACAB:ApplyPageIndicatorShape()
 	up:ClearAllPoints()
 	self:PixelSetPoint(up, "TOPLEFT", container, "TOPLEFT", 0, 0)
 
-	if not self.pageIndicatorDownFollowsUp then
+	local downAnchor = self.pageIndicatorDownAnchor
+	local textAnchor = self.pageIndicatorTextAnchor
+	local upPoint = self.pageIndicatorUpPoint or "CENTER"
+
+	if downAnchor then
+		down:ClearAllPoints()
+		down:SetPoint(downAnchor.point or "CENTER", up, upPoint, downAnchor.x, downAnchor.y)
+	elseif not self.pageIndicatorDownFollowsUp then
 		down:ClearAllPoints()
 		self:PixelSetPoint(
 			down,
@@ -1497,7 +1571,10 @@ function ACAB:ApplyPageIndicatorShape()
 		)
 	end
 
-	if not (self.pageIndicatorTextFollowsUp or self.pageIndicatorTextFollowsDown) then
+	if textAnchor then
+		text:ClearAllPoints()
+		text:SetPoint(textAnchor.point or "CENTER", up, upPoint, textAnchor.x, textAnchor.y)
+	elseif not (self.pageIndicatorTextFollowsUp or self.pageIndicatorTextFollowsDown) then
 		-- PixelSetPoint safely falls back to plain SetPoint here (text is a FontString, no GetEffectiveScale).
 		text:ClearAllPoints()
 		self:PixelSetPoint(
@@ -1521,6 +1598,10 @@ function ACAB:ApplyPageIndicatorShape()
 		end
 		return l, t, r, b
 	end
+
+	-- Top-down resolve (§5af): ancestors first, values discarded.
+	UIParent:GetLeft()
+	container:GetLeft()
 
 	local upL, upT, upR, upB = RealRect(up)
 	local downL, downT, downR, downB = RealRect(down)
@@ -1579,15 +1660,94 @@ function ACAB:ApplyPageIndicatorShape()
 	end
 
 	container:SetScale(ACABDB.mainBarPageIndicatorScale or 1)
+
+	-- Default position depends on the container's measured width.
+	if ACABDB.mainBarPageIndicatorFollowsMainBar ~= false then
+		self:ApplyPageIndicatorPosition()
+	end
+end
+
+-- Up/Down above MainMenuBarArtFrame (MEDIUM) - they keep the art's strata after reparenting otherwise.
+function ACAB:ApplyPageIndicatorStrata()
+	local container = self.pageIndicatorContainer
+
+	if not container then
+		return
+	end
+
+	container:SetFrameStrata("HIGH")
+	container:SetFrameLevel(11)
+
+	if self.pageIndicatorUp then
+		self.pageIndicatorUp:SetFrameStrata("HIGH")
+		self.pageIndicatorUp:SetFrameLevel(12)
+	end
+
+	if self.pageIndicatorDown then
+		self.pageIndicatorDown:SetFrameStrata("HIGH")
+		self.pageIndicatorDown:SetFrameLevel(12)
+	end
+end
+
+-- Gap between Main Bar's visual right edge and the Page Indicator's visual left edge.
+local PAGE_INDICATOR_MAIN_BAR_GAP = 6
+
+-- Canonical position vertically centered just right of Main Bar's visual edge, from Main Bar's saved
+-- config (effective grid/size/position) and the container's current width/scale.
+function ACAB:GetPageIndicatorDefaultPosition()
+	local bar1 = self.bars and self.bars[1]
+	local container = self.pageIndicatorContainer
+
+	if not bar1 or not bar1.config or not container then
+		return nil
+	end
+
+	local barLeft, barRight, barBottom, barTop = self:GetPositionFrameRect(bar1, bar1.config, "TOPLEFT")
+	local uiParentScale = UIParent:GetEffectiveScale()
+
+	if not barLeft or not uiParentScale or uiParentScale == 0 then
+		return nil
+	end
+
+	local barScale = bar1:GetEffectiveScale() / uiParentScale
+	local _, barInsetR, barInsetT, barInsetB = self:GetVisualInsets(bar1)
+
+	local visualRight = barRight - (barInsetR * barScale)
+	local visualCenterY = ((barTop - (barInsetT * barScale)) + (barBottom + (barInsetB * barScale))) / 2
+
+	local indicatorScale = container:GetEffectiveScale() / uiParentScale
+	local indicatorInsetL, indicatorInsetR = self:GetVisualInsets(container)
+	local indicatorWidth = ((container:GetWidth() or 0) - indicatorInsetL - indicatorInsetR) * indicatorScale
+
+	local screenWidth, screenHeight = self:GetUIParentAnchorSize()
+
+	return {
+		point = "CENTER",
+		relativePoint = "CENTER",
+		visualCenter = true,
+		x = visualRight + PAGE_INDICATOR_MAIN_BAR_GAP + (indicatorWidth / 2) - (screenWidth / 2),
+		y = visualCenterY - (screenHeight / 2),
+	}
 end
 
 function ACAB:ApplyPageIndicatorPosition()
+	self:ApplyPageIndicatorStrata()
+
 	if self:ApplyGroupedIfActive("pageindicator") then
 		return
 	end
 
-	local pos = ACABDB.mainBarPageIndicatorPosition
 	local container = self.pageIndicatorContainer
+
+	if container and ACABDB.mainBarPageIndicatorFollowsMainBar ~= false then
+		local default = self:GetPageIndicatorDefaultPosition()
+
+		if default then
+			ACABDB.mainBarPageIndicatorPosition = default
+		end
+	end
+
+	local pos = ACABDB.mainBarPageIndicatorPosition
 
 	if not pos or not container then
 		return
@@ -1616,15 +1776,22 @@ function ACAB:SetPageIndicatorScale(scale)
 
 	if self.pageIndicatorContainer then
 		self.pageIndicatorContainer:SetScale(scale)
+
+		-- Keeps the scaled indicator flush with Main Bar's edge.
+		if ACABDB.mainBarPageIndicatorFollowsMainBar ~= false then
+			self:ApplyPageIndicatorPosition()
+		end
 	end
 end
 
--- Mirrors ResetKeyRingPosition's structure: restore position from the permanent
--- mainBarPageIndicatorNativeAnchor snapshot, then reset scale to 1.
+-- Restores the default Main-Bar-following position (native anchor as fallback while Main Bar is
+-- unmeasurable), then resets scale to 1.
 function ACAB:ResetPageIndicatorLayout()
 	self:EnsureDB()
 
 	local native = ACABDB.mainBarPageIndicatorNativeAnchor
+
+	ACABDB.mainBarPageIndicatorFollowsMainBar = true
 
 	if native then
 		ACABDB.mainBarPageIndicatorPosition = {
@@ -1633,73 +1800,16 @@ function ACAB:ResetPageIndicatorLayout()
 			x = native.x,
 			y = native.y,
 		}
-
-		self:ApplyPageIndicatorPosition()
 	end
 
+	-- Also re-applies position (follow mode) at the final scale.
 	self:SetPageIndicatorScale(1)
 end
 
--- Settings.lua's Main Bar "Reset to Modern Layout Default" button - Page Indicator has no fixed target
--- spot, so this reads Main Bar's real rendered edge live and sits flush to it, vertically centered.
+-- Settings.lua's Main Bar "Reset to Modern Layout Default" button - same Main-Bar-following default as
+-- Reset to Vanilla Layout.
 function ACAB:ResetPageIndicatorToModernBase()
-	self:EnsureDB()
-
-	if ACABDB.defaultBarPaginationEnabled == false then
-		return
-	end
-
-	local bar1 = self.bars and self.bars[1]
-	local container = self.pageIndicatorContainer
-
-	if not bar1 or not container then
-		return
-	end
-
-	-- Same default scale Reset to Vanilla Layout restores.
-	self:SetPageIndicatorScale(1)
-
-	local _, mainBarRight, mainBarTop, mainBarBottom = self:GetElementRealEdges(bar1)
-
-	if not mainBarRight then
-		return
-	end
-
-	local overlay = container.ACABOverlay
-	local indicatorHeight = container:GetHeight() or ACAB.BUTTON_SIZE
-	local indicatorLeftGap = 0
-	local indicatorBottomGap = 0
-
-	if overlay then
-		local containerLeft = container:GetLeft()
-		local containerBottom = container:GetBottom()
-		local overlayLeft = overlay:GetLeft()
-		local overlayTop = overlay:GetTop()
-		local overlayBottom = overlay:GetBottom()
-
-		if containerLeft and overlayLeft then
-			indicatorLeftGap = overlayLeft - containerLeft
-		end
-
-		if containerBottom and overlayBottom then
-			indicatorBottomGap = overlayBottom - containerBottom
-		end
-
-		if overlayTop and overlayBottom then
-			indicatorHeight = overlayTop - overlayBottom
-		end
-	end
-
-	local mainBarCenterY = (mainBarTop + mainBarBottom) / 2
-
-	ACABDB.mainBarPageIndicatorPosition = {
-		point = "BOTTOMLEFT", relativePoint = "BOTTOMLEFT",
-		x = (mainBarRight + 6) - indicatorLeftGap,
-		y = (mainBarCenterY - (indicatorHeight / 2)) - indicatorBottomGap,
-	}
-
-	self:ApplyPageIndicatorPosition()
-	self:SetPageIndicatorScale(1)
+	self:ResetPageIndicatorLayout()
 end
 
 -- Bag Bar's real live width/height (or a formula-based fallback before its container exists).
@@ -1973,12 +2083,27 @@ function ACAB:StartPageIndicatorDrag()
 	frame.dragStartX = pos.x or 0
 	frame.dragStartY = pos.y or 0
 
+	-- Must clear before the drag ticks, or follow mode snaps it back to Main Bar every frame.
+	self.pageIndicatorFollowedBeforeDrag = ACABDB.mainBarPageIndicatorFollowsMainBar ~= false
+	ACABDB.mainBarPageIndicatorFollowsMainBar = false
+
 	frame:SetScript("OnUpdate", self.DefaultBarDrag_OnUpdate)
 	frame:Show()
 end
 
 function ACAB:StopPageIndicatorDrag()
 	self:StopSharedDrag()
+
+	-- Unmoved click keeps follow mode.
+	local pos = ACABDB.mainBarPageIndicatorPosition
+	local frame = self:EnsureDragFrame()
+
+	if self.pageIndicatorFollowedBeforeDrag and pos
+		and pos.x == frame.dragStartX and pos.y == frame.dragStartY then
+		ACABDB.mainBarPageIndicatorFollowsMainBar = true
+	end
+
+	self.pageIndicatorFollowedBeforeDrag = nil
 
 	-- The Scale slider lives on the Main Bar's own settings page (barId 1) - this element has no
 	-- "simple bar page" of its own.
