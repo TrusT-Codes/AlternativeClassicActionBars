@@ -454,6 +454,7 @@ function ACABSetupWizardMixin:BuildStep2()
 		variant = "danger",
 		onClick = function()
 			ACAB.setupWizard.wizardState.useDefaultLayout = true
+			ACAB.setupWizard.wizardState.generalLayoutFormat = "blizzard"
 			ACAB.setupWizard:FinishWizard()
 		end,
 	})
