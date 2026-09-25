@@ -73,6 +73,11 @@ local function BarFrameSize(cfg)
 	return width, height
 end
 
+-- Bar frame's width/height from its config (effective grid/spacing), before any border overhang.
+function ACAB:GetBarFrameSize(cfg)
+	return BarFrameSize(cfg)
+end
+
 -- Converts a 1-based button index into a 0-based column/row (no % in Lua 5.0).
 local function ButtonIndexToGridPos(index, cols)
 	local i = index - 1
@@ -99,18 +104,7 @@ function ACAB:ApplyBarPosition(bar)
 	local cfg = bar.config
 	local barW, barH = BarFrameSize(cfg)
 
-	self:NormalizePositionAnchor(bar, cfg, self:GetCanonicalBarAnchor(cfg.id), barW, barH, "TOPLEFT")
-
-	bar:ClearAllPoints()
-
-	PixelSetPoint(
-		bar,
-		cfg.point or "TOPLEFT",
-		UIParent,
-		cfg.relativePoint or "TOPLEFT",
-		cfg.x or 0,
-		cfg.y or 0
-	)
+	self:ApplyPositionToFrame(bar, cfg, "TOPLEFT", barW, barH)
 
 	if cfg.id == 1 then
 		ApplyMainBarFollowers()
@@ -701,8 +695,18 @@ function ACAB:ApplyGlobalButtonStyle()
 			if bar.config and bar.config.buttonSize and
 				not (skipDefaultBars and ACAB:IsDefaultBarFamilyId(barId)) then
 				self:SetBarButtonSize(bar, bar.config.buttonSize + delta)
-				self:SetBarPosition(bar, (bar.config.x or 0) + dx, (bar.config.y or 0) + dy)
+
+				-- Canonical positions are the visual center - only a legacy corner anchor needs the nudge.
+				if not ACAB:IsCanonicalPosition(bar.config) then
+					self:SetBarPosition(bar, (bar.config.x or 0) + dx, (bar.config.y or 0) + dy)
+				end
+
 				self:SetBarSpacing(bar, (bar.config.spacing or 0) + spacingDelta)
+
+				-- Re-centers on the new style's border overhang.
+				if ACAB:IsCanonicalPosition(bar.config) then
+					self:ApplyBarPosition(bar)
+				end
 			end
 		end)
 
@@ -818,7 +822,7 @@ end
 -- Apply position directly from settings
 -------------------------------------------------------------------------
 
--- point/relativePoint (optional): the anchor x/y are given in - ApplyBarPosition converts to canonical.
+-- point/relativePoint (optional): legacy anchor x/y are given in - ApplyBarPosition converts to canonical.
 function ACAB:SetBarPosition(bar, x, y, point, relativePoint)
 	if not bar or not bar.config then
 		return
@@ -834,6 +838,7 @@ function ACAB:SetBarPosition(bar, x, y, point, relativePoint)
 	if point then
 		bar.config.point = point
 		bar.config.relativePoint = relativePoint or point
+		bar.config.visualCenter = nil
 	end
 
 	bar.config.x = x
@@ -1392,7 +1397,7 @@ function ACAB:StartBarDrag(bar)
 
 	local cfg = bar.config
 
-	-- Drags in the bar's own (canonical) anchor - ApplyDragSnap converts for its edge math.
+	-- Normalizes cfg to canonical before the drag reads its x/y.
 	self:ApplyBarPosition(bar)
 
 	self:StartSharedDrag("bar", cfg.id, cfg.x, cfg.y)

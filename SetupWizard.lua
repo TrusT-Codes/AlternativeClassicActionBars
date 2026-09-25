@@ -1832,8 +1832,8 @@ local function ApplyExpBarWizardState(state, data)
 
 		if minX and maxX and minY and maxY then
 			data.expBarPosition = {
-				point = "TOPLEFT", relativePoint = "BOTTOMLEFT",
-				x = (minX + maxX) / 2,
+				point = "CENTER", relativePoint = "CENTER", visualCenter = true,
+				x = 0,
 				y = (state.expBarPositionChoice == "Top") and maxY or minY,
 			}
 		end

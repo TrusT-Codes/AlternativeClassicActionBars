@@ -3097,11 +3097,9 @@ function ACAB:RefreshSimpleBarPage(key)
 			page.xSlider:SetMinMaxValues(minX, maxX)
 			page.ySlider:SetMinMaxValues(minY, maxY)
 
-			-- A scale increase keeps the bottom-left corner fixed and grows toward the top-right, so a
-			-- position that was valid before can push the far edge off-screen after the footprint
-			-- grows - clamp and persist here (not just SetMinMaxValues, which only clamps the slider's
-			-- displayed value, not the saved position).
-			if rawPos and config.setPosition then
+			-- A bigger footprint (scale/spacing/grid) can push an edge off-screen - clamp and persist here
+			-- (not just SetMinMaxValues, which only clamps the slider's displayed value). Canonical only.
+			if rawPos and config.setPosition and ACAB:IsCanonicalPosition(rawPos) then
 				local clampedX = rawPos.x or 0
 				local clampedY = rawPos.y or 0
 
@@ -3431,8 +3429,6 @@ ACAB.simpleBarPageConfigs["keyring"] = {
 	getPosition = function() return ACABDB.keyRingPosition end,
 	setPosition = function(x, y) ACAB:SetKeyRingPosition(x, y) end,
 	getElementFrame = function() return getglobal(ACAB.KEYRING_BUTTON_NAME) end,
-	-- KeyRingButton's GetScale() also cancels its parent's scale, so the range uses the saved scale.
-	getRangeScale = function() return ACABDB.keyRingScale or 1 end,
 	reset = function() ACAB:ResetKeyRingPosition() end,
 	resetModern = function() ACAB:ResetKeyRingLayoutToModernBase() end,
 	getEnabled = function() return ACABDB.keyRingEnabled end,

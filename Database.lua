@@ -578,7 +578,7 @@ end
 -- TOPLEFT/BOTTOMLEFT convention every other Action Bar uses, preserving its
 -- real on-screen position. No-op once already migrated.
 function ACAB:MigrateExtraBarAnchor(cfg)
-	if not cfg or cfg.point ~= "CENTER" then
+	if not cfg or cfg.point ~= "CENTER" or self:IsCanonicalPosition(cfg) then
 		return
 	end
 
