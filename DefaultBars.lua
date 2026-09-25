@@ -323,11 +323,8 @@ function ACAB:CaptureMainBarArtNativeOffsetIfNeeded()
 
 	artFrame.ACABArtSettlePolling = true
 
-	DEFAULT_CHAT_FRAME:AddMessage("ARTDBG cap start db=" .. tostring(ACABDB) .. " w=" .. tostring(artFrame:GetWidth()) .. " l=" .. tostring(artFrame:GetLeft()))
-
 	WaitForMainBarArtSettle(function(left, top)
 		artFrame.ACABArtSettlePolling = nil
-		DEFAULT_CHAT_FRAME:AddMessage("ARTDBG cap done db=" .. tostring(ACABDB) .. " l=" .. tostring(left) .. " t=" .. tostring(top))
 
 		if not left or not top then
 			return
@@ -343,6 +340,10 @@ function ACAB:CaptureMainBarArtNativeOffsetIfNeeded()
 		local screenY = (top * frameScale) / targetScale
 		local frameW = artFrame:GetWidth()
 		local frameH = artFrame:GetHeight()
+
+		if not frameW or frameW <= 0 or not frameH or frameH <= 0 then
+			return
+		end
 
 		-- Left gryphon's right edge, in the frame's unscaled units from its left edge.
 		local gryphon = getglobal("MainMenuBarLeftEndCap")
@@ -448,12 +449,8 @@ function ACAB:ApplyMainBarArtPosition()
 
 	local offset = ACABDB.mainBarArtNativeOffset
 
-	ACAB.artDbgCount = (ACAB.artDbgCount or 0) + 1
-	if ACAB.artDbgCount <= 6 then
-		DEFAULT_CHAT_FRAME:AddMessage("ARTDBG apply#" .. ACAB.artDbgCount .. " db=" .. tostring(ACABDB) .. " off=" .. tostring(offset ~= nil) .. " w=" .. tostring(offset and offset.width))
-	end
-
-	if not offset then
+	-- Incomplete offset (no width) must not apply, or the art's rect dies and the capture can never finish.
+	if not offset or not offset.width or not offset.height then
 		return
 	end
 
@@ -462,10 +459,8 @@ function ACAB:ApplyMainBarArtPosition()
 	artFrame.ACABApplyingMainBarArtPosition = true
 
 	-- Must reassert the native size every call or the frame's rect stops resolving once Lua SetPoints it (§5ak).
-	if offset.width and offset.height then
-		artFrame:SetWidth(offset.width)
-		artFrame:SetHeight(offset.height)
-	end
+	artFrame:SetWidth(offset.width)
+	artFrame:SetHeight(offset.height)
 
 	artFrame:SetScale(scale)
 	artFrame:ClearAllPoints()

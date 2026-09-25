@@ -673,7 +673,6 @@ function ACAB:ResolveActiveProfile()
 	else
 		ACABDB = nil
 	end
-	DEFAULT_CHAT_FRAME:AddMessage("ARTDBG resolve " .. tostring(activeProfile) .. " db=" .. tostring(ACABDB) .. " off=" .. tostring(snapshot and snapshot.mainBarArtNativeOffset ~= nil))
 end
 
 -- Writes the live ACABDB back into ACABProfilesDB[activeProfileName].
