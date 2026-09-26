@@ -159,6 +159,11 @@ local function IsVanillaModeLocked()
 	return ACAB:IsDefaultProfileActive() or ACABDB.useDefaultLayout == true
 end
 
+-- True while Force Vanilla Layout Mode forces Pet/Stance Bar native, whatever their stored flags say.
+local function IsVanillaModeForced()
+	return ACABDB.useDefaultLayout ~= false
+end
+
 -- Bar 5 can only be enabled while bar 4 is, unless the General tab's bypass option is on.
 local function IsBar5EnableAllowed()
 	local bar4Cfg = ACABDB.defaultBars[4]
@@ -908,6 +913,32 @@ local function RefreshGridSwatchSelection(page, cols, rows)
 			swatch:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
 		end
 	end
+end
+
+-- Standalone Grid Layout swatch row for barId at (x, y) on parent (Setup Wizard's Extra Bars page);
+-- onPick(cols, rows) runs on click. Returns the swatches.
+function ACAB:CreateGridSwatchRow(parent, barId, x, y, onPick)
+	local presets = GetGridPresetsForBar(barId)
+	local swatches = {}
+	local i
+
+	for i = 1, table.getn(presets) do
+		local swatch = CreateGridSwatch(parent, presets[i])
+
+		swatch:SetPoint("TOPLEFT", parent, "TOPLEFT", x + ((i - 1) * (SWATCH_SIZE + SWATCH_GAP)), y)
+		swatch:SetScript("OnClick", function()
+			onPick(this.cols, this.rows)
+		end)
+
+		swatches[i] = swatch
+	end
+
+	return swatches
+end
+
+-- Gold border on the swatch in swatches matching cols x rows.
+function ACAB:SelectGridSwatch(swatches, cols, rows)
+	RefreshGridSwatchSelection({ gridSwatches = swatches }, cols, rows)
 end
 
 -- Dims the page's swatches while GRID_LAYOUT_LOCKS locks them (alpha only, so the locked tooltip still shows).
@@ -2439,9 +2470,9 @@ function ACAB:RefreshSimpleBarPage(key)
 		page.enableCheckbox:SetChecked(config.getEnabled() ~= false)
 	end
 
-	-- While locked, the mode checkboxes show the vanilla-forced value instead of the stored preference.
+	-- While forced, the mode checkboxes show the vanilla-forced value instead of the stored preference.
 	if page.useVanillaPetBarCheckbox or page.condenseEmptyPetSlotsCheckbox then
-		local petLocked = IsVanillaModeLocked()
+		local petLocked = IsVanillaModeForced()
 		local petCfg = ACABDB.defaultBars and ACABDB.defaultBars[ACAB.PET_BAR_ID]
 
 		if page.useVanillaPetBarCheckbox then
@@ -2456,7 +2487,7 @@ function ACAB:RefreshSimpleBarPage(key)
 	end
 
 	if page.useVanillaStanceBarCheckbox then
-		page.useVanillaStanceBarCheckbox:SetChecked(IsVanillaModeLocked() or IsStanceBarNativeMode())
+		page.useVanillaStanceBarCheckbox:SetChecked(IsVanillaModeForced() or IsStanceBarNativeMode())
 	end
 
 	if page.spacingSlider and config.getSpacing then
@@ -2501,12 +2532,11 @@ function ACAB:RefreshSimpleBarPage(key)
 			end
 		end
 
-		-- ACABDB.expBarFontSize stays nil until the slider is first moved; defaults to the native size - 1.
+		-- ACABDB.expBarFontSize stays nil until the slider is first moved; defaults to EXP_BAR_DEFAULT_FONT_SIZE.
 		if page.expBarFontSizeSlider then
 			ACAB:CaptureNativeExpBarFontIfNeeded()
 
-			local nativeDefault = ACAB.NATIVE_EXPBAR_FONT and (ACAB.NATIVE_EXPBAR_FONT.size - 1)
-			local fontSize = ACAB:ClampFontSize(ACABDB.expBarFontSize or nativeDefault)
+			local fontSize = ACAB:ClampFontSize(ACABDB.expBarFontSize or ACAB.EXP_BAR_DEFAULT_FONT_SIZE)
 
 			ACAB:SetSliderValueSilently(page.expBarFontSizeSlider, fontSize, page.expBarFontSizeValueText)
 		end
@@ -2830,6 +2860,12 @@ ACAB.simpleBarPageConfigs["micromenu"] = {
 -- Right-click-to-settings entry point for any page key (used by DefaultBars.lua's overlays).
 function ACAB:OpenBarSettingsByKey(key)
 	self:ShowSettingsFrame()
+
+	-- The running Setup Wizard owns the settings window's page.
+	if self:IsSetupWizardActive() then
+		return
+	end
+
 	self:ShowBarPage(key)
 end
 
@@ -2957,17 +2993,17 @@ function ACAB:RefreshBarSettingsPage(barId)
 		page.enableCheckbox:SetChecked(cfg.enabled == true)
 	end
 
-	-- While locked, the mode checkboxes show the vanilla-forced value instead of the stored preference.
+	-- While forced, the mode checkboxes show the vanilla-forced value instead of the stored preference.
 	if page.useVanillaPetBarCheckbox then
-		page.useVanillaPetBarCheckbox:SetChecked(IsVanillaModeLocked() or cfg.useNativePetBar == true)
+		page.useVanillaPetBarCheckbox:SetChecked(IsVanillaModeForced() or cfg.useNativePetBar == true)
 	end
 
 	if page.condenseEmptyPetSlotsCheckbox then
-		page.condenseEmptyPetSlotsCheckbox:SetChecked((not IsVanillaModeLocked()) and cfg.condenseEmptyPetSlots == true)
+		page.condenseEmptyPetSlotsCheckbox:SetChecked((not IsVanillaModeForced()) and cfg.condenseEmptyPetSlots == true)
 	end
 
 	if page.useVanillaStanceBarCheckbox then
-		page.useVanillaStanceBarCheckbox:SetChecked(IsVanillaModeLocked() or cfg.useNativeStanceBar == true)
+		page.useVanillaStanceBarCheckbox:SetChecked(IsVanillaModeForced() or cfg.useNativeStanceBar == true)
 	end
 
 	if page.animateAutoCastGlowCheckbox then
@@ -3110,7 +3146,10 @@ function ACAB:ShowBarPage(barId)
 
 	ACAB.settingsFrame.currentView = "bars"
 	ACAB:RefreshActiveTabHighlight()
-	ACAB.settingsFrame.listPanel:Show()
+
+	-- The Setup Wizard shows its step list in the bar list's place.
+	ACAB.settingsFrame.listPanel:SetShown(not ACAB.settingsFrame.wizardMode)
+
 	ACAB.settingsFrame.contentScrollFrame:Show()
 	ACAB.settingsFrame.contentPanel:Show()
 
@@ -3786,6 +3825,10 @@ function ACAB:OpenBarSettings(bar)
 	end
 
 	self:ShowSettingsFrame()
+
+	if self:IsSetupWizardActive() then
+		return
+	end
 
 	self:ShowBarPage(bar.config.id)
 end

@@ -495,6 +495,33 @@ function ACAB:CaptureKeyRingPositionIfNeeded()
 	end
 end
 
+-- Session snapshot of KeyRingButton's native TOPLEFT (UIParent units) for its grouped placement.
+-- must run at login before anything moves the Bag Bar or Main Bar's art (RunLoginSequence)
+function ACAB:CaptureKeyRingNativeTopLeft()
+	local frame = getglobal(self.KEYRING_BUTTON_NAME)
+
+	if not frame then
+		return
+	end
+
+	-- must read UIParent first or the frame can resolve against a stale ancestor (§5af)
+	UIParent:GetLeft()
+
+	local left = frame:GetLeft()
+	local top = frame:GetTop()
+	local frameScale = frame:GetEffectiveScale()
+	local uiParentScale = UIParent:GetEffectiveScale()
+
+	if not left or not top or not frameScale or not uiParentScale or uiParentScale == 0 then
+		return
+	end
+
+	self.keyRingNativeTopLeft = {
+		x = (left * frameScale) / uiParentScale,
+		y = (top * frameScale) / uiParentScale,
+	}
+end
+
 -- Reasserts KeyRingButton's HIGH strata and sets its effective scale, cancelling the scale inherited from MainMenuBarArtFrame.
 function ACAB:ApplyKeyRingStrataAndScale(frame, scale)
 	frame:SetFrameStrata("HIGH")
@@ -1458,14 +1485,23 @@ function ACAB:StopPageIndicatorDrag()
 end
 
 -------------------------------------------------------------------------
--- Modern Layout bottom-right corner cluster: Bag Bar in the corner, Micro Menu on top of it, Key Ring to
--- Bag Bar's left, Latency Bar to Micro Menu's left. Every gap is flush, from the elements' live sizes.
+-- Modern Layout corners: Bag Bar in the bottom-right corner with Key Ring to its left; Latency Bar in the
+-- bottom-left corner with Micro Menu to its right, Latency Bar's overlay top level with Micro Menu's.
+-- Every gap is flush, from the elements' live sizes.
 -------------------------------------------------------------------------
 
 -- Saved position anchored BOTTOMRIGHT to BOTTOMRIGHT at x, y.
 local function ModernCornerPosition(x, y)
 	return {
 		point = "BOTTOMRIGHT", relativePoint = "BOTTOMRIGHT",
+		x = x, y = y,
+	}
+end
+
+-- Saved position anchored BOTTOMLEFT to BOTTOMLEFT at x, y.
+local function ModernLeftCornerPosition(x, y)
+	return {
+		point = "BOTTOMLEFT", relativePoint = "BOTTOMLEFT",
 		x = x, y = y,
 	}
 end
@@ -1478,90 +1514,48 @@ local function MeasureBagBarFootprint(self, buttonSize, spacing)
 	return width, height
 end
 
--- Micro Menu's overlay-hitbox top Y (stacked on bagBarHeight) and left X offset, for Latency Bar to stack against.
-local function MeasureMicroMenuStackAnchors(self, buttonSize, spacing, bagBarHeight)
-	local microMenuWidth = (self.microMenuContainer and self.microMenuContainer:GetWidth())
-		or ((self:GetMicroMenuEffectiveGrid()) * (buttonSize + spacing))
-	local microMenuHeight = (self.microMenuContainer and self.microMenuContainer:GetHeight()) or buttonSize
+-- frame's overlay hitbox inside its rect: left/top/bottom gaps (inward positive), overlay width/height.
+local function MeasureOverlayGaps(frame)
+	local width = (frame and frame:GetWidth()) or 0
+	local height = (frame and frame:GetHeight()) or 0
+	local overlay = frame and frame.ACABOverlay
 
-	local microMenuOverlayTopGap = 0
-	local microMenuOverlay = self.microMenuContainer and self.microMenuContainer.ACABOverlay
-
-	if self.microMenuContainer and microMenuOverlay then
-		local containerTop = self.microMenuContainer:GetTop()
-		local overlayTop = microMenuOverlay:GetTop()
-
-		if containerTop and overlayTop then
-			microMenuOverlayTopGap = containerTop - overlayTop
-		end
+	if not overlay then
+		return 0, 0, 0, width, height
 	end
 
-	local microMenuOverlayTop = bagBarHeight + microMenuHeight - microMenuOverlayTopGap
+	local frameLeft, frameTop, frameBottom = frame:GetLeft(), frame:GetTop(), frame:GetBottom()
+	local overlayLeft, overlayRight = overlay:GetLeft(), overlay:GetRight()
+	local overlayTop, overlayBottom = overlay:GetTop(), overlay:GetBottom()
 
-	local microMenuOverlayWidth = microMenuWidth
-	local microMenuRightGap = 0
+	local leftGap = (frameLeft and overlayLeft) and (overlayLeft - frameLeft) or 0
+	local topGap = (frameTop and overlayTop) and (frameTop - overlayTop) or 0
+	local bottomGap = (frameBottom and overlayBottom) and (overlayBottom - frameBottom) or 0
 
-	if self.microMenuContainer and microMenuOverlay then
-		local containerRight = self.microMenuContainer:GetRight()
-		local overlayRight = microMenuOverlay:GetRight()
-		local overlayLeft = microMenuOverlay:GetLeft()
-
-		if containerRight and overlayRight then
-			microMenuRightGap = containerRight - overlayRight
-		end
-
-		if overlayRight and overlayLeft then
-			microMenuOverlayWidth = overlayRight - overlayLeft
-		end
+	if overlayLeft and overlayRight then
+		width = overlayRight - overlayLeft
 	end
 
-	local microMenuOverlayLeftOffset = -(microMenuRightGap + microMenuOverlayWidth)
+	if overlayTop and overlayBottom then
+		height = overlayTop - overlayBottom
+	end
 
-	return microMenuOverlayTop, microMenuOverlayLeftOffset
+	return leftGap, topGap, bottomGap, width, height
 end
 
--- Latency Bar's own real height and the gap between its frame and its trimmed overlay hitbox.
-local function MeasureLatencyBarOwnOverlay(self, buttonSize)
+-- Latency Bar's and Micro Menu's Modern positions (bottom-left corner), measured together.
+local function GetModernBottomLeftPositions(self)
 	local latencyBarFrame = getglobal(self.LATENCY_BAR_FRAME_NAME)
-	local latencyBarOverlay = latencyBarFrame and latencyBarFrame.ACABOverlay
-	local latencyBarHeight = (latencyBarFrame and latencyBarFrame:GetHeight()) or (buttonSize * 0.5)
+	local microMenu = self.microMenuContainer
 
-	local latencyBarOverlayBottomGap = 0
-	local latencyBarOverlayRightGap = 0
+	local latencyLeftGap, _, latencyBottomGap, latencyWidth, latencyHeight = MeasureOverlayGaps(latencyBarFrame)
+	local microLeftGap, microTopGap = MeasureOverlayGaps(microMenu)
+	local microOverlayTop = ((microMenu and microMenu:GetHeight()) or 0) - microTopGap
 
-	if latencyBarFrame and latencyBarOverlay then
-		local frameBottom = latencyBarFrame:GetBottom()
-		local overlayBottom = latencyBarOverlay:GetBottom()
-		local overlayTop = latencyBarOverlay:GetTop()
+	local latencyBarPosition = ModernLeftCornerPosition(-latencyLeftGap, microOverlayTop - latencyHeight - latencyBottomGap)
+	local microMenuPosition = ModernLeftCornerPosition(latencyWidth - microLeftGap, 0)
 
-		if frameBottom and overlayBottom then
-			latencyBarOverlayBottomGap = overlayBottom - frameBottom
-		end
-
-		if overlayTop and overlayBottom then
-			latencyBarHeight = overlayTop - overlayBottom
-		end
-
-		local frameRight = latencyBarFrame:GetRight()
-		local overlayRight = latencyBarOverlay:GetRight()
-
-		if frameRight and overlayRight then
-			latencyBarOverlayRightGap = frameRight - overlayRight
-		end
-	end
-
-	return latencyBarHeight, latencyBarOverlayBottomGap, latencyBarOverlayRightGap
-end
-
--- Latency Bar's Modern position: overlay flush left of Micro Menu's overlay, tops aligned, nudged down 5.
-local function GetModernLatencyBarPosition(self, buttonSize, spacing, bagBarHeight)
-	local microMenuOverlayTop, microMenuOverlayLeftOffset = MeasureMicroMenuStackAnchors(self, buttonSize, spacing, bagBarHeight)
-	local latencyBarHeight, latencyBarOverlayBottomGap, latencyBarOverlayRightGap = MeasureLatencyBarOwnOverlay(self, buttonSize)
-
-	return ModernCornerPosition(
-		microMenuOverlayLeftOffset + latencyBarOverlayRightGap,
-		((microMenuOverlayTop - latencyBarHeight) - latencyBarOverlayBottomGap) - 5
-	)
+	return latencyBarPosition, microMenuPosition
 end
 
 -- Places all four together (Setup Wizard's Modern Layout choice).
@@ -1571,12 +1565,12 @@ function ACAB:ApplyModernCornerClusterLayout()
 	local buttonSize, spacing = self:GetModernLayoutSizing()
 
 	-- Must measure everything before any Apply*Position below - a just-recreated overlay reads unsettled geometry.
-	local bagBarWidth, bagBarHeight = MeasureBagBarFootprint(self, buttonSize, spacing)
-	local latencyBarPosition = GetModernLatencyBarPosition(self, buttonSize, spacing, bagBarHeight)
+	local bagBarWidth = MeasureBagBarFootprint(self, buttonSize, spacing)
+	local latencyBarPosition, microMenuPosition = GetModernBottomLeftPositions(self)
 
 	ACABDB.bagBarPosition = ModernCornerPosition(0, 0)
 	ACABDB.keyRingPosition = ModernCornerPosition(-bagBarWidth, 0)
-	ACABDB.microMenuPosition = ModernCornerPosition(0, bagBarHeight)
+	ACABDB.microMenuPosition = microMenuPosition
 	ACABDB.latencyBarPosition = latencyBarPosition
 
 	self:ApplyBagBarPosition()
@@ -1608,10 +1602,9 @@ end
 function ACAB:ApplyModernSingleMicroMenu()
 	self:EnsureDB()
 
-	local buttonSize, spacing = self:GetModernLayoutSizing()
-	local _, bagBarHeight = MeasureBagBarFootprint(self, buttonSize, spacing)
+	local _, microMenuPosition = GetModernBottomLeftPositions(self)
 
-	ACABDB.microMenuPosition = ModernCornerPosition(0, bagBarHeight)
+	ACABDB.microMenuPosition = microMenuPosition
 
 	self:ApplyMicroMenuPosition()
 end
@@ -1619,10 +1612,9 @@ end
 function ACAB:ApplyModernSingleLatencyBar()
 	self:EnsureDB()
 
-	local buttonSize, spacing = self:GetModernLayoutSizing()
-	local _, bagBarHeight = MeasureBagBarFootprint(self, buttonSize, spacing)
+	local latencyBarPosition = GetModernBottomLeftPositions(self)
 
-	ACABDB.latencyBarPosition = GetModernLatencyBarPosition(self, buttonSize, spacing, bagBarHeight)
+	ACABDB.latencyBarPosition = latencyBarPosition
 
 	self:ApplyLatencyBarPosition()
 end
@@ -1632,8 +1624,10 @@ end
 -- its Modern position. Layout first - the position measurements read the settled size.
 -------------------------------------------------------------------------
 
+-- Modern Layout's Bag Bar is flush (spacing 0).
 function ACAB:ResetBagBarLayoutToModernBase()
 	self:ResetBagBarLayout()
+	self:SetBagBarSpacing(0)
 	self:ApplyModernSingleBagBar()
 end
 

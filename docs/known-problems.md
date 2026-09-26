@@ -25,6 +25,11 @@ None of these were fixed during the refactor. Each has a repro or a `/run` check
 - **What:** The only runtime trigger for `RebuildStanceBarContainer` / `ApplyStanceBarLiveShape` / `RebuildAllDefaultBarAssignmentRows` is `UPDATE_SHAPESHIFT_FORMS`. §5aj confirmed it doesn't fire on form *toggles*; nobody has tested whether it fires when the set of forms *changes*. If it doesn't, a newly learned form or a respec won't reshape the Stance Bar until `/reload`. A class with no forms at login never builds the container. Keep the registration regardless.
 - **Verify:** On a low-level druid/warrior, learn a new form/stance and watch for the button without `/reload`. Or trace `UPDATE_SHAPESHIFT_FORMS` + `SPELLS_CHANGED` / `LEARNED_SPELL_IN_TAB`.
 
+### Layout baseline pass waits a fixed delay after login
+- **Status:** first live test of the in-frame version misplaced the Modern corner cluster (Micro Menu off the edge, Latency Bar too high); now deferred + reloaded, retest pending.
+- **Where:** `SetupWizard.lua` — `ACAB:ApplyPendingLayoutBaseline` (`BASELINE_SETTLE_DELAY`), scheduled near the end of `Core.lua` `RunLoginSequence`
+- **What:** The pass measures overlay rects and container sizes (corner cluster, stacked action bars), which aren't settled in the login frame. It runs `BASELINE_SETTLE_DELAY` seconds later, saves, and reloads, so the final layout loads from saved data like the old wizard's. If a slow client still measures unsettled rects, raise the delay or wait on a settle poll instead.
+
 ---
 
 ## 2. Client quirks (how this client behaves, and where the code relies on it)
@@ -147,21 +152,17 @@ None of these were fixed during the refactor. Each has a repro or a `/run` check
 - **Profile writes hit both `ACABDB` and `ACABProfilesDB`.** Logout / `ReloadUI` runs `SaveActiveProfileData`, which writes live `ACABDB` back under `activeProfileName`. Deleting the active profile must also repoint `activeProfileName`.
 - **Export format is byte-stable** (`TBVPROFILE1:`). Never add whitespace to `SerializeValue`, or older parsers reject it. The parser doesn't trim bare tokens (`[1]=false }` fails), and numbers round-trip at 14 significant digits.
 
-### FinishWizard's live-profile switch orderings
-- **Where:** `SetupWizard.lua` — `FinishWizard`, `ApplyWizardStateToProfileData`, `ApplyGeneralLayoutFormat`
-- **Order:** ApplyWizardStateToProfileData → SaveActiveProfileData (old) → switch `ACABDB` → re-point every `ACAB.bars[id].config` via `GetBarConfig` → ApplyGeneralLayoutFormat → `ACABCharDB` → SaveActiveProfileData → ReloadUI.
-- **Why each step matters:**
-  - `lastAppliedVanillaStyle` must be set together with `modernBorderStyle`, or the next login is treated as a live style switch.
-  - `ResetAllElementsToVanillaLayout` forces swap back on, so the wizard's swap choices are re-applied after it.
-  - The Exp Bar position is written before `ApplyModernLayoutGeometry`, because `DefaultBars.lua` `GetModernBaseExpBarClearance` reads the saved position, not the live frame.
-
-### Wizard layout invariants
-- **Where:** `SetupWizard.lua` — `CreateWizardNavButton`, `MeasureStepBottom`, `NormalizeAnchorToTopLeft`, `FitHeightToStep`
+### Setup Wizard baseline write and resume
+- **Where:** `SetupWizard.lua` — `BuildBaselineData`, `WriteTargetProfile`, `ApplyBaselineAndReload`, `SaveResumeState`
 - **What:**
-  - Next/Finish carry `ACABNavButton = true` and are skipped by `MeasureStepBottom`. Counting them caused a grow-every-fit feedback loop.
-  - The wizard stays TOP-anchored.
-  - `NormalizeAnchorToTopLeft` runs only on drag end (`GetTop()` after `ClearAllPoints`/`SetPoint` is stale).
-  - Step content anchors to `step` at computed offsets, never to siblings that get hidden.
+  - `lastAppliedVanillaStyle` must be set together with `modernBorderStyle`, or the next login is treated as a live style switch.
+  - `WriteTargetProfile` must repoint the live `ACABDB` and `activeProfileName` at the new data before `ReloadUI`, or the logout-time `SaveActiveProfileData` writes the old data over it. Create mode saves the old active profile first.
+  - The resume state (`ACABCharDB.setupWizard`) is re-saved on every page `ShowStep` and cleared only by Finish, the X button, or a profile mismatch at login. Don't clear it from an `OnHide` (untested whether a reload fires `OnHide` before unloading).
+  - `ApplyPendingLayoutBaseline` places the Exp Bar before `ApplyModernLayoutGeometry` (see "Setup Wizard reads saved Exp Bar position").
+
+### Settings window wizard mode
+- **Where:** `Settings.lua` (`GetSettingsChromeBottom`, wide-view `applyScrollbarReserve`, `ApplyBarsViewScrollbarReserves`, `FitSettingsWindowToBarPage`), `SettingsBars.lua` `ShowBarPage`, `SetupWizard.lua` `SetChromeShown`
+- **What:** While `settingsFrame.wizardMode` is on, the bar list stays hidden (its rows are not measured), wide views reserve the step list's width, the bottom chrome grows for the Back/Next row, and the viewport is floored to `wizardStepList.requiredHeight`. Right-click / `/acab settings` navigation is swallowed (`IsSetupWizardActive`) so the wizard keeps the page. `Exit` must reset `currentView`/`activeBarId`, or the next normal open fits a hidden view.
 
 ### Pool-button construction order
 - **Where:** `Button.lua` — `ACABButtonMixin:Init`
@@ -195,8 +196,10 @@ None of these were fixed during the refactor. Each has a repro or a `/run` check
 - **Stance count clamp.** `ACAB:GetClampedLiveStanceCount` (Core.lua) reads `MAX_STANCE_BUTTONS` from DefaultBars.lua, so call it at runtime only.
 
 ### Other must-stay spots
+- **Key Ring grouped placement uses a login snapshot.** `NativeElements.lua` `CaptureKeyRingNativeTopLeft` must run in `RunLoginSequence` before the Bag Bar or Main Bar art moves. Key Ring's native anchor is `RIGHT` of `CharacterBag3Slot` (x -5), and the grouped Bag Bar itself moves that slot by its `pixelCorrection`, so resolving the anchor live put Key Ring 1-2 px high after any regroup (live-confirmed: art-mode dropdown, not fixed by a later `ApplyMainBarGroupedElements`). Key Ring's `pixelCorrection`/`pixelNudgeY` are tuned against the native slot position.
+- **Extra Bar defaults follow the reference bar.** `Database.lua` `GetDefaultExtraBarLayout` reads the built reference bar's current cfg (size, spacing, grid, position) and places the Extra Bar one pitch (frame + `GetBarEffectiveSpacing`) above/left of it; before bars exist it uses the reference bar's Reset-to-Vanilla values. `GetExtraBarStackPitch` must use the same gap, or Stance/Pet Bar restack off by the spacing difference.
 - **Stance gap capture before bars.** `PetStanceBars.lua` `CaptureStanceBarNativeGap` runs in the login sequence before `CreateFixedSlotDefaultBars`, which collapses the native anchor. (The value itself is dead, see §4.)
-- **Setup Wizard reads saved Exp Bar position.** `DefaultBars.lua` `GetModernBaseExpBarClearance` must read the saved Exp Bar position, not a live rect.
+- **Setup Wizard reads saved Exp Bar position.** `DefaultBars.lua` `GetModernBaseExpBarClearance` must read the saved Exp Bar position, not a live rect. `ApplyPendingLayoutBaseline` writes it first.
 - **Exp Bar layered under Latency Bar.** `ExperienceBar.lua` `ApplyExpBarPosition` copies Latency Bar's strata at level −1. This interacts with `MainMenuBarArtFrame`'s pinned MEDIUM/level-5 masking (§5ae), so change both together.
 - **Wheel resize.** `Bar.lua` `ACAB:ResizeBarFromWheel` is shared by the bar overlay and the button handler. The button's wheel handler must stay installed, since it swallows camera zoom over buttons outside edit mode.
 - **Login timing.** The settle polls (`Core.lua` `WaitForNativeBarSettle`, `WaitForWrappedFrameAnchorSettle`, `WaitForPostLoginSettleThenVerify`) are load-bearing: `stableCount` resets on any mismatch/nil, the check runs after `elapsed++`, and only a timeout without settling warns. Test any change with `/reload` and a fresh login.
@@ -207,7 +210,7 @@ None of these were fixed during the refactor. Each has a repro or a `/run` check
 
 ### Dead code kept on purpose (would change saved data or chat output)
 - **`stanceBarNativeGap`.** `PetStanceBars.lua` `CaptureStanceBarNativeGap` and `ACABDB.stanceBarNativeGap` are captured but never used for layout (`GetStanceBarBaselineY` uses fixed `PET_BAR_NATIVE_GAP`). Removing them changes a WARNING print and saved data. Remove together: the capture, its two call sites, and the EnsureDB self-heal.
-- **Legacy profile fields.** The reserved "ModernBase" profile name (`Database.lua` `MODERN_BASE_PROFILE_NAME`) is legacy but still hides old `ACABProfilesDB["ModernBase"]` entries. `disableBlizzardArt`, `mainBarPaginationEnabled`, `mainBarStanceSwapEnabled`, `mainBarPageBarAssignment` and `mainBarStanceBarAssignment` stay in saves forever. Cleaning up needs a one-shot migration.
+- **Legacy profile fields.** The reserved "ModernBase" profile name (`Database.lua` `MODERN_BASE_PROFILE_NAME`) is legacy but still hides old `ACABProfilesDB["ModernBase"]` entries. "Default" (`LEGACY_DEFAULT_PROFILE_NAME`) stays reserved so a new user profile can never be mistaken for the pre-rename Default Vanilla. `disableBlizzardArt`, `mainBarPaginationEnabled`, `mainBarStanceSwapEnabled`, `mainBarPageBarAssignment` and `mainBarStanceBarAssignment` stay in saves forever. Cleaning up needs a one-shot migration.
 - **`RunLoginSequence` params.** `Core.lua` `ACAB:RunLoginSequence(earlyLeft, earlyTop, settledLeft, settledTop, waited)` reads none of its parameters.
 - **`Button.lua` stubs.** The stance tooltip fallback for missing `GameTooltip.SetShapeshift` never runs, stock-API guards never fail, and `OnDragStop` is empty.
 - **C_Timer hedges.** `Settings.lua` `DeferFit` and `SettingsGeneral.lua` `HighlightGeneralLayoutCheckbox` check for `C_Timer`. ClassicAPI is a hard dependency, and `DeferFit`'s synchronous fallback would bring back the stale-rect bug.
@@ -219,7 +222,6 @@ None of these were fixed during the refactor. Each has a repro or a `/run` check
 - **Page Indicator retry chains can stack.** Parallel `C_Timer.After(0.1)` retry chains in `CreatePageIndicatorContainer` / `ApplyPageIndicatorShape` share one elapsed counter. Harmless so far; a "retry pending" flag would bound it.
 - **Extra Bar fallback size.** `Database.lua` `GetDefaultExtraBarLayout` returns `BUTTON_SIZE` on the normal path but `GetCurrentButtonSizeBaseline()` on the fallback path.
 - **Two screen-size reads.** `Settings.lua` `GetScreenCoordinateRange` and `Bar.lua` `RebuildLayoutGrid` use `UIParent:GetWidth()/GetHeight()` instead of `GetUIParentAnchorSize`. It's harmless in both today (legacy range only / covered by overshoot lines). In `RebuildLayoutGrid`, `GetLayoutGridSpacing()` is already in local units, so don't divide it by effective scale.
-- **Wizard config drift.** `SetupWizard.lua` steps 6–8 hand-copy labels, slider ranges, default colors and the exp-bar text-toggle list from the settings pages. Grep the wizard whenever you change one of those.
 - **Sidebar rows follow `getElementFrame`.** `SettingsBars.lua` `RefreshBarList` shows a simple-page row only when its config's `getElementFrame()` is non-nil. New simple pages need a `getElementFrame`.
 - **Composed names hide greppable identifiers.** The Pet/Stance "Use Vanilla" checkbox name and field are built by concatenation (`CreateUseVanillaBarCheckbox`). Grep the factory name.
 
@@ -251,6 +253,6 @@ None of these were fixed during the refactor. Each has a repro or a `/run` check
 - **`SettingsBars.lua`** (~3800 lines): the simple-page subsystem is ~1100 self-contained lines. The Force-Vanilla cascade isn't UI code. Shared `CreateReflow*` locals would need to become `ACAB:` methods first, which also helps the upvalue cap.
 - **`NativeElements.lua`**: Tooltip and Page Indicator could become their own files.
 - **`Database.lua`**: the serializer/parser could become `ProfileIO.lua`, and the first-login/create-profile dialogs are UI.
-- **`SetupWizard.lua`**: the preview builders and the apply/finish logic are separable.
+- **`SetupWizard.lua`**: the baseline geometry pass (`ApplyModernLayoutGeometry`, `ApplyPendingLayoutBaseline`) isn't wizard UI and could move next to the Modern layout code in `DefaultBars.lua`.
 - **`UIWidgets.lua`**: `ACABDialogMixin` is the largest self-contained unit.
 - **`Bar.lua`**: the layout-grid overlay and the Extra Bar policy are separable.
