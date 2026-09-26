@@ -679,18 +679,19 @@ function ACAB:GetOrCreateProfilesPanel()
 	ACAB:ApplyProminentButtonHighlight(wizardButton)
 	panel.wizardButton = wizardButton
 
-	-- On the Default profile this starts the create-new-profile wizard instead of overwriting Default.
+	-- On a built-in profile this starts the create-new-profile wizard instead of overwriting it.
 	wizardButton:SetScript("OnClick", function()
-		if ACABCharDB and ACABCharDB.activeProfile == ACAB.DEFAULT_PROFILE_NAME then
+		if ACAB:IsDefaultProfileActive() then
 			ACAB:ShowSetupWizard()
 			return
 		end
 
 		ACAB:ShowDialog({
 			title = "Run Setup Wizard",
-			message = "This walks you back through the initial setup choices " ..
-				"(Force Vanilla Layout Mode, button style, global spacing/size).",
-			warningText = "ATTENTION: Continuing will overwrite these settings " ..
+			message = "This resets your current profile to the layout you pick " ..
+				"(" .. ACAB.DEFAULT_PROFILE_NAME .. " or " .. ACAB.MODERN_PROFILE_NAME .. ") " ..
+				"and then walks you through its real settings pages.",
+			warningText = "ATTENTION: Continuing will overwrite all settings " ..
 				"on your current profile and is not reversible.",
 			mode = "confirm",
 			buttons = {
@@ -771,7 +772,7 @@ function ACAB:GetOrCreateProfilesPanel()
 	return panel
 end
 
--- Syncs the profile dropdown; export/copy/import/delete are shown only on non-Default profiles.
+-- Syncs the profile dropdown; export/copy/import/delete are shown only on non-built-in profiles.
 function ACAB:RefreshProfilesPanel()
 	local panel = self:GetOrCreateProfilesPanel()
 
@@ -792,7 +793,7 @@ function ACAB:RefreshProfilesPanel()
 
 	panel.wizardButton:Show()
 
-	if ACABCharDB.activeProfile ~= self.DEFAULT_PROFILE_NAME then
+	if not self:IsBuiltInProfileName(ACABCharDB.activeProfile) then
 		panel.exportButton:Show()
 		panel.copyButton:Show()
 		panel.importButton:Show()
@@ -1080,6 +1081,9 @@ function ACAB:RefreshGeneralPanel()
 
 	panel.useDefaultLayoutCheckbox:SetChecked(ACABDB.useDefaultLayout == true)
 
+	-- The Setup Wizard already decided this; turning it on mid-wizard would reset every bar.
+	ACAB:LockControl(panel.useDefaultLayoutCheckbox, self:IsSetupWizardActive())
+
 	-- Style and global override controls lock while Force Vanilla Layout Mode forces vanilla styling.
 	local vanillaBorderStyleLocked = ACABDB.useDefaultLayout ~= false
 
@@ -1207,7 +1211,7 @@ function ACAB:ShowBarsView()
 end
 
 -- Full-width views in hide order: settingsFrame keys and the ACAB methods that build/refresh/fit each.
-local WIDE_VIEW_ORDER = { "general", "profiles", "editmode" }
+local WIDE_VIEW_ORDER = { "general", "profiles", "editmode", "wizard" }
 
 local WIDE_VIEWS = {
 	general = {
@@ -1230,6 +1234,14 @@ local WIDE_VIEWS = {
 		getOrCreate = "GetOrCreateEditModePanel",
 		refresh = "RefreshEditModePanel",
 		fit = "FitSettingsWindowToEditModeView",
+	},
+	-- Setup Wizard decision steps (SetupWizard.lua).
+	wizard = {
+		scrollFrame = "wizardScrollFrame",
+		panel = "wizardPanel",
+		getOrCreate = "GetOrCreateWizardPanel",
+		refresh = "RefreshWizardPanel",
+		fit = "FitSettingsWindowToWizardView",
 	},
 }
 
@@ -1336,4 +1348,8 @@ end
 
 function ACAB:ShowEditModeView()
 	ShowWideView("editmode")
+end
+
+function ACAB:ShowSetupWizardView()
+	ShowWideView("wizard")
 end
