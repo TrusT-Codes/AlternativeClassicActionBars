@@ -11,6 +11,11 @@ local ACAB = AlternativeClassicActionBars
 
 ACAB.EXP_BAR_FRAME_NAME = "MainMenuExpBar"
 
+-- Blocks native re-shows (e.g. quest turn-in XP updates) while the Experience Bar is disabled.
+ACAB:InstallShowGuard(getglobal(ACAB.EXP_BAR_FRAME_NAME), function()
+	return ACABDB and ACABDB.expBarEnabled ~= false
+end)
+
 -- Owns the native "XP current / max" FontString (there is no MainMenuExpText global on this client).
 ACAB.EXP_OVERLAY_FRAME_NAME = "MainMenuBarOverlayFrame"
 
