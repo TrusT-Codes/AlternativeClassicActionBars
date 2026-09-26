@@ -26,6 +26,7 @@
 - Fix styled Stance Bar's Reset to Vanilla Layout sizing it for 10 stances instead of your actual forms.
 - Fix `/acab profile copy/import/export` overwriting the locked Default profile - now refused in chat.
 - Fix a profile deleted on one character being recreated with defaults on another - now falls back to Default.
+- Fix disabled Experience Bar reappearing on quest turn-in, level-up or other XP updates.
 - Fix early XP/rest events on login touching settings before the profile loaded (errors on fresh installs).
 - Fix hoverbind saving other buttons' temporary stance-swap keybinds, leaving native keys unbound after relog.
 - Fix Extra Bars' action slots overlapping after shrinking a bar.
