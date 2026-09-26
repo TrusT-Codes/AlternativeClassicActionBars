@@ -218,8 +218,13 @@ function ACAB:ApplyBlizzardArtVisibility()
 
 	self:EnsureDB()
 
-	artFrame:SetFrameStrata("MEDIUM")
+	artFrame:SetFrameStrata("LOW")
 	artFrame:SetFrameLevel(5)
+
+	-- MainMenuBar is MEDIUM and mouse-enabled; it swallows clicks meant for the LOW-strata bars below it.
+	if MainMenuBar then
+		MainMenuBar:EnableMouse(false)
+	end
 
 	-- Re-asserted with the art's own strata/level.
 	self:ApplyPageIndicatorStrata()
@@ -2322,7 +2327,8 @@ function ACAB:BuildChainAnchoredContainer(frameName, buttons)
 	end
 
 	local container = CreateFrame("Frame", frameName, UIParent)
-	container:SetFrameStrata("HIGH")
+	container:SetFrameStrata("LOW")
+	container:SetFrameLevel(10)
 
 	for i = 1, table.getn(buttons) do
 		buttons[i]:SetParent(container)
