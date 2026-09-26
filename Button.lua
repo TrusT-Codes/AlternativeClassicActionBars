@@ -190,7 +190,7 @@ function ACABButtonMixin:Init(parent, actionSlot, slotIndex)
 	self.isStanceSlot = parent.config and parent.config.isStanceBar and true or false
 
 	-- Set explicitly; strata inheritance from the parent bar isn't relied on.
-	self:SetFrameStrata("HIGH")
+	self:SetFrameStrata("LOW")
 
 	-- Default bars (1-5): native binding action name (e.g. ACTIONBUTTON1) is the button's home binding identity.
 	if parent.config and (parent.config.fixedActionSlots or parent.config.dynamicDefaultBar) and slotIndex then
@@ -271,7 +271,7 @@ function ACABButtonMixin:Init(parent, actionSlot, slotIndex)
 
 			nativeModel:SetParent(self)
 			AnchorAutoCastModel(self, nativeModel)
-			nativeModel:SetFrameStrata("HIGH")
+			nativeModel:SetFrameStrata("LOW")
 			nativeModel:SetFrameLevel(self:GetFrameLevel())
 
 			-- Never call :SetModel() on this frame again (resets it to a blank white plane); resize via SetModelScale.
@@ -289,8 +289,8 @@ function ACABButtonMixin:Init(parent, actionSlot, slotIndex)
 	self.cooldown:SetPoint("TOPLEFT", self, "TOPLEFT", 2, -2)
 	self.cooldown:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", -2, 2)
 
-	-- Must match the button's HIGH strata, or the swipe defaults to MEDIUM and renders behind the icon.
-	self.cooldown:SetFrameStrata("HIGH")
+	-- Must match the button's LOW strata, or the swipe defaults to MEDIUM and covers bags.
+	self.cooldown:SetFrameStrata("LOW")
 	self.cooldown:SetFrameLevel(self:GetFrameLevel() + 1)
 
 	ApplyButtonBackdrop(self)

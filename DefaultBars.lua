@@ -218,8 +218,13 @@ function ACAB:ApplyBlizzardArtVisibility()
 
 	self:EnsureDB()
 
-	artFrame:SetFrameStrata("MEDIUM")
+	artFrame:SetFrameStrata("LOW")
 	artFrame:SetFrameLevel(5)
+
+	-- MainMenuBar is MEDIUM and mouse-enabled; it swallows clicks meant for the LOW-strata bars below it.
+	if MainMenuBar then
+		MainMenuBar:EnableMouse(false)
+	end
 
 	-- Re-asserted with the art's own strata/level.
 	self:ApplyPageIndicatorStrata()
@@ -520,6 +525,7 @@ end
 --   pixelCorrection: {x, y} screen-pixel nudge on the vanilla offset (+ right/up), scaled with Main Bar.
 --   pixelNudgeY: whole physical pixels added to the final grouped Y, unscaled (+ up).
 --   capture(): lazily captures the element's saved/native position before it's read.
+--   getNativeTopLeft(): session snapshot of the native TOPLEFT, used instead of resolving the native anchor live.
 --   applyScale(frame, scale): sets the element's grouped scale (and shape) before it's anchored.
 --   applyUngrouped(): restores the element's own saved scale/position.
 local GROUPABLE_ELEMENTS = {
@@ -556,6 +562,14 @@ local GROUPABLE_ELEMENTS = {
 		hoverOnlyField = "keyRingHoverOnly",
 		hoverDurationField = "keyRingHoverDuration",
 		capture = function() ACAB:CaptureKeyRingPositionIfNeeded() end,
+		-- Its native anchor is Bag Bar's CharacterBag3Slot, which the grouped Bag Bar itself moves.
+		getNativeTopLeft = function()
+			local p = ACAB.keyRingNativeTopLeft
+
+			if p then
+				return p.x, p.y
+			end
+		end,
 		getFrame = function() return getglobal(ACAB.KEYRING_BUTTON_NAME) end,
 		applyScale = function(frame, scale) ACAB:ApplyKeyRingStrataAndScale(frame, scale) end,
 		applyUngrouped = function() ACAB:SetKeyRingScale(ACABDB.keyRingScale or 1) end,
@@ -694,7 +708,15 @@ local function GetGroupedElementBaseline(element, frame)
 		return nil
 	end
 
-	local left, top = ResolveNativeTopLeft(native, frame)
+	local left, top
+
+	if element.getNativeTopLeft then
+		left, top = element.getNativeTopLeft()
+	end
+
+	if not left then
+		left, top = ResolveNativeTopLeft(native, frame)
+	end
 
 	if not left or not top then
 		return nil
@@ -1682,16 +1704,16 @@ function ACAB:SetDefaultBarEnabled(id, enabled)
 		end
 	end
 
-	if id == 2 and enabled ~= wasEnabled and ACABDB.useDefaultLayout ~= false then
+	if id == 2 and enabled ~= wasEnabled and self:IsVanillaStackingActive() then
 		self:ReflowStanceBarForBar2Toggle(enabled)
 	end
 
-	if id == 3 and enabled ~= wasEnabled and ACABDB.useDefaultLayout ~= false then
+	if id == 3 and enabled ~= wasEnabled and self:IsVanillaStackingActive() then
 		self:ReflowPetBarForBar3Toggle(enabled)
 	end
 
 	-- Cast Bar independently stacks above an actually-shown Pet Bar (GetCastBarBaselineY, NativeElements.lua).
-	if id == self.PET_BAR_ID and ACABDB.useDefaultLayout ~= false and self.ReflowCastBarForStackToggle then
+	if id == self.PET_BAR_ID and self:IsVanillaStackingActive() and self.ReflowCastBarForStackToggle then
 		self:ReflowCastBarForStackToggle()
 	end
 
@@ -2305,7 +2327,8 @@ function ACAB:BuildChainAnchoredContainer(frameName, buttons)
 	end
 
 	local container = CreateFrame("Frame", frameName, UIParent)
-	container:SetFrameStrata("HIGH")
+	container:SetFrameStrata("LOW")
+	container:SetFrameLevel(10)
 
 	for i = 1, table.getn(buttons) do
 		buttons[i]:SetParent(container)

@@ -938,6 +938,12 @@ function ACAB:IsStanceBarNativeModeEffective()
 	return cfg and cfg.useNativeStanceBar == true
 end
 
+-- True while Stance/Pet/Cast Bar restack on Action Bar 1/2 and Extra Bar 1/2 toggles: Force Vanilla Layout Mode,
+-- or a profile set up from the Vanilla layout (ACABDB.vanillaLayoutStacking).
+function ACAB:IsVanillaStackingActive()
+	return ACABDB ~= nil and (ACABDB.useDefaultLayout ~= false or ACABDB.vanillaLayoutStacking == true)
+end
+
 -- Live GetNumShapeshiftForms() count, clamped to MAX_STANCE_BUTTONS (DefaultBars.lua; runtime calls only).
 function ACAB:GetClampedLiveStanceCount()
 	local liveCount = GetNumShapeshiftForms and GetNumShapeshiftForms() or 0
@@ -1079,9 +1085,9 @@ function ACAB:IsEditMode()
 	return ACABDB and ACABDB.editMode == true
 end
 
--- The Default profile can never be edited.
+-- True while a built-in profile (Default Vanilla / Default Modern) is active; those can never be edited.
 function ACAB:IsDefaultProfileActive()
-	return not ACABCharDB or ACABCharDB.activeProfile == self.DEFAULT_PROFILE_NAME
+	return not ACABCharDB or self:IsBuiltInProfileName(ACABCharDB.activeProfile)
 end
 
 -- Wraps a modifier-key name in the same color as the chat prefix.
@@ -1108,7 +1114,7 @@ function ACAB:SetEditMode(enabled)
 	enabled = enabled and true or false
 
 	if enabled and self:IsDefaultProfileActive() then
-		self:Print("Edit Layout mode is disabled while the Default profile is active. Switch to another profile (Settings > Profiles) to edit your bar layout.")
+		self:Print("Edit Layout mode is disabled while a built-in Default profile is active. Switch to another profile (Settings > Profiles) to edit your bar layout.")
 		return
 	end
 
@@ -1127,6 +1133,15 @@ function ACAB:SetEditMode(enabled)
 	end
 
 	PrintEditModeState(enabled)
+
+	-- The Setup Wizard's "Drag Elements with Mouse" hid the settings window; bring it back.
+	if not enabled and self.reopenSetupWizardAfterEditMode then
+		self.reopenSetupWizardAfterEditMode = nil
+
+		if self:IsSetupWizardActive() then
+			self:ShowSettingsFrame()
+		end
+	end
 end
 
 function ACAB:ToggleEditMode()
@@ -1659,6 +1674,7 @@ function ACAB:RunLoginSequence(earlyLeft, earlyTop, settledLeft, settledTop, wai
 
 	-- Must run before CreateFixedSlotDefaultBars/CreateBagBarAndMicroMenu move these frames, or capture reads moved spots.
 	ACAB:CaptureKeyRingPositionIfNeeded()
+	ACAB:CaptureKeyRingNativeTopLeft()
 	ACAB:CaptureLatencyBarPositionIfNeeded()
 	ACAB:CaptureExpBarPositionIfNeeded()
 	ACAB:CaptureCastBarPositionIfNeeded()
@@ -1751,13 +1767,23 @@ function ACAB:RunLoginSequence(earlyLeft, earlyTop, settledLeft, settledTop, wai
 	-- Must run after Main Bar and every element above are positioned.
 	ACAB:ApplyMainBarGroupedElements()
 
+	-- Must run after every element above is built and positioned; reloads once it's done.
+	local baselinePending = ACAB:ApplyPendingLayoutBaseline()
+
+	ACAB:EnsureModernBaseProfile()
+
 	ACAB:CreateMinimapButton()
 
 	ACAB:Print("Fully initialized! Click the minimap button or use /acab for options.")
 
 	ACAB:CheckForUpdates()
 
-	if ACAB.pendingFirstLoginDialog then
+	-- A pending baseline reloads shortly; the wizard resumes after that reload.
+	if baselinePending then
+		ACAB.pendingFirstLoginDialog = nil
+	elseif ACAB:ResumeSetupWizardIfPending() then
+		ACAB.pendingFirstLoginDialog = nil
+	elseif ACAB.pendingFirstLoginDialog then
 		ACAB.pendingFirstLoginDialog = nil
 		ACAB:ShowFirstLoginDialog()
 	end
@@ -1824,6 +1850,11 @@ function ACAB:OpenSettingsPageByName(name)
 
 	self:ShowSettingsFrame()
 
+	-- The running Setup Wizard owns the settings window's page.
+	if self:IsSetupWizardActive() then
+		return
+	end
+
 	if target.view == "general" then
 		self:ShowGeneralView()
 	elseif target.view == "profiles" then
@@ -1869,10 +1900,10 @@ function ACAB:HandleProfileCommand(rest)
 
 	subcommand = string.lower(subcommand or "")
 
-	-- Mirrors the Profiles tab hiding Export/Copy/Import on Default.
+	-- Mirrors the Profiles tab hiding Export/Copy/Import on the built-in profiles.
 	if (subcommand == "copy" or subcommand == "import" or subcommand == "export")
 		and self:IsDefaultProfileActive() then
-		self:Print("The Default profile cannot be copied, imported or exported. Switch to or create another profile first (" .. ColorKeyName("/acab profile add <name>") .. ").")
+		self:Print("The built-in Default profiles cannot be copied, imported or exported. Switch to or create another profile first (" .. ColorKeyName("/acab profile add <name>") .. ").")
 		return
 	end
 
@@ -1910,8 +1941,8 @@ function ACAB:HandleProfileCommand(rest)
 			return
 		end
 
-		if arg == self.DEFAULT_PROFILE_NAME then
-			self:Print("The Default profile cannot be deleted.")
+		if self:IsBuiltInProfileName(arg) then
+			self:Print("The built-in \"" .. arg .. "\" profile cannot be deleted.")
 			return
 		end
 
@@ -1983,6 +2014,7 @@ local function PrintCommandHelp()
 	ACAB:Print("  pages: general, bars, profiles, editmode, main, 1-9/extra1-4, pet, stance, bags, keyring, micro, latency, exp, cast, tooltip")
 	ACAB:Print(ColorKeyName("/acab profile") .. " - show current profile and profile commands")
 	ACAB:Print(ColorKeyName("/acab recapture") .. " - force a fresh capture of default bar native anchors")
+	ACAB:Print(ColorKeyName("/acab version") .. " - show the installed addon version")
 	ACAB:Print(ColorKeyName("/acab help") .. " - show this list")
 end
 
@@ -2020,6 +2052,8 @@ SlashCmdList["ACAB"] = function(msg)
 		end
 
 		ACAB:RecaptureWrappedNativeFrameAnchors()
+	elseif command == "version" then
+		ACAB:Print("Version " .. ACAB.currentVersion)
 	elseif command == "help" then
 		PrintCommandHelp()
 	else
