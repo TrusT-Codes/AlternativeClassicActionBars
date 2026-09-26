@@ -37,6 +37,7 @@
 - Fix Tooltip scale sticking to button and settings tooltips.
 - Fix a click without moving dropping Page Indicator's follow-Main-Bar mode with snapping on.
 - Fix the Main Bar art-dropdown highlight flickering on repeated clicks.
+- Fix open bags hiding behind action bars, buttons, Bag Bar, Micro Menu, Key Ring and Page Indicator - bags now draw on top.
 
 ## 1.1.1-beta
 
