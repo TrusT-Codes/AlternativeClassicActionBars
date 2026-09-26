@@ -31,7 +31,7 @@ local function InitializeMenu()
 		info.tooltipWhileDisabled = 1
 		info.tooltipOnButton = 1
 		info.tooltipTitle = "Configure Layout"
-		info.tooltipText = "A profile other than the Default profile needs to be active to use Edit Layout mode."
+		info.tooltipText = "A profile other than the built-in Default profiles needs to be active to use Edit Layout mode."
 	end
 
 	UIDropDownMenu_AddButton(info)

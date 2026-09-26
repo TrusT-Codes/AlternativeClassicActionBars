@@ -74,6 +74,10 @@ end
 -- Width reserved beside a content viewport while its scrollbar is shown.
 local SETTINGS_SCROLLBAR_RESERVED_WIDTH = 28
 
+-- Left sidebar (bar list / Setup Wizard step list) width and its gap to the content viewport.
+ACAB.SETTINGS_SIDEBAR_WIDTH = 140
+ACAB.SETTINGS_SIDEBAR_GAP = 2
+
 -- Profile-lock banner's Y offset below contentPanel's top.
 local PROFILE_LOCK_BANNER_TOP = -34
 
@@ -445,6 +449,10 @@ local function ApplyPanelBackdrop(frame)
 	frame:SetBackdropColor(0, 0, 0, 0.3)
 end
 
+function ACAB:ApplySettingsPanelBackdrop(frame)
+	ApplyPanelBackdrop(frame)
+end
+
 -- Builds the settings window shell; every GetOrCreate*Page/Panel builder creates it lazily through here.
 function ACAB:CreateSettingsFrame()
 	local f = CreateFrame("Frame", "ACABSettingsFrame", UIParent)
@@ -472,6 +480,8 @@ function ACAB:CreateSettingsFrame()
 	title:SetPoint("TOP", f, "TOP", 0, -16)
 	title:SetText("AlternativeClassicActionBars Settings")
 
+	f.titleText = title
+
 	-------------------------------------------------------------------------
 	-- Close
 	-------------------------------------------------------------------------
@@ -480,9 +490,17 @@ function ACAB:CreateSettingsFrame()
 
 	closeButton:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
 
+	-- The Setup Wizard's X cancels the wizard instead of only hiding the window.
 	closeButton:SetScript("OnClick", function()
+		if f.wizardMode then
+			ACAB:CancelSetupWizard()
+			return
+		end
+
 		f:Hide()
 	end)
+
+	f.closeButton = closeButton
 
 	-------------------------------------------------------------------------
 	-- Top-level view tabs (Bars / General / Profiles / Edit Mode)
@@ -643,7 +661,8 @@ function ACAB:CreateSettingsFrame()
 	local BARS_VIEW_TOP = -64
 
 	local function ApplyBarsViewScrollbarReserves()
-		local leftReserve = f.listPanel.needsScrollbar and SETTINGS_SCROLLBAR_RESERVED_WIDTH or 0
+		-- The Setup Wizard's step list replaces the bar list, which never scrolls there.
+		local leftReserve = (f.listPanel.needsScrollbar and not f.wizardMode) and SETTINGS_SCROLLBAR_RESERVED_WIDTH or 0
 		local rightReserve = f.contentScrollFrame.needsScrollbar and SETTINGS_SCROLLBAR_RESERVED_WIDTH or 0
 
 		f.listPanel:ClearAllPoints()
@@ -665,6 +684,7 @@ function ACAB:CreateSettingsFrame()
 
 	f.listPanel.applyScrollbarReserve = ApplyBarsViewScrollbarReserves
 	f.contentScrollFrame.applyScrollbarReserve = ApplyBarsViewScrollbarReserves
+	f.applyBarsViewScrollbarReserves = ApplyBarsViewScrollbarReserves
 
 	ApplyBarsViewScrollbarReserves()
 
@@ -691,11 +711,16 @@ function ACAB:CreateWideContentScrollFrame(name)
 	scrollFrame:SetHeight(610)
 
 	-- Sized from settingsFrame:GetWidth() (a fixed literal), not anchors, which may not be resolved yet.
-	-- Reserves scrollbar width only while the scrollbar is shown.
+	-- Reserves scrollbar width only while the scrollbar is shown, and the step list's width in the Setup Wizard.
 	scrollFrame.applyScrollbarReserve = function()
 		local reserve = scrollFrame.needsScrollbar and SETTINGS_SCROLLBAR_RESERVED_WIDTH or 0
+		local sidebar = 0
 
-		scrollFrame:SetWidth(ACAB.settingsFrame:GetWidth() - 18 - 18 - reserve)
+		if ACAB.settingsFrame.wizardMode then
+			sidebar = ACAB.SETTINGS_SIDEBAR_WIDTH + ACAB.SETTINGS_SIDEBAR_GAP
+		end
+
+		scrollFrame:SetWidth(ACAB.settingsFrame:GetWidth() - 18 - 18 - reserve - sidebar)
 
 		scrollFrame:ClearAllPoints()
 		scrollFrame:SetPoint("TOPRIGHT", ACAB.settingsFrame, "TOPRIGHT", -18 - reserve, -64)
@@ -1038,9 +1063,18 @@ end
 -- Dynamic window height: sized to the measured bottom edge of the controls actually shown.
 -------------------------------------------------------------------------
 
--- Window chrome above and below the content viewports.
+-- Window chrome above and below the content viewports; the Setup Wizard adds its Back/Next row below.
 local SETTINGS_CHROME_TOP = 64
 local SETTINGS_CHROME_BOTTOM = 18
+local SETTINGS_WIZARD_CHROME_BOTTOM = 60
+
+local function GetSettingsChromeBottom()
+	if ACAB.settingsFrame and ACAB.settingsFrame.wizardMode then
+		return SETTINGS_WIZARD_CHROME_BOTTOM
+	end
+
+	return SETTINGS_CHROME_BOTTOM
+end
 
 -- Minimum content height (unless noMinFloor).
 local SETTINGS_CONTENT_MIN_HEIGHT = 260
@@ -1167,6 +1201,13 @@ local function ApplySettingsHeightFromCandidates(candidateList, scrollFrame, scr
 		sharedRequirement = minContentHeight
 	end
 
+	-- The Setup Wizard's step list shares the viewport height and must fit every row.
+	local stepList = ACAB.settingsFrame.wizardMode and ACAB.settingsFrame.wizardStepList
+
+	if stepList and stepList.requiredHeight and sharedRequirement < stepList.requiredHeight then
+		sharedRequirement = stepList.requiredHeight
+	end
+
 	if not noMinFloor and sharedRequirement < SETTINGS_CONTENT_MIN_HEIGHT then
 		sharedRequirement = SETTINGS_CONTENT_MIN_HEIGHT
 	end
@@ -1179,7 +1220,7 @@ local function ApplySettingsHeightFromCandidates(candidateList, scrollFrame, scr
 
 	-- Viewport is capped to a screen-relative max; content height stays unclamped for scrolling.
 	local maxViewportHeight = (GetScreenHeight() * SETTINGS_MAX_HEIGHT_RATIO)
-		- SETTINGS_CHROME_TOP - SETTINGS_CHROME_BOTTOM
+		- SETTINGS_CHROME_TOP - GetSettingsChromeBottom()
 
 	local viewportHeight = sharedRequirement
 
@@ -1207,8 +1248,12 @@ local function ApplySettingsHeightFromCandidates(candidateList, scrollFrame, scr
 		ACAB.settingsFrame.listPanel:SetHeight(viewportHeight)
 	end
 
+	if ACAB.settingsFrame.wizardStepList then
+		ACAB.settingsFrame.wizardStepList:SetHeight(viewportHeight)
+	end
+
 	ACAB.settingsFrame:SetHeight(
-		viewportHeight + SETTINGS_CHROME_TOP + SETTINGS_CHROME_BOTTOM
+		viewportHeight + SETTINGS_CHROME_TOP + GetSettingsChromeBottom()
 	)
 
 	return measuredContentHeight
@@ -1290,11 +1335,13 @@ function ACAB:FitSettingsWindowToBarPage(barId)
 
 	n = AppendCandidate(candidates, n, page.useVanillaStanceBarCheckbox)
 
-	-- Bar-list rows, measured separately since the sidebar scrolls independently.
-	local listCandidates = {}
+	-- Bar-list rows, measured separately since the sidebar scrolls independently (hidden in the Setup Wizard).
+	local listCandidates = nil
 	local listN = 0
 
-	if ACAB.settingsFrame.barButtons then
+	if ACAB.settingsFrame.barButtons and not ACAB.settingsFrame.wizardMode then
+		listCandidates = {}
+
 		local i
 
 		for i = 1, table.getn(ACAB.settingsFrame.barButtons) do
@@ -1355,6 +1402,36 @@ function ACAB:FitSettingsWindowToGeneralView()
 	ApplySettingsHeightFromCandidates(candidates, ACAB.settingsFrame.generalScrollFrame, panel)
 end
 
+-- Setup Wizard decision steps: shrink-to-fit the shown step's direct children and regions.
+function ACAB:FitSettingsWindowToWizardView()
+	if not ACAB.settingsFrame or not ACAB.settingsFrame.wizardPanel then
+		return
+	end
+
+	local panel = ACAB.settingsFrame.wizardPanel
+	local step = panel.activeStep
+
+	if not step then
+		return
+	end
+
+	local candidates = {}
+	local n = 0
+	local widgets = { step:GetChildren() }
+	local regions = { step:GetRegions() }
+	local i
+
+	for i = 1, table.getn(widgets) do
+		n = AppendCandidate(candidates, n, widgets[i])
+	end
+
+	for i = 1, table.getn(regions) do
+		n = AppendCandidate(candidates, n, regions[i])
+	end
+
+	ApplySettingsHeightFromCandidates(candidates, ACAB.settingsFrame.wizardScrollFrame, panel, nil, nil, true)
+end
+
 -- Profiles view: shrink-to-fit (no minimum height floor).
 function ACAB:FitSettingsWindowToProfilesView()
 	if not ACAB.settingsFrame or not ACAB.settingsFrame.profilesPanel then
@@ -1404,6 +1481,13 @@ end
 function ACAB:ShowSettingsFrame()
 	if not ACAB.settingsFrame then
 		ACAB:CreateSettingsFrame()
+	end
+
+	-- The running Setup Wizard re-shows its own current step.
+	if ACAB.settingsFrame.wizardMode then
+		ACAB.settingsFrame:Show()
+		self:ShowSetupWizardCurrentStep()
+		return
 	end
 
 	self:RefreshBarList()
