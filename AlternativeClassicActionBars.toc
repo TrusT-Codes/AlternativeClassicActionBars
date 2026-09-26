@@ -2,7 +2,7 @@
 ## Title: |cff99051bA|cfffffffflternative|cff99051bC|cfffffffflassic|cff99051bA|cffffffffction|cff99051bB|cffffffffars
 ## Notes: Action bar addon to keep Vanilla-Styled Bars / Menus with more functionality + extra Bars
 ## Author: Trusty
-## Version: 1.2.0-beta
+## Version: 1.2.1-beta
 ## SavedVariables: ACABDB, ACABProfilesDB
 ## SavedVariablesPerCharacter: ACABCharDB
 
