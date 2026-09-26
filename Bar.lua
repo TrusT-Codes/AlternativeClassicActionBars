@@ -971,8 +971,8 @@ function ACAB:ApplyBarShape(bar)
 
 	self:PixelSetSize(bar, barW, barH)
 
-	-- Re-asserted every call, or a native page/stance swap can re-level Bar 1 behind the art frame.
-	bar:SetFrameStrata("HIGH")
+	-- Re-asserted every call, or a native page/stance swap can re-level Bar 1 behind the art frame (art is LOW level 5).
+	bar:SetFrameStrata("LOW")
 	bar:SetFrameLevel(10)
 
 	self:LayoutButtons(bar)
@@ -1006,8 +1006,8 @@ function ACAB:CreateBarFromConfig(cfg)
 		UIParent
 	)
 
-	-- Must stay HIGH, not MEDIUM: MainMenuBarArtFrame's :Raise() on click would otherwise cover the bar.
-	bar:SetFrameStrata("HIGH")
+	-- Must stay LOW, below bags (MEDIUM); art frame is LOW level 5 so it stays under the bar.
+	bar:SetFrameStrata("LOW")
 	bar:SetFrameLevel(10)
 
 	self:PixelSetSize(bar, barW, barH)
