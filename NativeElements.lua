@@ -522,9 +522,10 @@ function ACAB:CaptureKeyRingNativeTopLeft()
 	}
 end
 
--- Reasserts KeyRingButton's HIGH strata and sets its effective scale, cancelling the scale inherited from MainMenuBarArtFrame.
+-- Reasserts KeyRingButton's LOW strata/level (above art frame) and sets its effective scale, cancelling the scale inherited from MainMenuBarArtFrame.
 function ACAB:ApplyKeyRingStrataAndScale(frame, scale)
-	frame:SetFrameStrata("HIGH")
+	frame:SetFrameStrata("LOW")
+	frame:SetFrameLevel(10)
 	self:SetKeyRingOwnScaleForEffective(frame, scale)
 end
 
@@ -1142,7 +1143,7 @@ function ACAB:CreatePageIndicatorContainer()
 	end
 
 	local container = CreateFrame("Frame", "ACABPageIndicatorContainer", UIParent)
-	container:SetFrameStrata("HIGH")
+	container:SetFrameStrata("LOW")
 
 	-- Container spans the untrimmed hit-rects; the edit-mode overlay is trimmed to the visible art.
 	local upInsetL, upInsetR, upInsetT, upInsetB = self:GetHitInsets(up)
@@ -1301,16 +1302,16 @@ function ACAB:ApplyPageIndicatorStrata()
 		return
 	end
 
-	container:SetFrameStrata("HIGH")
+	container:SetFrameStrata("LOW")
 	container:SetFrameLevel(11)
 
 	if self.pageIndicatorUp then
-		self.pageIndicatorUp:SetFrameStrata("HIGH")
+		self.pageIndicatorUp:SetFrameStrata("LOW")
 		self.pageIndicatorUp:SetFrameLevel(12)
 	end
 
 	if self.pageIndicatorDown then
-		self.pageIndicatorDown:SetFrameStrata("HIGH")
+		self.pageIndicatorDown:SetFrameStrata("LOW")
 		self.pageIndicatorDown:SetFrameLevel(12)
 	end
 end
