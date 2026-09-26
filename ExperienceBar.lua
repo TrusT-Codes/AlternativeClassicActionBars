@@ -249,7 +249,21 @@ end
 -- Both native baselines are captured lazily from the live frames, not seeded in EnsureDB.
 -------------------------------------------------------------------------
 
--- Captures the earned/rested colors and their permanent native snapshots once.
+-- Better Experience Bar's default overlay text size.
+ACAB.EXP_BAR_DEFAULT_FONT_SIZE = 10
+
+-- Better Experience Bar's default earned fill (#a40aa4).
+ACAB.EXP_BAR_DEFAULT_COLOR_EARNED = { r = 164 / 255, g = 10 / 255, b = 164 / 255 }
+
+local function CopyColor(color)
+	return { r = color.r, g = color.g, b = color.b }
+end
+
+local function ColorsMatch(a, b)
+	return math.abs(a.r - b.r) < 0.002 and math.abs(a.g - b.g) < 0.002 and math.abs(a.b - b.b) < 0.002
+end
+
+-- Captures the native earned/rested colors once; the custom earned color starts at EXP_BAR_DEFAULT_COLOR_EARNED.
 function ACAB:CaptureExpBarColorsIfNeeded()
 	self:EnsureDB()
 
@@ -261,19 +275,26 @@ function ACAB:CaptureExpBarColorsIfNeeded()
 			r, g, b = frame:GetStatusBarColor()
 		end
 
-		-- Fallback purple if the live frame isn't available yet.
-		ACABDB.expBarColorEarned = {
+		-- Permanent pristine snapshot of the native fill (fallback purple if the live frame isn't available yet);
+		-- captured once, never rewritten.
+		ACABDB.expBarNativeColorEarned = {
 			r = r or 0.58,
 			g = g or 0.0,
 			b = b or 0.55,
 		}
 
-		-- Permanent pristine snapshot for "Reset Colors to Default"; captured once, never rewritten.
-		ACABDB.expBarNativeColorEarned = {
-			r = ACABDB.expBarColorEarned.r,
-			g = ACABDB.expBarColorEarned.g,
-			b = ACABDB.expBarColorEarned.b,
-		}
+		ACABDB.expBarColorEarned = CopyColor(self.EXP_BAR_DEFAULT_COLOR_EARNED)
+	end
+
+	-- One-shot: moves a never-customized earned color (still the native snapshot) to the new default. Never reset.
+	if not ACABDB.expBarDefaultEarnedColorMigrated then
+		ACABDB.expBarDefaultEarnedColorMigrated = true
+
+		local native = ACABDB.expBarNativeColorEarned
+
+		if native and ColorsMatch(ACABDB.expBarColorEarned, native) then
+			ACABDB.expBarColorEarned = CopyColor(self.EXP_BAR_DEFAULT_COLOR_EARNED)
+		end
 	end
 
 	if not ACABDB.expBarColorRested then
@@ -344,20 +365,13 @@ function ACAB:SetExpBarColorRested(r, g, b)
 	self:ApplyExpBarColors()
 end
 
--- "Reset Colors to Default": copies the native snapshots back into the custom colors.
+-- "Reset Colors to Default": earned back to EXP_BAR_DEFAULT_COLOR_EARNED, rested back to its native snapshot.
 function ACAB:ResetExpBarColors()
 	self:CaptureExpBarColorsIfNeeded()
 
-	local nativeEarned = ACABDB.expBarNativeColorEarned
 	local nativeRested = ACABDB.expBarNativeColorRested
 
-	if nativeEarned then
-		ACABDB.expBarColorEarned = {
-			r = nativeEarned.r,
-			g = nativeEarned.g,
-			b = nativeEarned.b,
-		}
-	end
+	ACABDB.expBarColorEarned = CopyColor(self.EXP_BAR_DEFAULT_COLOR_EARNED)
 
 	if nativeRested then
 		ACABDB.expBarColorRested = {
@@ -823,12 +837,8 @@ function ACAB:ApplyBetterExpBarVisual()
 
 		local fontPath, fontSize = text:GetFont()
 
-		-- Saved size, else one below the native size; always OUTLINE.
-		local applySize = ACABDB.expBarFontSize
-
-		if not applySize and self.NATIVE_EXPBAR_FONT then
-			applySize = self.NATIVE_EXPBAR_FONT.size - 1
-		end
+		-- Saved size, else EXP_BAR_DEFAULT_FONT_SIZE; always OUTLINE.
+		local applySize = ACABDB.expBarFontSize or self.EXP_BAR_DEFAULT_FONT_SIZE
 
 		if fontPath then
 			text:SetFont(fontPath, applySize or fontSize, "OUTLINE")
