@@ -1,9 +1,13 @@
 # Changelog
 
-## 1.2.0-beta
+## 1.2.1-beta
 
 ### Features
 
+- **New Setup Wizard:** now runs inside the Settings window and shows your real settings pages - every change applies live to your bars while you set up, no more preview-then-apply. Covers General, Main Bar, Extra Bars, Stance/Pet Bar, Bag Bar, Key Ring, Experience Bar and Tooltip, with a "Drag Elements with Mouse" button to jump into Edit Layout mode and back. Reloads mid-setup pick up right where you left off.
+- **New built-in profile "Default Modern"** (locked, like the renamed "Default Vanilla") - the baseline for the wizard's Modern layout.
+- Better Experience Bar gets a new default earned-XP color and text size, and starts enabled on wizard-built profiles.
+- Update checker now also listens on a hidden realm-wide channel and remembers the newest version it heard, so the update notice repeats every login until you update; `/acab version` shows your installed version.
 - **GryphON or GryphOFF:** With the new Gryphon / Background Settings Dropdown on Mainbar's Settings-Page you can decide if you want the Gryphons, just the background, or everything disabled for a more modern & clean look.
 - Blizzard's Main Bar art now moves and scales with Main Bar, in both Vanilla and Modern button style.
 - While the art is shown, Bag Bar, Key Ring, Micro Menu, Latency Bar and Page Indicator stay in their vanilla spots on Main Bar; unlock any of them via its lock icon (settings page or Edit Layout mode) to move it freely.
@@ -17,10 +21,12 @@
 
 ### Bugfixes
 
+- Fix update checker never alerting older clients: newer clients now answer older peers' version announcements.
 - Fix Setup Wizard's "Keep Vanilla Layout" turning Page/Stance Swap back on after you disabled them.
 - Fix styled Stance Bar's Reset to Vanilla Layout sizing it for 10 stances instead of your actual forms.
 - Fix `/acab profile copy/import/export` overwriting the locked Default profile - now refused in chat.
 - Fix a profile deleted on one character being recreated with defaults on another - now falls back to Default.
+- Fix disabled Experience Bar reappearing on quest turn-in, level-up or other XP updates.
 - Fix early XP/rest events on login touching settings before the profile loaded (errors on fresh installs).
 - Fix hoverbind saving other buttons' temporary stance-swap keybinds, leaving native keys unbound after relog.
 - Fix Extra Bars' action slots overlapping after shrinking a bar.
@@ -32,6 +38,7 @@
 - Fix Tooltip scale sticking to button and settings tooltips.
 - Fix a click without moving dropping Page Indicator's follow-Main-Bar mode with snapping on.
 - Fix the Main Bar art-dropdown highlight flickering on repeated clicks.
+- Fix open bags hiding behind action bars, buttons, Bag Bar, Micro Menu, Key Ring and Page Indicator - bags now draw on top.
 
 ## 1.1.1-beta
 

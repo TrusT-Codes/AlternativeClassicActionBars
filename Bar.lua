@@ -752,7 +752,7 @@ function ACAB:SetBarPosition(bar, x, y, point, relativePoint)
 	if self:IsExtraBarId(bar.config.id) and bar.config.usesDefaultPosition ~= false then
 		bar.config.usesDefaultPosition = false
 
-		if ACABDB.useDefaultLayout ~= false then
+		if self:IsVanillaStackingActive() then
 			self:ReflowExtraBarDependants(bar.config.id)
 		end
 	end
@@ -971,8 +971,8 @@ function ACAB:ApplyBarShape(bar)
 
 	self:PixelSetSize(bar, barW, barH)
 
-	-- Re-asserted every call, or a native page/stance swap can re-level Bar 1 behind the art frame.
-	bar:SetFrameStrata("HIGH")
+	-- Re-asserted every call, or a native page/stance swap can re-level Bar 1 behind the art frame (art is LOW level 5).
+	bar:SetFrameStrata("LOW")
 	bar:SetFrameLevel(10)
 
 	self:LayoutButtons(bar)
@@ -1006,8 +1006,8 @@ function ACAB:CreateBarFromConfig(cfg)
 		UIParent
 	)
 
-	-- Must stay HIGH, not MEDIUM: MainMenuBarArtFrame's :Raise() on click would otherwise cover the bar.
-	bar:SetFrameStrata("HIGH")
+	-- Must stay LOW, below bags (MEDIUM); art frame is LOW level 5 so it stays under the bar.
+	bar:SetFrameStrata("LOW")
 	bar:SetFrameLevel(10)
 
 	self:PixelSetSize(bar, barW, barH)
@@ -1146,7 +1146,7 @@ function ACAB:ResetExtraBarLayout(barId)
 	-- SetBarPosition cleared it; restore so dependants resettle.
 	bar.config.usesDefaultPosition = true
 
-	if ACABDB.useDefaultLayout ~= false then
+	if self:IsVanillaStackingActive() then
 		self:ReflowExtraBarDependants(barId)
 	end
 end
@@ -1216,8 +1216,8 @@ function ACAB:SetExtraBarEnabled(barId, enabled)
 		bar:Hide()
 	end
 
-	-- A default-positioned Extra Bar counts toward Stance/Pet/Cast Bar's stack in Default Layout mode.
-	if enabled ~= wasEnabled and ACABDB.useDefaultLayout ~= false
+	-- A default-positioned Extra Bar counts toward Stance/Pet/Cast Bar's stack while vanilla stacking is active.
+	if enabled ~= wasEnabled and self:IsVanillaStackingActive()
 		and bar.config.usesDefaultPosition ~= false then
 		self:ReflowExtraBarDependants(barId)
 	end
@@ -1268,7 +1268,7 @@ function ACAB:StopBarDrag(bar)
 	if bar.config and self:IsExtraBarId(bar.config.id) and bar.config.usesDefaultPosition ~= false then
 		bar.config.usesDefaultPosition = false
 
-		if ACABDB.useDefaultLayout ~= false then
+		if self:IsVanillaStackingActive() then
 			self:ReflowExtraBarDependants(bar.config.id)
 		end
 	end

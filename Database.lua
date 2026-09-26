@@ -435,7 +435,9 @@ local EXTRA_BAR_DEFAULT_REFERENCE = {
 	[3] = { refId = 5, side = "left",  pitchCount = 2 }, -- Extra Bar 4: left of Right Action Bar 2 (double pitch, i.e. left of Extra Bar 3).
 }
 
--- Extra Bar `index`'s default layout (seeding and ResetExtraBarLayout). Returns x, y, cols, rows, buttonSize, spacing.
+-- Extra Bar `index`'s default layout (seeding and ResetExtraBarLayout): the reference bar's size, spacing and grid,
+-- one bar pitch (its frame plus its own button gap) above/left of it. Reads the built reference bar's current
+-- config, else its Reset-to-Vanilla values. Returns TOPLEFT/BOTTOMLEFT x, y, cols, rows, buttonSize, spacing.
 function ACAB:GetDefaultExtraBarLayout(index)
 	local ref = EXTRA_BAR_DEFAULT_REFERENCE[index]
 	local refCfg = ref and ACABDB.defaultBars and ACABDB.defaultBars[ref.refId]
@@ -446,24 +448,52 @@ function ACAB:GetDefaultExtraBarLayout(index)
 		return x, y, self.BUTTON_COLS, self.BUTTON_ROWS, self:GetCurrentButtonSizeBaseline(), 0
 	end
 
-	local buttonSize = self.BUTTON_SIZE
-	local spacing = refCfg.nativeSpacing or refCfg.spacing or 0
-	local pitch = (buttonSize + spacing) * ref.pitchCount
+	local refBar = self.bars and self.bars[ref.refId]
+	local left, right, bottom, top
 
-	local x = refCfg.nativeAnchor.x
-	local y = refCfg.nativeAnchor.y
-
-	if ref.side == "above" then
-		y = y + pitch
-	elseif ref.side == "left" then
-		x = x - pitch
+	if refBar and refBar.config == refCfg and refCfg.buttonSize then
+		left, right, bottom, top = self:GetPositionFrameRect(refBar, refCfg, "TOPLEFT")
 	end
 
-	return x, y, grid.cols, grid.rows, buttonSize, spacing
+	local buttonSize, spacing, cols, rows
+
+	if left then
+		buttonSize = refCfg.buttonSize
+		spacing = refCfg.spacing or 0
+		cols = refCfg.cols or grid.cols
+		rows = refCfg.rows or grid.rows
+	else
+		-- Same values ResetDefaultBarLayout gives the reference bar (Modern style: corner shifted up-left).
+		local shift = self:IsVanillaBorderStyle() and 0 or self.MODERN_BUTTON_SIZE_POSITION_SHIFT
+
+		buttonSize = self:GetCurrentButtonSizeBaseline()
+		spacing = self:GetDefaultBarNativeSpacing(refCfg)
+		cols = grid.cols
+		rows = grid.rows
+
+		local width, height = self:GetBarFrameSize({ cols = cols, rows = rows, buttonCount = cols * rows, buttonSize = buttonSize, spacing = spacing })
+
+		left = refCfg.nativeAnchor.x - shift
+		top = refCfg.nativeAnchor.y + shift
+		right = left + width
+		bottom = top - height
+	end
+
+	local gap = self:GetBarEffectiveSpacing({ buttonSize = buttonSize, spacing = spacing })
+	local x = left
+	local y = top
+
+	if ref.side == "above" then
+		y = top + (((top - bottom) + gap) * ref.pitchCount)
+	elseif ref.side == "left" then
+		x = left - (((right - left) + gap) * ref.pitchCount)
+	end
+
+	return x, y, cols, rows, buttonSize, spacing
 end
 
--- Extra Bar's live height plus its reference-bar gap, for Stance/Pet/Cast Bar stacking. 0 if the bar is
--- missing, disabled, or moved off its default position.
+-- Extra Bar's live height plus its own button gap (the gap GetDefaultExtraBarLayout leaves below it), for
+-- Stance/Pet/Cast Bar stacking. 0 if the bar is missing, disabled, or moved off its default position.
 function ACAB:GetExtraBarStackPitch(extraBarId)
 	local bar = self.bars and self.bars[extraBarId]
 
@@ -472,12 +502,7 @@ function ACAB:GetExtraBarStackPitch(extraBarId)
 		return 0
 	end
 
-	local index = extraBarId - self.EXTRA_BAR_ID_START
-	local ref = EXTRA_BAR_DEFAULT_REFERENCE[index]
-	local refCfg = ref and ACABDB.defaultBars and ACABDB.defaultBars[ref.refId]
-	local gap = (refCfg and (refCfg.nativeSpacing or refCfg.spacing)) or 0
-
-	return (bar:GetHeight() or 0) + gap
+	return (bar:GetHeight() or 0) + self:GetBarEffectiveSpacing(bar.config)
 end
 
 -- Resettles Stance/Pet/Cast Bar when Extra Bar 1/2's stacking contribution changes (each Reflow* self-guards).
@@ -594,10 +619,20 @@ end
 -- ACABCharDB (per-character) = which profile this character uses.
 -------------------------------------------------------------------------
 
-ACAB.DEFAULT_PROFILE_NAME = "Default"
+-- Built-in locked profiles: Default Vanilla (native layout) and Default Modern (Modern Layout baseline).
+ACAB.DEFAULT_PROFILE_NAME = "Default Vanilla"
+ACAB.MODERN_PROFILE_NAME = "Default Modern"
+
+-- Default Vanilla's pre-rename name; migrated in ResolveActiveProfile and reserved afterwards.
+ACAB.LEGACY_DEFAULT_PROFILE_NAME = "Default"
 
 -- Reserved name: hidden from GetProfileNames and rejected by ProfileNameTaken.
 ACAB.MODERN_BASE_PROFILE_NAME = "ModernBase"
+
+-- True for the two built-in locked profiles.
+function ACAB:IsBuiltInProfileName(name)
+	return name == self.DEFAULT_PROFILE_NAME or name == self.MODERN_PROFILE_NAME
+end
 
 -- Plain recursive deep copy - ACABDB only ever holds plain data.
 function ACAB:DeepCopyTable(t)
@@ -615,14 +650,15 @@ function ACAB:DeepCopyTable(t)
 	return copy
 end
 
--- Sorted list of every saved profile name, Default always first.
+-- Sorted list of every saved profile name, the built-in profiles always first.
 function ACAB:GetProfileNames()
 	local names = {}
 	local n = 0
 	local name
 
 	for name in pairs(ACABProfilesDB or {}) do
-		if name ~= self.DEFAULT_PROFILE_NAME and name ~= self.MODERN_BASE_PROFILE_NAME then
+		if not self:IsBuiltInProfileName(name) and name ~= self.MODERN_BASE_PROFILE_NAME
+			and name ~= self.LEGACY_DEFAULT_PROFILE_NAME then
 			n = n + 1
 			names[n] = name
 		end
@@ -631,6 +667,11 @@ function ACAB:GetProfileNames()
 	table.sort(names)
 
 	local result = { self.DEFAULT_PROFILE_NAME }
+
+	if ACABProfilesDB and ACABProfilesDB[self.MODERN_PROFILE_NAME] then
+		table.insert(result, self.MODERN_PROFILE_NAME)
+	end
+
 	local i
 
 	for i = 1, n do
@@ -640,8 +681,153 @@ function ACAB:GetProfileNames()
 	return result
 end
 
--- Resolves this character's profile, migrates pre-profile account data into Default once, and loads the
--- profile into ACABDB. Must run before EnsureDB.
+-- First "<name> (Custom)" / "<name> (Custom N)" not yet used in ACABProfilesDB.
+local function FreeCustomProfileName(name)
+	local candidate = name .. " (Custom)"
+	local n = 2
+
+	while ACABProfilesDB[candidate] do
+		candidate = name .. " (Custom " .. tostring(n) .. ")"
+		n = n + 1
+	end
+
+	return candidate
+end
+
+-- Moves a user profile named like a built-in one out of the way.
+local function MoveUserProfileOffBuiltInName(self, name)
+	local newName = FreeCustomProfileName(name)
+
+	ACABProfilesDB[newName] = ACABProfilesDB[name]
+	ACABProfilesDB[name] = nil
+
+	if ACABCharDB.activeProfile == name then
+		ACABCharDB.activeProfile = newName
+	end
+
+	self:Print("Your profile \"" .. name .. "\" was renamed to \"" .. newName .. "\" - that name now belongs to a built-in profile.")
+end
+
+-- Renames the account's "Default" profile to Default Vanilla and this character's pointer to it; frees both
+-- built-in names from user profiles.
+local function MigrateBuiltInProfileNames(self)
+	local legacy = self.LEGACY_DEFAULT_PROFILE_NAME
+
+	if ACABProfilesDB[legacy] then
+		if ACABProfilesDB[self.DEFAULT_PROFILE_NAME] then
+			MoveUserProfileOffBuiltInName(self, self.DEFAULT_PROFILE_NAME)
+		end
+
+		ACABProfilesDB[self.DEFAULT_PROFILE_NAME] = ACABProfilesDB[legacy]
+		ACABProfilesDB[legacy] = nil
+	end
+
+	local modernData = ACABProfilesDB[self.MODERN_PROFILE_NAME]
+
+	if modernData and not modernData.builtInModernProfile then
+		MoveUserProfileOffBuiltInName(self, self.MODERN_PROFILE_NAME)
+	end
+
+	if ACABCharDB.activeProfile == legacy then
+		ACABCharDB.activeProfile = self.DEFAULT_PROFILE_NAME
+	end
+end
+
+-- Writes the Modern Layout baseline flags onto profile data; the geometry itself is applied live on the next
+-- login that loads it (ACAB:ApplyPendingLayoutBaseline).
+function ACAB:ApplyModernBaselineFlags(data)
+	data.useDefaultLayout = false
+	data.pendingLayoutBaseline = "modern"
+	data.vanillaLayoutStacking = nil
+
+	-- Modern Layout's Bag Bar is flush.
+	data.bagBarSpacing = 0
+
+	data.modernBorderStyle = true
+
+	-- must match modernBorderStyle, or the next login treats it as a live style switch and shifts every bar
+	data.lastAppliedVanillaStyle = false
+
+	data.mainBarArtMode = self.MAIN_BAR_ART_MODE_DISABLED
+	data.snapToGrid = false
+	data.snapToAdjacentElements = false
+
+	data.globalSpacingEnabled = false
+	data.globalSpacingValue = 0
+	data.globalButtonSizeEnabled = false
+	data.globalButtonSizeValue = self.BUTTON_SIZE
+
+	data.expBarEnabled = true
+	data.betterExpBarEnabled = true
+
+	if data.defaultBars then
+		local stanceCfg = data.defaultBars[self.STANCE_BAR_ID]
+		local petCfg = data.defaultBars[self.PET_BAR_ID]
+
+		if stanceCfg then
+			stanceCfg.useNativeStanceBar = false
+		end
+
+		if petCfg then
+			petCfg.useNativePetBar = false
+			petCfg.condenseEmptyPetSlots = false
+		end
+	end
+end
+
+-- Default Vanilla's saved data; snapshots the live ACABDB first while Default Vanilla is active and unsaved.
+-- Falls back to the live ACABDB, never an empty table (see CreateProfile).
+function ACAB:GetDefaultVanillaData()
+	ACABProfilesDB = ACABProfilesDB or {}
+
+	if not ACABProfilesDB[self.DEFAULT_PROFILE_NAME] and self.activeProfileName == self.DEFAULT_PROFILE_NAME then
+		self:EnsureDB()
+		self:SaveActiveProfileData()
+	end
+
+	if ACABProfilesDB[self.DEFAULT_PROFILE_NAME] then
+		return ACABProfilesDB[self.DEFAULT_PROFILE_NAME]
+	end
+
+	self:EnsureDB()
+
+	return ACABDB
+end
+
+-- Fresh Default Modern data: Default Vanilla's saved data plus the Modern Layout baseline flags; nil while
+-- Default Vanilla has no snapshot yet.
+function ACAB:BuildModernBaseProfileData()
+	local source = ACABProfilesDB and ACABProfilesDB[self.DEFAULT_PROFILE_NAME]
+
+	if not source then
+		return nil
+	end
+
+	local data = self:DeepCopyTable(source)
+
+	self:ApplyModernBaselineFlags(data)
+	data.builtInModernProfile = true
+
+	return data
+end
+
+-- Builds Default Modern if it's still missing (a fresh install has no Default Vanilla snapshot at login).
+function ACAB:EnsureModernBaseProfile()
+	if ACABProfilesDB and ACABProfilesDB[self.MODERN_PROFILE_NAME] then
+		return
+	end
+
+	self:GetDefaultVanillaData()
+
+	local modernData = self:BuildModernBaseProfileData()
+
+	if modernData then
+		ACABProfilesDB[self.MODERN_PROFILE_NAME] = modernData
+	end
+end
+
+-- Resolves this character's profile, migrates pre-profile account data into Default Vanilla once, rebuilds
+-- Default Modern, and loads the profile into ACABDB. Must run before EnsureDB.
 function ACAB:ResolveActiveProfile()
 	if not ACABCharDB then
 		ACABCharDB = {
@@ -654,8 +840,19 @@ function ACAB:ResolveActiveProfile()
 		ACABProfilesDB = {}
 	end
 
+	MigrateBuiltInProfileNames(self)
+
 	if not ACABProfilesDB[self.DEFAULT_PROFILE_NAME] and ACABDB then
 		ACABProfilesDB[self.DEFAULT_PROFILE_NAME] = self:DeepCopyTable(ACABDB)
+	end
+
+	-- Rebuilt whenever it isn't the loaded profile, so it follows Default Vanilla and the current screen size.
+	if ACABCharDB.activeProfile ~= self.MODERN_PROFILE_NAME or not ACABProfilesDB[self.MODERN_PROFILE_NAME] then
+		local modernData = self:BuildModernBaseProfileData()
+
+		if modernData then
+			ACABProfilesDB[self.MODERN_PROFILE_NAME] = modernData
+		end
 	end
 
 	if not ACABCharDB.hasSelectedProfileBefore then
@@ -664,7 +861,7 @@ function ACAB:ResolveActiveProfile()
 
 	local activeProfile = ACABCharDB.activeProfile or self.DEFAULT_PROFILE_NAME
 
-	-- Falls back to Default when the saved profile was deleted on another character.
+	-- Falls back to Default Vanilla when the saved profile was deleted on another character.
 	if activeProfile ~= self.DEFAULT_PROFILE_NAME and not ACABProfilesDB[activeProfile] then
 		self:Print("Profile \"" .. activeProfile .. "\" no longer exists - switched to \"" .. self.DEFAULT_PROFILE_NAME .. "\".")
 		activeProfile = self.DEFAULT_PROFILE_NAME
@@ -692,7 +889,7 @@ function ACAB:SaveActiveProfileData()
 	ACABProfilesDB[self.activeProfileName] = self:DeepCopyTable(ACABDB)
 end
 
--- Case-insensitive check against every existing profile name (including Default and the reserved name).
+-- Case-insensitive check against every existing profile name (including the built-in and reserved names).
 function ACAB:ProfileNameTaken(name)
 	if not name or name == "" then
 		return false
@@ -700,7 +897,9 @@ function ACAB:ProfileNameTaken(name)
 
 	local lowerName = string.lower(name)
 
-	if lowerName == string.lower(self.MODERN_BASE_PROFILE_NAME) then
+	if lowerName == string.lower(self.MODERN_BASE_PROFILE_NAME)
+		or lowerName == string.lower(self.LEGACY_DEFAULT_PROFILE_NAME)
+		or lowerName == string.lower(self.MODERN_PROFILE_NAME) then
 		return true
 	end
 
@@ -716,8 +915,9 @@ function ACAB:ProfileNameTaken(name)
 	return false
 end
 
--- Creates a new profile seeded from Default's saved data, or from the live ACABDB if Default isn't saved yet.
--- Must not fall back to an empty table - native-mode Pet/Stance Bar resets no-op without defaultBars entries.
+-- Creates a new profile seeded from the active Default Modern, else Default Vanilla's saved data, or from the live
+-- ACABDB if it isn't saved yet. Must not fall back to an empty table - native-mode Pet/Stance Bar resets no-op
+-- without defaultBars entries.
 function ACAB:CreateProfile(name)
 	if not name or name == "" then
 		return false, "Profile name cannot be empty."
@@ -727,6 +927,15 @@ function ACAB:CreateProfile(name)
 
 	if self:ProfileNameTaken(name) then
 		return false, "A profile named \"" .. name .. "\" already exists."
+	end
+
+	if self.activeProfileName == self.MODERN_PROFILE_NAME then
+		self:SaveActiveProfileData()
+
+		ACABProfilesDB[name] = self:DeepCopyTable(ACABProfilesDB[self.MODERN_PROFILE_NAME])
+		ACABProfilesDB[name].builtInModernProfile = nil
+
+		return true
 	end
 
 	local defaultData = ACABProfilesDB[self.DEFAULT_PROFILE_NAME]
@@ -741,10 +950,10 @@ function ACAB:CreateProfile(name)
 	return true
 end
 
--- Deletes a profile (never Default); deleting the active profile falls this character back to Default.
+-- Deletes a profile (never a built-in one); deleting the active profile falls this character back to Default Vanilla.
 function ACAB:DeleteProfile(name)
-	if not name or name == self.DEFAULT_PROFILE_NAME then
-		return false, "The Default profile cannot be deleted."
+	if not name or self:IsBuiltInProfileName(name) then
+		return false, "The built-in \"" .. tostring(name) .. "\" profile cannot be deleted."
 	end
 
 	if not ACABProfilesDB or not ACABProfilesDB[name] then
@@ -770,11 +979,12 @@ function ACAB:CopyProfileInto(sourceName, targetName)
 		return false, "Source profile \"" .. tostring(sourceName) .. "\" does not exist."
 	end
 
-	if not targetName or targetName == "" then
+	if not targetName or targetName == "" or self:IsBuiltInProfileName(targetName) then
 		return false, "Invalid target profile."
 	end
 
 	ACABProfilesDB[targetName] = self:DeepCopyTable(ACABProfilesDB[sourceName])
+	ACABProfilesDB[targetName].builtInModernProfile = nil
 
 	if targetName == self.activeProfileName then
 		ACABDB = self:DeepCopyTable(ACABProfilesDB[targetName])
@@ -1130,7 +1340,7 @@ function ACAB:ShowCreateProfileDialog(onCreated)
 	})
 end
 
--- This character's first-login dialog: setup wizard, use an existing profile, or stay on Default.
+-- This character's first-login dialog: setup wizard, use an existing profile, or stay on Default Vanilla.
 function ACAB:ShowFirstLoginDialog()
 	local buttons = {
 		{
@@ -1181,8 +1391,9 @@ function ACAB:ShowFirstLoginDialog()
 
 	self:ShowDialog({
 		title = "Welcome to ACAB",
-		message = "Thank you for choosing ACAB, you are currently using the Profile \"Default\". " ..
-			"The Default profile is locked and cannot be edited - Edit Layout mode and Settings changes are unavailable while it is active.\n\n" ..
+		message = "Thank you for choosing ACAB, you are currently using the Profile \"" .. self.DEFAULT_PROFILE_NAME .. "\". " ..
+			"The built-in \"" .. self.DEFAULT_PROFILE_NAME .. "\" and \"" .. self.MODERN_PROFILE_NAME .. "\" profiles are locked and " ..
+			"cannot be edited - Edit Layout mode and Settings changes are unavailable while one of them is active.\n\n" ..
 			"Do you wish to set up your own custom profile?",
 		mode = "confirm",
 		buttons = buttons,
