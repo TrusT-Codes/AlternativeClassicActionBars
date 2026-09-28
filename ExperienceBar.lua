@@ -268,6 +268,37 @@ local function ColorsMatch(a, b)
 	return math.abs(a.r - b.r) < 0.002 and math.abs(a.g - b.g) < 0.002 and math.abs(a.b - b.b) < 0.002
 end
 
+-- Replaces every color passed to frame[methodName] with ACABDB[colorField] while Better Experience Bar is on.
+-- see known-problems.md: "Native code repaints the Exp Bar fill colors"
+local function InstallExpBarColorGuard(frame, methodName, colorField)
+	local guardFlag = "ACABColorGuarded" .. methodName
+
+	if not frame or not frame[methodName] or frame[guardFlag] then
+		return
+	end
+
+	local nativeSetColor = frame[methodName]
+
+	frame[methodName] = function(self, r, g, b, a)
+		local color = ACABDB and ACABDB.betterExpBarEnabled and ACABDB[colorField]
+
+		if color then
+			r, g, b = color.r, color.g, color.b
+		end
+
+		if a then
+			return nativeSetColor(self, r, g, b, a)
+		end
+
+		return nativeSetColor(self, r, g, b)
+	end
+
+	frame[guardFlag] = true
+end
+
+InstallExpBarColorGuard(getglobal(ACAB.EXP_BAR_FRAME_NAME), "SetStatusBarColor", "expBarColorEarned")
+InstallExpBarColorGuard(getglobal(ACAB.EXP_RESTED_FRAME_NAME), "SetVertexColor", "expBarColorRested")
+
 -- Captures the native earned/rested colors once; the custom earned color starts at EXP_BAR_DEFAULT_COLOR_EARNED.
 function ACAB:CaptureExpBarColorsIfNeeded()
 	self:EnsureDB()
@@ -395,6 +426,85 @@ end
 -- on and GetRestState() == 1; the native fill is never touched.
 -------------------------------------------------------------------------
 
+-- Rested-pool calibration: GetXPExhaustion() units consumed per point of rested bonus XP, measured on the
+-- character's first rested kill and saved in ACABCharDB.restPoolPerBonusXP. Uncalibrated = 1 (native formula).
+-- see known-problems.md: "Rested overlay uses bonus XP, not GetXPExhaustion()"
+
+-- Pool changes further than this from the XP chat line are not counted as that kill's drop.
+local REST_CALIBRATION_WINDOW = 2
+
+-- Seconds after the XP chat line before the post-kill pool is read.
+local REST_CALIBRATION_DELAY = 1
+
+-- Smallest rested bonus accepted for a measurement (integer-truncated bonuses skew small kills).
+local REST_CALIBRATION_MIN_BONUS = 5
+
+local restPoolCurrent
+local restPoolPrevious
+local restPoolChangedAt
+
+-- Records the rested pool; keeps the value before the latest change and when that change happened.
+function ACAB:TrackRestPool()
+	local pool = (GetXPExhaustion and GetXPExhaustion()) or 0
+
+	if pool ~= restPoolCurrent then
+		restPoolPrevious = restPoolCurrent
+		restPoolCurrent = pool
+		restPoolChangedAt = GetTime()
+	end
+end
+
+-- CHAT_MSG_COMBAT_XP_GAIN handler: measures pool drop / rested bonus once per character.
+function ACAB:CalibrateRestPoolFromXPMessage(message)
+	if not ACABCharDB or ACABCharDB.restPoolPerBonusXP or not message then
+		return
+	end
+
+	-- First number inside the parentheses is the rested bonus, e.g. "(+31 exp Rested bonus)".
+	local _, _, bonusText = string.find(message, "%(%+?(%d+)")
+	local bonus = tonumber(bonusText)
+
+	if not bonus or bonus < REST_CALIBRATION_MIN_BONUS then
+		return
+	end
+
+	local messageTime = GetTime()
+
+	self:TrackRestPool()
+
+	C_Timer.After(REST_CALIBRATION_DELAY, function()
+		ACAB:TrackRestPool()
+
+		if not restPoolPrevious or not restPoolChangedAt
+			or math.abs(restPoolChangedAt - messageTime) > REST_CALIBRATION_WINDOW then
+			return
+		end
+
+		local drop = restPoolPrevious - restPoolCurrent
+
+		if drop <= 0 or ACABCharDB.restPoolPerBonusXP then
+			return
+		end
+
+		ACABCharDB.restPoolPerBonusXP = drop / bonus
+		ACAB:Print("Rested XP calibrated: " .. string.format("%.2f", ACABCharDB.restPoolPerBonusXP) .. " pool per bonus XP.")
+		ACAB:BetterExpBarOnEvent()
+	end)
+end
+
+-- Remaining rested bonus XP (GetXPExhaustion() converted to real XP), or nil when not rested.
+local function GetRestedBonusXP()
+	local exhaustion = GetXPExhaustion and GetXPExhaustion()
+
+	if not exhaustion then
+		return nil
+	end
+
+	local ratio = ACABCharDB and ACABCharDB.restPoolPerBonusXP or 1
+
+	return exhaustion / ratio
+end
+
 local function EnsureExpBarRestedOverlay(frame)
 	if frame.ACABRestedOverlay then
 		return frame.ACABRestedOverlay
@@ -427,19 +537,38 @@ local BEB_TICK_GLOW_TEXTURE = "Interface\\AddOns\\AlternativeClassicActionBars\\
 local BEB_TICK_WIDTH = 27
 local BEB_TICK_HEIGHT = 26
 
--- Rested-boundary tick ("ARTWORK") with its glow ("OVERLAY") on top.
+-- Child frame holding the tick/glow, kept 2 levels above MainMenuExpBar so both draw over its fill and rested overlay.
+local function EnsureExpBarRestedTickFrame(frame)
+	local tickFrame = frame.ACABRestedTickFrame
+
+	if not tickFrame then
+		tickFrame = CreateFrame("Frame", nil, frame)
+		tickFrame:SetAllPoints(frame)
+		frame.ACABRestedTickFrame = tickFrame
+	end
+
+	-- Reasserted every call: ApplyExpBarPosition re-strata/re-levels MainMenuExpBar.
+	tickFrame:SetFrameStrata(frame:GetFrameStrata())
+	tickFrame:SetFrameLevel(frame:GetFrameLevel() + 2)
+
+	return tickFrame
+end
+
+-- Rested-boundary tick ("ARTWORK") with its glow ("OVERLAY") on top, both on the tick frame.
 local function EnsureExpBarRestedTick(frame)
+	local tickFrame = EnsureExpBarRestedTickFrame(frame)
+
 	if frame.ACABRestedTick then
 		return frame.ACABRestedTick, frame.ACABRestedTickGlow
 	end
 
-	local tick = frame:CreateTexture(nil, "ARTWORK")
+	local tick = tickFrame:CreateTexture(nil, "ARTWORK")
 	tick:SetTexture(BEB_TICK_TEXTURE)
 	tick:SetWidth(BEB_TICK_WIDTH)
 	tick:SetHeight(BEB_TICK_HEIGHT)
 
 	-- Sized/anchored later via SetAllPoints(tick).
-	local glow = frame:CreateTexture(nil, "OVERLAY")
+	local glow = tickFrame:CreateTexture(nil, "OVERLAY")
 	glow:SetTexture(BEB_TICK_GLOW_TEXTURE)
 
 	frame.ACABRestedTick = tick
@@ -536,9 +665,9 @@ function ACAB:ApplyExpBarRestedOverlay()
 	local barWidth = frame:GetWidth()
 	local xpMax = UnitXPMax and UnitXPMax("player")
 	local xp = UnitXP and UnitXP("player")
-	local exhaustion = GetXPExhaustion and GetXPExhaustion()
+	local rested = GetRestedBonusXP()
 
-	if not barWidth or barWidth <= 0 or not xpMax or xpMax <= 0 or not xp or not exhaustion then
+	if not barWidth or barWidth <= 0 or not xpMax or xpMax <= 0 or not xp or not rested then
 		HideExpBarRestedOverlay(tex, tick, glow)
 
 		return
@@ -550,11 +679,11 @@ function ACAB:ApplyExpBarRestedOverlay()
 
 	local width
 
-	if (xp + exhaustion) > xpMax then
+	if (xp + rested) > xpMax then
 		-- Rested pool passes this level: fill the rest of the bar.
 		width = barWidth - xpWidth
 	else
-		local restedEdge = (xp + exhaustion) * scale
+		local restedEdge = (xp + rested) * scale
 		width = restedEdge - xpWidth
 	end
 
@@ -592,35 +721,35 @@ function ACAB:ApplyExpBarRestedOverlay()
 
 	-- BEB's "BEBRestedXpTick" logic: restState 1 = within this level, 2 = crosses one level, 3 = two levels.
 	if level < 59 then
-		if (xp + exhaustion - xpMax) > ACAB.XP_PER_LEVEL[level + 1] then
-			position = ((xp + exhaustion - xpMax - ACAB.XP_PER_LEVEL[level + 1]) / ACAB.XP_PER_LEVEL[level + 2]) * barWidth
+		if (xp + rested - xpMax) > ACAB.XP_PER_LEVEL[level + 1] then
+			position = ((xp + rested - xpMax - ACAB.XP_PER_LEVEL[level + 1]) / ACAB.XP_PER_LEVEL[level + 2]) * barWidth
 			restState = 3
-		elseif (xp + exhaustion) > xpMax then
-			position = ((xp + exhaustion - xpMax) / ACAB.XP_PER_LEVEL[level + 1]) * barWidth
+		elseif (xp + rested) > xpMax then
+			position = ((xp + rested - xpMax) / ACAB.XP_PER_LEVEL[level + 1]) * barWidth
 			restState = 2
 		else
-			position = (xp + exhaustion) * scale
+			position = (xp + rested) * scale
 			restState = 1
 		end
 	elseif level == 59 then
 		-- No level-61 entry, so state 3 clamps to the bar's right edge.
-		if (xp + exhaustion - xpMax) > ACAB.XP_PER_LEVEL[level + 1] then
+		if (xp + rested - xpMax) > ACAB.XP_PER_LEVEL[level + 1] then
 			position = barWidth
 			restState = 3
-		elseif (xp + exhaustion) > xpMax then
-			position = ((xp + exhaustion - xpMax) / ACAB.XP_PER_LEVEL[level + 1]) * barWidth
+		elseif (xp + rested) > xpMax then
+			position = ((xp + rested - xpMax) / ACAB.XP_PER_LEVEL[level + 1]) * barWidth
 			restState = 2
 		else
-			position = (xp + exhaustion) * scale
+			position = (xp + rested) * scale
 			restState = 1
 		end
 	else
 		-- Level 60+: two states, state 2 clamps to the bar's right edge.
-		if (xp + exhaustion) > xpMax then
+		if (xp + rested) > xpMax then
 			position = barWidth
 			restState = 2
 		else
-			position = (xp + exhaustion) * scale
+			position = (xp + rested) * scale
 			restState = 1
 		end
 	end
@@ -696,7 +825,7 @@ end
 local function ComputeBetterExpBarText()
 	local cur = UnitXP and UnitXP("player")
 	local max = UnitXPMax and UnitXPMax("player")
-	local exhaustion = GetXPExhaustion and GetXPExhaustion()
+	local rested = GetRestedBonusXP()
 
 	local segments = {}
 	local n = 0
@@ -725,8 +854,8 @@ local function ComputeBetterExpBarText()
 	if ACABDB.expBarShowRestedPercent then
 		local restedPct = 0
 
-		if exhaustion and max and max > 0 then
-			restedPct = ExpBarRound((exhaustion * 100) / (max * 1.5))
+		if rested and max and max > 0 then
+			restedPct = ExpBarRound((rested * 100) / max)
 		end
 
 		n = n + 1
@@ -735,7 +864,7 @@ local function ComputeBetterExpBarText()
 
 	if ACABDB.expBarShowRestedTotal then
 		n = n + 1
-		segments[n] = tostring(exhaustion or 0) .. " Rested Xp"
+		segments[n] = tostring(ExpBarRound(rested or 0)) .. " Rested Xp"
 	end
 
 	return table.concat(segments, " ")
@@ -761,6 +890,7 @@ end
 
 -- Events.lua's betterExpBarEventFrame handler: refreshes the text and the rested-XP overlay.
 function ACAB:BetterExpBarOnEvent()
+	self:TrackRestPool()
 	UpdateBetterExpBarText()
 	self:ApplyExpBarRestedOverlay()
 end
