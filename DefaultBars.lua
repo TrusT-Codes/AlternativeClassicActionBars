@@ -258,7 +258,7 @@ end
 -- Every art region anchors BOTTOM to the frame, so moving/scaling the frame carries them all.
 -------------------------------------------------------------------------
 
--- Reads MainMenuBar's rect (values discarded) so MainMenuBarArtFrame never resolves against a stale parent (§5af).
+-- Reads MainMenuBar's rect (values discarded) so MainMenuBarArtFrame never resolves against a stale parent (env §4.6).
 local function WarmMainBarArtAncestorChain()
 	if MainMenuBar then
 		MainMenuBar:GetLeft()
@@ -378,7 +378,7 @@ end
 -- Main Bar button 1's LEFT/TOP in UIParent units - the corner that stays fixed when buttonSize changes.
 -- Modern style returns the vanilla-equivalent corner (MODERN_BUTTON_SIZE_POSITION_SHIFT down-right).
 local function GetButton1ScreenAnchor(bar)
-	-- Must read UIParent first (value discarded) or bar's rect can resolve against a stale ancestor (§5af).
+	-- Must read UIParent first (value discarded) or bar's rect can resolve against a stale ancestor (env §4.6).
 	UIParent:GetLeft()
 
 	local left = bar:GetLeft()
@@ -463,7 +463,7 @@ function ACAB:ApplyMainBarArtPosition()
 
 	artFrame.ACABApplyingMainBarArtPosition = true
 
-	-- Must reassert the native size every call or the frame's rect stops resolving once Lua SetPoints it (§5ak).
+	-- Must reassert the native size every call or the frame's rect stops resolving once Lua SetPoints it (env §4.6).
 	artFrame:SetWidth(offset.width)
 	artFrame:SetHeight(offset.height)
 
@@ -671,7 +671,7 @@ local function ResolveNativeTopLeft(native, frame)
 	local rfx, rfy = ACAB:GetPointFractions(native.relativePoint or "BOTTOMLEFT")
 	local relX, relY
 
-	-- Must read UIParent first (value discarded) or relFrame can resolve against a stale ancestor (§5af).
+	-- Must read UIParent first (value discarded) or relFrame can resolve against a stale ancestor (env §4.6).
 	UIParent:GetLeft()
 
 	if relFrame then
