@@ -184,6 +184,9 @@ function ACAB:SetExpBarEnabled(enabled)
 			frame.ACABTextOverlay:Hide()
 		end
 	end
+
+	-- Stops the glow pulse on disable and restarts it on enable.
+	self:ApplyExpBarRestedOverlay()
 end
 
 -- Clamps, compensates the saved position around the bar's center, then applies the new scale.
@@ -655,7 +658,7 @@ function ACAB:ApplyExpBarRestedOverlay()
 	local tick = frame.ACABRestedTick
 	local glow = frame.ACABRestedTickGlow
 
-	if not ACABDB.betterExpBarEnabled or not GetRestState or GetRestState() ~= 1 then
+	if not ACABDB.betterExpBarEnabled or ACABDB.expBarEnabled == false or not GetRestState or GetRestState() ~= 1 then
 		HideExpBarRestedOverlay(tex, tick, glow)
 
 		return

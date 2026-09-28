@@ -169,6 +169,9 @@ local function ApplyButtonBackdrop(btn)
 	})
 	btn:SetBackdropColor(0, 0, 0, 0)
 	btn:SetBackdropBorderColor(0, 0, 0, 0)
+
+	-- Drop the cached backdrop state so UpdateBackdropVisibility rewrites it.
+	btn.backdropShown = nil
 end
 
 -- Bar 1 keeps empty slots shown/bordered while useDefaultLayout is on, like native vanilla.
@@ -513,22 +516,36 @@ function ACABButtonMixin:UpdateGridVisibility()
 
 	-- Empty slots reappear while placing an action (action grid) and in edit mode.
 	if self.slotVisible and (isMainBar or petBarShowEmpty or hasContent or alwaysShowMultibars or ACAB.isShowingActionGrid or ACAB:IsEditMode()) then
-		self:Show()
-	else
+		if not self:IsShown() then
+			self:Show()
+		end
+	elseif self:IsShown() then
 		self:Hide()
 	end
 
 	-- Backdrop visibility must NOT include edit mode, or every empty slot's border reappears in edit mode.
-	self:UpdateBackdropVisibility()
+	self:UpdateBackdropVisibility(hasContent, isMainBar)
 end
 
--- Toggles the backdrop's color/border alpha and the native border texture.
-function ACABButtonMixin:UpdateBackdropVisibility()
-	local hasContent = self:IsSlotFilled() and true or false
+-- Toggles the backdrop's color/border alpha and the native border texture; hasContent/isMainBar are optional precomputed values.
+function ACABButtonMixin:UpdateBackdropVisibility(hasContent, isMainBar)
+	if hasContent == nil then
+		hasContent = self:IsSlotFilled() and true or false
+	end
 
-	local isMainBar = IsMainBarShowingEmpty(self)
+	if isMainBar == nil then
+		isMainBar = IsMainBarShowingEmpty(self)
+	end
 
-	local shown = self.slotVisible and (isMainBar or hasContent or IsAlwaysShowMultibars() or ACAB.isShowingActionGrid)
+	local shown = self.slotVisible and (isMainBar or hasContent or IsAlwaysShowMultibars() or ACAB.isShowingActionGrid) and true or false
+
+	-- Skip the writes when neither the state nor the border style changed.
+	if self.backdropShown == shown and self.backdropNativeBorder == self.hasNativeBorder then
+		return
+	end
+
+	self.backdropShown = shown
+	self.backdropNativeBorder = self.hasNativeBorder
 
 	if shown then
 		self:SetBackdropColor(0, 0, 0, 0.75)
@@ -854,7 +871,17 @@ function ACABButtonMixin:Refresh()
 
 	-- Pet Bar condense layout depends on which slots are filled.
 	if self.isPetSlot and self.parentBar then
-		ACAB:LayoutButtons(self.parentBar)
+		local bar = self.parentBar
+
+		-- One layout per bar per frame, however many pet buttons refresh together.
+		if not bar.petLayoutPending then
+			bar.petLayoutPending = true
+
+			C_Timer.After(0, function()
+				bar.petLayoutPending = nil
+				ACAB:LayoutButtons(bar)
+			end)
+		end
 	end
 end
 
@@ -893,12 +920,16 @@ end
 function ACABButtonMixin:UpdateRange()
 	-- Hoverbind mode owns icon tinting while active.
 	if ACAB:IsHoverBindMode() then
+		self.rangeKey = nil
 		return
 	end
 
 	if self.isPetSlot or self.isStanceSlot or not self:IsSlotFilled() then
-		self.icon:SetVertexColor(1, 1, 1)
-		self:ResetHotkeyRangeColor()
+		if self.rangeKey ~= "none" then
+			self.rangeKey = "none"
+			self.icon:SetVertexColor(1, 1, 1)
+			self:ResetHotkeyRangeColor()
+		end
 		return
 	end
 
@@ -918,18 +949,39 @@ function ACABButtonMixin:UpdateRange()
 	local tintWholeButton = ACABDB == nil or ACABDB.tintWholeButtonOnRange ~= false
 
 	-- Matches vanilla ActionButton_UpdateUsable's priority: out-of-range wins, then usable/no-mana/unusable.
+	local state
 	if outOfRange and tintWholeButton then
-		self.icon:SetVertexColor(1.0, 0.15, 0.15)
+		state = 1
 	elseif usable and usable ~= 0 then
-		self.icon:SetVertexColor(1.0, 1.0, 1.0)
+		state = 2
 	elseif noMana and noMana ~= 0 then
+		state = 3
+	else
+		state = 4
+	end
+
+	local redHotkey = outOfRange and not tintWholeButton
+	local key = redHotkey and (state + 10) or state
+
+	-- Skip every write while the tint state is unchanged.
+	if self.rangeKey == key then
+		return
+	end
+
+	self.rangeKey = key
+
+	if state == 1 then
+		self.icon:SetVertexColor(1.0, 0.15, 0.15)
+	elseif state == 2 then
+		self.icon:SetVertexColor(1.0, 1.0, 1.0)
+	elseif state == 3 then
 		self.icon:SetVertexColor(0.35, 0.35, 1.0)
 	else
 		self.icon:SetVertexColor(0.4, 0.4, 0.4)
 	end
 
 	-- Hotkey-text-only tint mode; resets to native color otherwise so a stale red hotkey never lingers.
-	if outOfRange and not tintWholeButton then
+	if redHotkey then
 		self.hotkey:SetTextColor(1, 0, 0)
 	else
 		self:ResetHotkeyRangeColor()

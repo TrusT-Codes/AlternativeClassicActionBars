@@ -198,6 +198,9 @@ function ACAB:TintHoverBindButton(ref)
 		or HOVERBIND_UNBOUND_COLOR
 
 	icon:SetVertexColor(color[1], color[2], color[3])
+
+	-- Forces UpdateRange to repaint once hoverbind ends.
+	ref.frame.rangeKey = nil
 end
 
 -- Recomputes the button's normal range/usability tint immediately.
