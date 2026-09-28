@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Bugfixes
+
+- Fix Better Experience Bar colors turning blue after a while or on zone change - your earned/rested colors now stick.
+- Fix Better Experience Bar rested XP running too far: the rested fill, tick and "Rested" text now show your real remaining bonus XP, carrying into the next level correctly. The rested rate is measured on each character's first rested kill, so it fits any realm.
+- Fix rested XP tick drawing behind the experience bar fill.
+
 ## 1.2.1-beta
 
 ### Features

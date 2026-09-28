@@ -504,7 +504,7 @@ function ACAB:CaptureKeyRingNativeTopLeft()
 		return
 	end
 
-	-- must read UIParent first or the frame can resolve against a stale ancestor (§5af)
+	-- must read UIParent first or the frame can resolve against a stale ancestor (env §4.6)
 	UIParent:GetLeft()
 
 	local left = frame:GetLeft()

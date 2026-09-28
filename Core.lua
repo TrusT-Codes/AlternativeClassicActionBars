@@ -382,7 +382,7 @@ function ACAB:GetUIParentAnchorSize()
 		self.uiParentCenterProbe = probe
 	end
 
-	-- must read UIParent first or the probe resolves against a stale rect (§5af)
+	-- must read UIParent first or the probe resolves against a stale rect (env §4.6)
 	UIParent:GetLeft()
 
 	local centerX, centerY = probe:GetCenter()
