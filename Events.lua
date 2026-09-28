@@ -45,7 +45,7 @@ end)
 -------------------------------------------------------------------------
 
 -- UPDATE_BONUS_ACTIONBAR covers bonus-page forms (Bear/Cat); PLAYER_AURAS_CHANGED catches the rest
--- (Travel/Aquatic), since UPDATE_SHAPESHIFT_FORM never fires on this client (§5aj).
+-- (Travel/Aquatic), since UPDATE_SHAPESHIFT_FORM never fires on this client (env §4.12).
 local mainBarBonusEventFrame = CreateFrame("Frame", "ACABMainBarBonusEventFrame")
 mainBarBonusEventFrame:RegisterEvent("UPDATE_BONUS_ACTIONBAR")
 mainBarBonusEventFrame:RegisterEvent("PLAYER_AURAS_CHANGED")
@@ -91,7 +91,7 @@ end)
 -- Stance/form set changes (PetStanceBars.lua)
 -------------------------------------------------------------------------
 
--- UPDATE_SHAPESHIFT_FORMS: the available form set changed (kept registered despite §5aj).
+-- UPDATE_SHAPESHIFT_FORMS: the available form set changed (kept registered despite env §4.12).
 local stanceFormEventFrame = CreateFrame("Frame", "ACABStanceFormEventFrame")
 stanceFormEventFrame:RegisterEvent("UPDATE_SHAPESHIFT_FORMS")
 stanceFormEventFrame:SetScript("OnEvent", function()
@@ -150,6 +150,17 @@ betterExpBarEventFrame:SetScript("OnEvent", function()
 	end
 
 	ACAB:BetterExpBarOnEvent()
+end)
+
+-- Rested-pool calibration from the first rested kill's XP chat line (ExperienceBar.lua).
+local restCalibrationFrame = CreateFrame("Frame", "ACABRestCalibrationFrame")
+restCalibrationFrame:RegisterEvent("CHAT_MSG_COMBAT_XP_GAIN")
+restCalibrationFrame:SetScript("OnEvent", function()
+	if not ACAB.activeProfileName then
+		return
+	end
+
+	ACAB:CalibrateRestPoolFromXPMessage(arg1)
 end)
 
 -------------------------------------------------------------------------
