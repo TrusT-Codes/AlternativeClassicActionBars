@@ -106,6 +106,16 @@ Single global table `AlternativeClassicActionBars` (locally aliased `local ACAB 
 
 **`MISTAKES.md`** — Log mistakes in MISTAKES.md (what happened, root cause, prevention).
 
+## Type definitions repo (local reference)
+
+`wow-api-type-definitions/` is a gitignored local clone of https://github.com/SabineWren/wow-api-type-definitions (commit `72ab041`). Fresh checkout: clone it into the repo root again. It is **GPLv3** — read and grep it, never copy its content into this repo.
+
+- `UI_Turtle/FrameXML/` — real Turtle WoW UI source. Grep it **before** guessing native frame behavior (`MainMenuBar`, `PetActionButton`, `ShapeshiftButton`, `MultiBar*`, `UIDropDownMenu_*`, …) or asking the user for a `/run` check.
+- `Client/*.d.lua` — API/event/widget signatures. Adapted from 2006 wowpedia docs, so **unverified** for this client.
+- Covers only the base Turtle client — **nothing** for SuperWoW/nampower/ClassicAPI/UnitXP_SP3 (env doc stays the source).
+- Trust order: env doc §4 (live-confirmed) > `UI_Turtle` FrameXML > `Client/*.d.lua` > general WoW knowledge.
+- `.luarc.json` points LuaLS at it. It assumes Lua 5.1 and knows none of the four mods, so "undefined global" warnings for their APIs are expected; Lua 5.0 rules above still apply.
+
 ## Style already established in this codebase
 
 - New files must be added to `AlternativeClassicActionBars.toc` in load order, respecting inter-file dependencies (see the ordered list above).

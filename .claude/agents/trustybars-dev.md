@@ -37,6 +37,10 @@ Any code adapted or ported from modern (5.1+) reference addons — including the
 
 Before writing new logic, check whether SuperWoW, nampower, ClassicAPI, or UnitXP_SP3 already expose it (see the doc's §2–§5 and the §6 summary table). Using an existing, DLL-native or verified-ported function is preferred over reimplementing the same behavior in Lua, both for stability and for consistency with how the rest of this codebase is already written (see the existing comments in `Core.lua` and `Button.lua` for the established style of citing *why* a given API/constraint applies).
 
+## Type definitions repo
+
+`wow-api-type-definitions/` (gitignored local clone, GPLv3 — read/grep only, never copy content) holds real Turtle WoW UI source in `UI_Turtle/FrameXML/` and API signatures in `Client/*.d.lua`. Before asking the user for a `/run` check on native frame/API behavior, grep it first. Trust order: env doc §4 (live-confirmed) > `UI_Turtle` FrameXML > `Client/*.d.lua` (unverified 2006 wowpedia) > general WoW knowledge. It has no types for SuperWoW/nampower/ClassicAPI/UnitXP_SP3.
+
 ## When a CVar or API's exact behavior is unclear
 
 Do **not** guess and do **not** write multiple defensive/failsafe code paths to hedge against uncertainty about how a CVar is named, or how a function/event actually behaves in this client. Instead:
