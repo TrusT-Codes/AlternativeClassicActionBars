@@ -2,7 +2,7 @@
 
 Read this when something doesn't behave the way the code suggests it should. It collects everything the 1.2.0 refactor pass found: suspected bugs nobody has confirmed yet, client quirks, code orderings that must stay as they are, and leftover tech debt.
 
-- `docs/01-Environment-Capability-Analysis.md` stays the authority on *what the client APIs do*. This file covers *where that bites this codebase*.
+- `docs/01-Environment-Capability-Analysis.md` stays the authority on *what the client APIs do*. This file covers *where that bites this codebase*. `env §N` points into that doc; a bare `§N` points into this file.
 - Entries name file + function, not line numbers. Grep the function name.
 - Code comments point here as `see known-problems.md: "<entry title>"`. Keep those titles stable.
 - When a suspected bug is confirmed or fixed, move it (or delete it) and note the outcome in one line.
@@ -22,7 +22,7 @@ None of these were fixed during the refactor. Each has a repro or a `/run` check
 ### Stance Bar rebuild relies on UPDATE_SHAPESHIFT_FORMS, which may never fire here
 - **Status:** still untested live. Flagged for later review.
 - **Where:** `Events.lua` — `stanceFormEventFrame`; `PetStanceBars.lua` — `RebuildStanceBarContainer`
-- **What:** The only runtime trigger for `RebuildStanceBarContainer` / `ApplyStanceBarLiveShape` / `RebuildAllDefaultBarAssignmentRows` is `UPDATE_SHAPESHIFT_FORMS`. §5aj confirmed it doesn't fire on form *toggles*; nobody has tested whether it fires when the set of forms *changes*. If it doesn't, a newly learned form or a respec won't reshape the Stance Bar until `/reload`. A class with no forms at login never builds the container. Keep the registration regardless.
+- **What:** The only runtime trigger for `RebuildStanceBarContainer` / `ApplyStanceBarLiveShape` / `RebuildAllDefaultBarAssignmentRows` is `UPDATE_SHAPESHIFT_FORMS`. env §4.12 confirmed it doesn't fire on form *toggles*; nobody has tested whether it fires when the set of forms *changes*. If it doesn't, a newly learned form or a respec won't reshape the Stance Bar until `/reload`. A class with no forms at login never builds the container. Keep the registration regardless.
 - **Verify:** On a low-level druid/warrior, learn a new form/stance and watch for the button without `/reload`. Or trace `UPDATE_SHAPESHIFT_FORMS` + `SPELLS_CHANGED` / `LEARNED_SPELL_IN_TAB`.
 
 ### Layout baseline pass waits a fixed delay after login
@@ -36,20 +36,20 @@ None of these were fixed during the refactor. Each has a repro or a `/run` check
 
 ### Lua / runtime
 - **`string.match` is available despite being Lua 5.1.** `Core.lua`'s slash dispatcher / `HandleProfileCommand` rely on it, and it works live. Presumably one of the client mods supplies it. Don't "fix" it to `string.find` captures. Check: `/run print(string.match, string.gmatch)`.
-- **`X and X(...)` truncates a multi-return call to one value** (stock Lua, §5ah). Capture multi-return APIs (`GetPetActionInfo`: 7 values incl. `subtext` in position 2) inside a real `if X then ... end` block.
+- **`X and X(...)` truncates a multi-return call to one value** (stock Lua, env §2). Capture multi-return APIs (`GetPetActionInfo`: 7 values incl. `subtext` in position 2) inside a real `if X then ... end` block.
 - **Lua 5.0 caps each function at 32 upvalues.** The local `luac` (5.1) allows 60 and won't catch it. Watch big settings builders when adding file-level locals; `SettingsBars.lua` peaks around 18.
 - **Global `_` is written by pet-slot captures** in `Button.lua` `ACABButtonMixin:Refresh` / `OnEnter` (`name, _, texture, ...` with no `local _`). Harmless so far. Declaring `local _` there is a behavior-scoped change.
 
 ### Frames, rects and layout
-- **Lazy, top-down rect resolution (§5af).** A child read before its ancestor caches a stale rect. Discarded ancestor reads before child reads are load-bearing in:
+- **Lazy, top-down rect resolution (env §4.6).** A child read before its ancestor caches a stale rect. Discarded ancestor reads before child reads are load-bearing in:
   - `Settings.lua` `ApplySettingsHeightFromCandidates` (see §3)
   - `DefaultBars.lua` `WarmMainBarArtAncestorChain` / `GetButton1ScreenAnchor` / `ResolveNativeTopLeft`
   - `NativeElements.lua` Page Indicator (`UIParent:GetLeft(); container:GetLeft()` before `RealRect`)
-- **No rect until sized (§5ak).** A frame with only `SetPoint` returns nil rects forever. Placeholder `SetWidth(1)/SetHeight(1)` at creation is load-bearing (Page Indicator container, `Settings.lua` bar-list scroll child). `MainMenuBarArtFrame` needs its native width/height re-asserted on every `ApplyMainBarArtPosition` (order: size → scale → ClearAllPoints → SetPoint).
-- **Same-name `CreateFrame` makes a second frame (§5ag).** Per-rebuild name counters in `SettingsBars.lua` (`RebuildDefaultBarAssignmentRows`, `RefreshBarList`) are load-bearing. The Setup Wizard uses fixed names and is only safe because it's a build-once singleton: if steps ever get rebuilt, suffix a counter on every name.
+- **No rect until sized (env §4.6).** A frame with only `SetPoint` returns nil rects forever. Placeholder `SetWidth(1)/SetHeight(1)` at creation is load-bearing (Page Indicator container, `Settings.lua` bar-list scroll child). `MainMenuBarArtFrame` needs its native width/height re-asserted on every `ApplyMainBarArtPosition` (order: size → scale → ClearAllPoints → SetPoint).
+- **Same-name `CreateFrame` makes a second frame (env §4.7).** Per-rebuild name counters in `SettingsBars.lua` (`RebuildDefaultBarAssignmentRows`, `RefreshBarList`) are load-bearing. The Setup Wizard uses fixed names and is only safe because it's a build-once singleton: if steps ever get rebuilt, suffix a counter on every name.
 - **ScrollFrame must stay paired with its original scroll child** (`Settings.lua` `CreateSettingsFrame`, `CreateWideContentScrollFrame`). Pointing a ScrollFrame at a new child leaves that child unresolvable. Build a new pair instead.
 - **FontString anchored only by TOPLEFT+TOPRIGHT won't wrap.** Set an explicit `SetWidth` before `SetText`, then read `GetHeight` (`Settings.lua` `SetProfileLockBannerMessage`).
-- **Strata survives reparenting.** ActionBarUp/DownButton keep `MainMenuBarArtFrame`'s MEDIUM strata after `SetParent`. `NativeElements.lua` `ApplyPageIndicatorStrata` reasserts HIGH + explicit levels on every apply. Bars (`Bar.lua` `ApplyBarShape`) re-set HIGH/level 10 on every shape pass, because page/stance swaps or `MainMenuBarArtFrame:Raise()` otherwise bury Bar 1 (§5ae).
+- **Strata survives reparenting.** ActionBarUp/DownButton keep `MainMenuBarArtFrame`'s MEDIUM strata after `SetParent`. `NativeElements.lua` `ApplyPageIndicatorStrata` reasserts LOW + explicit levels on every apply. Bars (`Bar.lua` `ApplyBarShape`) re-set LOW/level 10 on every shape pass, because page/stance swaps or `MainMenuBarArtFrame:Raise()` otherwise bury Bar 1 (env §4.8).
 - **Edit-mode overlays are parented to UIParent** (`DefaultBars.lua` `EnsureContainerOverlay`) so all overlays compare FrameLevel in one tree. Hiding an element never hides its overlay: every disable path must `overlay:Hide()` + `EnableMouse(false)` itself. Overlapping overlays need distinct explicit levels (Key Ring 150 vs default 100).
 - **Page Indicator is laid out from `GetPoint` data, not rect deltas** (`NativeElements.lua` `CreatePageIndicatorContainer` / `ApplyPageIndicatorShape`). Right after login, sibling rects can still be cached from before the art moved. `MainMenuBarPageNumber` (FontString) has no `GetEffectiveScale`, so `ACAB:PixelSetPoint` falls back to plain `SetPoint`.
 - **Latency Bar Modern reset measures one frame late** (`NativeElements.lua` `ResetLatencyBarLayoutToModernBase`). Overlay rects don't reflect `SetScale(1)` until the next frame. `ApplyModernCornerClusterLayout` takes every measurement before any `Apply*Position`.
@@ -58,9 +58,9 @@ None of these were fixed during the refactor. Each has a repro or a `/run` check
 ### Native frames and FrameXML
 - **Native code re-anchors wrapped frames without `ClearAllPoints`**: Key Ring, Latency Bar, Micro Menu and Bag Bar buttons (`MainMenuBarBackpackButton`, `QuestLogMicroButton` seen), the art frame. `DefaultBars.lua` `InstallReanchorGuard` swallows every unflagged `SetPoint`/`ClearAllPoints` and records the last swallowed anchor in `frame.ACABSwallowedAnchor`, which `Core.lua` `WaitForWrappedFrameAnchorSettle` polls. Every own re-anchor must set the element's guard flag around it. `relativeTo` can arrive as a name string, and indexing a string errors, so check for the string first. `ApplyGridAnchoredShape` hard-codes `ACABApplyingMicroMenuPosition`: fine while Micro Menu is the only grid container.
 - **`ShapeshiftBar_Update` checks `MultiBarBottomLeft:IsShown()`** to pick Stance Bar border art. `DefaultBars.lua` `ForceShowMultiBarBottomLeft` force-shows it with `Hide` neutered, then re-runs `ShapeshiftBar_Update()` once. Don't clean either up.
-- **Stance assignment keys off the active form, not the action page** (`DefaultBars.lua` `GetDefaultBarSlotForIndex`). Travel/Aquatic Form leave the page at 1. `GetShapeshiftForm()` returns nil here, so use `GetShapeshiftFormInfo`'s `isActive` (§5aj).
+- **Stance assignment keys off the active form, not the action page** (`DefaultBars.lua` `GetDefaultBarSlotForIndex`). Travel/Aquatic Form leave the page at 1. `GetShapeshiftForm()` returns nil here, so use `GetShapeshiftFormInfo`'s `isActive` (env §4.12).
 - **`ShapeshiftButton` backdrop must be a separate frame** (`PetStanceBars.lua` `ApplyStanceBarBorderStyle`). `SetBackdrop` on the real button draws over the icon and greys it out.
-- **`SHOW_MULTI_ACTIONBAR_1-4` don't survive logout (§5m).** `Database.lua` `SeedOneDefaultBar` seeds `enabled` from `DEFAULT_BAR_GRID`.
+- **`SHOW_MULTI_ACTIONBAR_1-4` don't survive logout (env §4.5).** `Database.lua` `SeedOneDefaultBar` seeds `enabled` from `DEFAULT_BAR_GRID`.
 - **Edit mode's Escape exit is a keybinding swap** (`Core.lua` `ACAB_EditModeEscapeFire` / `Enable/DisableEditModeEscapeBinding`). An `EnableKeyboard(true)` capture frame blocks every other key on this client. So `ESCAPE` is bound to `ACABEDITMODEESCAPE` (bindings.xml → plain global), never saved, and reverts on reload. Don't add `SaveBindings` here; keep the global.
 - **Native-mode Pet/Stance bars are outside hoverbind.** They wrap real `PetActionButton` / `ShapeshiftButton` frames, so they bind only through Blizzard's Keybindings UI.
 
@@ -75,16 +75,18 @@ None of these were fixed during the refactor. Each has a repro or a `/run` check
 - **`SetMinMaxValues` fires `OnValueChanged` like a real drag.** Set `suppressApply`/`suppressSnap` before changing a range and clear them after the last `SetValue` (`SettingsBars.lua` `RefreshSimpleBarPage` / `RefreshBarSettingsPage`). `SetValue` with an unchanged value doesn't fire, hence the explicit `xAppliedValue`/`yAppliedValue`.
 - **Never `SetValue` a slider from its own `OnValueChanged`.** It breaks the native drag for the rest of that gesture. Position pages read `page.*AppliedValue or slider:GetValue()`.
 
-### Experience Bar (§5x–§5ad)
+### Experience Bar (env §4.13)
 - **Region map:**
   - `MainMenuExpBar` is a StatusBar.
   - `ExhaustionLevelFillBar` is a **Texture** (use `Set/GetVertexColor`; `SetStatusBarColor` silently no-ops).
   - `MainMenuExpText` doesn't exist. The native XP label is a FontString region of `MainMenuBarOverlayFrame`, found by `GetObjectType()`.
   - Border art is `MainMenuXPBarTexture0-3`.
+- **Native code repaints the Exp Bar fill colors.** FrameXML `ExhaustionTick_OnEvent` calls `MainMenuExpBar:SetStatusBarColor` (rested blue `0, 0.39, 0.88` / normal purple `0.58, 0, 0.55`) and `ExhaustionLevelFillBar:SetVertexColor` on `PLAYER_ENTERING_WORLD`/`UPDATE_EXHAUSTION`. `ExperienceBar.lua` `InstallExpBarColorGuard` overrides both methods on the instances and swaps in the saved color while Better Experience Bar is on. Check: `/run local r,g,b=MainMenuExpBar:GetStatusBarColor() print(r,g,b,GetRestState())`.
 - **Native XP label re-shows itself.** `ApplyBetterExpBarVisual` neuters its `Show` while Better Experience Bar is on, capturing the real `Show` once, before the first neuter.
 - **Bottom border is a gradient strip, final** (`EnsureExpBarBottomBorderStrip`). Two native-art clone attempts rendered distorted. Don't retry without a live tex-coord dump.
 - **Text overlay must be a HIGH-strata child of `MainMenuExpBar`** (`EnsureExpBarTextOverlay`). Parented to UIParent it measured 0.9× the bar and drifted.
 - **Rested tick texture paths must use the installed folder name** `Interface\AddOns\AlternativeClassicActionBars\...`. A wrong segment renders a blank tick silently.
+- **Rested overlay uses bonus XP, not `GetXPExhaustion()`** (env §4.13). `ExperienceBar.lua` `GetRestedBonusXP` divides by `ACABCharDB.restPoolPerBonusXP`, which `CalibrateRestPoolFromXPMessage` (Events.lua `CHAT_MSG_COMBAT_XP_GAIN`) measures once per character on the first rested kill: pool drop ÷ first number in the chat line's parentheses, with the drop taken from `TrackRestPool` within 2 s of the message. Until then the ratio is 1 (Blizzard's native formula, too long on Turtle). The fill, tick and "Rested" text all read it. Recalibrate: `/run ACABCharDB.restPoolPerBonusXP=nil` then kill a mob while rested. Unverified: the chat pattern on non-English clients.
 - **`GetRestState() == 1`** (banked rested XP) gates the rested overlay; **`IsResting() == 1`** (in a rest area now) gates only the glow/pulse. Don't swap them. `GetFont()` sizes come back as floats, so round them.
 
 ---
@@ -93,13 +95,13 @@ None of these were fixed during the refactor. Each has a repro or a `/run` check
 
 ### Settings height-fit top-down resolve pass
 - **Where:** `Settings.lua` — `ApplySettingsHeightFromCandidates`
-- **What:** After `SetVerticalScroll(0)` it does `scrollChildPanel:GetTop()`, then `GetBottom()` on every candidate, then `GetBottom()` on the General panel's static anchor chain, all discarded. This is the §5af fix, and three "equivalent" rewrites all brought the bug back.
+- **What:** After `SetVerticalScroll(0)` it does `scrollChildPanel:GetTop()`, then `GetBottom()` on every candidate, then `GetBottom()` on the General panel's static anchor chain, all discarded. This is the env §4.6 fix, and three "equivalent" rewrites all brought the bug back.
 - **Keep:** the block byte-for-byte, including the per-call `resolveNames` table and loop order. A new General-tab control hanging off an unmeasured static anchor needs that anchor added to `resolveNames`. Symptom if broken: toggling Global Spacing makes the controls below it unreachable.
 - **Related:** `MeasureDeepestExtent` must stay a live-position delta (`referenceTop - frame:GetBottom()`), since the window is movable. The `Fit*` candidate lists feed this pass in order: any conversion to name tables must produce an identical array.
 
 ### Inline dropdown SetParent after CreateFrame
 - **Where:** `UIWidgets.lua` — `ACAB:CreateInlineDropdown`
-- **What:** The explicit `SetParent(parent)` right after `CreateFrame(..., parent, ...)` is most likely a no-op (§5ag says a reused name makes a new frame, not a reparented old one). It's kept because removing it is risk with no gain. The `OnShow` handler that reapplies `UIDropDownMenu_SetWidth`/`SetText` **is** load-bearing: dropdowns built while hidden otherwise render with a fragmented skin and a blank label.
+- **What:** The explicit `SetParent(parent)` right after `CreateFrame(..., parent, ...)` is most likely a no-op (env §4.7 says a reused name makes a new frame, not a reparented old one). It's kept because removing it is risk with no gain. The `OnShow` handler that reapplies `UIDropDownMenu_SetWidth`/`SetText` **is** load-bearing: dropdowns built while hidden otherwise render with a fragmented skin and a blank label.
 
 ### Fade strip textures live on the parent
 - **Where:** `UIWidgets.lua` — `ACAB:CreateFadeStrip` / `ACABFadeStripMixin`, `ACABListRowMixin:OnLoad`
@@ -170,7 +172,7 @@ None of these were fixed during the refactor. Each has a repro or a `/run` check
   - `equipRing` exists before `ApplySize`.
   - Native font capture runs after the `hotkey`/`count` FontStrings exist and before their `SetFont`.
   - The reparented `PetActionButton<n>AutoCast` Model must never get `SetModel()` again, which resets it to a white plane (resize via `SetModelScale`).
-  - Button and cooldown set HIGH strata explicitly.
+  - Button and cooldown set LOW strata explicitly (below bags).
   - `ApplyBorderStyle` shares the `Init` helpers, so new border pieces go there.
 
 ### Removed intra-addon existence guards
@@ -200,7 +202,7 @@ None of these were fixed during the refactor. Each has a repro or a `/run` check
 - **Extra Bar defaults follow the reference bar.** `Database.lua` `GetDefaultExtraBarLayout` reads the built reference bar's current cfg (size, spacing, grid, position) and places the Extra Bar one pitch (frame + `GetBarEffectiveSpacing`) above/left of it; before bars exist it uses the reference bar's Reset-to-Vanilla values. `GetExtraBarStackPitch` must use the same gap, or Stance/Pet Bar restack off by the spacing difference.
 - **Stance gap capture before bars.** `PetStanceBars.lua` `CaptureStanceBarNativeGap` runs in the login sequence before `CreateFixedSlotDefaultBars`, which collapses the native anchor. (The value itself is dead, see §4.)
 - **Setup Wizard reads saved Exp Bar position.** `DefaultBars.lua` `GetModernBaseExpBarClearance` must read the saved Exp Bar position, not a live rect. `ApplyPendingLayoutBaseline` writes it first.
-- **Exp Bar layered under Latency Bar.** `ExperienceBar.lua` `ApplyExpBarPosition` copies Latency Bar's strata at level −1. This interacts with `MainMenuBarArtFrame`'s pinned MEDIUM/level-5 masking (§5ae), so change both together.
+- **Exp Bar layered under Latency Bar.** `ExperienceBar.lua` `ApplyExpBarPosition` copies Latency Bar's strata at level −1. This interacts with `MainMenuBarArtFrame`'s pinned LOW/level-5 masking (env §4.8), so change both together.
 - **Wheel resize.** `Bar.lua` `ACAB:ResizeBarFromWheel` is shared by the bar overlay and the button handler. The button's wheel handler must stay installed, since it swallows camera zoom over buttons outside edit mode.
 - **Login timing.** The settle polls (`Core.lua` `WaitForNativeBarSettle`, `WaitForWrappedFrameAnchorSettle`, `WaitForPostLoginSettleThenVerify`) are load-bearing: `stableCount` resets on any mismatch/nil, the check runs after `elapsed++`, and only a timeout without settling warns. Test any change with `/reload` and a fresh login.
 
@@ -226,7 +228,7 @@ None of these were fixed during the refactor. Each has a repro or a `/run` check
 - **Composed names hide greppable identifiers.** The Pet/Stance "Use Vanilla" checkbox name and field are built by concatenation (`CreateUseVanillaBarCheckbox`). Grep the factory name.
 
 ### Performance (measured as fine so far; look here first if something stutters)
-- **Settings frame leak.** `SettingsBars.lua` `RebuildGridSwatches`, `RefreshBarList` and `RebuildDefaultBarAssignmentRows` make new frames on every rebuild and only hide the old ones. Check `gcinfo()` before/after opening the Stance page ~50 times. Pooling with names unique per pool slot would bound it without reintroducing §5ag.
+- **Settings frame leak.** `SettingsBars.lua` `RebuildGridSwatches`, `RefreshBarList` and `RebuildDefaultBarAssignmentRows` make new frames on every rebuild and only hide the old ones. Check `gcinfo()` before/after opening the Stance page ~50 times. Pooling with names unique per pool slot would bound it without reintroducing env §4.7.
 - **Hover-bind ticker allocation.** `HoverBind.lua`'s ticker builds a ref table per visible button every 0.25 s while hoverbind mode is on.
 - **Range ticker writes.** `Button.lua`'s shared range ticker calls `IsSlotFilled` three times per button and does unconditional `Show`/`Hide`/color writes every 0.2 s. It's the hottest path in the addon; caching the last state per button would cut it.
 - **Pet Bar re-layout.** `Button.lua` `Refresh` on a pet slot re-lays out the whole Pet Bar, so one `PET_BAR_UPDATE` means 10 full layouts.
