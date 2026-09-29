@@ -515,7 +515,7 @@ function ACABButtonMixin:UpdateGridVisibility()
 	local alwaysShowMultibars = (not self.isPetSlot) and IsAlwaysShowMultibars()
 
 	-- Empty slots reappear while placing an action (action grid) and in edit mode.
-	if self.slotVisible and (isMainBar or petBarShowEmpty or hasContent or alwaysShowMultibars or ACAB.isShowingActionGrid or ACAB:IsEditMode()) then
+	if self.slotVisible and (isMainBar or petBarShowEmpty or hasContent or alwaysShowMultibars or ACAB.isShowingActionGrid or ACAB:IsEditMode() or ACAB:IsHoverBindMode()) then
 		if not self:IsShown() then
 			self:Show()
 		end
@@ -537,7 +537,7 @@ function ACABButtonMixin:UpdateBackdropVisibility(hasContent, isMainBar)
 		isMainBar = IsMainBarShowingEmpty(self)
 	end
 
-	local shown = self.slotVisible and (isMainBar or hasContent or IsAlwaysShowMultibars() or ACAB.isShowingActionGrid) and true or false
+	local shown = self.slotVisible and (isMainBar or hasContent or IsAlwaysShowMultibars() or ACAB.isShowingActionGrid or ACAB:IsHoverBindMode()) and true or false
 
 	-- Skip the writes when neither the state nor the border style changed.
 	if self.backdropShown == shown and self.backdropNativeBorder == self.hasNativeBorder then

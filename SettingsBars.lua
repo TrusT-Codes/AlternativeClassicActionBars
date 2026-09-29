@@ -3599,9 +3599,18 @@ end
 -------------------------------------------------------------------------
 
 -- One sidebar row for a default bar, simple page or Extra Bar, with an inline enable checkbox where the
--- element can be toggled. generationSuffix keeps checkbox names unique per RefreshBarList rebuild.
-local function CreateBarListRow(barId, isDefault, cfg, generationSuffix)
-	local row = ACAB:CreateListRow(ACAB.settingsFrame.listContent, nil)
+-- element can be toggled. Rows and checkboxes are pooled per barId and reconfigured on every refresh.
+local function CreateBarListRow(barId, isDefault, cfg)
+	local rowPool = ACAB.settingsFrame.barRowPool
+	local row = rowPool[barId]
+
+	if row then
+		row:Show()
+		row:SetSelected(false)
+	else
+		row = ACAB:CreateListRow(ACAB.settingsFrame.listContent, nil)
+		rowPool[barId] = row
+	end
 
 	-- Fits the longest name ("Right Action Bar 2") plus the inline checkbox.
 	row:SetWidth(110)
@@ -3655,18 +3664,25 @@ local function CreateBarListRow(barId, isDefault, cfg, generationSuffix)
 		end
 	end
 
+	if not wantsCheckbox and row.checkbox then
+		row.checkbox:Hide()
+	end
+
 	if wantsCheckbox then
-		local checkbox = CreateFrame(
+		-- One named frame per barId for the whole session (see known-problems.md: same-name CreateFrame).
+		local checkbox = row.checkbox or CreateFrame(
 			"CheckButton",
-			-- Rebuild-unique name (see RefreshBarList).
-			"ACABBarList" .. tostring(barId) .. "Checkbox" .. generationSuffix,
+			"ACABBarList" .. tostring(barId) .. "Checkbox",
 			ACAB.settingsFrame.listContent,
 			"UICheckButtonTemplate"
 		)
 
+		checkbox:Show()
+
 		checkbox:SetWidth(20)
 		checkbox:SetHeight(20)
 
+		checkbox:ClearAllPoints()
 		checkbox:SetPoint("LEFT", row, "RIGHT", 2, 0)
 
 		checkbox:SetChecked(checkedState)
@@ -3697,18 +3713,16 @@ local function CreateBarListRow(barId, isDefault, cfg, generationSuffix)
 
 		if not isNumberedDefaultBar then
 			ACAB:LockControl(checkbox, ACAB:IsDefaultProfileActive())
-		end
-
-		-- Bar 5's checkbox mirrors its page's enableCheckbox lock.
-		if isNumberedDefaultBar and barId == 5 then
+		elseif barId == 5 then
+			-- Bar 5's checkbox mirrors its page's enableCheckbox lock.
 			ACAB:LockControl(checkbox, not IsBar5EnableAllowed())
+		else
+			ACAB:LockControl(checkbox, false)
 		end
 	end
 
 	-- Greys out (and blocks) bar 5's row itself while it can't be enabled.
-	if isDefault and barId == 5 then
-		row:SetDisabled(not IsBar5EnableAllowed())
-	end
+	row:SetDisabled(isDefault and barId == 5 and not IsBar5EnableAllowed())
 
 	return row
 end
@@ -3734,15 +3748,16 @@ function ACAB:RefreshBarList()
 	ACAB.settingsFrame.barButtons = {}
 	ACAB.settingsFrame.barButtonsByBarId = {}
 
-	-- Per-rebuild suffix for the rows' checkbox names, same as RebuildDefaultBarAssignmentRows.
-	ACAB.settingsFrame.barListRebuildGeneration = (ACAB.settingsFrame.barListRebuildGeneration or 0) + 1
-	local generationSuffix = "_" .. tostring(ACAB.settingsFrame.barListRebuildGeneration)
+	if not ACAB.settingsFrame.barRowPool then
+		ACAB.settingsFrame.barRowPool = {}
+	end
 
 	local yOffset = -24
 	local rowIndex = 0
 
 	-- Anchors row at the running offset and records it under key.
 	local function PlaceRow(row, key)
+		row:ClearAllPoints()
 		row:SetPoint("TOPLEFT", ACAB.settingsFrame.listContent, "TOPLEFT", 0, yOffset)
 
 		rowIndex = rowIndex + 1
@@ -3760,7 +3775,7 @@ function ACAB:RefreshBarList()
 		local cfg = ACABDB.defaultBars[id]
 
 		if cfg then
-			PlaceRow(CreateBarListRow(id, true, cfg, generationSuffix), id)
+			PlaceRow(CreateBarListRow(id, true, cfg), id)
 		end
 	end
 
@@ -3778,19 +3793,27 @@ function ACAB:RefreshBarList()
 		end
 
 		if exists then
-			PlaceRow(CreateBarListRow(key, true, nil, generationSuffix), key)
+			PlaceRow(CreateBarListRow(key, true, nil), key)
 		end
 	end
 
 	-- Divider between default and custom bars; tracked in barButtons (not barButtonsByBarId) so it's
 	-- hidden/recreated with the rows.
-	local divider = ACAB.settingsFrame.listContent:CreateTexture(nil, "ARTWORK")
+	local divider = ACAB.settingsFrame.barListDivider
 
-	divider:SetTexture("Interface\\Buttons\\WHITE8X8")
-	divider:SetVertexColor(0.5, 0.5, 0.5, 0.6)
-	divider:SetWidth(120)
-	divider:SetHeight(2)
+	if not divider then
+		divider = ACAB.settingsFrame.listContent:CreateTexture(nil, "ARTWORK")
 
+		divider:SetTexture("Interface\\Buttons\\WHITE8X8")
+		divider:SetVertexColor(0.5, 0.5, 0.5, 0.6)
+		divider:SetWidth(120)
+		divider:SetHeight(2)
+
+		ACAB.settingsFrame.barListDivider = divider
+	end
+
+	divider:Show()
+	divider:ClearAllPoints()
 	divider:SetPoint("TOPLEFT", ACAB.settingsFrame.listContent, "TOPLEFT", 2, yOffset + 2)
 
 	rowIndex = rowIndex + 1
@@ -3804,7 +3827,7 @@ function ACAB:RefreshBarList()
 		local cfg = ACABDB.bars[i]
 
 		if cfg then
-			PlaceRow(CreateBarListRow(cfg.id, false, cfg, generationSuffix), cfg.id)
+			PlaceRow(CreateBarListRow(cfg.id, false, cfg), cfg.id)
 		end
 	end
 
