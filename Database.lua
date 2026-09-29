@@ -901,8 +901,17 @@ local function IsValidBarConfig(self, cfg)
 end
 
 -- Drops wrong-typed fields from one profile's data in place; structural damage falls back to EnsureDB reseeding.
-function ACAB:SanitizeProfileData(data)
+-- Appends one "<field> <expectation>" line per dropped field to `issues` when given.
+function ACAB:SanitizeProfileData(data, issues)
 	local i, key
+
+	local function Drop(field, expected)
+		data[field] = nil
+
+		if issues then
+			table.insert(issues, field .. " " .. expected)
+		end
+	end
 
 	if type(data.schemaVersion) ~= "number" then
 		data.schemaVersion = self.SCHEMA_VERSION
@@ -911,41 +920,43 @@ function ACAB:SanitizeProfileData(data)
 	for i = 1, table.getn(SANITIZE_BOOLEAN_KEYS) do
 		key = SANITIZE_BOOLEAN_KEYS[i]
 
-		if data[key] ~= nil and type(data[key]) ~= "boolean" then data[key] = nil end
+		if data[key] ~= nil and type(data[key]) ~= "boolean" then Drop(key, "must be true or false") end
 	end
 
 	for i = 1, table.getn(SANITIZE_NUMBER_KEYS) do
 		key = SANITIZE_NUMBER_KEYS[i]
 
-		if data[key] ~= nil and not IsFiniteNumber(data[key]) then data[key] = nil end
+		if data[key] ~= nil and not IsFiniteNumber(data[key]) then Drop(key, "must be a number") end
 	end
 
 	for i = 1, table.getn(SANITIZE_SCALE_KEYS) do
 		key = SANITIZE_SCALE_KEYS[i]
 
-		if data[key] ~= nil and not (IsFiniteNumber(data[key]) and data[key] > 0) then data[key] = nil end
+		if data[key] ~= nil and not (IsFiniteNumber(data[key]) and data[key] > 0) then
+			Drop(key, "must be a number above 0")
+		end
 	end
 
 	for i = 1, table.getn(SANITIZE_POSITION_KEYS) do
 		key = SANITIZE_POSITION_KEYS[i]
 
-		if data[key] ~= nil and not IsValidPositionTable(data[key]) then data[key] = nil end
+		if data[key] ~= nil and not IsValidPositionTable(data[key]) then Drop(key, "must hold numeric x/y and text anchors") end
 	end
 
 	if data.tooltipAnchorCorner ~= nil and type(data.tooltipAnchorCorner) ~= "string" then
-		data.tooltipAnchorCorner = nil
+		Drop("tooltipAnchorCorner", "must be text")
 	end
 
 	local color = data.expBarTextColor
 
 	if color ~= nil and not (type(color) == "table" and IsFiniteNumber(color.r) and IsFiniteNumber(color.g)
 		and IsFiniteNumber(color.b)) then
-		data.expBarTextColor = nil
+		Drop("expBarTextColor", "must hold numeric r/g/b")
 	end
 
 	if data.pendingLayoutBaseline ~= nil and data.pendingLayoutBaseline ~= "modern"
 		and data.pendingLayoutBaseline ~= "vanilla" then
-		data.pendingLayoutBaseline = nil
+		Drop("pendingLayoutBaseline", "must be \"modern\" or \"vanilla\"")
 	end
 
 	-- Page/stance assignment maps: [id] -> number or { [stanceIndex] -> number }.
@@ -956,11 +967,15 @@ function ACAB:SanitizeProfileData(data)
 		key = assignmentKeys[a]
 
 		if data[key] ~= nil and type(data[key]) ~= "table" then
-			data[key] = nil
+			Drop(key, "must be a table")
 		elseif data[key] then
 			for k, v in pairs(data[key]) do
 				if type(v) ~= "number" and type(v) ~= "table" then
 					data[key][k] = nil
+
+					if issues then
+						table.insert(issues, key .. "[" .. tostring(k) .. "] must be a number or table")
+					end
 				end
 			end
 		end
@@ -985,7 +1000,7 @@ function ACAB:SanitizeProfileData(data)
 		end
 
 		if not valid then
-			data.defaultBars = nil
+			Drop("defaultBars", "has a bar entry with missing or invalid values (reset to defaults)")
 		end
 	end
 
@@ -1001,12 +1016,35 @@ function ACAB:SanitizeProfileData(data)
 				if IsValidBarConfig(self, cfg) and IsIntegerInRange(cfg.id, 1, SANITIZE_LIMIT) then
 					n = n + 1
 					cleaned[n] = cfg
+				elseif issues then
+					table.insert(issues, "bars[" .. tostring(i) .. "] has invalid values (removed)")
 				end
 			end
+		elseif issues then
+			table.insert(issues, "bars must be a table")
 		end
 
 		data.bars = cleaned
 	end
+end
+
+-- Joins the first few sanitize issues into one line.
+local function FormatSanitizeIssues(issues)
+	local shown = {}
+	local total = table.getn(issues)
+	local i
+
+	for i = 1, math.min(total, 5) do
+		shown[i] = issues[i]
+	end
+
+	local text = table.concat(shown, "; ")
+
+	if total > 5 then
+		text = text .. "; and " .. tostring(total - 5) .. " more"
+	end
+
+	return text
 end
 
 -- Resolves this character's profile, migrates pre-profile account data into Default Vanilla once, rebuilds
@@ -1034,12 +1072,24 @@ function ACAB:ResolveActiveProfile()
 		if type(profileName) ~= "string" or type(profileData) ~= "table" then
 			ACABProfilesDB[profileName] = nil
 		else
-			self:SanitizeProfileData(profileData)
+			local issues = {}
+
+			self:SanitizeProfileData(profileData, issues)
+
+			if issues[1] then
+				self:Print("Reset invalid saved settings in profile \"" .. profileName .. "\": " .. FormatSanitizeIssues(issues))
+			end
 		end
 	end
 
 	if ACABDB then
-		self:SanitizeProfileData(ACABDB)
+		local issues = {}
+
+		self:SanitizeProfileData(ACABDB, issues)
+
+		if issues[1] then
+			self:Print("Reset invalid saved settings: " .. FormatSanitizeIssues(issues))
+		end
 	end
 
 	MigrateBuiltInProfileNames(self)
@@ -1355,7 +1405,7 @@ local function ParseImportNumberOrKeyword(p)
 
 	-- Rejects NaN and +-infinity.
 	if not num or num ~= num or num <= -SANITIZE_LIMIT or num >= SANITIZE_LIMIT then
-		return nil, "invalid token"
+		return nil, "invalid value (expected true, false, nil or a normal number)"
 	end
 
 	return num
@@ -1469,55 +1519,85 @@ ParseImportValue = function(p)
 	end
 end
 
--- Parses one whole value; nil on any error or trailing input.
+-- Parses one whole value; returns the value, or nil, error, position on failure or trailing input.
 local function ParseImportBody(body)
 	local p = NewImportParser(body)
 	local value, err = ParseImportValue(p)
 
 	if err then
-		return nil
+		return nil, err, p.pos
 	end
 
 	SkipImportWhitespace(p)
 
 	if p.pos <= p.len then
-		return nil
+		return nil, "unexpected text after the end of the profile", p.pos
 	end
 
 	return value
 end
 
--- Validates and parses an exported profile string without applying it. Returns true, data or false, errorMessage.
+-- Error banner text: the general message plus what went wrong and where (character count includes the prefix).
+function ACAB:BuildImportErrorMessage(detail, body, pos)
+	local text = self.PROFILE_IMPORT_ERROR_MESSAGE .. "\nProblem: " .. detail
+
+	if body and pos then
+		local near = string.gsub(string.sub(body, math.max(pos - 12, 1), pos + 8), "%c", "?")
+
+		text = text .. " at character " .. tostring(pos + string.len(PROFILE_EXPORT_PREFIX)) .. " (near \"" .. near .. "\")"
+	end
+
+	return text
+end
+
+-- Validates and parses an exported profile string without applying it.
+-- Returns true, data, warningText-or-nil (fields dropped for wrong types) or false, errorMessage.
 function ACAB:ParseProfileImportString(str)
 	if type(str) ~= "string" then
-		return false, self.PROFILE_IMPORT_ERROR_MESSAGE
+		return false, self:BuildImportErrorMessage("the pasted value is not text")
 	end
 
 	if string.len(str) > PROFILE_IMPORT_MAX_LENGTH then
-		return false, self.PROFILE_IMPORT_ERROR_MESSAGE
+		return false, self:BuildImportErrorMessage("the text is longer than " .. tostring(PROFILE_IMPORT_MAX_LENGTH / 1024) .. " KB")
 	end
 
 	local prefixLen = string.len(PROFILE_EXPORT_PREFIX)
 
 	if string.sub(str, 1, prefixLen) ~= PROFILE_EXPORT_PREFIX then
-		return false, self.PROFILE_IMPORT_ERROR_MESSAGE
+		return false, self:BuildImportErrorMessage("the text must start with " .. PROFILE_EXPORT_PREFIX)
 	end
 
 	local body = string.sub(str, prefixLen + 1)
-	local ok, result = pcall(ParseImportBody, body)
+	local ok, result, err, pos = pcall(ParseImportBody, body)
 
-	if not ok or type(result) ~= "table" or type(result.schemaVersion) ~= "number" then
-		return false, self.PROFILE_IMPORT_ERROR_MESSAGE
+	if not ok then
+		return false, self:BuildImportErrorMessage("the text could not be read")
+	end
+
+	if err then
+		return false, self:BuildImportErrorMessage(err, body, pos)
+	end
+
+	if type(result) ~= "table" or type(result.schemaVersion) ~= "number" then
+		return false, self:BuildImportErrorMessage("this is not a profile (no numeric schemaVersion found)")
 	end
 
 	-- Marks the built-in Default Modern profile; only ACAB itself writes it.
 	result.builtInModernProfile = nil
 
-	if not pcall(self.SanitizeProfileData, self, result) then
-		return false, self.PROFILE_IMPORT_ERROR_MESSAGE
+	local issues = {}
+
+	if not pcall(self.SanitizeProfileData, self, result, issues) then
+		return false, self:BuildImportErrorMessage("the profile values could not be checked")
 	end
 
-	return true, result
+	local warning
+
+	if issues[1] then
+		warning = "Wrong-typed values will be reset to defaults: " .. FormatSanitizeIssues(issues)
+	end
+
+	return true, result, warning
 end
 
 -- Overwrites the active profile's live data and saved entry with parsed import data.
