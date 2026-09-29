@@ -154,6 +154,11 @@ None of these were fixed during the refactor. Each has a repro or a `/run` check
 - **Profile writes hit both `ACABDB` and `ACABProfilesDB`.** Logout / `ReloadUI` runs `SaveActiveProfileData`, which writes live `ACABDB` back under `activeProfileName`. Deleting the active profile must also repoint `activeProfileName`.
 - **Export format is byte-stable** (`TBVPROFILE1:`). Never add whitespace to `SerializeValue`, or older parsers reject it. The parser doesn't trim bare tokens (`[1]=false }` fails), and numbers round-trip at 14 significant digits.
 
+- **Sanitizer key lists are hand-kept.** `ACAB:SanitizeProfileData` (Database.lua) type-checks only the fields named in its `SANITIZE_*` lists plus `defaultBars`/`bars`; it runs on every saved profile at login and on imports. A new persisted field with a crash-prone type must be added there.
+- **Not type-checked (unconfirmed risk):** lazily captured fields (`expBarColorEarned`/`Rested`, native snapshots, font sizes, `*Spacing`, per-bar cfg fields beyond position/grid/slot). A hand-edited wrong type there may still error downstream; no live repro.
+- **Import limits:** 256 KB string, 12 table levels, finite numbers only, string/number keys only, `schemaVersion` must be a number. Deep-recursion behavior on the real Lua 5.0 client is unverified (harness ran Lua 5.1); the depth cap makes it moot.
+- **Import never targets a built-in profile** (`ApplyImportedProfileData` and `ShowImportProfileDialog` refuse). Duplicate keys in an import: last one wins.
+
 ### Setup Wizard baseline write and resume
 - **Where:** `SetupWizard.lua` — `BuildBaselineData`, `WriteTargetProfile`, `ApplyBaselineAndReload`, `SaveResumeState`
 - **What:**

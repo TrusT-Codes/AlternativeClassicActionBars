@@ -529,6 +529,11 @@ end
 
 -- Pasted-string import onto the active profile (validated live), then reload.
 function ACAB:ShowImportProfileDialog()
+	if self:IsBuiltInProfileName(ACABCharDB and ACABCharDB.activeProfile) then
+		self:Print("Built-in profiles cannot be overwritten - create or select a custom profile first.")
+		return
+	end
+
 	self:ShowDialog({
 		title = "Import Profile",
 		message = "You are about to Import a Profile on to your currently " ..
@@ -544,9 +549,13 @@ function ACAB:ShowImportProfileDialog()
 				isDefault = true,
 				validate = ValidateImportText,
 				onClick = function(value)
-					local ok, data = ACAB:ParseProfileImportString(value)
+					local ok, data, warning = ACAB:ParseProfileImportString(value)
 
 					if ok then
+						if warning then
+							ACAB:Print(warning)
+						end
+
 						ACAB:ApplyImportedProfileData(data)
 						ReloadUI()
 					end
