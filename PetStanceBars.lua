@@ -136,6 +136,16 @@ function ACAB:CreatePetBarNativeContainer()
 
 	local container = self:BuildChainAnchoredContainer("ACABPetBarNativeContainer", buttons)
 
+	-- The container raised the buttons' level; lift each autocast shine model above its button again.
+	for b = 1, table.getn(buttons) do
+		local model = getglobal(buttons[b]:GetName() .. "AutoCast")
+
+		if model then
+			model:SetFrameStrata(buttons[b]:GetFrameStrata())
+			model:SetFrameLevel(buttons[b]:GetFrameLevel() + 1)
+		end
+	end
+
 	self.petBarNativeContainer = container
 	self.petBarNativeButtons = buttons
 
