@@ -810,7 +810,7 @@ local DIALOG_BUTTON_MIN_WIDTH_PROMINENT = 220
 local DIALOG_BUTTON_HEIGHT_MINOR = 18
 local DIALOG_BUTTON_MIN_WIDTH_MINOR = 80
 local DIALOG_TEXTAREA_HEIGHT = 160
-local DIALOG_ERROR_BANNER_HEIGHT = 54
+local DIALOG_ERROR_BANNER_HEIGHT = 78
 local DIALOG_TEXTAREA_SCROLLBAR_RESERVE = 28
 -- Fixed text-area scroll-child height (not measured from the text).
 local DIALOG_TEXTAREA_CONTENT_HEIGHT = 4000
@@ -1025,9 +1025,11 @@ function ACABDialogMixin:Init(config)
 				return
 			end
 
-			local ok, message = config.liveValidate(text)
+			local ok, message, warning = config.liveValidate(text)
 
-			if ok then
+			if ok and warning then
+				ACAB.activeDialog:ShowInlineError(warning, true)
+			elseif ok then
 				ACAB.activeDialog.errorBanner:Hide()
 			else
 				ACAB.activeDialog:ShowInlineError(message)
@@ -1215,10 +1217,16 @@ function ACABDialogMixin:GetValue()
 	return nil
 end
 
--- Shows message in the reserved error banner; no-op without config.reserveErrorBanner.
-function ACABDialogMixin:ShowInlineError(message)
+-- Shows message in the reserved error banner (yellow when isWarning); no-op without config.reserveErrorBanner.
+function ACABDialogMixin:ShowInlineError(message, isWarning)
 	if not self.hasErrorBannerSlot then
 		return
+	end
+
+	if isWarning then
+		self.errorBanner.text:SetTextColor(1, 0.82, 0)
+	else
+		self.errorBanner.text:SetTextColor(1, 0.15, 0.15)
 	end
 
 	self.errorBanner.text:SetText(message or "")

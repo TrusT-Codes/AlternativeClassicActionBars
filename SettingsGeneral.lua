@@ -549,9 +549,13 @@ function ACAB:ShowImportProfileDialog()
 				isDefault = true,
 				validate = ValidateImportText,
 				onClick = function(value)
-					local ok, data = ACAB:ParseProfileImportString(value)
+					local ok, data, warning = ACAB:ParseProfileImportString(value)
 
 					if ok then
+						if warning then
+							ACAB:Print(warning)
+						end
+
 						ACAB:ApplyImportedProfileData(data)
 						ReloadUI()
 					end
