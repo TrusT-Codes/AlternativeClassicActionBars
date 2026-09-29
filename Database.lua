@@ -845,7 +845,7 @@ local SANITIZE_BOOLEAN_KEYS = {
 }
 
 local SANITIZE_NUMBER_KEYS = {
-	"minimapAngle", "globalSpacingValue", "globalButtonSizeValue", "mainBarArtMode", "keyRingHoverDuration",
+	"minimapAngle", "globalSpacingValue", "globalButtonSizeValue", "keyRingHoverDuration",
 	"bagBarHoverDuration", "microMenuHoverDuration", "latencyBarHoverDuration", "expBarHoverDuration",
 	"expBarGlowPulseInterval", "microMenuCols", "microMenuRows", "stanceBarNativeGap",
 }
@@ -952,6 +952,13 @@ function ACAB:SanitizeProfileData(data, issues)
 	if color ~= nil and not (type(color) == "table" and IsFiniteNumber(color.r) and IsFiniteNumber(color.g)
 		and IsFiniteNumber(color.b)) then
 		Drop("expBarTextColor", "must hold numeric r/g/b")
+	end
+
+	local artMode = data.mainBarArtMode
+
+	if artMode ~= nil and artMode ~= self.MAIN_BAR_ART_MODE_FULL and artMode ~= self.MAIN_BAR_ART_MODE_NO_GRYPHONS
+		and artMode ~= self.MAIN_BAR_ART_MODE_DISABLED then
+		Drop("mainBarArtMode", "must be \"full\", \"noGryphons\" or \"disabled\"")
 	end
 
 	if data.pendingLayoutBaseline ~= nil and data.pendingLayoutBaseline ~= "modern"
