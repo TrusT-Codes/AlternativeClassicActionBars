@@ -34,8 +34,11 @@ end)
 local gridVisibilityFrame = CreateFrame("Frame")
 gridVisibilityFrame:RegisterEvent("ACTIONBAR_SHOWGRID")
 gridVisibilityFrame:RegisterEvent("ACTIONBAR_HIDEGRID")
+gridVisibilityFrame:RegisterEvent("PET_BAR_SHOWGRID")
+gridVisibilityFrame:RegisterEvent("PET_BAR_HIDEGRID")
 gridVisibilityFrame:SetScript("OnEvent", function()
-	ACAB.isShowingActionGrid = (event == "ACTIONBAR_SHOWGRID")
+	-- Pet spell drags fire the PET_BAR_* pair instead of the ACTIONBAR_* pair.
+	ACAB.isShowingActionGrid = (event == "ACTIONBAR_SHOWGRID" or event == "PET_BAR_SHOWGRID")
 
 	ACAB:SweepCustomBarGridVisibility()
 end)
