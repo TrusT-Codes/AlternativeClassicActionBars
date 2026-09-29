@@ -1583,6 +1583,11 @@ end
 
 -- Builds the native Pet Bar container once and aligns it to the default layout.
 local function SetupPetBarNativeContainer()
+	-- Native Pet Bar frame spans Main Bar buttons 1-6 and swallows their drops/hoverbind; the pet buttons keep their own mouse.
+	if PetActionBarFrame then
+		PetActionBarFrame:EnableMouse(false)
+	end
+
 	local cfg = ACABDB and ACABDB.defaultBars and ACABDB.defaultBars[ACAB.PET_BAR_ID]
 
 	if not cfg or ACAB.petBarNativeContainer then
