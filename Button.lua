@@ -1000,8 +1000,17 @@ function ACABButtonMixin:ResetHotkeyRangeColor()
 end
 
 function ACABButtonMixin:PlaceCursor()
-	-- Pet/stance slots are fixed by the game.
-	if self.isPetSlot or self.isStanceSlot then
+	-- Pet slots take a dropped pet spell/command via PickupPetAction; stance slots are fixed by the game.
+	if self.isPetSlot then
+		if PickupPetAction then
+			PickupPetAction(self.actionSlot)
+			self:Refresh()
+		end
+
+		return
+	end
+
+	if self.isStanceSlot then
 		return
 	end
 
@@ -1096,13 +1105,22 @@ function ACABButtonMixin.OnReceiveDrag()
 	this:PlaceCursor()
 end
 
--- Picks up the slot's action unless it's a pet/stance slot or Lock Action Bars (LOCK_ACTIONBAR) is on.
+-- Picks up the slot's action (pet slots via PickupPetAction; never stance slots) unless Lock Action Bars (LOCK_ACTIONBAR) is on.
 function ACABButtonMixin.OnDragStart()
-	if this.isPetSlot or this.isStanceSlot then
+	if this.isStanceSlot then
 		return
 	end
 
 	if ACAB:IsLockActionBars() then
+		return
+	end
+
+	if this.isPetSlot then
+		if this:IsSlotFilled() and PickupPetAction then
+			PickupPetAction(this.actionSlot)
+			this:Refresh()
+		end
+
 		return
 	end
 
