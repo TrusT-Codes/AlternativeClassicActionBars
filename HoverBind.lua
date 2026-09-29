@@ -198,6 +198,9 @@ function ACAB:TintHoverBindButton(ref)
 		or HOVERBIND_UNBOUND_COLOR
 
 	icon:SetVertexColor(color[1], color[2], color[3])
+
+	-- Forces UpdateRange to repaint once hoverbind ends.
+	ref.frame.rangeKey = nil
 end
 
 -- Recomputes the button's normal range/usability tint immediately.
@@ -228,6 +231,9 @@ function ACAB:ApplyHoverBindVisual(enabled)
 	else
 		self:ForEachButton(RestoreButtonIconTint)
 	end
+
+	-- Empty slots show while binding and revert to their normal visibility afterwards.
+	self:SweepCustomBarGridVisibility()
 
 	local captureFrame = self.hoverBindCaptureFrame
 	if captureFrame then
@@ -292,9 +298,10 @@ end
 -- Refreshes tint/hotkey text for hovered after its binding changed.
 local function RefreshHoverBindTarget(hovered)
 	ACAB:TintHoverBindButton(hovered)
-	if hovered.frame.UpdateHotkeyText then
-		hovered.frame:UpdateHotkeyText()
-	end
+	-- A key moved off another button must clear that button's hotkey text too.
+	ACAB:ForEachPoolButton(function(btn)
+		btn:UpdateHotkeyText()
+	end)
 end
 
 -- Binds combo to the hovered button's action (replacing its old keys), saves, and refreshes it.
