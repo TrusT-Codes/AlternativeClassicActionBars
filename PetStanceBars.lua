@@ -127,6 +127,13 @@ function ACAB:CreatePetBarNativeContainer()
 
 	self:SortButtonsByNativeLeft(buttons)
 
+	-- Native pet buttons don't get right-clicks by default, which blocks the autocast toggle.
+	local b
+
+	for b = 1, table.getn(buttons) do
+		buttons[b]:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+	end
+
 	local container = self:BuildChainAnchoredContainer("ACABPetBarNativeContainer", buttons)
 
 	self.petBarNativeContainer = container
