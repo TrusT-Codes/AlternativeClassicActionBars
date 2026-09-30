@@ -7,6 +7,11 @@
 - Fix Better Experience Bar colors turning blue after a while or on zone change - your earned/rested colors now stick.
 - Fix Better Experience Bar rested XP running too far: the rested fill, tick and "Rested" text now show your real remaining bonus XP, carrying into the next level correctly. The rested rate is measured on each character's first rested kill, so it fits any realm.
 - Fix rested XP tick drawing behind the experience bar fill.
+- Fix turning Better Experience Bar off leaving the bar blue while unrested - the native purple/blue now follows your rest state.
+- Fix Stance Bar not showing up after learning your first stance/form (e.g. Stealth) until a reload.
+- Fix Setup Wizard's Vanilla layout placing all action bars too far left on a fresh install. **Already set up a Vanilla-layout profile and your bars sit too far left?** Switch to that profile and run `/acab recapture` once.
+- Fix Setup Wizard's layout step sometimes misplacing Micro Menu / Latency Bar on slow logins - it now waits for the UI to settle.
+- First-login dialog only offers "use existing profile" once you have a custom profile.
 
 ## 1.2.1-beta
 
