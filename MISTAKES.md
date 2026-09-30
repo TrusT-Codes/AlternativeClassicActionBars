@@ -65,6 +65,11 @@ Solved mistakes, so they don't happen twice. Each entry has three parts: **what 
 - **Root cause:** `MainMenuBar` re-centers after `PLAYER_LOGIN`. Every recapture ran at the same too-early moment.
 - **Prevention:** capture after `PLAYER_ENTERING_WORLD` plus a settle poll (`WaitForNativeBarSettle`).
 
+### Copying a stale profile snapshot
+- **What happened:** unlocked Vanilla wizard profiles put every action bar ~76 px left on a fresh install.
+- **Root cause:** the wizard copied `ACABProfilesDB["Default Vanilla"]`, which still held the first-login anchor (178). The same login's recapture had only fixed the live `ACABDB` (254). Profiles with `useDefaultLayout == false` skip the drift check, so they never healed.
+- **Prevention:** when the source profile is the active one, save live data before copying it (`GetDefaultVanillaData`). Before this was found, a guessed cause (the stance event handler) was patched and disproved. Trace the data path with `DIAG` lines first.
+
 ### One-shot markers used to force a watched recapture
 - **What happened:** five successive one-shot markers "never fired" in the user's pasted log.
 - **Root cause:** `ACABDB` is account-wide. Any earlier login or reload on any character consumed each marker before the user watched.
