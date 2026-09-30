@@ -11,24 +11,21 @@ Read this when something doesn't behave the way the code suggests it should. It 
 
 ## 1. Suspected bugs (unconfirmed — verify live before fixing)
 
-None of these were fixed during the refactor. Each has a repro or a `/run` check.
+Each has a repro or a `/run` check.
 
-### Slot allocator reserves cols*rows slots, but a bar's pool binds all 12
-- **Status:** allocator fixed (full 12-slot block). Re-inspect later: live test could neither shrink an Extra Bar to 2x2 nor add a new one (even with Extra Bar 4 at 1 button). Low priority.
-- **Where:** `Bar.lua` — `IsActionSlotUsed`, `ApplyBarShape` / `ResolvePoolSlot`
-- **What:** The allocator counts a bar as `slotStart .. slotStart + cols*rows - 1`. Every one of the `MAX_BAR_BUTTONS` pool buttons (hidden ones too) binds `slotStart + i - 1` and registers in `customBindTargets`. A shrunk bar plus a later-seeded Extra Bar can overlap. Low impact, since Extra Bars normally seed once.
-- **Verify:** `/run local c=ACABDB.bars for i=1,table.getn(c) do DEFAULT_CHAT_FRAME:AddMessage(c[i].id.." "..tostring(c[i].slotStart).." "..(c[i].cols*c[i].rows)) end`. Two slotStarts less than 12 apart confirm an overlap. Fix: count `MAX_BAR_BUTTONS` for pool-backed bars.
+Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars sit 12 slots apart, no overlap; no 2x2 grid preset exists by design), Stance Bar form change (fixed: event fires, the native buttons just needed `ShapeshiftBar_Update()` after reparenting), native-anchor capture (cleared: all three anchors present after copy, import and on both built-in profiles), Exp Bar colors (fixed: revert to native goes through `ExhaustionTick_Update`), layout baseline delay (fixed: `SetupWizard.lua` `WaitForBaselineSettle` polls the measured native frames instead of a fixed 2 s; Modern, unlocked Vanilla and Default Modern copy all placed correctly after ~0.3 s), unlocked Vanilla bars ~76 px left (fixed: `GetDefaultVanillaData` saves live data before the wizard copies it).
 
-### Stance Bar rebuild relies on UPDATE_SHAPESHIFT_FORMS, which may never fire here
-- **Status:** still untested live. Flagged for later review.
-- **Where:** `Events.lua` — `stanceFormEventFrame`; `PetStanceBars.lua` — `RebuildStanceBarContainer`
-- **What:** The only runtime trigger for `RebuildStanceBarContainer` / `ApplyStanceBarLiveShape` / `RebuildAllDefaultBarAssignmentRows` is `UPDATE_SHAPESHIFT_FORMS`. env §4.12 confirmed it doesn't fire on form *toggles*; nobody has tested whether it fires when the set of forms *changes*. If it doesn't, a newly learned form or a respec won't reshape the Stance Bar until `/reload`. A class with no forms at login never builds the container. Keep the registration regardless.
-- **Verify:** On a low-level druid/warrior, learn a new form/stance and watch for the button without `/reload`. Or trace `UPDATE_SHAPESHIFT_FORMS` + `SPELLS_CHANGED` / `LEARNED_SPELL_IN_TAB`.
+### First-login default-bar anchor seeded at the wrong scale
+- **Status:** unexplained; harmless since `GetDefaultVanillaData` saves live data before copying (the same login's recapture fixes it).
+- **Where:** `Database.lua` `seedDefaultBars` / `EnsureDB`; `Core.lua` `RunLoginSequence`
+- **What:** on a fresh install, `ACABDB.defaultBars[1].nativeAnchor.x` already reads 178 (Main Bar centered at UI scale 1.0) at the start of `RunLoginSequence`, while `ActionButton1` measures 254. A temporary trace in `seedDefaultBars` printed nothing before that point, so the early seed happens before chat output shows, or somewhere else.
+- **Verify:** fresh install, then `/run print(ACABProfilesDB["Default Vanilla"].defaultBars[1].nativeAnchor.x)` right after the first `/reload`.
 
-### Layout baseline pass waits a fixed delay after login
-- **Status:** first live test of the in-frame version misplaced the Modern corner cluster (Micro Menu off the edge, Latency Bar too high); now deferred + reloaded, retest pending.
-- **Where:** `SetupWizard.lua` — `ACAB:ApplyPendingLayoutBaseline` (`BASELINE_SETTLE_DELAY`), scheduled near the end of `Core.lua` `RunLoginSequence`
-- **What:** The pass measures overlay rects and container sizes (corner cluster, stacked action bars), which aren't settled in the login frame. It runs `BASELINE_SETTLE_DELAY` seconds later, saves, and reloads, so the final layout loads from saved data like the old wizard's. If a slow client still measures unsettled rects, raise the delay or wait on a settle poll instead.
+### Client crash once during the wizard's baseline reload
+- **Status:** seen once (fresh install, Modern path); the retest right after ran clean. Cause unknown.
+- **Where:** `SetupWizard.lua` `ACAB:ApplyPendingLayoutBaseline` — baseline pass, `SaveActiveProfileData`, then `ReloadUI` after `BASELINE_RELOAD_DELAY`
+- **What:** the client closed without an error right after the settle poll finished. Could be the pass, the save, or `ReloadUI` itself.
+- **Verify:** if it happens again, note whether the layout chat line printed and whether the profile has `pendingLayoutBaseline` set afterwards (`/run print(ACABDB.pendingLayoutBaseline)`).
 
 ---
 
@@ -224,7 +221,6 @@ None of these were fixed during the refactor. Each has a repro or a `/run` check
 - **Redundant guards.** `Core.lua` (`ApplyHoverBindVisual`, `GetBarFrameSize`) and `Events.lua` (`RefreshBarSettingsPage`, `RebuildAllDefaultBarAssignmentRows`) still guard members that are always defined.
 
 ### Tech debt
-- **Native anchor capture skipped when a position exists.** `NativeElements.lua` `Capture{KeyRing,LatencyBar,CastBar}PositionIfNeeded` return early before capturing `*NativeAnchor`. A writer that sets the position first (Modern corner cluster, import) leaves the native anchor nil forever, and the Vanilla reset then silently no-ops. Check: `/run print(ACABDB.keyRingNativeAnchor, ACABDB.latencyBarNativeAnchor, ACABDB.castBarNativeAnchor)`.
 - **Pet Bar reflow rewrites `cfg.nativeAnchor.y`.** `PetStanceBars.lua` `ReflowPetBarForBar3Toggle` does this, so treat the Pet Bar `nativeAnchor` as "last default-stack position", not the true capture.
 - **Page Indicator retry chains can stack.** Parallel `C_Timer.After(0.1)` retry chains in `CreatePageIndicatorContainer` / `ApplyPageIndicatorShape` share one elapsed counter. Harmless so far; a "retry pending" flag would bound it.
 - **Extra Bar fallback size.** `Database.lua` `GetDefaultExtraBarLayout` returns `BUTTON_SIZE` on the normal path but `GetCurrentButtonSizeBaseline()` on the fallback path.

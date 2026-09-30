@@ -551,6 +551,13 @@ function ACAB:RebuildStanceBarContainer()
 
 	if not container then
 		self:CreateStanceBarContainer()
+
+		-- Same stacking pass RunLoginSequence runs after its own CreateStanceBarContainer.
+		if ACABDB.useDefaultLayout ~= false then
+			local bar2Cfg = ACABDB.defaultBars[2]
+			self:ReflowStanceBarForBar2Toggle(bar2Cfg and bar2Cfg.enabled)
+		end
+
 		return
 	end
 
