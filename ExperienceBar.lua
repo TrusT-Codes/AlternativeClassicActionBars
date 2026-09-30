@@ -366,15 +366,22 @@ function ACAB:ApplyExpBarColors()
 
 	local frame = getglobal(self.EXP_BAR_FRAME_NAME)
 	local restedFrame = getglobal(self.EXP_RESTED_FRAME_NAME)
-	local earned, rested
 
-	if ACABDB.betterExpBarEnabled then
-		earned = ACABDB.expBarColorEarned
-		rested = ACABDB.expBarColorRested
-	else
-		earned = ACABDB.expBarNativeColorEarned
-		rested = ACABDB.expBarNativeColorRested
+	if not ACABDB.betterExpBarEnabled then
+		-- Native repaint for the current rest state; ExhaustionTick_Update reads the global event/this.
+		local prevThis, prevEvent = this, event
+
+		this = ExhaustionTick
+		event = "UPDATE_EXHAUSTION"
+		ExhaustionTick_Update()
+		this, event = prevThis, prevEvent
+
+		self:ApplyExpBarRestedOverlay()
+		return
 	end
+
+	local earned = ACABDB.expBarColorEarned
+	local rested = ACABDB.expBarColorRested
 
 	if frame and frame.SetStatusBarColor and earned then
 		frame:SetStatusBarColor(earned.r, earned.g, earned.b)

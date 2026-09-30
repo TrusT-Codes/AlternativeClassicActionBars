@@ -1193,9 +1193,69 @@ end
 -- then saved and reloaded, so the final layout always loads from saved data (RunLoginSequence).
 -------------------------------------------------------------------------
 
--- Seconds after login before the baseline pass measures live frames, and before the follow-up reload.
-local BASELINE_SETTLE_DELAY = 2
+-- Settle poll before the baseline pass measures live frames; delay before the follow-up reload.
+local BASELINE_POLL_INTERVAL = 0.1
+local BASELINE_STABLE_READS = 2
+local BASELINE_SETTLE_TIMEOUT = 5
 local BASELINE_RELOAD_DELAY = 0.5
+
+-- Native frames the baseline pass measures (Main Bar, Micro Menu, Latency Bar, Key Ring, Exp Bar).
+local BASELINE_SETTLE_FRAMES = {
+	"ActionButton1", "MainMenuBar", "CharacterMicroButton", "MainMenuBarPerformanceBarFrame",
+	"KeyRingButton", "MainMenuExpBar",
+}
+
+-- One string of every settle frame's rect (nil sides included) plus UIParent's scale.
+local function ReadBaselineSettleSignature()
+	local parts = { tostring(UIParent:GetEffectiveScale()) }
+	local i
+
+	for i = 1, table.getn(BASELINE_SETTLE_FRAMES) do
+		local frame = getglobal(BASELINE_SETTLE_FRAMES[i])
+
+		if frame then
+			table.insert(parts, tostring(frame:GetLeft()) .. "," .. tostring(frame:GetTop()) .. "," ..
+				tostring(frame:GetWidth()) .. "," .. tostring(frame:GetHeight()))
+		end
+	end
+
+	return table.concat(parts, "|")
+end
+
+-- Calls callback once every settle frame's rect held for BASELINE_STABLE_READS polls (or on timeout).
+local function WaitForBaselineSettle(callback)
+	local last = ReadBaselineSettleSignature()
+	local stableCount = 0
+	local elapsed = 0
+
+	local ticker
+	ticker = C_Timer.NewTicker(BASELINE_POLL_INTERVAL, function()
+		elapsed = elapsed + BASELINE_POLL_INTERVAL
+
+		local current = ReadBaselineSettleSignature()
+
+		if current == last then
+			stableCount = stableCount + 1
+		else
+			stableCount = 0
+		end
+
+		last = current
+
+		local settled = stableCount >= BASELINE_STABLE_READS
+
+		if settled or elapsed >= BASELINE_SETTLE_TIMEOUT then
+			ticker:Cancel()
+
+			if not settled then
+				ACAB:Print("WARNING: UI did not settle within " .. tostring(BASELINE_SETTLE_TIMEOUT) ..
+					"s - applying the layout anyway.")
+			end
+
+			callback()
+		end
+	end)
+end
 
 -- Applies Modern Layout geometry to the live ACABDB via the per-element reset functions.
 function ACAB:ApplyModernLayoutGeometry()
@@ -1267,7 +1327,7 @@ function ACAB:ApplyPendingLayoutBaseline()
 
 	self:Print("Applying the " .. (layout == "modern" and "Modern" or "Vanilla") .. " layout - your UI reloads in a moment.")
 
-	C_Timer.After(BASELINE_SETTLE_DELAY, function()
+	WaitForBaselineSettle(function()
 		ACABDB.pendingLayoutBaseline = nil
 
 		RunLayoutBaselinePass(ACAB, layout)
