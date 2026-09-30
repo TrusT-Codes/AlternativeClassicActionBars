@@ -1681,7 +1681,18 @@ function ACAB:ShowFirstLoginDialog()
 		},
 	}
 
-	if table.getn(self:GetProfileNames()) > 1 then
+	-- Shown only when a custom (non-built-in) profile exists.
+	local names = self:GetProfileNames()
+	local hasCustomProfile = false
+	local i
+
+	for i = 1, table.getn(names) do
+		if not self:IsBuiltInProfileName(names[i]) then
+			hasCustomProfile = true
+		end
+	end
+
+	if hasCustomProfile then
 		table.insert(buttons, {
 			text = "use existing profile",
 			onClick = function()
