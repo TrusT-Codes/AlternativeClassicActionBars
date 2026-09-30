@@ -21,6 +21,12 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
 - **What:** on a fresh install, `ACABDB.defaultBars[1].nativeAnchor.x` already reads 178 (Main Bar centered at UI scale 1.0) at the start of `RunLoginSequence`, while `ActionButton1` measures 254. A temporary trace in `seedDefaultBars` printed nothing before that point, so the early seed happens before chat output shows, or somewhere else.
 - **Verify:** fresh install, then `/run print(ACABProfilesDB["Default Vanilla"].defaultBars[1].nativeAnchor.x)` right after the first `/reload`.
 
+### Assignment rows unlocked after a rebuild outside a page refresh
+- **Status:** suspected, found while pooling the rows; behavior unchanged by the pooling.
+- **Where:** `SettingsBars.lua` `RebuildAllDefaultBarAssignmentRows`, called from `Events.lua` (`UPDATE_SHAPESHIFT_FORMS`) and `SettingsGeneral.lua` (pagination / stance-swap checkboxes).
+- **What:** those callers rebuild the stance/page dropdown rows without the `ApplyProfileLockGating` pass that follows `RebuildDefaultBarAssignmentRows` in `RefreshBarSettingsPage`, so on a built-in (locked) profile the rows come back clickable until the page is refreshed.
+- **Verify:** on Default Vanilla, open Main Bar's page, learn/lose a form (or toggle the General stance-swap checkbox twice if it's clickable there), and check whether the stance dropdowns are greyed.
+
 ---
 
 ## 2. Client quirks (how this client behaves, and where the code relies on it)
@@ -37,7 +43,7 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
   - `DefaultBars.lua` `WarmMainBarArtAncestorChain` / `GetButton1ScreenAnchor` / `ResolveNativeTopLeft`
   - `NativeElements.lua` Page Indicator (`UIParent:GetLeft(); container:GetLeft()` before `RealRect`)
 - **No rect until sized (env §4.6).** A frame with only `SetPoint` returns nil rects forever. Placeholder `SetWidth(1)/SetHeight(1)` at creation is load-bearing (Page Indicator container, `Settings.lua` bar-list scroll child). `MainMenuBarArtFrame` needs its native width/height re-asserted on every `ApplyMainBarArtPosition` (order: size → scale → ClearAllPoints → SetPoint).
-- **Same-name `CreateFrame` makes a second frame (env §4.7).** Per-rebuild name counters in `SettingsBars.lua` (`RebuildDefaultBarAssignmentRows`, `RefreshBarList`) are load-bearing. The Setup Wizard uses fixed names and is only safe because it's a build-once singleton: if steps ever get rebuilt, suffix a counter on every name.
+- **Same-name `CreateFrame` makes a second frame (env §4.7).** `SettingsBars.lua` `RebuildDefaultBarAssignmentRows` and `RefreshBarList` pool their named frames: one fixed name per pool slot (barId / form index), created once and re-shown after that. Any path that creates such a frame again instead of reusing it needs a per-rebuild name counter. The Setup Wizard uses fixed names and is only safe because it's a build-once singleton: if steps ever get rebuilt, suffix a counter on every name.
 - **ScrollFrame must stay paired with its original scroll child** (`Settings.lua` `CreateSettingsFrame`, `CreateWideContentScrollFrame`). Pointing a ScrollFrame at a new child leaves that child unresolvable. Build a new pair instead.
 - **FontString anchored only by TOPLEFT+TOPRIGHT won't wrap.** Set an explicit `SetWidth` before `SetText`, then read `GetHeight` (`Settings.lua` `SetProfileLockBannerMessage`).
 - **Strata survives reparenting.** ActionBarUp/DownButton keep `MainMenuBarArtFrame`'s MEDIUM strata after `SetParent`. `NativeElements.lua` `ApplyPageIndicatorStrata` reasserts LOW + explicit levels on every apply. Bars (`Bar.lua` `ApplyBarShape`) re-set LOW/level 10 on every shape pass, because page/stance swaps or `MainMenuBarArtFrame:Raise()` otherwise bury Bar 1 (env §4.8).
@@ -224,7 +230,6 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
 - **Composed names hide greppable identifiers.** The Pet/Stance "Use Vanilla" checkbox name and field are built by concatenation (`CreateUseVanillaBarCheckbox`). Grep the factory name.
 
 ### Performance (measured as fine so far; look here first if something stutters)
-- **Settings frame leak.** `SettingsBars.lua` `RebuildGridSwatches`, `RefreshBarList` and `RebuildDefaultBarAssignmentRows` make new frames on every rebuild and only hide the old ones. Check `gcinfo()` before/after opening the Stance page ~50 times. Pooling with names unique per pool slot would bound it without reintroducing env §4.7.
 - **Hover-bind ticker allocation.** `HoverBind.lua`'s ticker builds a ref table per visible button every 0.25 s while hoverbind mode is on.
 - **Range ticker writes.** `Button.lua`'s shared range ticker calls `IsSlotFilled` three times per button and does unconditional `Show`/`Hide`/color writes every 0.2 s. It's the hottest path in the addon; caching the last state per button would cut it.
 - **Pet Bar re-layout.** `Button.lua` `Refresh` on a pet slot re-lays out the whole Pet Bar, so one `PET_BAR_UPDATE` means 10 full layouts.
