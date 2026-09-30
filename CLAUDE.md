@@ -104,6 +104,8 @@ Single global table `AlternativeClassicActionBars` (locally aliased `local ACAB 
 
 **`docs/known-problems.md`** — read it when something doesn't behave as the code suggests: unconfirmed suspected bugs (with `/run` checks), client quirks mapped to the code they affect, must-stay orderings, and leftover tech debt/duplication. Code comments point to its entries as `see known-problems.md: "<title>"`. Put new findings there instead of long WHY comments in code.
 
+**`docs/release-checklist.md`** — the in-game test matrix to run on every release candidate before tagging.
+
 **`MISTAKES.md`** — Log mistakes in MISTAKES.md (what happened, root cause, prevention).
 
 ## Type definitions repo (local reference)
