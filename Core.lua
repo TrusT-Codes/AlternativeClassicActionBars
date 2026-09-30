@@ -1660,6 +1660,36 @@ local function WaitForPostLoginSettleThenVerify()
 	end)
 end
 
+-- Client-mod presence checks: ClassicAPI is required, the other three only warn.
+local function HasUnitXPSP3()
+	local ok, result = pcall(UnitXP, "nop", "nop")
+	return ok and result == true
+end
+
+local OPTIONAL_MODS = {
+	{ name = "SuperWoW", isLoaded = function() return SUPERWOW_VERSION ~= nil end },
+	{ name = "nampower", isLoaded = function() return type(GetNampowerVersion) == "function" end },
+	{ name = "UnitXP_SP3", isLoaded = HasUnitXPSP3 },
+}
+
+-- Returns false (after printing why) when ClassicAPI is missing; warns once per login for each missing optional mod.
+function ACAB:CheckRequiredMods()
+	if type(C_Timer) ~= "table" or type(Mixin) ~= "function" then
+		ACAB:Print("|cffff4040ClassicAPI not found - addon disabled. Install ClassicAPI and restart the client.|r")
+		ACAB.disabledMissingClassicAPI = true
+		return false
+	end
+
+	for i = 1, table.getn(OPTIONAL_MODS) do
+		local mod = OPTIONAL_MODS[i]
+		if not mod.isLoaded() then
+			ACAB:Print("|cffffd000" .. mod.name .. " not found - some features may not work.|r")
+		end
+	end
+
+	return true
+end
+
 -- Full login sequence, run once WaitForNativeBarSettle reports the native bars settled. Step order is load-bearing.
 function ACAB:RunLoginSequence(earlyLeft, earlyTop, settledLeft, settledTop, waited)
 	ACAB:ResolveActiveProfile()
@@ -2026,6 +2056,11 @@ end
 -- /acab dispatcher; PrintCommandHelp lists every command.
 SLASH_ACAB1 = "/acab"
 SlashCmdList["ACAB"] = function(msg)
+	if ACAB.disabledMissingClassicAPI then
+		ACAB:Print("|cffff4040Disabled: ClassicAPI not found.|r")
+		return
+	end
+
 	msg = msg or ""
 
 	local command, rest = string.match(msg, "^(%S*)%s*(.-)$")
