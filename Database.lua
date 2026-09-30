@@ -332,7 +332,6 @@ function ACAB:RecaptureDefaultBarNativeAnchors()
 	self:EnsureDB()
 
 	self:Print("Recapturing positions to align Bars with your Screen.")
-
 	local fresh = seedDefaultBars(self)
 	local i
 
@@ -780,7 +779,8 @@ end
 function ACAB:GetDefaultVanillaData()
 	ACABProfilesDB = ACABProfilesDB or {}
 
-	if not ACABProfilesDB[self.DEFAULT_PROFILE_NAME] and self.activeProfileName == self.DEFAULT_PROFILE_NAME then
+	-- Live data first while Default Vanilla is loaded: the snapshot misses this session's recapture.
+	if self.activeProfileName == self.DEFAULT_PROFILE_NAME then
 		self:EnsureDB()
 		self:SaveActiveProfileData()
 	end
