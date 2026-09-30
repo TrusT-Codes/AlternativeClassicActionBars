@@ -13,7 +13,7 @@ Read this when something doesn't behave the way the code suggests it should. It 
 
 Each has a repro or a `/run` check.
 
-Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars sit 12 slots apart, no overlap; no 2x2 grid preset exists by design), Stance Bar form change (fixed: event fires, the native buttons just needed `ShapeshiftBar_Update()` after reparenting), native-anchor capture (cleared: all three anchors present after copy, import and on both built-in profiles), Exp Bar colors (fixed: revert to native goes through `ExhaustionTick_Update`).
+Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars sit 12 slots apart, no overlap; no 2x2 grid preset exists by design), Stance Bar form change (fixed: event fires, the native buttons just needed `ShapeshiftBar_Update()` after reparenting), native-anchor capture (cleared: all three anchors present after copy, import and on both built-in profiles), Exp Bar colors (fixed: revert to native goes through `ExhaustionTick_Update`), layout baseline delay (fixed: `SetupWizard.lua` `WaitForBaselineSettle` polls the measured native frames instead of a fixed 2 s; Modern, unlocked Vanilla and Default Modern copy all placed correctly after ~0.3 s), unlocked Vanilla bars ~76 px left (fixed: `GetDefaultVanillaData` saves live data before the wizard copies it).
 
 ### First-login default-bar anchor seeded at the wrong scale
 - **Status:** unexplained; harmless since `GetDefaultVanillaData` saves live data before copying (the same login's recapture fixes it).
@@ -21,10 +21,11 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
 - **What:** on a fresh install, `ACABDB.defaultBars[1].nativeAnchor.x` already reads 178 (Main Bar centered at UI scale 1.0) at the start of `RunLoginSequence`, while `ActionButton1` measures 254. A temporary trace in `seedDefaultBars` printed nothing before that point, so the early seed happens before chat output shows, or somewhere else.
 - **Verify:** fresh install, then `/run print(ACABProfilesDB["Default Vanilla"].defaultBars[1].nativeAnchor.x)` right after the first `/reload`.
 
-### Layout baseline pass waits a fixed delay after login
-- **Status:** first live test of the in-frame version misplaced the Modern corner cluster (Micro Menu off the edge, Latency Bar too high); now deferred + reloaded, retest pending.
-- **Where:** `SetupWizard.lua` — `ACAB:ApplyPendingLayoutBaseline` (`BASELINE_SETTLE_DELAY`), scheduled near the end of `Core.lua` `RunLoginSequence`
-- **What:** The pass measures overlay rects and container sizes (corner cluster, stacked action bars), which aren't settled in the login frame. It runs `BASELINE_SETTLE_DELAY` seconds later, saves, and reloads, so the final layout loads from saved data like the old wizard's. If a slow client still measures unsettled rects, raise the delay or wait on a settle poll instead.
+### Client crash once during the wizard's baseline reload
+- **Status:** seen once (fresh install, Modern path); the retest right after ran clean. Cause unknown.
+- **Where:** `SetupWizard.lua` `ACAB:ApplyPendingLayoutBaseline` — baseline pass, `SaveActiveProfileData`, then `ReloadUI` after `BASELINE_RELOAD_DELAY`
+- **What:** the client closed without an error right after the settle poll finished. Could be the pass, the save, or `ReloadUI` itself.
+- **Verify:** if it happens again, note whether the layout chat line printed and whether the profile has `pendingLayoutBaseline` set afterwards (`/run print(ACABDB.pendingLayoutBaseline)`).
 
 ---
 
