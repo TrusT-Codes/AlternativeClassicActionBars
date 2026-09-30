@@ -1660,33 +1660,85 @@ local function WaitForPostLoginSettleThenVerify()
 	end)
 end
 
+-- Client-mod presence checks: ClassicAPI is required, the other three only warn.
+local function HasUnitXPSP3()
+	local ok, result = pcall(UnitXP, "nop", "nop")
+	return ok and result == true
+end
+
+local OPTIONAL_MODS = {
+	{ name = "SuperWoW", isLoaded = function() return SUPERWOW_VERSION ~= nil end },
+	{ name = "nampower", isLoaded = function() return type(GetNampowerVersion) == "function" end },
+	{ name = "UnitXP_SP3", isLoaded = HasUnitXPSP3 },
+}
+
+-- Returns false (after printing why) when ClassicAPI is missing; warns once per login for each missing optional mod.
+function ACAB:CheckRequiredMods()
+	if type(C_Timer) ~= "table" or type(Mixin) ~= "function" then
+		ACAB:Print("|cffff4040ClassicAPI not found - addon disabled. Install ClassicAPI and restart the client.|r")
+		ACAB.disabledMissingClassicAPI = true
+		return false
+	end
+
+	for i = 1, table.getn(OPTIONAL_MODS) do
+		local mod = OPTIONAL_MODS[i]
+		if not mod.isLoaded() then
+			ACAB:Print("|cffffd000" .. mod.name .. " not found - some features may not work.|r")
+		end
+	end
+
+	return true
+end
+
+-- Runs one login stage; an error goes to the client's error handler (with its stack) and the sequence moves on.
+local function RunLoginStage(failures, name, fn)
+	local ok = xpcall(fn, function(msg)
+		geterrorhandler()("ACAB login stage \"" .. name .. "\": " .. tostring(msg))
+	end)
+
+	if not ok then
+		table.insert(failures, name)
+	end
+
+	return ok
+end
+
 -- Full login sequence, run once WaitForNativeBarSettle reports the native bars settled. Step order is load-bearing.
 function ACAB:RunLoginSequence(earlyLeft, earlyTop, settledLeft, settledTop, waited)
-	ACAB:ResolveActiveProfile()
+	local failures = {}
 
-	ACAB:EnsureDB()
+	-- Everything below reads ACABDB, so a failure here stops the sequence.
+	if not RunLoginStage(failures, "profile", function()
+		ACAB:ResolveActiveProfile()
+		ACAB:EnsureDB()
+	end) then
+		ACAB:Print("|cffff4040Could not load your profile - addon not set up. Please report the error shown.|r")
+		return
+	end
 
 	-- Must run before anything moves Main Bar's art (ActionButton1's parent) - native anchors are only measurable until then.
 	local recapturedAtLogin = false
 
-	if ACABDB.pendingDefaultBarRecapture then
-		ACABDB.pendingDefaultBarRecapture = nil
-		ACAB:RecaptureDefaultBarNativeAnchors()
-		recapturedAtLogin = true
-	else
-		recapturedAtLogin = VerifyDefaultBarAnchorsSettled() == true
-	end
+	RunLoginStage(failures, "anchor recapture", function()
+		if ACABDB.pendingDefaultBarRecapture then
+			ACABDB.pendingDefaultBarRecapture = nil
+			ACAB:RecaptureDefaultBarNativeAnchors()
+			recapturedAtLogin = true
+		else
+			recapturedAtLogin = VerifyDefaultBarAnchorsSettled() == true
+		end
+	end)
 
 	-- Must run before CreateFixedSlotDefaultBars/CreateBagBarAndMicroMenu move these frames, or capture reads moved spots.
-	ACAB:CaptureKeyRingPositionIfNeeded()
-	ACAB:CaptureKeyRingNativeTopLeft()
-	ACAB:CaptureLatencyBarPositionIfNeeded()
-	ACAB:CaptureExpBarPositionIfNeeded()
-	ACAB:CaptureCastBarPositionIfNeeded()
-	ACAB:CaptureMainBarArtNativeOffsetIfNeeded()
+	RunLoginStage(failures, "native capture", function()
+		ACAB:CaptureKeyRingPositionIfNeeded()
+		ACAB:CaptureKeyRingNativeTopLeft()
+		ACAB:CaptureLatencyBarPositionIfNeeded()
+		ACAB:CaptureExpBarPositionIfNeeded()
+		ACAB:CaptureCastBarPositionIfNeeded()
+		ACAB:CaptureMainBarArtNativeOffsetIfNeeded()
 
-	-- Async: stores Latency Bar/Cast Bar's native anchors once their swallowed anchors settle.
-	do
+		-- Async: stores Latency Bar/Cast Bar's native anchors once their swallowed anchors settle.
 		local function SyncNativeAnchorFromSwallow(frame, dbKey)
 			WaitForWrappedFrameAnchorSettle(frame, function(anchor)
 				if anchor then
@@ -1697,103 +1749,150 @@ function ACAB:RunLoginSequence(earlyLeft, earlyTop, settledLeft, settledTop, wai
 
 		SyncNativeAnchorFromSwallow(getglobal(ACAB.LATENCY_BAR_FRAME_NAME), "latencyBarNativeAnchor")
 		SyncNativeAnchorFromSwallow(getglobal(ACAB.CAST_BAR_FRAME_NAME), "castBarNativeAnchor")
-	end
+	end)
 
-	-- Must run before CreateFixedSlotDefaultBars builds the Stance Bar's button pool.
-	ACAB:ApplyStanceBarLiveShape()
+	RunLoginStage(failures, "action bars", function()
+		-- Must run before CreateFixedSlotDefaultBars builds the Stance Bar's button pool.
+		ACAB:ApplyStanceBarLiveShape()
 
-	ACAB:CreateAllBars()
+		ACAB:CreateAllBars()
 
-	-- Must run before CreateFixedSlotDefaultBars hides bar 2's real buttons and reflows ShapeshiftBarFrame.
-	ACAB:CaptureStanceBarNativeGap()
+		-- Must run before CreateFixedSlotDefaultBars hides bar 2's real buttons and reflows ShapeshiftBarFrame.
+		ACAB:CaptureStanceBarNativeGap()
 
-	ACAB:CreateFixedSlotDefaultBars()
+		ACAB:CreateFixedSlotDefaultBars()
 
-	ACAB:ApplyAllDefaultBars()
+		ACAB:ApplyAllDefaultBars()
 
-	ACAB:ApplyGlobalButtonStyle()
+		ACAB:ApplyGlobalButtonStyle()
 
-	ACAB:ApplyGlobalSpacing()
-	ACAB:ApplyGlobalButtonSize()
-	ACAB:EnforceMainBarArtSpacing()
+		ACAB:ApplyGlobalSpacing()
+		ACAB:ApplyGlobalButtonSize()
+		ACAB:EnforceMainBarArtSpacing()
+	end)
 
-	ACAB:CreateStanceBarContainer()
+	RunLoginStage(failures, "stance bar", function()
+		ACAB:CreateStanceBarContainer()
 
-	if ACABDB.useDefaultLayout ~= false then
-		local bar2Cfg = ACABDB.defaultBars[2]
-		ACAB:ReflowStanceBarForBar2Toggle(bar2Cfg and bar2Cfg.enabled)
-	end
+		if ACABDB.useDefaultLayout ~= false then
+			local bar2Cfg = ACABDB.defaultBars[2]
+			ACAB:ReflowStanceBarForBar2Toggle(bar2Cfg and bar2Cfg.enabled)
+		end
+	end)
 
-	ACAB:CreateBagBarAndMicroMenu()
-	SetupPetBarNativeContainer()
+	RunLoginStage(failures, "bag bar and micro menu", function()
+		ACAB:CreateBagBarAndMicroMenu()
+	end)
+
+	RunLoginStage(failures, "pet bar", SetupPetBarNativeContainer)
 
 	-- The login-start recapture ran before any bar existed - re-derive the bars built off its anchors now.
 	if recapturedAtLogin then
-		ACAB:ReapplyAfterNativeRecapture()
+		RunLoginStage(failures, "recapture reapply", function()
+			ACAB:ReapplyAfterNativeRecapture()
+		end)
 	end
 
-	ACAB:CreatePageIndicatorContainer()
+	RunLoginStage(failures, "page indicator", function()
+		ACAB:CreatePageIndicatorContainer()
+	end)
 
-	ACAB:SetKeyRingEnabled(ACABDB.keyRingEnabled ~= false)
+	RunLoginStage(failures, "key ring", function()
+		ACAB:SetKeyRingEnabled(ACABDB.keyRingEnabled ~= false)
 
-	ACAB:SetKeyRingScale(ACABDB.keyRingScale or 1)
-	ACAB:ApplyKeyRingPosition()
+		ACAB:SetKeyRingScale(ACABDB.keyRingScale or 1)
+		ACAB:ApplyKeyRingPosition()
+	end)
 
-	ACAB:SetLatencyBarEnabled(ACABDB.latencyBarEnabled ~= false)
-	ACAB:SetLatencyBarScale(ACABDB.latencyBarScale or 1)
-	ACAB:ApplyLatencyBarPosition()
+	RunLoginStage(failures, "latency bar", function()
+		ACAB:SetLatencyBarEnabled(ACABDB.latencyBarEnabled ~= false)
+		ACAB:SetLatencyBarScale(ACABDB.latencyBarScale or 1)
+		ACAB:ApplyLatencyBarPosition()
+	end)
 
-	ACAB:SetExpBarEnabled(ACABDB.expBarEnabled ~= false)
-	ACAB:SetExpBarScale(ACABDB.expBarScale or 1)
-	ACAB:ApplyExpBarPosition()
+	RunLoginStage(failures, "experience bar", function()
+		ACAB:SetExpBarEnabled(ACABDB.expBarEnabled ~= false)
+		ACAB:SetExpBarScale(ACABDB.expBarScale or 1)
+		ACAB:ApplyExpBarPosition()
+	end)
 
-	ACAB:SetCastBarScale(ACABDB.castBarScale or 1)
-	ACAB:ApplyCastBarPosition()
+	RunLoginStage(failures, "cast bar", function()
+		ACAB:SetCastBarScale(ACABDB.castBarScale or 1)
+		ACAB:ApplyCastBarPosition()
+	end)
 
-	ACAB:SetTooltipEnabled(ACABDB.tooltipEnabled == true)
-	ACAB:SetTooltipScale(ACABDB.tooltipScale or 1)
-	ACAB:ApplyTooltipPosition()
-	ACAB:HookGameTooltipDefaultAnchor()
+	RunLoginStage(failures, "tooltip", function()
+		ACAB:SetTooltipEnabled(ACABDB.tooltipEnabled == true)
+		ACAB:SetTooltipScale(ACABDB.tooltipScale or 1)
+		ACAB:ApplyTooltipPosition()
+		ACAB:HookGameTooltipDefaultAnchor()
+	end)
 
 	-- Sets Cast Bar's stacked Y now instead of on the first stack-affecting toggle.
 	if ACABDB.useDefaultLayout ~= false then
-		ACAB:ReflowCastBarForStackToggle()
+		RunLoginStage(failures, "cast bar stacking", function()
+			ACAB:ReflowCastBarForStackToggle()
+		end)
 	end
 
-	ACAB:ApplyExpBarColors()
+	RunLoginStage(failures, "experience bar visuals", function()
+		ACAB:ApplyExpBarColors()
 
-	ACAB:ApplyBetterExpBarVisual()
+		ACAB:ApplyBetterExpBarVisual()
+	end)
 
-	ACAB:ApplyBlizzardArtVisibility()
+	RunLoginStage(failures, "blizzard art", function()
+		ACAB:ApplyBlizzardArtVisibility()
+	end)
 
 	-- Must run after every element above has its final shape/scale.
-	ACAB:NormalizeAllPositionAnchors()
+	RunLoginStage(failures, "position normalize", function()
+		ACAB:NormalizeAllPositionAnchors()
+	end)
 
 	-- Must run after Main Bar and every element above are positioned.
-	ACAB:ApplyMainBarGroupedElements()
+	RunLoginStage(failures, "main bar grouped elements", function()
+		ACAB:ApplyMainBarGroupedElements()
+	end)
 
 	-- Must run after every element above is built and positioned; reloads once it's done.
-	local baselinePending = ACAB:ApplyPendingLayoutBaseline()
+	local baselinePending = false
 
-	ACAB:EnsureModernBaseProfile()
+	RunLoginStage(failures, "layout baseline", function()
+		baselinePending = ACAB:ApplyPendingLayoutBaseline()
+	end)
 
-	ACAB:CreateMinimapButton()
+	RunLoginStage(failures, "default modern profile", function()
+		ACAB:EnsureModernBaseProfile()
+	end)
 
-	ACAB:Print("Fully initialized! Click the minimap button or use /acab for options.")
+	RunLoginStage(failures, "minimap button", function()
+		ACAB:CreateMinimapButton()
+	end)
 
-	ACAB:CheckForUpdates()
-
-	-- A pending baseline reloads shortly; the wizard resumes after that reload.
-	if baselinePending then
-		ACAB.pendingFirstLoginDialog = nil
-	elseif ACAB:ResumeSetupWizardIfPending() then
-		ACAB.pendingFirstLoginDialog = nil
-	elseif ACAB.pendingFirstLoginDialog then
-		ACAB.pendingFirstLoginDialog = nil
-		ACAB:ShowFirstLoginDialog()
+	if table.getn(failures) == 0 then
+		ACAB:Print("Fully initialized! Click the minimap button or use /acab for options.")
+	else
+		ACAB:Print("|cffff4040Initialized with errors in: " .. table.concat(failures, ", ") .. ". Some elements may be missing - please report the error shown.|r")
 	end
 
-	WaitForPostLoginSettleThenVerify()
+	RunLoginStage(failures, "update check", function()
+		ACAB:CheckForUpdates()
+	end)
+
+	-- A pending baseline reloads shortly; the wizard resumes after that reload.
+	RunLoginStage(failures, "startup dialogs", function()
+		if baselinePending then
+			ACAB.pendingFirstLoginDialog = nil
+		elseif ACAB:ResumeSetupWizardIfPending() then
+			ACAB.pendingFirstLoginDialog = nil
+		elseif ACAB.pendingFirstLoginDialog then
+			ACAB.pendingFirstLoginDialog = nil
+			ACAB:ShowFirstLoginDialog()
+		end
+	end)
+
+	RunLoginStage(failures, "post-login verify", WaitForPostLoginSettleThenVerify)
 end
 
 -------------------------------------------------------------------------
@@ -2026,6 +2125,11 @@ end
 -- /acab dispatcher; PrintCommandHelp lists every command.
 SLASH_ACAB1 = "/acab"
 SlashCmdList["ACAB"] = function(msg)
+	if ACAB.disabledMissingClassicAPI then
+		ACAB:Print("|cffff4040Disabled: ClassicAPI not found.|r")
+		return
+	end
+
 	msg = msg or ""
 
 	local command, rest = string.match(msg, "^(%S*)%s*(.-)$")

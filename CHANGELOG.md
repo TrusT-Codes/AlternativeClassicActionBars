@@ -13,6 +13,8 @@
 - Fix Setup Wizard's layout step sometimes misplacing Micro Menu / Latency Bar on slow logins - it now waits for the UI to settle.
 - First-login dialog only offers "use existing profile" once you have a custom profile.
 - Imported or damaged profiles are now checked for every saved setting (colors, font sizes, spacing, grid size, per-bar options), so a bad value resets to its default instead of causing errors.
+- Missing client mods now get one clear chat message instead of a flood of errors: without ClassicAPI the addon stays disabled, and a missing SuperWoW, nampower or UnitXP_SP3 shows a warning at login.
+- An error while setting up one element at login no longer stops every element after it from loading; chat names the part that failed.
 
 ## 1.2.1-beta
 
