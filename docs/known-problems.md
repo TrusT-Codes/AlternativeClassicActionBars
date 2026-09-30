@@ -233,10 +233,11 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
 - **Composed names hide greppable identifiers.** The Pet/Stance "Use Vanilla" checkbox name and field are built by concatenation (`CreateUseVanillaBarCheckbox`). Grep the factory name.
 
 ### Performance (measured as fine so far; look here first if something stutters)
-Done: range-ticker write cache (`rangeKey` in `UpdateRange`), Pet Bar layout coalescing (`petLayoutPending` in `Refresh`), rested-glow pulse stops with the Exp Bar, pooled bar-list rows (`RefreshBarList`), one shared event dispatcher for all pool buttons (`Button.lua` `POOL_BUTTON_EVENT_ROUTES`).
-- **Settings frame leak.** `SettingsBars.lua` `RebuildGridSwatches` and `RebuildDefaultBarAssignmentRows` make new frames on every rebuild and only hide the old ones. Check `gcinfo()` before/after opening the Stance page ~50 times. Pooling with names unique per pool slot would bound it without reintroducing env §4.7.
+- **Settings frame leak.** `SettingsBars.lua` `RebuildGridSwatches`, `RefreshBarList` and `RebuildDefaultBarAssignmentRows` make new frames on every rebuild and only hide the old ones. Check `gcinfo()` before/after opening the Stance page ~50 times. Pooling with names unique per pool slot would bound it without reintroducing env §4.7.
 - **Hover-bind ticker allocation.** `HoverBind.lua`'s ticker builds a ref table per visible button every 0.25 s while hoverbind mode is on.
 - **Main Bar drag.** Every tick re-applies the art frame (texture Hide/Show redraw, which is load-bearing) plus all grouped elements, each with a fresh hover closure.
+
+Done: range-ticker write cache (`rangeKey` in `UpdateRange`), Pet Bar layout coalescing (`petLayoutPending` in `Refresh`), rested-glow pulse stops with the Exp Bar, pooled bar-list rows (`RefreshBarList`), one shared event dispatcher for all pool buttons (`Button.lua` `POOL_BUTTON_EVENT_ROUTES`).
 
 ### Remaining duplication
 - **`AppendCandidate`** is file-local in both `Core.lua` (grid-snap candidates) and `Settings.lua` (height-fit). It was left alone because the Settings copy sits inside the resolve-pass machinery. If shared, define it in Core.lua and keep the candidate order.
