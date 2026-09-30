@@ -842,18 +842,38 @@ local SANITIZE_BOOLEAN_KEYS = {
 	"castBarUsesDefaultPosition", "bagBarHoverOnly", "microMenuHoverOnly", "latencyBarHoverOnly", "expBarHoverOnly",
 	"keyRingHoverOnly", "betterExpBarEnabled", "expBarShowCurrentOverMax", "expBarShowPercent", "expBarShowLevel",
 	"expBarShowRestedPercent", "expBarShowRestedTotal", "bagBarOrientation", "stanceBarOrientation", "showMacroText",
+	"bagBarGroupUnlocked", "keyRingGroupUnlocked", "microMenuGroupUnlocked", "latencyBarGroupUnlocked",
+	"pageIndicatorGroupUnlocked", "hoverBindMode", "vanillaLayoutStacking", "pendingDefaultBarRecapture",
+	"pendingDisableExtraBars",
 }
 
 local SANITIZE_NUMBER_KEYS = {
 	"minimapAngle", "globalSpacingValue", "globalButtonSizeValue", "keyRingHoverDuration",
 	"bagBarHoverDuration", "microMenuHoverDuration", "latencyBarHoverDuration", "expBarHoverDuration",
 	"expBarGlowPulseInterval", "microMenuCols", "microMenuRows", "stanceBarNativeGap",
+	"bagBarSpacing", "bagBarNativeSpacing", "microMenuSpacing", "microMenuNativeSpacing", "stanceBarSpacing",
+	"stanceBarNativeSpacing", "castBarStackBaseY",
 }
 
+-- Numbers that must stay above 0 (scales, font sizes, grid size).
 local SANITIZE_SCALE_KEYS = {
 	"mainBarPageIndicatorScale", "tooltipScale", "expBarScale", "latencyBarScale", "castBarScale", "keyRingScale",
 	"bagBarScale", "microMenuScale", "stanceBarScale",
+	"hotkeyFontSize", "countFontSize", "macroFontSize", "expBarFontSize", "customGridSize",
 }
+
+local SANITIZE_COLOR_KEYS = {
+	"expBarTextColor", "expBarColorEarned", "expBarColorRested", "expBarNativeColorEarned", "expBarNativeColorRested",
+}
+
+-- Per-bar cfg fields outside position/grid/slot; a wrong type drops only that field.
+local SANITIZE_BAR_BOOLEAN_KEYS = {
+	"enabled", "usesDefaultPosition", "hoverOnly", "useNativeStanceBar", "useNativePetBar", "condenseEmptyPetSlots",
+	"spacingUnlocked", "buttonSizeUnlocked", "animateAutoCastGlow", "dynamicDefaultBar", "isPetBar", "isStanceBar",
+	"visualCenter",
+}
+
+local SANITIZE_BAR_NUMBER_KEYS = { "hoverDuration", "nativeSpacing" }
 
 local SANITIZE_POSITION_KEYS = {
 	"bagBarPosition", "microMenuPosition", "keyRingPosition", "latencyBarPosition", "castBarPosition",
@@ -896,8 +916,58 @@ local function IsValidBarConfig(self, cfg)
 	if cfg.slotStart ~= nil and not IsIntegerInRange(cfg.slotStart, self.ACTION_SLOT_START, self.ACTION_SLOT_END) then return false end
 	if cfg.buttonSize ~= nil and not (IsFiniteNumber(cfg.buttonSize) and cfg.buttonSize > 0) then return false end
 	if cfg.spacing ~= nil and not IsFiniteNumber(cfg.spacing) then return false end
+	if cfg.nativeAnchor ~= nil and not IsValidPositionTable(cfg.nativeAnchor) then return false end
+
+	if cfg.fixedActionSlots ~= nil then
+		if type(cfg.fixedActionSlots) ~= "table" then
+			return false
+		end
+
+		local k, slot
+
+		for k, slot in pairs(cfg.fixedActionSlots) do
+			if not IsIntegerInRange(slot, 1, self.ACTION_SLOT_END) then
+				return false
+			end
+		end
+	end
 
 	return true
+end
+
+local function IsValidColorTable(t)
+	return type(t) == "table" and IsFiniteNumber(t.r) and IsFiniteNumber(t.g) and IsFiniteNumber(t.b)
+end
+
+-- Drops wrong-typed non-structural fields from one bar cfg; `label` prefixes the issue lines.
+local function SanitizeBarExtras(cfg, label, issues)
+	local i, key
+
+	for i = 1, table.getn(SANITIZE_BAR_BOOLEAN_KEYS) do
+		key = SANITIZE_BAR_BOOLEAN_KEYS[i]
+
+		if cfg[key] ~= nil and type(cfg[key]) ~= "boolean" then
+			cfg[key] = nil
+
+			if issues then table.insert(issues, label .. "." .. key .. " must be true or false") end
+		end
+	end
+
+	for i = 1, table.getn(SANITIZE_BAR_NUMBER_KEYS) do
+		key = SANITIZE_BAR_NUMBER_KEYS[i]
+
+		if cfg[key] ~= nil and not IsFiniteNumber(cfg[key]) then
+			cfg[key] = nil
+
+			if issues then table.insert(issues, label .. "." .. key .. " must be a number") end
+		end
+	end
+
+	if cfg.scale ~= nil and not (IsFiniteNumber(cfg.scale) and cfg.scale > 0) then
+		cfg.scale = nil
+
+		if issues then table.insert(issues, label .. ".scale must be a number above 0") end
+	end
 end
 
 -- Drops wrong-typed fields from one profile's data in place; structural damage falls back to EnsureDB reseeding.
@@ -947,11 +1017,24 @@ function ACAB:SanitizeProfileData(data, issues)
 		Drop("tooltipAnchorCorner", "must be text")
 	end
 
-	local color = data.expBarTextColor
+	for i = 1, table.getn(SANITIZE_COLOR_KEYS) do
+		key = SANITIZE_COLOR_KEYS[i]
 
-	if color ~= nil and not (type(color) == "table" and IsFiniteNumber(color.r) and IsFiniteNumber(color.g)
-		and IsFiniteNumber(color.b)) then
-		Drop("expBarTextColor", "must hold numeric r/g/b")
+		if data[key] ~= nil and not IsValidColorTable(data[key]) then Drop(key, "must hold numeric r/g/b") end
+	end
+
+	local artOffset = data.mainBarArtNativeOffset
+
+	if artOffset ~= nil and not (type(artOffset) == "table"
+		and (artOffset.y == nil or IsFiniteNumber(artOffset.y))
+		and (artOffset.gryphonRightFromFrameLeft == nil or IsFiniteNumber(artOffset.gryphonRightFromFrameLeft))
+		and (artOffset.width == nil or IsFiniteNumber(artOffset.width))
+		and (artOffset.height == nil or IsFiniteNumber(artOffset.height))) then
+		Drop("mainBarArtNativeOffset", "must hold numeric y/width/height")
+	end
+
+	if data.latestSeenVersion ~= nil and type(data.latestSeenVersion) ~= "string" then
+		Drop("latestSeenVersion", "must be text")
 	end
 
 	local artMode = data.mainBarArtMode
@@ -1008,6 +1091,10 @@ function ACAB:SanitizeProfileData(data, issues)
 
 		if not valid then
 			Drop("defaultBars", "has a bar entry with missing or invalid values (reset to defaults)")
+		else
+			for k, v in pairs(data.defaultBars) do
+				SanitizeBarExtras(v, "defaultBars[" .. k .. "]", issues)
+			end
 		end
 	end
 
@@ -1021,6 +1108,7 @@ function ACAB:SanitizeProfileData(data, issues)
 				local cfg = data.bars[i]
 
 				if IsValidBarConfig(self, cfg) and IsIntegerInRange(cfg.id, 1, SANITIZE_LIMIT) then
+					SanitizeBarExtras(cfg, "bars[" .. i .. "]", issues)
 					n = n + 1
 					cleaned[n] = cfg
 				elseif issues then
