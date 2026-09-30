@@ -101,6 +101,11 @@ stanceFormEventFrame:SetScript("OnEvent", function()
 	-- Native mode.
 	ACAB:RebuildStanceBarContainer()
 
+	-- Reparented native buttons only draw after the game's own refresh.
+	if ACAB:IsStanceBarNativeModeEffective() then
+		ShapeshiftBar_Update()
+	end
+
 	-- Styled mode: re-lay-out the pool bar if the live form count changed its shape.
 	if ACAB:ApplyStanceBarLiveShape() then
 		local styledBar = ACAB.bars and ACAB.bars[ACAB.STANCE_BAR_ID]
