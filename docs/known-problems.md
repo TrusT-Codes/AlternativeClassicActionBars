@@ -11,19 +11,9 @@ Read this when something doesn't behave the way the code suggests it should. It 
 
 ## 1. Suspected bugs (unconfirmed — verify live before fixing)
 
-None of these were fixed during the refactor. Each has a repro or a `/run` check.
+Each has a repro or a `/run` check.
 
-### Slot allocator reserves cols*rows slots, but a bar's pool binds all 12
-- **Status:** allocator fixed (full 12-slot block). Re-inspect later: live test could neither shrink an Extra Bar to 2x2 nor add a new one (even with Extra Bar 4 at 1 button). Low priority.
-- **Where:** `Bar.lua` — `IsActionSlotUsed`, `ApplyBarShape` / `ResolvePoolSlot`
-- **What:** The allocator counts a bar as `slotStart .. slotStart + cols*rows - 1`. Every one of the `MAX_BAR_BUTTONS` pool buttons (hidden ones too) binds `slotStart + i - 1` and registers in `customBindTargets`. A shrunk bar plus a later-seeded Extra Bar can overlap. Low impact, since Extra Bars normally seed once.
-- **Verify:** `/run local c=ACABDB.bars for i=1,table.getn(c) do DEFAULT_CHAT_FRAME:AddMessage(c[i].id.." "..tostring(c[i].slotStart).." "..(c[i].cols*c[i].rows)) end`. Two slotStarts less than 12 apart confirm an overlap. Fix: count `MAX_BAR_BUTTONS` for pool-backed bars.
-
-### Stance Bar rebuild relies on UPDATE_SHAPESHIFT_FORMS, which may never fire here
-- **Status:** still untested live. Flagged for later review.
-- **Where:** `Events.lua` — `stanceFormEventFrame`; `PetStanceBars.lua` — `RebuildStanceBarContainer`
-- **What:** The only runtime trigger for `RebuildStanceBarContainer` / `ApplyStanceBarLiveShape` / `RebuildAllDefaultBarAssignmentRows` is `UPDATE_SHAPESHIFT_FORMS`. env §4.12 confirmed it doesn't fire on form *toggles*; nobody has tested whether it fires when the set of forms *changes*. If it doesn't, a newly learned form or a respec won't reshape the Stance Bar until `/reload`. A class with no forms at login never builds the container. Keep the registration regardless.
-- **Verify:** On a low-level druid/warrior, learn a new form/stance and watch for the button without `/reload`. Or trace `UPDATE_SHAPESHIFT_FORMS` + `SPELLS_CHANGED` / `LEARNED_SPELL_IN_TAB`.
+Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars sit 12 slots apart, no overlap; no 2x2 grid preset exists by design), Stance Bar form change (fixed: event fires, the native buttons just needed `ShapeshiftBar_Update()` after reparenting), native-anchor capture (cleared: all three anchors present after copy, import and on both built-in profiles), Exp Bar colors (fixed: revert to native goes through `ExhaustionTick_Update`).
 
 ### Layout baseline pass waits a fixed delay after login
 - **Status:** first live test of the in-frame version misplaced the Modern corner cluster (Micro Menu off the edge, Latency Bar too high); now deferred + reloaded, retest pending.
@@ -224,7 +214,6 @@ None of these were fixed during the refactor. Each has a repro or a `/run` check
 - **Redundant guards.** `Core.lua` (`ApplyHoverBindVisual`, `GetBarFrameSize`) and `Events.lua` (`RefreshBarSettingsPage`, `RebuildAllDefaultBarAssignmentRows`) still guard members that are always defined.
 
 ### Tech debt
-- **Native anchor capture skipped when a position exists.** `NativeElements.lua` `Capture{KeyRing,LatencyBar,CastBar}PositionIfNeeded` return early before capturing `*NativeAnchor`. A writer that sets the position first (Modern corner cluster, import) leaves the native anchor nil forever, and the Vanilla reset then silently no-ops. Check: `/run print(ACABDB.keyRingNativeAnchor, ACABDB.latencyBarNativeAnchor, ACABDB.castBarNativeAnchor)`.
 - **Pet Bar reflow rewrites `cfg.nativeAnchor.y`.** `PetStanceBars.lua` `ReflowPetBarForBar3Toggle` does this, so treat the Pet Bar `nativeAnchor` as "last default-stack position", not the true capture.
 - **Page Indicator retry chains can stack.** Parallel `C_Timer.After(0.1)` retry chains in `CreatePageIndicatorContainer` / `ApplyPageIndicatorShape` share one elapsed counter. Harmless so far; a "retry pending" flag would bound it.
 - **Extra Bar fallback size.** `Database.lua` `GetDefaultExtraBarLayout` returns `BUTTON_SIZE` on the normal path but `GetCurrentButtonSizeBaseline()` on the fallback path.

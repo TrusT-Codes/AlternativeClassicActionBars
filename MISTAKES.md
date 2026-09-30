@@ -46,6 +46,11 @@ Solved mistakes, so they don't happen twice. Each entry has three parts: **what 
 - **Root cause:** an unverified figure. The live limit is 261 characters total.
 - **Prevention:** count the full command, `/run ` included. Anything longer goes into a temporary `/acab diagN`.
 
+### Live check that didn't reproduce the native call
+- **What happened:** a `/run` calling `ExhaustionTick_Update()` showed no repaint, and another used the global `ACAB`, which doesn't exist (the global is `AlternativeClassicActionBars`). One test also left `event` set and broke chat.
+- **Root cause:** native handlers read the global `event`/`this`; `ACAB` is only a file-local alias.
+- **Prevention:** set and restore `this`/`event` around native handler calls, and use the full global name in `/run`. Ask which run a result came from before drawing conclusions.
+
 ---
 
 ## Saved data and login
@@ -102,7 +107,7 @@ Solved mistakes, so they don't happen twice. Each entry has three parts: **what 
 ### Better Experience Bar colors resetting to blue
 - **What happened:** after some time, or on a zone change, the custom earned-XP color turned blue (`0, 0.39, 0.88`), which is not the addon default either.
 - **Root cause:** FrameXML's `ExhaustionTick_OnEvent` repaints `MainMenuExpBar` and `ExhaustionLevelFillBar` on `PLAYER_ENTERING_WORLD`/`UPDATE_EXHAUSTION` (rested blue / normal purple). The colors were only applied at login and on settings changes.
-- **Prevention:** `InstallExpBarColorGuard` overrides `SetStatusBarColor`/`SetVertexColor` on both instances. The same rule as above applies: any color, texture or visibility we set on a native frame needs a guard or a reassert. Status: fixed in code, live retest pending.
+- **Prevention:** `InstallExpBarColorGuard` overrides `SetStatusBarColor`/`SetVertexColor` on both instances. The same rule as above applies: any color, texture or visibility we set on a native frame needs a guard or a reassert. Status: fixed and live-confirmed (zone change, level up, rest area, reload). Off-state revert now repaints via native ExhaustionTick_Update, because the stored native snapshot was taken before the game painted its rest-state color.
 
 ---
 
