@@ -12,6 +12,8 @@
 - Fix Setup Wizard's Vanilla layout placing all action bars too far left on a fresh install. **Already set up a Vanilla-layout profile and your bars sit too far left?** Switch to that profile and run `/acab recapture` once.
 - Fix Setup Wizard's layout step sometimes misplacing Micro Menu / Latency Bar on slow logins - it now waits for the UI to settle.
 - First-login dialog only offers "use existing profile" once you have a custom profile.
+- Missing client mods now get one clear chat message instead of a flood of errors: without ClassicAPI the addon stays disabled, and a missing SuperWoW, nampower or UnitXP_SP3 shows a warning at login.
+- An error while setting up one element at login no longer stops every element after it from loading; chat names the part that failed.
 
 ## 1.2.1-beta
 
