@@ -167,7 +167,7 @@ local POOL_BUTTON_EVENT_ROUTES = {
 	STOP_AUTOREPEAT_SPELL = { list = actionPoolButtons, method = "UpdateState" },
 	PLAYER_ENTER_COMBAT = { list = actionPoolButtons, method = "UpdateState" },
 	PLAYER_LEAVE_COMBAT = { list = actionPoolButtons, method = "UpdateState" },
-	UNIT_INVENTORY_CHANGED = { list = actionPoolButtons, method = "UpdateEquipRing", playerOnly = true },
+	UNIT_INVENTORY_CHANGED = { list = actionPoolButtons, method = "UpdateInventoryDependents", playerOnly = true },
 	UNIT_PET = { list = petPoolButtons, method = "Refresh", playerOnly = true },
 	PET_BAR_UPDATE = { list = petPoolButtons, method = "Refresh" },
 	PLAYER_ENTERING_WORLD = { list = allPoolButtons, method = "Refresh" },
@@ -844,29 +844,40 @@ local MACRO_SKIPPED_TARGETS = {
 }
 
 -- The macro icon the client replaces with its own pick.
-local MACRO_DYNAMIC_ICON = "interface\icons\inv_misc_questionmark"
+local MACRO_DYNAMIC_ICON = "interface\\icons\\inv_misc_questionmark"
 
--- "[cond] !Name; other" -> "name" (lower case, conditions/alternatives/"!" stripped); nil if empty or numeric.
+-- '[cond] ?!"Name_X"; other' -> "name x": lower case, first alternative only, [conditions], "?"/"!"/"~"
+-- prefixes, quotes and "_" (CleveRoid syntax) stripped; nil if empty or numeric.
+-- Second return: true when the prefixes include CleveRoid's "?" (skip this action for icon/tooltip).
 local function CleanMacroTargetName(text)
-	local name = string.gsub(text, "^%s*%b[]%s*", "")
-	name = string.gsub(name, ";.*$", "")
-	name = string.gsub(name, "^%s*!?%s*", "")
+	local name = string.gsub(text, ";.*$", "")
+	name = string.gsub(name, "%b[]", "")
+
+	local found, foundEnd, prefix = string.find(name, "^([%s%?!~]*)")
+	local skipForIcon = string.find(prefix, "?", 1, true) and true or false
+
+	name = string.sub(name, foundEnd + 1)
 	name = string.gsub(name, "%s+$", "")
+	name = string.gsub(name, '^"(.*)"$', "%1")
+	name = string.gsub(name, "_", " ")
 
 	if name == "" or string.find(name, "^%d") then
 		return nil
 	end
 
-	return string.lower(name)
+	return string.lower(name), skipForIcon
 end
 
--- Target name from a macro body: "#showtooltip <name>" first, else the first /cast or /use that isn't skipped.
+-- Target name from a macro body: "#showtooltip <name>" first, else the first /cast or /use that isn't skipped
+-- (Auto Shot / Attack / Shoot, or a "?" prefix), else the first Auto Shot / Attack / Shoot (an Auto-Shot-only macro
+-- shows Auto Shot); "?" lines never count.
 local function GetMacroTargetName(body)
 	if not body then
 		return nil
 	end
 
 	local firstCast
+	local firstSkipped
 	local line
 
 	for line in string.gfind(body, "[^\r\n]+") do
@@ -882,32 +893,36 @@ local function GetMacroTargetName(body)
 					return showName
 				end
 			elseif (command == "/cast" or command == "/use") and not firstCast then
-				local castName = CleanMacroTargetName(rest)
+				local castName, skipForIcon = CleanMacroTargetName(rest)
 
-				if castName and not MACRO_SKIPPED_TARGETS[castName] then
+				if castName and not skipForIcon and not MACRO_SKIPPED_TARGETS[castName] then
 					firstCast = castName
+				elseif castName and not skipForIcon and not firstSkipped then
+					firstSkipped = castName
 				end
 			end
 		end
 	end
 
-	return firstCast
+	return firstCast or firstSkipped
 end
 
--- Highest-rank spellbook index whose name matches (a trailing "(Rank n)" is ignored), or nil.
+-- Spellbook index for a lower-case name: the given "(Rank n)" if named, else the highest rank; nil if not known.
 local function FindSpellIdByName(name)
-	local spellName = string.gsub(name, "%s*%(.-%)%s*$", "")
+	local found, foundEnd, baseName, rankText = string.find(name, "^(.-)%s*%((.-)%)%s*$")
+	local spellName = baseName or name
 	local match
 	local i = 1
 
 	while true do
-		local bookName = GetSpellName(i, "spell")
+		local bookName, bookRank = GetSpellName(i, "spell")
 
 		if not bookName then
 			break
 		end
 
-		if string.lower(bookName) == spellName then
+		if string.lower(bookName) == spellName
+			and (not rankText or (bookRank and string.lower(bookRank) == rankText)) then
 			match = i
 		end
 
@@ -928,23 +943,49 @@ local function GetLinkItemName(link)
 	return itemName and string.lower(itemName)
 end
 
--- First bag slot holding the named item: bag, slot, texture (nil if none).
+-- Max stack size of the item in a link (GetItemInfo's 7th return), or nil.
+local function GetLinkMaxStack(link)
+	local found, foundEnd, itemId = string.find(link, "item:(%d+)")
+
+	if not itemId then
+		return nil
+	end
+
+	local itemName, itemLink, quality, minLevel, itemType, subType, maxStack = GetItemInfo(tonumber(itemId))
+
+	return maxStack
+end
+
+-- Named item in the bags: first bag, slot, texture, then the total count over all stacks and the max stack size
+-- (nil if none).
 local function FindBagItemByName(name)
+	local firstBag, firstSlot, firstTexture, firstLink
+	local total = 0
 	local bag
 
 	for bag = 0, 4 do
 		local slot
 
 		for slot = 1, GetContainerNumSlots(bag) do
-			if GetLinkItemName(GetContainerItemLink(bag, slot)) == name then
-				local texture = GetContainerItemInfo(bag, slot)
+			local link = GetContainerItemLink(bag, slot)
 
-				return bag, slot, texture
+			if GetLinkItemName(link) == name then
+				local texture, itemCount = GetContainerItemInfo(bag, slot)
+
+				total = total + (itemCount or 1)
+
+				if not firstBag then
+					firstBag, firstSlot, firstTexture, firstLink = bag, slot, texture, link
+				end
 			end
 		end
 	end
 
-	return nil
+	if not firstBag then
+		return nil
+	end
+
+	return firstBag, firstSlot, firstTexture, total, GetLinkMaxStack(firstLink)
 end
 
 -- Equipment slot holding the named item: invSlot, texture (nil if none).
@@ -978,6 +1019,9 @@ function ACABButtonMixin:ResolveMacroTarget()
 		self.macroBody = body
 		self.macroTargetName = GetMacroTargetName(body)
 		self.macroSpellId = self.macroTargetName and FindSpellIdByName(self.macroTargetName)
+
+		-- Spellbook spelling, for nampower's name-based IsSpellUsable/IsSpellInRange.
+		self.macroSpellName = self.macroSpellId and GetSpellName(self.macroSpellId, "spell")
 	end
 
 	local targetName = self.macroTargetName
@@ -999,12 +1043,14 @@ function ACABButtonMixin:ResolveMacroTarget()
 		return nil
 	end
 
-	local bag, bagSlot, bagTexture = FindBagItemByName(targetName)
+	local bag, bagSlot, bagTexture, bagTotal, maxStack = FindBagItemByName(targetName)
 
 	if bag then
 		self.macroTargetKind = "bag"
 		self.macroTargetA = bag
 		self.macroTargetB = bagSlot
+		self.macroItemCount = bagTotal
+		self.macroItemMaxStack = maxStack
 
 		return bagTexture
 	end
@@ -1047,17 +1093,59 @@ function ACABButtonMixin:SetMacroTargetTooltip()
 	return true
 end
 
--- BAG_UPDATE: stack count plus a macro's item icon (the item can appear, move or run out).
-function ACABButtonMixin:UpdateBagDependents()
-	self:UpdateCount()
+-- macroTargetKind of the last ResolveMacroTarget, or nil when this slot isn't a macro.
+function ACABButtonMixin:GetMacroTargetKind()
+	return self.macroName and self.macroTargetKind
+end
 
+-- BAG_UPDATE: a macro's target first (its item can appear, move or run out), then count, ring and cooldown.
+function ACABButtonMixin:UpdateBagDependents()
 	if self.macroName then
 		self:UpdateMacroIcon()
 	end
+
+	self:UpdateCount()
+
+	if self.macroName then
+		self:UpdateEquipRing()
+		self:UpdateCooldown()
+	end
+end
+
+-- UNIT_INVENTORY_CHANGED: equip ring, plus a macro's re-resolved target (its item can move between bags and gear).
+function ACABButtonMixin:UpdateInventoryDependents()
+	if self.macroName then
+		self:UpdateMacroIcon()
+		self:UpdateCount()
+		self:UpdateCooldown()
+	end
+
+	self:UpdateEquipRing()
 end
 
 function ACABButtonMixin:UpdateEquipRing()
 	if self.isPetSlot or self.isStanceSlot then
+		self.equipRing:Hide()
+		return
+	end
+
+	-- Macro naming an equipped item: that item's quality.
+	if self:GetMacroTargetKind() == "equip" then
+		local quality = GetInventoryItemQuality("player", self.macroTargetA)
+
+		if quality then
+			local r, g, b = GetItemQualityColor(quality)
+
+			self.equipRing:SetVertexColor(r, g, b)
+			self.equipRing:Show()
+		else
+			self.equipRing:Hide()
+		end
+
+		return
+	end
+
+	if self.macroName and self.macroTargetKind then
 		self.equipRing:Hide()
 		return
 	end
@@ -1084,8 +1172,17 @@ function ACABButtonMixin:UpdateCount()
 	end
 
 	local text = ""
+	local macroKind = self:GetMacroTargetKind()
 
-	if not self.isPetSlot and not self.isStanceSlot and GetActionCount and self:IsSlotFilled()
+	if macroKind == "bag" then
+		-- Macro naming a bag item: total over all stacks, only for items that stack.
+		if self.macroItemMaxStack and self.macroItemMaxStack > 1 then
+			text = tostring(self.macroItemCount)
+		end
+	elseif macroKind then
+		-- Macro naming a spell or an equipped item: no count.
+		text = ""
+	elseif not self.isPetSlot and not self.isStanceSlot and GetActionCount and self:IsSlotFilled()
 		and ((IsConsumableAction and IsConsumableAction(self.actionSlot))
 			or (IsStackableAction and IsStackableAction(self.actionSlot))) then
 		local count = GetActionCount(self.actionSlot)
@@ -1291,6 +1388,12 @@ function ACABButtonMixin:UpdateCooldown()
 		end
 
 		start, duration, enable = GetShapeshiftFormCooldown(self.actionSlot)
+	elseif self:GetMacroTargetKind() == "spell" then
+		start, duration, enable = GetSpellCooldown(self.macroTargetA, "spell")
+	elseif self:GetMacroTargetKind() == "bag" then
+		start, duration, enable = GetContainerItemCooldown(self.macroTargetA, self.macroTargetB)
+	elseif self:GetMacroTargetKind() == "equip" then
+		start, duration, enable = GetInventoryItemCooldown("player", self.macroTargetA)
 	else
 		if not GetActionCooldown then
 			return
@@ -1320,14 +1423,29 @@ function ACABButtonMixin:UpdateRange()
 	end
 
 	local inRange = nil
-	if IsActionInRange then
-		inRange = IsActionInRange(self.actionSlot)
-	end
 
 	-- Defaults to "usable" when IsUsableAction isn't present.
 	local usable, noMana = 1, nil
-	if IsUsableAction then
-		usable, noMana = IsUsableAction(self.actionSlot)
+
+	local macroKind = self:GetMacroTargetKind()
+
+	if macroKind == "spell" then
+		-- Macro naming a spell: nampower's checks for that spell, by spellbook name.
+		if IsSpellInRange and UnitExists("target") then
+			inRange = IsSpellInRange(self.macroSpellName, "target")
+		end
+
+		if IsSpellUsable then
+			usable, noMana = IsSpellUsable(self.macroSpellName)
+		end
+	elseif not macroKind then
+		if IsActionInRange then
+			inRange = IsActionInRange(self.actionSlot)
+		end
+
+		if IsUsableAction then
+			usable, noMana = IsUsableAction(self.actionSlot)
+		end
 	end
 
 	-- tintWholeButtonOnRange (default on) tints the icon; off tints only the hotkey red, like Blizzard buttons.
