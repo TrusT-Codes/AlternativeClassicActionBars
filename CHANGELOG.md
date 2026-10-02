@@ -12,6 +12,7 @@
 - Fix Setup Wizard's Vanilla layout placing all action bars too far left on a fresh install. **Already set up a Vanilla-layout profile and your bars sit too far left?** Switch to that profile and run `/acab recapture` once.
 - Fix Setup Wizard's layout step sometimes misplacing Micro Menu / Latency Bar on slow logins - it now waits for the UI to settle.
 - First-login dialog only offers "use existing profile" once you have a custom profile.
+- Fix Auto Shot / Auto Attack buttons glowing on after the target is cleared or dead, and macros glowing just because they also start Auto Shot or Auto Attack.
 - Imported or damaged profiles are now checked for every saved setting (colors, font sizes, spacing, grid size, per-bar options), so a bad value resets to its default instead of causing errors.
 - Missing client mods now get one clear chat message instead of a flood of errors: without ClassicAPI the addon stays disabled, and a missing SuperWoW, nampower or UnitXP_SP3 shows a warning at login.
 - Macros now show the tooltip and icon of the ability or item they actually use (Auto Shot / Attack / Shoot never take over); item macros always show the item icon.
