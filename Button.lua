@@ -814,28 +814,6 @@ function ACABButtonMixin:UpdateState()
 	end
 end
 
-function ACABButtonMixin:UpdateEquipRing()
-	if self.isPetSlot or self.isStanceSlot then
-		self.equipRing:Hide()
-		return
-	end
-
-	if not self.actionSlot or not IsEquippedAction or not IsEquippedAction(self.actionSlot) then
-		self.equipRing:Hide()
-		return
-	end
-
-	local r, g, b = ACAB:GetActionItemQualityColor(self.actionSlot)
-	if r then
-		self.equipRing:SetVertexColor(r, g, b)
-		self.equipRing:Show()
-	else
-		-- Quality unresolved (item not cached yet).
-		self.equipRing:Hide()
-	end
-end
-
--- Stack-count text: a consumable/stackable action with 1 left shows "1", a non-stacking action stays blank.
 -------------------------------------------------------------------------
 -- Macro target: the spell/item a macro's #showtooltip, /cast or /use names, skipping Auto Shot / Attack / Shoot
 -------------------------------------------------------------------------
@@ -1060,6 +1038,28 @@ function ACABButtonMixin:UpdateBagDependents()
 	end
 end
 
+function ACABButtonMixin:UpdateEquipRing()
+	if self.isPetSlot or self.isStanceSlot then
+		self.equipRing:Hide()
+		return
+	end
+
+	if not self.actionSlot or not IsEquippedAction or not IsEquippedAction(self.actionSlot) then
+		self.equipRing:Hide()
+		return
+	end
+
+	local r, g, b = ACAB:GetActionItemQualityColor(self.actionSlot)
+	if r then
+		self.equipRing:SetVertexColor(r, g, b)
+		self.equipRing:Show()
+	else
+		-- Quality unresolved (item not cached yet).
+		self.equipRing:Hide()
+	end
+end
+
+-- Stack-count text: a consumable/stackable action with 1 left shows "1", a non-stacking action stays blank.
 function ACABButtonMixin:UpdateCount()
 	if not self.count then
 		return
