@@ -144,7 +144,10 @@ local actionSlotButtons = {}
 
 -- Event -> button list + method to call on each; playerOnly skips events whose arg1 isn't "player".
 local POOL_BUTTON_EVENT_ROUTES = {
-	BAG_UPDATE = { list = actionPoolButtons, method = "UpdateCount" },
+	BAG_UPDATE = { list = actionPoolButtons, method = "UpdateBagDependents" },
+	UPDATE_MACROS = { list = actionPoolButtons, method = "Refresh" },
+	-- New spells shift spellbook indexes cached by ResolveMacroTarget.
+	LEARNED_SPELL_IN_TAB = { list = actionPoolButtons, method = "Refresh" },
 	BAG_UPDATE_COOLDOWN = { list = allPoolButtons, method = "UpdateCooldown" },
 	SPELL_UPDATE_COOLDOWN = { list = allPoolButtons, method = "UpdateCooldown" },
 	ACTIONBAR_UPDATE_COOLDOWN = { list = allPoolButtons, method = "UpdateCooldown" },
@@ -833,6 +836,230 @@ function ACABButtonMixin:UpdateEquipRing()
 end
 
 -- Stack-count text: a consumable/stackable action with 1 left shows "1", a non-stacking action stays blank.
+-------------------------------------------------------------------------
+-- Macro target: the spell/item a macro's #showtooltip, /cast or /use names, skipping Auto Shot / Attack / Shoot
+-------------------------------------------------------------------------
+
+-- Auto-repeat/auto-attack spells never pick a macro's tooltip or icon.
+local MACRO_SKIPPED_TARGETS = {
+	["auto shot"] = true,
+	["attack"] = true,
+	["shoot"] = true,
+}
+
+-- The macro icon the client replaces with its own pick.
+local MACRO_DYNAMIC_ICON = "interface\icons\inv_misc_questionmark"
+
+-- "[cond] !Name; other" -> "name" (lower case, conditions/alternatives/"!" stripped); nil if empty or numeric.
+local function CleanMacroTargetName(text)
+	local name = string.gsub(text, "^%s*%b[]%s*", "")
+	name = string.gsub(name, ";.*$", "")
+	name = string.gsub(name, "^%s*!?%s*", "")
+	name = string.gsub(name, "%s+$", "")
+
+	if name == "" or string.find(name, "^%d") then
+		return nil
+	end
+
+	return string.lower(name)
+end
+
+-- Target name from a macro body: "#showtooltip <name>" first, else the first /cast or /use that isn't skipped.
+local function GetMacroTargetName(body)
+	if not body then
+		return nil
+	end
+
+	local firstCast
+	local line
+
+	for line in string.gfind(body, "[^\r\n]+") do
+		local found, foundEnd, command, rest = string.find(line, "^%s*([/#]%a+)%s*(.*)$")
+
+		if command then
+			command = string.lower(command)
+
+			if command == "#showtooltip" or command == "#show" then
+				local showName = CleanMacroTargetName(rest)
+
+				if showName then
+					return showName
+				end
+			elseif (command == "/cast" or command == "/use") and not firstCast then
+				local castName = CleanMacroTargetName(rest)
+
+				if castName and not MACRO_SKIPPED_TARGETS[castName] then
+					firstCast = castName
+				end
+			end
+		end
+	end
+
+	return firstCast
+end
+
+-- Highest-rank spellbook index whose name matches (a trailing "(Rank n)" is ignored), or nil.
+local function FindSpellIdByName(name)
+	local spellName = string.gsub(name, "%s*%(.-%)%s*$", "")
+	local match
+	local i = 1
+
+	while true do
+		local bookName = GetSpellName(i, "spell")
+
+		if not bookName then
+			break
+		end
+
+		if string.lower(bookName) == spellName then
+			match = i
+		end
+
+		i = i + 1
+	end
+
+	return match
+end
+
+-- Lower-case item name from an item link, or nil.
+local function GetLinkItemName(link)
+	if not link then
+		return nil
+	end
+
+	local found, foundEnd, itemName = string.find(link, "%[(.-)%]")
+
+	return itemName and string.lower(itemName)
+end
+
+-- First bag slot holding the named item: bag, slot, texture (nil if none).
+local function FindBagItemByName(name)
+	local bag
+
+	for bag = 0, 4 do
+		local slot
+
+		for slot = 1, GetContainerNumSlots(bag) do
+			if GetLinkItemName(GetContainerItemLink(bag, slot)) == name then
+				local texture = GetContainerItemInfo(bag, slot)
+
+				return bag, slot, texture
+			end
+		end
+	end
+
+	return nil
+end
+
+-- Equipment slot holding the named item: invSlot, texture (nil if none).
+local function FindEquippedItemByName(name)
+	local invSlot
+
+	for invSlot = FIRST_EQUIP_SLOT, LAST_EQUIP_SLOT do
+		if GetLinkItemName(GetInventoryItemLink("player", invSlot)) == name then
+			return invSlot, GetInventoryItemTexture("player", invSlot)
+		end
+	end
+
+	return nil
+end
+
+-- Resolves this macro slot's target into macroTargetKind ("spell"/"bag"/"equip"/nil) + macroTargetA/B.
+-- Returns the icon to show instead of GetActionTexture: always an item's own icon, a spell's only on the "?" macro icon.
+-- Parsed name and spell index are cached per macro body; Refresh clears the cache (macroBody = nil).
+function ACABButtonMixin:ResolveMacroTarget()
+	self.macroTargetKind = nil
+
+	local index = GetMacroIndexByName(self.macroName)
+
+	if not index or index == 0 then
+		return nil
+	end
+
+	local macroName, macroTexture, body = GetMacroInfo(index)
+
+	if body ~= self.macroBody then
+		self.macroBody = body
+		self.macroTargetName = GetMacroTargetName(body)
+		self.macroSpellId = self.macroTargetName and FindSpellIdByName(self.macroTargetName)
+	end
+
+	local targetName = self.macroTargetName
+
+	if not targetName then
+		return nil
+	end
+
+	local spellId = self.macroSpellId
+
+	if spellId then
+		self.macroTargetKind = "spell"
+		self.macroTargetA = spellId
+
+		if macroTexture and string.lower(macroTexture) == MACRO_DYNAMIC_ICON then
+			return GetSpellTexture(spellId, "spell")
+		end
+
+		return nil
+	end
+
+	local bag, bagSlot, bagTexture = FindBagItemByName(targetName)
+
+	if bag then
+		self.macroTargetKind = "bag"
+		self.macroTargetA = bag
+		self.macroTargetB = bagSlot
+
+		return bagTexture
+	end
+
+	local invSlot, invTexture = FindEquippedItemByName(targetName)
+
+	if invSlot then
+		self.macroTargetKind = "equip"
+		self.macroTargetA = invSlot
+
+		return invTexture
+	end
+
+	return nil
+end
+
+-- Icon for a filled action slot: the macro target's icon when ResolveMacroTarget picks one, else GetActionTexture.
+function ACABButtonMixin:UpdateMacroIcon()
+	local texture = self.macroName and self:ResolveMacroTarget()
+
+	self.icon:SetTexture(texture or GetActionTexture(self.actionSlot))
+end
+
+-- Shows the macro target's tooltip on GameTooltip; false when the macro has no resolvable target.
+function ACABButtonMixin:SetMacroTargetTooltip()
+	self:ResolveMacroTarget()
+
+	local kind = self.macroTargetKind
+
+	if kind == "spell" then
+		GameTooltip:SetSpell(self.macroTargetA, "spell")
+	elseif kind == "bag" then
+		GameTooltip:SetBagItem(self.macroTargetA, self.macroTargetB)
+	elseif kind == "equip" then
+		GameTooltip:SetInventoryItem("player", self.macroTargetA)
+	else
+		return false
+	end
+
+	return true
+end
+
+-- BAG_UPDATE: stack count plus a macro's item icon (the item can appear, move or run out).
+function ACABButtonMixin:UpdateBagDependents()
+	self:UpdateCount()
+
+	if self.macroName then
+		self:UpdateMacroIcon()
+	end
+end
+
 function ACABButtonMixin:UpdateCount()
 	if not self.count then
 		return
@@ -991,9 +1218,13 @@ function ACABButtonMixin:Refresh()
 		self.icon:SetTexture(texture)
 		self.equipRing:Hide()
 	elseif self:IsSlotFilled() then
-		local texture = GetActionTexture(self.actionSlot)
-		self.icon:SetTexture(texture)
+		-- Macros carry their name as action text.
+		self.macroName = GetActionText and GetActionText(self.actionSlot)
+		self.macroBody = nil
+
+		self:UpdateMacroIcon()
 	else
+		self.macroName = nil
 		self.icon:SetTexture(nil)
 		self.equipRing:Hide()
 	end
@@ -1279,6 +1510,8 @@ function ACABButtonMixin.OnEnter()
 
 			GameTooltip:SetText(name or "AlternativeClassicActionBars", 1, 1, 1)
 		end
+	elseif this.macroName and this:SetMacroTargetTooltip() then
+		-- Tooltip of the macro's own /cast or /use target.
 	elseif this:IsSlotFilled() and GameTooltip.SetAction then
 		GameTooltip:SetAction(this.actionSlot)
 	else
