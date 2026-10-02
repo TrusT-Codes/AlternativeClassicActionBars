@@ -142,7 +142,25 @@ local stancePoolButtons = {}
 -- Action slot -> action pool buttons currently showing it (paging can put two buttons on one slot).
 local actionSlotButtons = {}
 
--- Event -> button list + method to call on each; playerOnly skips events whose arg1 isn't "player".
+-- PLAYER_AURAS_CHANGED: updates only stance buttons whose form changed, then every stance cooldown if any did.
+local function RefreshStanceButtonsOnAuraChange()
+	local anyChanged = false
+	local i
+
+	for i = 1, table.getn(stancePoolButtons) do
+		if stancePoolButtons[i]:UpdateStanceFormChange() then
+			anyChanged = true
+		end
+	end
+
+	if anyChanged then
+		for i = 1, table.getn(stancePoolButtons) do
+			stancePoolButtons[i]:UpdateCooldown()
+		end
+	end
+end
+
+-- Event -> button list + method to call on each (or a handler); playerOnly skips events whose arg1 isn't "player".
 local POOL_BUTTON_EVENT_ROUTES = {
 	BAG_UPDATE = { list = actionPoolButtons, method = "UpdateBagDependents" },
 	UPDATE_MACROS = { list = actionPoolButtons, method = "Refresh" },
@@ -172,7 +190,7 @@ local POOL_BUTTON_EVENT_ROUTES = {
 	PET_BAR_UPDATE = { list = petPoolButtons, method = "Refresh" },
 	PLAYER_ENTERING_WORLD = { list = allPoolButtons, method = "Refresh" },
 	-- UPDATE_SHAPESHIFT_FORM/_FORMS never fire here on form toggles (kept anyway); PLAYER_AURAS_CHANGED drives refresh.
-	PLAYER_AURAS_CHANGED = { list = stancePoolButtons, method = "Refresh" },
+	PLAYER_AURAS_CHANGED = { handler = RefreshStanceButtonsOnAuraChange },
 	UPDATE_SHAPESHIFT_FORMS = { list = stancePoolButtons, method = "Refresh" },
 	UPDATE_SHAPESHIFT_FORM = { list = stancePoolButtons, method = "Refresh" },
 }
@@ -254,6 +272,11 @@ local function PoolButtonDispatcher_OnEvent()
 	local route = POOL_BUTTON_EVENT_ROUTES[ev]
 
 	if not route or (route.playerOnly and changedArg ~= "player") then
+		return
+	end
+
+	if route.handler then
+		route.handler()
 		return
 	end
 
@@ -1322,11 +1345,19 @@ function ACABButtonMixin:Refresh()
 		self.equipRing:Hide()
 	elseif self.isStanceSlot then
 		-- GetShapeshiftFormInfo(index) returns texture, name, isActive, isCastable.
-		local texture
+		local texture, isActive, isCastable
 
 		if GetShapeshiftFormInfo then
-			texture = GetShapeshiftFormInfo(self.actionSlot)
+			local textureVal, nameVal, activeVal, castableVal = GetShapeshiftFormInfo(self.actionSlot)
+			texture = textureVal
+			isActive = activeVal
+			isCastable = castableVal
 		end
+
+		-- Cache compared by UpdateStanceFormChange.
+		self.stanceFormTexture = texture
+		self.stanceFormActive = isActive
+		self.stanceFormCastable = isCastable
 
 		self.icon:SetTexture(texture)
 		self.equipRing:Hide()
@@ -1366,6 +1397,29 @@ function ACABButtonMixin:Refresh()
 			end)
 		end
 	end
+end
+
+-- Stance slot: re-reads the form and updates icon + glow only if texture/isActive/isCastable changed; true on change.
+function ACABButtonMixin:UpdateStanceFormChange()
+	if not GetShapeshiftFormInfo then
+		return false
+	end
+
+	-- Texture re-read too: some forms swap their icon on activation.
+	local texture, nameVal, isActive, isCastable = GetShapeshiftFormInfo(self.actionSlot)
+
+	if texture == self.stanceFormTexture and isActive == self.stanceFormActive and isCastable == self.stanceFormCastable then
+		return false
+	end
+
+	self.stanceFormTexture = texture
+	self.stanceFormActive = isActive
+	self.stanceFormCastable = isCastable
+
+	self.icon:SetTexture(texture)
+	self:UpdateState()
+
+	return true
 end
 
 -- Cooldown spiral from the pet, shapeshift or action cooldown (all plain start, duration, enable).
