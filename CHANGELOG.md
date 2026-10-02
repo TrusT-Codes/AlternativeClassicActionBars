@@ -10,6 +10,7 @@
 - Fix turning Better Experience Bar off leaving the bar blue while unrested - the native purple/blue now follows your rest state.
 - Fix Stance Bar not showing up after learning your first stance/form (e.g. Stealth) until a reload.
 - Fix Setup Wizard's Vanilla layout placing all action bars too far left on a fresh install. **Already set up a Vanilla-layout profile and your bars sit too far left?** Switch to that profile and run `/acab recapture` once.
+- Fix the cooldown/GCD spiral drawing behind the icons on the Vanilla Stance Bar and Vanilla Pet Bar.
 - Fix Setup Wizard's layout step sometimes misplacing Micro Menu / Latency Bar on slow logins - it now waits for the UI to settle.
 - First-login dialog only offers "use existing profile" once you have a custom profile.
 - Imported or damaged profiles are now checked for every saved setting (colors, font sizes, spacing, grid size, per-bar options), so a bad value resets to its default instead of causing errors.
