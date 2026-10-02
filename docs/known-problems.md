@@ -53,6 +53,7 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
 - **`ShapeshiftButton` backdrop must be a separate frame** (`PetStanceBars.lua` `ApplyStanceBarBorderStyle`). `SetBackdrop` on the real button draws over the icon and greys it out.
 - **`SHOW_MULTI_ACTIONBAR_1-4` don't survive logout (env §4.5).** `Database.lua` `SeedOneDefaultBar` seeds `enabled` from `DEFAULT_BAR_GRID`.
 - **Edit mode's Escape exit is a keybinding swap** (`Core.lua` `ACAB_EditModeEscapeFire` / `Enable/DisableEditModeEscapeBinding`). An `EnableKeyboard(true)` capture frame blocks every other key on this client. So `ESCAPE` is bound to `ACABEDITMODEESCAPE` (bindings.xml → plain global), never saved, and reverts on reload. Don't add `SaveBindings` here; keep the global.
+- **Client macro icon/tooltip picks are wrong for us** (live-checked). A macro with the `?` icon gets a client-chosen icon that prefers Auto Shot over an earlier `/cast`, and a `/use <item>` macro without `#showtooltip` stays `?`. `GetActionTexture`/`SetAction` follow that pick. `Button.lua` `ResolveMacroTarget` parses the body itself (`#showtooltip`/`#show` first, then the first `/cast`/`/use` that isn't Auto Shot, Attack or Shoot) and uses that spell's or item's tooltip and icon.
 - **Native-mode Pet/Stance bars are outside hoverbind.** They wrap real `PetActionButton` / `ShapeshiftButton` frames, so they bind only through Blizzard's Keybindings UI.
 
 ### Input / locking
