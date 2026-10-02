@@ -1210,8 +1210,12 @@ function ACABButtonMixin.OnClick()
 		this:UpdateState()
 	elseif this:IsSlotFilled() and UseAction then
 		UseAction(this.actionSlot, 0, 0)
+
 		-- Like ActionButtonUp: update the glow now instead of waiting on ACTIONBAR_UPDATE_STATE.
-		this:UpdateState()
+		-- Not for macros, or a "/cast Auto Shot" toggle leaves the glow stuck on.
+		if not (GetActionText and GetActionText(this.actionSlot)) then
+			this:UpdateState()
+		end
 	end
 end
 
