@@ -32,16 +32,31 @@ function ACAB_StanceHoverBindFire(stanceIndex)
 	end
 end
 
+-- prefix .. n binding-action names, built once per (prefix, n).
+local bindingIdCache = { ACABPETBIND = {}, ACABSTANCEBIND = {}, ACABBIND = {} }
+
+local function CachedBindingId(prefix, n)
+	local cache = bindingIdCache[prefix]
+	local id = cache[n]
+
+	if not id then
+		id = prefix .. tostring(n)
+		cache[n] = id
+	end
+
+	return id
+end
+
 -- A button's home binding-action name: nativeBindingId, ACABPETBIND<n>, ACABSTANCEBIND<n> or ACABBIND<actionSlot - 72>.
 function ACAB:GetHoverBindingId(btn)
 	if btn.nativeBindingId then
 		return btn.nativeBindingId
 	elseif btn.isPetSlot then
-		return "ACABPETBIND" .. tostring(btn.actionSlot)
+		return CachedBindingId("ACABPETBIND", btn.actionSlot)
 	elseif btn.isStanceSlot then
-		return "ACABSTANCEBIND" .. tostring(btn.actionSlot)
+		return CachedBindingId("ACABSTANCEBIND", btn.actionSlot)
 	else
-		return "ACABBIND" .. tostring(btn.actionSlot - 72)
+		return CachedBindingId("ACABBIND", btn.actionSlot - 72)
 	end
 end
 
@@ -112,7 +127,7 @@ function ACAB:SyncDefaultBarBindingRedirect(btn)
 	local targetId = btn.nativeBindingId
 
 	if btn.actionSlot and btn.actionSlot >= ACAB.ACTION_SLOT_START then
-		targetId = "ACABBIND" .. tostring(btn.actionSlot - 72)
+		targetId = CachedBindingId("ACABBIND", btn.actionSlot - 72)
 	end
 
 	local liveId = btn.activeBindingId or btn.nativeBindingId
