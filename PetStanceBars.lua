@@ -800,6 +800,39 @@ function ACAB:SetStanceBarEnabled(enabled)
 	self:SetElementShown(self.stanceBarContainer, enabled)
 end
 
+-- "Use Vanilla Stance Bar" switch, before its reload: native (ACABDB.stanceBarPosition) and styled (defaultBars cfg)
+-- positions are stored separately, so the current spot and "at default spot" state carry over to the other mode.
+function ACAB:CarryStanceBarPositionToMode(toNative)
+	local cfg = ACABDB.defaultBars[self.STANCE_BAR_ID]
+
+	if not cfg then
+		return
+	end
+
+	if toNative then
+		-- Only a styled bar the user placed carries over; a default-positioned one leaves native on its own default.
+		if cfg.styledDefaultPosition == false and self:IsCanonicalPosition(cfg) then
+			ACABDB.stanceBarPosition = { point = "CENTER", relativePoint = "CENTER", visualCenter = true, x = cfg.x, y = cfg.y }
+			ACABDB.stanceBarUsesDefaultPosition = false
+		end
+
+		return
+	end
+
+	local pos = ACABDB.stanceBarPosition
+
+	if self:IsCanonicalPosition(pos) then
+		cfg.point = "CENTER"
+		cfg.relativePoint = "CENTER"
+		cfg.visualCenter = true
+		cfg.x = pos.x
+		cfg.y = pos.y
+	end
+
+	-- A default-positioned native bar keeps following the vanilla stack (re-stacked at login).
+	cfg.styledDefaultPosition = ACABDB.stanceBarUsesDefaultPosition ~= false
+end
+
 -- Stance Bar's stacked top-edge Y: above Bar 2 (+ Extra Bar 1) if bar 2 is enabled, else above bar 1.
 function ACAB:GetStanceBarBaselineY(bar2Enabled)
 	return GetStackedBaselineY(self, 2, bar2Enabled, self.EXTRA_BAR_ID_START, self.stanceBarContainer)
