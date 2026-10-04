@@ -3440,7 +3440,7 @@ function ACAB:RebuildDefaultBarAssignmentRows(barId)
 	container:SetHeight(height)
 end
 
--- Rebuilds the assignment rows of every default bar (1-5) page built this session.
+-- Refreshes every default bar (1-5) page built this session, so its assignment rows are rebuilt and re-gated.
 function ACAB:RebuildAllDefaultBarAssignmentRows()
 	if not ACAB.settingsFrame then
 		return
@@ -3450,7 +3450,7 @@ function ACAB:RebuildAllDefaultBarAssignmentRows()
 
 	for id = 1, 5 do
 		if ACAB.settingsFrame.pages[id] then
-			self:RebuildDefaultBarAssignmentRows(id)
+			self:RefreshBarSettingsPage(id)
 		end
 	end
 end
