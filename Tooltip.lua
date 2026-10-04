@@ -122,18 +122,11 @@ function ACAB:ResetTooltipLayout()
 end
 
 function ACAB:StartTooltipDrag()
-	local pos = ACABDB.tooltipPosition
-	if not pos then return end
-
-	self:StartSharedDrag("tooltip", nil, pos.x or 0, pos.y or 0)
+	self:StartElementDrag("tooltip")
 end
 
 function ACAB:StopTooltipDrag()
-	self:StopSharedDrag()
-
-	if self.RefreshBarSettingsPage then
-		self:RefreshBarSettingsPage("tooltip")
-	end
+	self:StopElementDrag("tooltip")
 end
 
 -- Redirects every fixed-position GameTooltip onto the synthetic frame (other tooltip objects are skipped).
