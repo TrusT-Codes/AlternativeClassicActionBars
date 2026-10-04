@@ -206,7 +206,7 @@ end
 
 -------------------------------------------------------------------------
 -- Snap to Adjacent Elements / Snap to Grid
--- Called per drag tick from DefaultBars.lua's drag engine to nudge the proposed position.
+-- Called per drag tick from ElementEngine.lua's drag engine to nudge the proposed position.
 -------------------------------------------------------------------------
 
 -- Converts a region's frame bounds to real screen pixels, optionally expanded by a per-side visual inset.

@@ -1,6 +1,6 @@
 -- PageIndicator.lua
 -- Page Indicator: Main Bar's page-turn arrows + page-number FontString in a synthetic container, built inline
--- with plain CreateFrame (not DefaultBars.lua's chain engine).
+-- with plain CreateFrame (not ElementEngine.lua's chain engine).
 
 local ACAB = AlternativeClassicActionBars
 

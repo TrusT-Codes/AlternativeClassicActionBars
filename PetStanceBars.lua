@@ -1,5 +1,5 @@
 -- PetStanceBars.lua
--- Pet Bar and Stance Bar in native mode, on DefaultBars.lua's chain-anchored container engine (must load after it).
+-- Pet Bar and Stance Bar in native mode, on ElementEngine.lua's chain-anchored container engine (must load after it).
 -- Kept in one file since they cross-call each other's Reflow*ForBar*Toggle functions.
 
 local ACAB = AlternativeClassicActionBars
