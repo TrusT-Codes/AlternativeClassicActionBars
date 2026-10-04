@@ -1392,34 +1392,34 @@ local function CompactFinalKeyToken(finalToken)
 	return finalToken
 end
 
+-- Reused by CompactBindingKeyText; only entries 1..n of the current call are read.
+local hotkeyParts = {}
+
+-- Binding key with abbreviated modifiers and compacted final token, e.g. "ALT-SHIFT-BUTTON5" -> "a-s-MB5".
 local function CompactBindingKeyText(key)
 	if not key then
 		return ""
 	end
 
-	local tokens = {}
 	local n = 0
+	local lastToken
 	local token
 
 	for token in string.gfind(key, "[^%-]+") do
-		n = n + 1
-		tokens[n] = token
+		if lastToken then
+			n = n + 1
+			hotkeyParts[n] = HOTKEY_MODIFIER_ABBREVIATIONS[lastToken] or lastToken
+		end
+
+		lastToken = token
 	end
 
-	if n == 0 then
-		return key
-	end
+	if not lastToken then return key end
 
-	local parts = {}
-	local i
+	n = n + 1
+	hotkeyParts[n] = CompactFinalKeyToken(lastToken)
 
-	for i = 1, n - 1 do
-		parts[i] = HOTKEY_MODIFIER_ABBREVIATIONS[tokens[i]] or tokens[i]
-	end
-
-	parts[n] = CompactFinalKeyToken(tokens[n])
-
-	return table.concat(parts, "-")
+	return table.concat(hotkeyParts, "-", 1, n)
 end
 
 -- Hotkey text for the button's live binding action (activeBindingId or GetHoverBindingId).
