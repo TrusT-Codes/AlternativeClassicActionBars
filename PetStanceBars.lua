@@ -810,8 +810,10 @@ function ACAB:CarryStanceBarPositionToMode(toNative)
 	end
 
 	if toNative then
-		-- Only a styled bar the user placed carries over; a default-positioned one leaves native on its own default.
-		if cfg.styledDefaultPosition == false and self:IsCanonicalPosition(cfg) then
+		if cfg.styledDefaultPosition == true then
+			-- Default-positioned: native follows the vanilla stack too (re-stacked at login).
+			ACABDB.stanceBarUsesDefaultPosition = true
+		elseif cfg.styledDefaultPosition == false and self:IsCanonicalPosition(cfg) then
 			ACABDB.stanceBarPosition = { point = "CENTER", relativePoint = "CENTER", visualCenter = true, x = cfg.x, y = cfg.y }
 			ACABDB.stanceBarUsesDefaultPosition = false
 		end

@@ -1785,11 +1785,9 @@ function ACAB:RunLoginSequence()
 	RunLoginStage(failures, "stance bar", function()
 		ACAB:CreateStanceBarContainer()
 
-		-- Styled mode re-stacks only while its styledDefaultPosition flag is set.
-		if ACABDB.useDefaultLayout ~= false or not ACAB:IsStanceBarNativeModeEffective() then
-			local bar2Cfg = ACABDB.defaultBars[2]
-			ACAB:ReflowStanceBarForBar2Toggle(bar2Cfg and bar2Cfg.enabled)
-		end
+		-- Only moves the bar while it sits at its default spot (stanceBarUsesDefaultPosition / styledDefaultPosition).
+		local bar2Cfg = ACABDB.defaultBars[2]
+		ACAB:ReflowStanceBarForBar2Toggle(bar2Cfg and bar2Cfg.enabled)
 	end)
 
 	RunLoginStage(failures, "bag bar and micro menu", function()
