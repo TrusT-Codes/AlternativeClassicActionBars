@@ -931,9 +931,6 @@ local MACRO_SKIPPED_TARGETS = {
 	["shoot"] = true,
 }
 
--- The macro icon the client replaces with its own pick.
-local MACRO_DYNAMIC_ICON = "interface\\icons\\inv_misc_questionmark"
-
 -- '[cond] ?!"Name_X"; other' -> "name x": lower case, first alternative only, [conditions], "?"/"!"/"~"
 -- prefixes, quotes and "_" (CleveRoid syntax) stripped; nil if empty or numeric.
 -- Second return: true when the prefixes include CleveRoid's "?" (skip this action for icon/tooltip).
@@ -957,7 +954,7 @@ local function CleanMacroTargetName(text)
 end
 
 -- Target name from a macro body: "#showtooltip <name>" / "#show <name>" / ShaguTweaks' "--showtooltip <name>" first
--- (second return true), else the first /cast, /pfcast, /use or CastSpellByName("...") that isn't skipped
+-- (second return true), else the first /cast, /use or CastSpellByName("...") that isn't skipped
 -- (Auto Shot / Attack / Shoot, or a "?" prefix), else the first Auto Shot / Attack / Shoot (an Auto-Shot-only macro
 -- shows Auto Shot); "?" lines never count.
 local function GetMacroTargetName(body)
@@ -985,7 +982,7 @@ local function GetMacroTargetName(body)
 			if showName then
 				return showName, true
 			end
-		elseif command == "/cast" or command == "/pfcast" or command == "/use" then
+		elseif command == "/cast" or command == "/use" then
 			castText = rest
 		elseif byName then
 			castText = byName
@@ -1148,8 +1145,8 @@ end
 -- Resolves this macro slot's target into macroTargetKind ("spell"/"bag"/"equip"/"missingItem"/nil) + macroTargetA/B.
 -- Target: an explicit #showtooltip name, else SuperCleveRoidMacros' current pick for macros with [conditions],
 -- else the parsed body (GetMacroTargetName).
--- Returns the icon to show instead of GetActionTexture: an item's own icon (remembered, greyed by UpdateRange, once
--- out of stock), a spell's icon on the "?" macro icon, else the macro's own icon.
+-- Returns the icon to show instead of GetActionTexture: the target spell's or item's own icon, also over a custom
+-- macro icon (an item's is remembered and greyed by UpdateRange once out of stock).
 -- Parse results are cached per macro body and per CleveRoid pick; Refresh clears them (macroBody = nil).
 function ACABButtonMixin:ResolveMacroTarget()
 	self.macroTargetKind = nil
@@ -1201,11 +1198,7 @@ function ACABButtonMixin:ResolveMacroTarget()
 		-- Spellbook spelling, for nampower's name-based IsSpellUsable/IsSpellInRange.
 		self.macroSpellName = GetSpellName(spellId, "spell")
 
-		if macroTexture and string.lower(macroTexture) == MACRO_DYNAMIC_ICON then
-			return GetSpellTexture(spellId, "spell")
-		end
-
-		return macroTexture
+		return GetSpellTexture(spellId, "spell")
 	end
 
 	local bag, bagSlot, bagTexture, bagTotal, maxStack = FindBagItemByName(targetName)
