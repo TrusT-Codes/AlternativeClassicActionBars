@@ -58,9 +58,7 @@ ACAB.DEFAULT_BAR_IDS = { 1, 2, 3, 4, 5, ACAB.PET_BAR_ID, ACAB.STANCE_BAR_ID }
 
 -- True for any id in ACAB.DEFAULT_BAR_IDS.
 function ACAB:IsDefaultBarFamilyId(barId)
-	if not barId then
-		return false
-	end
+	if not barId then return false end
 
 	local i
 
@@ -141,7 +139,6 @@ function ACAB:GetBarDisplayName(barId)
 	return "Extra Bar " .. tostring((barId or 0) - 5)
 end
 
-
 -------------------------------------------------------------------------
 -- Extra Bars 1-4 (ids 6-9): always present in ACABDB.bars, toggled via cfg.enabled.
 -------------------------------------------------------------------------
@@ -158,9 +155,7 @@ end
 
 -- Hides `frame` and permanently neuters its Show() to a no-op, so no later native code path can re-show it.
 function ACAB:NeuterFrameShow(frame)
-	if not frame then
-		return
-	end
+	if not frame then return end
 
 	frame:Hide()
 
@@ -174,9 +169,7 @@ end
 function ACAB:ClampScaleSetting(scale)
 	scale = tonumber(scale)
 
-	if not scale then
-		return nil
-	end
+	if not scale then return nil end
 
 	scale = math.floor((scale * 10) + 0.5) / 10
 
@@ -195,9 +188,7 @@ end
 function ACAB:ClampSpacingSetting(spacing, minSpacing, maxSpacing)
 	spacing = tonumber(spacing)
 
-	if not spacing then
-		return nil
-	end
+	if not spacing then return nil end
 
 	spacing = math.floor(spacing + 0.5)
 
@@ -219,9 +210,7 @@ end
 
 -- Converts a region's frame bounds to real screen pixels, optionally expanded by a per-side visual inset.
 local function GetRealScreenBounds(region, insetLeft, insetRight, insetTop, insetBottom)
-	if not region or not region.GetLeft then
-		return nil
-	end
+	if not region or not region.GetLeft then return nil end
 
 	insetLeft = insetLeft or 0
 	insetRight = insetRight or 0
@@ -230,10 +219,7 @@ local function GetRealScreenBounds(region, insetLeft, insetRight, insetTop, inse
 
 	local left, right, top, bottom = region:GetLeft(), region:GetRight(), region:GetTop(), region:GetBottom()
 	local scale = region:GetEffectiveScale()
-
-	if not left or not right or not top or not bottom or not scale then
-		return nil
-	end
+	if not left or not right or not top or not bottom or not scale then return nil end
 
 	return (left - insetLeft) * scale, (right + insetRight) * scale, (top + insetTop) * scale, (bottom - insetBottom) * scale
 end
@@ -274,17 +260,11 @@ function ACAB:GetAllSnapTargetBoxes(excludeElement)
 	local draggingMainBar = excludeElement ~= nil and self.bars ~= nil and excludeElement == self.bars[1]
 
 	local function AddBox(frame)
-		if not frame or frame == excludeElement then
-			return
-		end
+		if not frame or frame == excludeElement then return end
 
-		if draggingMainBar and self:IsMainBarFollower(frame) then
-			return
-		end
+		if draggingMainBar and self:IsMainBarFollower(frame) then return end
 
-		if not frame.IsShown or not frame:IsShown() then
-			return
-		end
+		if not frame.IsShown or not frame:IsShown() then return end
 
 		local left, right, top, bottom = GetRealScreenBounds(frame, self:GetElementVisualInset(frame))
 
@@ -315,22 +295,14 @@ end
 
 -- Visible edges of `frame` (visual-inset-adjusted) in UIParent units: left, right, top, bottom.
 function ACAB:GetElementRealEdges(frame)
-	if not frame then
-		return nil
-	end
+	if not frame then return nil end
 
 	local insetLeft, insetRight, insetTop, insetBottom = self:GetElementVisualInset(frame)
 	local left, right, top, bottom = GetRealScreenBounds(frame, insetLeft, insetRight, insetTop, insetBottom)
-
-	if not left then
-		return nil
-	end
+	if not left then return nil end
 
 	local uiParentScale = UIParent:GetEffectiveScale()
-
-	if not uiParentScale or uiParentScale == 0 then
-		return nil
-	end
+	if not uiParentScale or uiParentScale == 0 then return nil end
 
 	return left / uiParentScale, right / uiParentScale, top / uiParentScale, bottom / uiParentScale
 end
@@ -338,7 +310,6 @@ end
 -- Converts a UIParent-unit offset into `container`'s own scale (legacy cfg.x/cfg.y units).
 function ACAB:ConvertUIParentOffsetToOwnScale(container, uiParentOffset)
 	local scale = (container and container.GetScale and container:GetScale()) or 1
-
 	if not scale or scale == 0 then
 		scale = 1
 	end
@@ -368,9 +339,7 @@ function ACAB:GetPointFractions(point)
 end
 
 -------------------------------------------------------------------------
--- Element positions
--- Canonical: { point = "CENTER", relativePoint = "CENTER", visualCenter = true, x, y }, x/y in UIParent
--- units from screen center to the element's visual center. Anything else is a legacy anchor (frame's own units).
+-- Element positions: canonical = CENTER/CENTER + visualCenter, x/y in UIParent units to the visual center.
 -------------------------------------------------------------------------
 
 function ACAB:IsCanonicalPosition(pos)
@@ -381,7 +350,6 @@ end
 -- WARNING: never UIParent:GetWidth()/GetHeight() - those undershoot the real screen on this client.
 function ACAB:GetUIParentAnchorSize()
 	local probe = self.uiParentCenterProbe
-
 	if not probe then
 		probe = CreateFrame("Frame", nil, UIParent)
 		probe:SetWidth(2)
@@ -394,7 +362,6 @@ function ACAB:GetUIParentAnchorSize()
 	UIParent:GetLeft()
 
 	local centerX, centerY = probe:GetCenter()
-
 	if not centerX or not centerY then
 		return GetScreenWidth() or 1024, GetScreenHeight() or 768
 	end
@@ -431,10 +398,7 @@ end
 local function GetPositionMetrics(self, frame, width, height, needScreen)
 	local frameScale = frame.GetEffectiveScale and frame:GetEffectiveScale()
 	local uiParentScale = UIParent:GetEffectiveScale()
-
-	if not frameScale or frameScale == 0 or not uiParentScale or uiParentScale == 0 then
-		return nil
-	end
+	if not frameScale or frameScale == 0 or not uiParentScale or uiParentScale == 0 then return nil end
 
 	if not width and frame.config and frame.config.buttonSize then
 		width, height = self:GetBarFrameSize(frame.config)
@@ -501,9 +465,7 @@ end
 -- Rewrites pos in place as a legacy point/relativePoint anchor at the same screen spot; returns true if converted.
 -- fallbackRelativePoint: what the caller's own apply assumes when a legacy pos.relativePoint is nil.
 function ACAB:ConvertPositionAnchor(frame, pos, point, relativePoint, width, height, fallbackRelativePoint)
-	if not frame or not pos then
-		return false
-	end
+	if not frame or not pos then return false end
 
 	relativePoint = relativePoint or point
 
@@ -517,10 +479,7 @@ function ACAB:ConvertPositionAnchor(frame, pos, point, relativePoint, width, hei
 	end
 
 	local m = GetPositionMetrics(self, frame, width, height, true)
-
-	if not m then
-		return false
-	end
+	if not m then return false end
 
 	local left, bottom = GetFrameLeftBottom(self, m, pos, fallbackRelativePoint)
 
@@ -531,15 +490,10 @@ end
 
 -- Rewrites a legacy pos in place as canonical, same screen spot.
 function ACAB:ConvertPositionToCanonical(frame, pos, width, height, fallbackRelativePoint)
-	if not frame or not pos or self:IsCanonicalPosition(pos) then
-		return false
-	end
+	if not frame or not pos or self:IsCanonicalPosition(pos) then return false end
 
 	local m = GetPositionMetrics(self, frame, width, height, true)
-
-	if not m then
-		return false
-	end
+	if not m then return false end
 
 	local left, bottom = GetFrameLeftBottom(self, m, pos, fallbackRelativePoint)
 
@@ -565,15 +519,10 @@ end
 
 -- Frame rect for pos in UIParent units: left, right, bottom, top.
 function ACAB:GetPositionFrameRect(frame, pos, fallbackRelativePoint)
-	if not frame or not pos then
-		return nil
-	end
+	if not frame or not pos then return nil end
 
 	local m = GetPositionMetrics(self, frame, nil, nil, true)
-
-	if not m then
-		return nil
-	end
+	if not m then return nil end
 
 	local left, bottom = GetFrameLeftBottom(self, m, pos, fallbackRelativePoint)
 
@@ -582,24 +531,17 @@ end
 
 -- Converts a legacy pos to canonical; no-op before NormalizeAllPositionAnchors has run or on an unsized frame.
 function ACAB:NormalizePositionAnchor(frame, pos, width, height, fallbackRelativePoint)
-	if not frame or not pos or not self.positionAnchorsNormalized or self:IsCanonicalPosition(pos) then
-		return false
-	end
+	if not frame or not pos or not self.positionAnchorsNormalized or self:IsCanonicalPosition(pos) then return false end
 
 	local m = GetPositionMetrics(self, frame, width, height, false)
-
-	if not m or m.w <= 1 or m.h <= 1 then
-		return false
-	end
+	if not m or m.w <= 1 or m.h <= 1 then return false end
 
 	return self:ConvertPositionToCanonical(frame, pos, m.w, m.h, fallbackRelativePoint)
 end
 
 -- Normalizes pos, then anchors frame to UIParent from it. guardFlag: the frame's InstallReanchorGuard flag.
 function ACAB:ApplyPositionToFrame(frame, pos, fallbackRelativePoint, width, height, guardFlag)
-	if not frame or not pos then
-		return
-	end
+	if not frame or not pos then return end
 
 	self:NormalizePositionAnchor(frame, pos, width, height, fallbackRelativePoint)
 
@@ -776,28 +718,17 @@ end
 local function GetGridSnapContext(self, proposedLeft, proposedTop, width, height, scale)
 	local baseline = (ACABDB and ACABDB.snapToGrid) and true or false
 	local altHeld = (IsAltKeyDown and IsAltKeyDown()) and true or false
+	if baseline == altHeld then return nil end
 
-	if baseline == altHeld then
-		return nil
-	end
-
-	if not proposedLeft or not proposedTop or not width or not height then
-		return nil
-	end
+	if not proposedLeft or not proposedTop or not width or not height then return nil end
 
 	local spacing = self:GetLayoutGridSpacing()
-
-	if not spacing or spacing <= 0 then
-		return nil
-	end
+	if not spacing or spacing <= 0 then return nil end
 
 	spacing = spacing * (scale or 1)
 
 	local screenLeft, screenRight, screenTop, screenBottom = GetRealScreenBounds(UIParent)
-
-	if not screenLeft then
-		return nil
-	end
+	if not screenLeft then return nil end
 
 	return spacing, screenLeft, screenRight, screenTop, screenBottom,
 		(screenLeft + screenRight) / 2, (screenTop + screenBottom) / 2
@@ -969,18 +900,12 @@ function ACAB:ApplyStanceBarLiveShape()
 	self:EnsureDB()
 
 	local cfg = ACABDB.defaultBars[self.STANCE_BAR_ID]
-
-	if not cfg then
-		return false
-	end
+	if not cfg then return false end
 
 	local liveCount = self:GetClampedLiveStanceCount()
 
 	local shapeValid = cfg.cols and cfg.rows and (cfg.cols * cfg.rows) == liveCount
-
-	if cfg.buttonCount == liveCount and shapeValid then
-		return false
-	end
+	if cfg.buttonCount == liveCount and shapeValid then return false end
 
 	cfg.buttonCount = liveCount
 	-- Resets to a sensible default Nx1 shape.
@@ -992,9 +917,7 @@ end
 
 -- Whether the Pet Bar should hide empty slots - forced false while default layout is on.
 function ACAB:ShouldCondensePetBarSlots()
-	if ACABDB and ACABDB.useDefaultLayout ~= false then
-		return false
-	end
+	if ACABDB and ACABDB.useDefaultLayout ~= false then return false end
 
 	local cfg = ACABDB and ACABDB.defaultBars and ACABDB.defaultBars[self.PET_BAR_ID]
 
@@ -1061,9 +984,7 @@ end
 
 -- Swaps ESCAPE onto ACABEDITMODEESCAPE, remembering its previous action; no-op while already swapped.
 function ACAB:EnableEditModeEscapeBinding()
-	if self.editModeEscapeBindingActive then
-		return
-	end
+	if self.editModeEscapeBindingActive then return end
 
 	local previousAction = GetBindingAction("ESCAPE")
 
@@ -1075,9 +996,7 @@ end
 
 -- Restores ESCAPE's previous binding (or clears it).
 function ACAB:DisableEditModeEscapeBinding()
-	if not self.editModeEscapeBindingActive then
-		return
-	end
+	if not self.editModeEscapeBindingActive then return end
 
 	if self.editModeEscapePreviousAction then
 		SetBinding("ESCAPE", self.editModeEscapePreviousAction)
@@ -1211,9 +1130,7 @@ local hoverFadeFrames = {}
 function ACAB:ClampHoverDuration(duration)
 	duration = tonumber(duration)
 
-	if not duration then
-		return nil
-	end
+	if not duration then return nil end
 
 	if duration < 0 then
 		duration = 0
@@ -1241,9 +1158,7 @@ function ACAB:SetHoverDurationSetting(field, duration, applyFn)
 
 	duration = self:ClampHoverDuration(duration)
 
-	if not duration then
-		return
-	end
+	if not duration then return end
 
 	ACABDB[field] = duration
 
@@ -1253,10 +1168,7 @@ end
 -- True if UIParent-unit point x/y lies inside frame's rect.
 local function IsPointOverFrame(x, y, frame)
 	local left, right, top, bottom = frame:GetLeft(), frame:GetRight(), frame:GetTop(), frame:GetBottom()
-
-	if not left or not right or not top or not bottom then
-		return false
-	end
+	if not left or not right or not top or not bottom then return false end
 
 	return x >= left and x <= right and y >= bottom and y <= top
 end
@@ -1271,14 +1183,10 @@ local hoverPollTicker = nil
 
 -- Single shared ticker for every registered hover-only frame, started lazily on first registration.
 local function StartHoverPollTicker()
-	if hoverPollTicker then
-		return
-	end
+	if hoverPollTicker then return end
 
 	hoverPollTicker = C_Timer.NewTicker(HOVER_POLL_TICK_INTERVAL, function()
-		if ACAB:IsEditMode() or ACAB:IsHoverBindMode() then
-			return
-		end
+		if ACAB:IsEditMode() or ACAB:IsHoverBindMode() then return end
 
 		local x, y = ACAB:GetCursorPositionUIScale()
 		local frame
@@ -1349,9 +1257,7 @@ end
 
 -- Adds `frame` to the shared hover poll (idempotent), starting the poll ticker if needed.
 function ACAB:InstallHoverFadeController(frame)
-	if frame.ACABHoverFadeInstalled then
-		return
-	end
+	if frame.ACABHoverFadeInstalled then return end
 
 	frame.ACABHoverFadeInstalled = true
 	hoverFadeFrames[frame] = frame
@@ -1361,9 +1267,7 @@ end
 
 -- Turns a frame's hover-only mode on/off; getDuration returns its fade duration.
 function ACAB:ApplyHoverOnlyState(frame, enabled, getDuration)
-	if not frame then
-		return
-	end
+	if not frame then return end
 
 	enabled = enabled and true or false
 
@@ -1403,9 +1307,7 @@ end
 
 -- Undoes ForceHoverFadeFramesVisible: re-hides idle, un-hovered hover-only frames.
 function ACAB:RestoreHoverFadeFrames()
-	if self:IsEditMode() or self:IsHoverBindMode() then
-		return
-	end
+	if self:IsEditMode() or self:IsHoverBindMode() then return end
 
 	local frame
 
@@ -1448,7 +1350,6 @@ local SETTLE_TIMEOUT = 3
 -- calls callback(earlyLeft, earlyTop, settledLeft, settledTop, elapsed).
 function ACAB:WaitForNativeBarSettle(callback)
 	local ref = getglobal("ActionButton1")
-
 	if not ref then
 		callback(nil, nil, nil, nil, 0)
 		return
@@ -1501,9 +1402,7 @@ local function WaitForWrappedFrameAnchorSettle(frame, callback)
 	end
 
 	local function SameAnchor(a, b)
-		if not a or not b then
-			return false
-		end
+		if not a or not b then return false end
 
 		return a.point == b.point and a.relativeTo == b.relativeTo
 			and a.relativePoint == b.relativePoint and a.x == b.x and a.y == b.y
@@ -1548,18 +1447,12 @@ local POST_LOGIN_SETTLE_TIMEOUT = 10
 function ACAB:SyncPetBarAnchorX()
 	local defaults = ACABDB and ACABDB.defaultBars
 	local cfg = defaults and defaults[ACAB.PET_BAR_ID]
-
-	if not cfg or ACABDB.useDefaultLayout == false then
-		return
-	end
+	if not cfg or ACABDB.useDefaultLayout == false then return end
 
 	local bar3Anchor = defaults[3] and defaults[3].nativeAnchor
 	local bar1Anchor = defaults[1] and defaults[1].nativeAnchor
 	local anchor = bar3Anchor or bar1Anchor
-
-	if not anchor then
-		return
-	end
+	if not anchor then return end
 
 	local petNative = ACAB.petBarNativeContainer
 	local petStyled = ACAB.bars and ACAB.bars[ACAB.PET_BAR_ID]
@@ -1595,10 +1488,7 @@ local function SetupPetBarNativeContainer()
 	end
 
 	local cfg = ACABDB and ACABDB.defaultBars and ACABDB.defaultBars[ACAB.PET_BAR_ID]
-
-	if not cfg or ACAB.petBarNativeContainer then
-		return
-	end
+	if not cfg or ACAB.petBarNativeContainer then return end
 
 	-- must create the container before SyncPetBarAnchorX, which converts a canonical cfg through it
 	ACAB:CreatePetBarNativeContainer()
@@ -1613,16 +1503,11 @@ end
 -- Recaptures bars 1-5's native anchors if ActionButton1 drifted from Main Bar's; true if it did.
 -- WARNING: skip once Main Bar's art moved this session - ActionButton1 would measure the moved spot.
 local function VerifyDefaultBarAnchorsSettled()
-	if (ACABDB and ACABDB.useDefaultLayout == false) or ACAB.mainBarArtMoved then
-		return
-	end
+	if (ACABDB and ACABDB.useDefaultLayout == false) or ACAB.mainBarArtMoved then return end
 
 	local cfg = ACABDB and ACABDB.defaultBars and ACABDB.defaultBars[1]
 	local liveAnchor = cfg and ACAB:CaptureNativeAnchor(1)
-
-	if not cfg or not cfg.nativeAnchor or not liveAnchor then
-		return
-	end
+	if not cfg or not cfg.nativeAnchor or not liveAnchor then return end
 
 	if math.abs(liveAnchor.x - cfg.nativeAnchor.x) > DRIFT_TOLERANCE
 		or math.abs(liveAnchor.y - cfg.nativeAnchor.y) > DRIFT_TOLERANCE then
@@ -1634,7 +1519,6 @@ end
 -- Waits for ActionButton1 to hold steady after login, then runs the drift check.
 local function WaitForPostLoginSettleThenVerify()
 	local ref = getglobal("ActionButton1")
-
 	if not ref then
 		VerifyDefaultBarAnchorsSettled()
 		return
@@ -1960,7 +1844,6 @@ local SETTINGS_PAGE_ALIASES = {
 -- Opens the settings window to a specific page by name (/acab settings <pagename>).
 function ACAB:OpenSettingsPageByName(name)
 	local target = SETTINGS_PAGE_ALIASES[string.lower(name or "")]
-
 	if not target then
 		self:Print("Unknown settings page \"" .. tostring(name) .. "\". Type " .. ColorKeyName("/acab help") .. " for a list.")
 		return
@@ -1969,9 +1852,7 @@ function ACAB:OpenSettingsPageByName(name)
 	self:ShowSettingsFrame()
 
 	-- The running Setup Wizard owns the settings window's page.
-	if self:IsSetupWizardActive() then
-		return
-	end
+	if self:IsSetupWizardActive() then return end
 
 	if target.view == "general" then
 		self:ShowGeneralView()
@@ -2036,7 +1917,6 @@ function ACAB:HandleProfileCommand(rest)
 		end
 
 		local ok, reason = self:SwitchProfile(arg)
-
 		if not ok and reason then
 			self:Print(reason)
 		end
