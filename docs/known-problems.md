@@ -28,26 +28,26 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
 ### Lua / runtime
 - **`string.match` is available despite being Lua 5.1.** `Core.lua`'s slash dispatcher / `HandleProfileCommand` rely on it, and it works live. Presumably one of the client mods supplies it. Don't "fix" it to `string.find` captures. Check: `/run print(string.match, string.gmatch)`.
 - **`X and X(...)` truncates a multi-return call to one value** (stock Lua, env §2). Capture multi-return APIs (`GetPetActionInfo`: 7 values incl. `subtext` in position 2) inside a real `if X then ... end` block.
-- **Lua 5.0 caps each function at 32 upvalues.** The local `luac` (5.1) allows 60 and won't catch it. Watch big settings builders when adding file-level locals; `SettingsBars.lua` peaks around 18.
+- **Lua 5.0 caps each function at 32 upvalues.** The local `luac` (5.1) allows 60 and won't catch it. Watch big settings builders when adding file-level locals; the addon peaks around 13 (`Core.lua`), settings builders around 8.
 
 ### Frames, rects and layout
 - **Lazy, top-down rect resolution (env §4.6).** A child read before its ancestor caches a stale rect. Discarded ancestor reads before child reads are load-bearing in:
   - `Settings.lua` `ApplySettingsHeightFromCandidates` (see §3)
   - `DefaultBars.lua` `WarmMainBarArtAncestorChain` / `GetButton1ScreenAnchor` / `ResolveNativeTopLeft`
-  - `NativeElements.lua` Page Indicator (`UIParent:GetLeft(); container:GetLeft()` before `RealRect`)
+  - `PageIndicator.lua` (`UIParent:GetLeft(); container:GetLeft()` before `RealRect`)
 - **No rect until sized (env §4.6).** A frame with only `SetPoint` returns nil rects forever. Placeholder `SetWidth(1)/SetHeight(1)` at creation is load-bearing (Page Indicator container, `Settings.lua` bar-list scroll child). `MainMenuBarArtFrame` needs its native width/height re-asserted on every `ApplyMainBarArtPosition` (order: size → scale → ClearAllPoints → SetPoint).
 - **Same-name `CreateFrame` makes a second frame (env §4.7).** `SettingsBars.lua` `RebuildDefaultBarAssignmentRows` and `RefreshBarList` pool their named frames: one fixed name per pool slot (barId / form index), created once and re-shown after that. Any path that creates such a frame again instead of reusing it needs a per-rebuild name counter. The Setup Wizard uses fixed names and is only safe because it's a build-once singleton: if steps ever get rebuilt, suffix a counter on every name.
 - **ScrollFrame must stay paired with its original scroll child** (`Settings.lua` `CreateSettingsFrame`, `CreateWideContentScrollFrame`). Pointing a ScrollFrame at a new child leaves that child unresolvable. Build a new pair instead.
 - **FontString anchored only by TOPLEFT+TOPRIGHT won't wrap.** Set an explicit `SetWidth` before `SetText`, then read `GetHeight` (`Settings.lua` `SetProfileLockBannerMessage`).
-- **Strata survives reparenting.** ActionBarUp/DownButton keep `MainMenuBarArtFrame`'s MEDIUM strata after `SetParent`. `NativeElements.lua` `ApplyPageIndicatorStrata` reasserts LOW + explicit levels on every apply. Bars (`Bar.lua` `ApplyBarShape`) re-set LOW/level 10 on every shape pass, because page/stance swaps or `MainMenuBarArtFrame:Raise()` otherwise bury Bar 1 (env §4.8).
+- **Strata survives reparenting.** ActionBarUp/DownButton keep `MainMenuBarArtFrame`'s MEDIUM strata after `SetParent`. `PageIndicator.lua` `ApplyPageIndicatorStrata` reasserts LOW + explicit levels on every apply. Bars (`Bar.lua` `ApplyBarShape`) re-set LOW/level 10 on every shape pass, because page/stance swaps or `MainMenuBarArtFrame:Raise()` otherwise bury Bar 1 (env §4.8).
 - **Reparenting raises a button's level, not its children's.** Native Pet/Stance buttons moved into their container leave `<name>Cooldown` / `<name>AutoCast` behind the icon (GCD spiral invisible). `PetStanceBars.lua` `LiftButtonChildrenAboveButtons` re-lifts them after every reparent (`CreatePetBarNativeContainer`, `CreateStanceBarContainer`, `RebuildStanceBarContainer`).
-- **Edit-mode overlays are parented to UIParent** (`DefaultBars.lua` `EnsureContainerOverlay`) so all overlays compare FrameLevel in one tree. Hiding an element never hides its overlay: every disable path must `overlay:Hide()` + `EnableMouse(false)` itself. Overlapping overlays need distinct explicit levels (Key Ring 150 vs default 100).
-- **Page Indicator is laid out from `GetPoint` data, not rect deltas** (`NativeElements.lua` `CreatePageIndicatorContainer` / `ApplyPageIndicatorShape`). Right after login, sibling rects can still be cached from before the art moved. `MainMenuBarPageNumber` (FontString) has no `GetEffectiveScale`, so `ACAB:PixelSetPoint` falls back to plain `SetPoint`.
+- **Edit-mode overlays are parented to UIParent** (`ElementEngine.lua` `EnsureContainerOverlay`) so all overlays compare FrameLevel in one tree. Hiding an element never hides its overlay: every disable path must `overlay:Hide()` + `EnableMouse(false)` itself. Overlapping overlays need distinct explicit levels (Key Ring 150 vs default 100).
+- **Page Indicator is laid out from `GetPoint` data, not rect deltas** (`PageIndicator.lua` `CreatePageIndicatorContainer` / `ApplyPageIndicatorShape`). Right after login, sibling rects can still be cached from before the art moved. `MainMenuBarPageNumber` (FontString) has no `GetEffectiveScale`, so `ACAB:PixelSetPoint` falls back to plain `SetPoint`.
 - **Latency Bar Modern reset measures one frame late** (`NativeElements.lua` `ResetLatencyBarLayoutToModernBase`). Overlay rects don't reflect `SetScale(1)` until the next frame. `ApplyModernCornerClusterLayout` takes every measurement before any `Apply*Position`.
-- **Simple-page reset refresh is deferred one frame** (`SettingsBars.lua` `CreateSimpleBarPage`), because the element's new size resolves next frame. It uses `ACAB:DeferFit`. If `DeferFit` ever starts coalescing, these need their own next-frame helper.
+- **Simple-page reset refresh is deferred one frame** (`SettingsSimplePages.lua` `CreateSimpleBarPage`), because the element's new size resolves next frame. It uses `ACAB:DeferFit`. If `DeferFit` ever starts coalescing, these need their own next-frame helper.
 
 ### Native frames and FrameXML
-- **Native code re-anchors wrapped frames without `ClearAllPoints`**: Key Ring, Latency Bar, Micro Menu and Bag Bar buttons (`MainMenuBarBackpackButton`, `QuestLogMicroButton` seen), the art frame. `DefaultBars.lua` `InstallReanchorGuard` swallows every unflagged `SetPoint`/`ClearAllPoints` and records the last swallowed anchor in `frame.ACABSwallowedAnchor`, which `Core.lua` `WaitForWrappedFrameAnchorSettle` polls. Every own re-anchor must set the element's guard flag around it. `relativeTo` can arrive as a name string, and indexing a string errors, so check for the string first. `ApplyGridAnchoredShape` hard-codes `ACABApplyingMicroMenuPosition`: fine while Micro Menu is the only grid container.
+- **Native code re-anchors wrapped frames without `ClearAllPoints`**: Key Ring, Latency Bar, Micro Menu and Bag Bar buttons (`MainMenuBarBackpackButton`, `QuestLogMicroButton` seen), the art frame. `ElementEngine.lua` `InstallReanchorGuard` swallows every unflagged `SetPoint`/`ClearAllPoints` and records the last swallowed anchor in `frame.ACABSwallowedAnchor`, which `Core.lua` `WaitForWrappedFrameAnchorSettle` polls. Every own re-anchor must set the element's guard flag around it. `relativeTo` can arrive as a name string, and indexing a string errors, so check for the string first. `ApplyGridAnchoredShape` hard-codes `ACABApplyingMicroMenuPosition`: fine while Micro Menu is the only grid container.
 - **`ShapeshiftBar_Update` checks `MultiBarBottomLeft:IsShown()`** to pick Stance Bar border art. `DefaultBars.lua` `ForceShowMultiBarBottomLeft` force-shows it with `Hide` neutered, then re-runs `ShapeshiftBar_Update()` once. Don't clean either up.
 - **Stance assignment keys off the active form, not the action page** (`DefaultBars.lua` `GetDefaultBarSlotForIndex`). Travel/Aquatic Form leave the page at 1. `GetShapeshiftForm()` returns nil here, so use `GetShapeshiftFormInfo`'s `isActive` (env §4.12).
 - **`ShapeshiftButton` backdrop must be a separate frame** (`PetStanceBars.lua` `ApplyStanceBarBorderStyle`). `SetBackdrop` on the real button draws over the icon and greys it out.
@@ -68,7 +68,7 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
   - Plain Frames have no OnClick.
   - To lock while keeping a "why is this locked" tooltip, use `LockControlKeepingTooltip` (`ACABLocked` flag, honored by `CreateLabeledCheckbox`'s OnClick wrapper).
 - **Position sliders must keep `SetValueStep(0)`** (`UIWidgets.lua` `CreatePositionAxisSlider`). A non-zero step re-snaps to a grid that isn't pixel-aligned. Drag values get pixel-snapped by hand; stepper/typed commits bypass that via `ACAB:SetSliderValueUnsnapped`.
-- **`SetMinMaxValues` fires `OnValueChanged` like a real drag.** Set `suppressApply`/`suppressSnap` before changing a range and clear them after the last `SetValue` (`SettingsBars.lua` `RefreshSimpleBarPage` / `RefreshBarSettingsPage`). `SetValue` with an unchanged value doesn't fire, hence the explicit `xAppliedValue`/`yAppliedValue`.
+- **`SetMinMaxValues` fires `OnValueChanged` like a real drag.** Set `suppressApply`/`suppressSnap` before changing a range and clear them after the last `SetValue` (`SettingsSimplePages.lua` `RefreshSimpleBarPage` / `SettingsBars.lua` `RefreshBarSettingsPage`). `SetValue` with an unchanged value doesn't fire, hence the explicit `xAppliedValue`/`yAppliedValue`.
 - **Never `SetValue` a slider from its own `OnValueChanged`.** It breaks the native drag for the rest of that gesture. Position pages read `page.*AppliedValue or slider:GetValue()`.
 
 ### Experience Bar (env §4.13)
@@ -108,7 +108,7 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
 - Same rule for the Exp Bar `Show` neuter (§2) and any other "capture original, then replace" pattern.
 
 ### Gating call order in settings page refreshes
-- **Where:** `SettingsBars.lua` — tail of `RefreshBarSettingsPage` and `RefreshSimpleBarPage`
+- **Where:** `SettingsBars.lua` — tail of `RefreshBarSettingsPage`; `SettingsSimplePages.lua` — tail of `RefreshSimpleBarPage`
 - **What:** `ApplyProfileLockGating` resets alpha/EnableMouse/Enable on every listed control, and always unlocks `enableCheckbox` on numbered default bars. Everything that only dims or locks further must run after it: grid-layout lock, Page-Indicator grouped lock, the Main Bar art dim, bar 5's enable lock, global-override gating, Use Vanilla / Condense `LockControlKeepingTooltip`, and `ApplySimpleElementGroupedLock` (which must also follow `ApplyDefaultLayoutGating`). Append new dim-only locks after these.
 
 ### InstallGroupLockGuard wraps existing handlers
@@ -116,7 +116,7 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
 - **What:** It captures the control's current OnEnter/OnLeave/OnClick (OnMouseDown for sliders), so it must be installed after the control's own scripts exist. Setting OnClick after guarding bypasses the lock.
 
 ### Simple-page scale change needs a full page refresh
-- **Where:** `SettingsBars.lua` — `CreateSimpleBarPage` Scale slider `onChange`
+- **Where:** `SettingsSimplePages.lua` — `CreateSimpleBarPage` Scale slider `onChange`
 - **What:** Scale compensates stored x/y, so the handler must call `RefreshSimpleBarPage(key)`, which re-syncs X/Y before re-clamping. `RefreshSimplePositionSliderRange` alone makes the element jump.
 
 ### ResetAllElementsToVanillaLayout ordering
@@ -129,8 +129,9 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
 
 ### Scale reset writes scale directly, before resolving the native anchor
 - **Where:** every native-element reset:
-  - `DefaultBars.lua`: `ACAB:ResetScaleAndResolveNative` (Latency/Cast/Exp Bar)
-  - `NativeElements.lua`: `ResetKeyRingPosition`, `ResetTooltipLayout`
+  - `ElementEngine.lua`: `ACAB:ResetScaleAndResolveNative` (Latency/Cast/Exp Bar)
+  - `NativeElements.lua`: `ResetKeyRingPosition`
+  - `Tooltip.lua`: `ResetTooltipLayout`
   - `PetStanceBars.lua`: `ResetPetBarNativeLayout`
 - **What:** They write `ACABDB.<x>Scale = 1` + `frame:SetScale(1)` directly. The public `Set<X>Scale(1)` would run `CompensateScaleKeepingCornerFixed` against the old scale and inflate the restored position. Key Ring must use `SetKeyRingOwnScaleForEffective(frame, 1)`, because it inherits the art frame's scale.
 
@@ -148,7 +149,7 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
 - **Recapture mutates in place.** `Database.lua` `RecaptureDefaultBarNativeAnchors` must mutate cfg tables in place, since `bars[id].config` *is* `ACABDB.defaultBars[id]`. Replacing the table detaches live bars.
 - **CreateProfile falls back to the live `ACABDB`**, never an empty table. `ACABProfilesDB["Default"]` only exists after a logout or switch, and an empty fallback leaves new profiles without `defaultBars`.
 - **Profile writes hit both `ACABDB` and `ACABProfilesDB`.** Logout / `ReloadUI` runs `SaveActiveProfileData`, which writes live `ACABDB` back under `activeProfileName`. Deleting the active profile must also repoint `activeProfileName`.
-- **Export format is byte-stable** (`TBVPROFILE1:`). Never add whitespace to `SerializeValue`, or older parsers reject it. The parser doesn't trim bare tokens (`[1]=false }` fails), and numbers round-trip at 14 significant digits.
+- **Export format is byte-stable** (`TBVPROFILE1:`). Never add whitespace to `ProfileIO.lua` `SerializeValue`, or older parsers reject it. The parser doesn't trim bare tokens (`[1]=false }` fails), and numbers round-trip at 14 significant digits.
 
 - **Sanitizer key lists are hand-kept.** `ACAB:SanitizeProfileData` (Database.lua) type-checks only the fields named in its `SANITIZE_*` lists plus `defaultBars`/`bars`; it runs on every saved profile at login and on imports. A new persisted field with a crash-prone type must be added there.
 - **Coverage:** every `ACABDB` field the code reads is type-checked, except one-shot migration flags (never touched on purpose) and legacy fields nothing reads anymore (`disableBlizzardArt`, `groupedElementOffsets`, `mainBar*Assignment`/`*Enabled`). Per-bar `nativeAnchor`/`fixedActionSlots` are structural: a bad one resets all of `defaultBars`, like a bad position. Other per-bar fields (`SANITIZE_BAR_*`) drop only that field, since every reader is nil-safe. `customGridSize` must stay above 0 because the layout grid steps by it.
@@ -161,7 +162,7 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
   - `lastAppliedVanillaStyle` must be set together with `modernBorderStyle`, or the next login is treated as a live style switch.
   - `WriteTargetProfile` must repoint the live `ACABDB` and `activeProfileName` at the new data before `ReloadUI`, or the logout-time `SaveActiveProfileData` writes the old data over it. Create mode saves the old active profile first.
   - The resume state (`ACABCharDB.setupWizard`) is re-saved on every page `ShowStep` and cleared only by Finish, the X button, or a profile mismatch at login. Don't clear it from an `OnHide` (untested whether a reload fires `OnHide` before unloading).
-  - `ApplyPendingLayoutBaseline` places the Exp Bar before `ApplyModernLayoutGeometry` (see "Setup Wizard reads saved Exp Bar position").
+  - `DefaultBars.lua` `ApplyPendingLayoutBaseline` places the Exp Bar before `ApplyModernLayoutGeometry` (see "Setup Wizard reads saved Exp Bar position").
 
 ### Settings window wizard mode
 - **Where:** `Settings.lua` (`GetSettingsChromeBottom`, wide-view `applyScrollbarReserve`, `ApplyBarsViewScrollbarReserves`, `FitSettingsWindowToBarPage`), `SettingsBars.lua` `ShowBarPage`, `SetupWizard.lua` `SetChromeShown`
@@ -191,10 +192,10 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
 - **What:** Same for `C_Timer` hedges: ClassicAPI is enforced at login (`CheckRequiredMods`, the only place that still checks `type(C_Timer)`), so tickers/`C_Timer.After` calls are unguarded. Guards like `if ACAB.RefreshBarSettingsPage then` were dropped because every guarded member is defined at the top level of a file that always loads, and every call runs after login. So:
   - Nothing may call `CreateActionButton` / `ApplyEditModeVisual` / `ApplyGlobalButtonStyle` / `ApplyHoverOnlyState` at file-load time.
   - `HoverBind.lua`'s top-level `customBindTargets = {}` must run before any button is created.
-  - `Core.lua`'s hover-fade code calls `ACAB:GetCursorPositionUIScale` (defined later, in DefaultBars.lua): runtime-only.
+  - `Core.lua`'s hover-fade code calls `ACAB:GetCursorPositionUIScale` (defined later, in ElementEngine.lua): runtime-only.
 
 ### Shared single-frame element helpers
-- **Where:** `DefaultBars.lua` — "Single-frame element helpers" section: `SetElementShown`, `WriteSavedPositionXY`, `StoreCompensatedScale`, `ResetScaleAndResolveNative`, `ReadNativeAnchor`, `SeedNativePosition`, `CopyNativePosition`
+- **Where:** `ElementEngine.lua` — "Single-frame element helpers" section: `SetElementShown`, `WriteSavedPositionXY`, `StoreCompensatedScale`, `ResetScaleAndResolveNative`, `ReadNativeAnchor`, `SeedNativePosition`, `CopyNativePosition`
 - **What:** NativeElements, PetStanceBars and ExperienceBar all call these. `StoreCompensatedScale` does `EnsureDB` + clamp + CENTER compensation + write, but never `SetScale`/apply; each caller still applies. Bag Bar, Micro Menu and Stance Bar apply scale through their shape pass. Keep the signatures, and re-check all three files when changing one.
 - **Not covered, on purpose:**
   - Pet Bar native mode stores on the shared `defaultBars[PET_BAR_ID]` cfg, not an `ACABDB` field, and must mutate it in place.
@@ -251,13 +252,10 @@ Done: range-ticker write cache (`rangeKey` in `UpdateRange`), Pet Bar layout coa
 - **Modern button factory.** `SetupWizard.lua` `CreateWizardButton`, `UIWidgets.lua` `ACAB:CreateResetButton`, and hand-rolled `CreateFrame` + `StyleModernButton` sequences elsewhere could share one `ACAB:CreateModernButton(parent, config)` with a danger/prominent `variant`. `CreateResetButton` anchors before styling, the others style first, so confirm live that the order doesn't matter.
 - **Login settle polls.** `Core.lua` has three near-identical tickers. See the login-timing entry in §3 before unifying.
 - **`Fit*` candidate lists.** `Settings.lua` (~60 lines of `AppendCandidate` calls) could be name tables. The resulting array must be identical and in the same order.
-- **Default-bar overlays.** `DefaultBars.lua`'s own overlays have wheel handlers similar to `ACAB:ResizeBarFromWheel`.
+- **Default-bar overlays.** `ElementEngine.lua` `EnsureContainerOverlay`'s overlays have wheel handlers similar to `ACAB:ResizeBarFromWheel`.
 
 ### Decomposition ideas (need `.toc` + CLAUDE.md updates)
-- **`DefaultBars.lua`** holds three subsystems: default-bar paging / Modern geometry, Main Bar art + grouped elements, and the shared drag / container / guard engine. Move the engine to its own file loaded before `DefaultBars.lua`, keeping the top-level `InstallReanchorGuard(MainMenuBarArtFrame, ...)` after it.
-- **`SettingsBars.lua`** (~3800 lines): the simple-page subsystem is ~1100 self-contained lines. The Force-Vanilla cascade isn't UI code. Shared `CreateReflow*` locals would need to become `ACAB:` methods first, which also helps the upvalue cap.
-- **`NativeElements.lua`**: Tooltip and Page Indicator could become their own files.
-- **`Database.lua`**: the serializer/parser could become `ProfileIO.lua`, and the first-login/create-profile dialogs are UI.
-- **`SetupWizard.lua`**: the baseline geometry pass (`ApplyModernLayoutGeometry`, `ApplyPendingLayoutBaseline`) isn't wizard UI and could move next to the Modern layout code in `DefaultBars.lua`.
+- **`SettingsBars.lua`**: the Force-Vanilla cascade isn't UI code.
+- **`Database.lua`**: the first-login/create-profile dialogs are UI.
 - **`UIWidgets.lua`**: `ACABDialogMixin` is the largest self-contained unit.
 - **`Bar.lua`**: the layout-grid overlay and the Extra Bar policy are separable.

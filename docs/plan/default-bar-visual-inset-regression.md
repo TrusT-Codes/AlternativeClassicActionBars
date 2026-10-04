@@ -61,7 +61,7 @@ Threaded through:
   and `GetAllSnapTargetBoxes` (relies on Lua's trailing-call multi-value
   expansion: `GetRealScreenBounds(frame, self:GetElementVisualInset(frame))`
   passes all 4 return values positionally).
-- `DefaultBars.lua`'s `ApplyDragSnap` (inflates/deflates the dragged
+- `ElementEngine.lua`'s `ApplyDragSnap` (inflates/deflates the dragged
   element's proposed box by each side's own inset independently).
 - `Bar.lua`'s `EnsureBarOverlay` (anchors the per-bar edit-mode overlay
   tint to each side's own inset).
@@ -86,7 +86,7 @@ These turned out to be a *different* class of bug entirely - not
 border-overhang, but `GetHitRectInsets()` (a real Button's clickable area
 can be smaller than its own frame, independent of frame size). See the
 git history around `GetHitInsets`/`ScaleRatio`/`ApplyChainAnchoredShape`
-(`DefaultBars.lua`) for the fix applied to Bag Bar/Micro Menu/Stance Bar's
+(`ElementEngine.lua`) for the fix applied to Bag Bar/Micro Menu/Stance Bar's
 shared chain-anchoring code, and `BTV.MICRO_MENU_OVERLAY_TOP_FUDGE`
 (`Core.lua`) for the small residual live-tuned constant on top of that.
 Key Ring/Latency Bar/Exp Bar overlay sizing (native-wrapped single

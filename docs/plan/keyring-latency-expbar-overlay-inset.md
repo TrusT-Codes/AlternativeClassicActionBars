@@ -13,7 +13,7 @@ border-aware for default bars 1-5, whose native border texture
 (`Core.lua`) for the mechanism.
 
 Key Ring, Latency Bar, and Experience Bar are wrapped via
-`DefaultBars.lua`'s `EnsureContainerOverlay`, called with the **raw native
+`ElementEngine.lua`'s `EnsureContainerOverlay`, called with the **raw native
 Blizzard frame** (`KeyRingButton`, `MainMenuBarPerformanceBarFrame`,
 `MainMenuExpBar`) and anchored with a flush `SetAllPoints(container)`. Key
 Ring in particular is a native `ActionButtonTemplate`-style widget and may
@@ -45,7 +45,7 @@ visible art in-game - border/background bleeding past the tint on any edge
 is the actual symptom to look for.
 
 - **If `KeyRingButton` reports a `NormalTexture` sized larger than its own
-  frame**: extend `EnsureContainerOverlay` (`DefaultBars.lua`) with an
+  frame**: extend `EnsureContainerOverlay` (`ElementEngine.lua`) with an
   optional `inset` parameter (mirroring `BTV:GetElementVisualInset`'s
   approach for default bars), and pass a Key-Ring-specific inset computed
   from the *confirmed* ratio - do not assume it reuses `BTV.BORDER_RATIO`
@@ -57,5 +57,5 @@ is the actual symptom to look for.
 
 This is a small, self-contained follow-up once the verification result is
 known - see `Core.lua`'s `BTV:GetElementVisualInset` and
-`DefaultBars.lua`'s `EnsureContainerOverlay` for the exact pattern to
+`ElementEngine.lua`'s `EnsureContainerOverlay` for the exact pattern to
 extend.
