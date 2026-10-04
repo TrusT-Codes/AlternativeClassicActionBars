@@ -1060,6 +1060,11 @@ function ACAB:CreatePageIndicatorContainer()
 	local nativeTop = up:GetTop()
 
 	if not nativeLeft or not nativeTop then
+		-- A retry chain is already running; it owns the elapsed counter.
+		if self.pageIndicatorCreateRetryPending then
+			return
+		end
+
 		self.pageIndicatorCreateRetryElapsed = (self.pageIndicatorCreateRetryElapsed or 0)
 			+ PAGE_INDICATOR_SHAPE_RETRY_INTERVAL
 
@@ -1069,7 +1074,10 @@ function ACAB:CreatePageIndicatorContainer()
 			return
 		end
 
+		self.pageIndicatorCreateRetryPending = true
+
 		C_Timer.After(PAGE_INDICATOR_SHAPE_RETRY_INTERVAL, function()
+			ACAB.pageIndicatorCreateRetryPending = nil
 			ACAB:CreatePageIndicatorContainer()
 		end)
 
@@ -1238,6 +1246,11 @@ function ACAB:ApplyPageIndicatorShape()
 
 	-- Just-reparented rects can read nil for a beat - retries on a timer instead of sizing a partial box.
 	if not (upL and downL and textL) then
+		-- A retry chain is already running; it owns the elapsed counter.
+		if self.pageIndicatorShapeRetryPending then
+			return
+		end
+
 		self.pageIndicatorShapeRetryElapsed = (self.pageIndicatorShapeRetryElapsed or 0)
 			+ PAGE_INDICATOR_SHAPE_RETRY_INTERVAL
 
@@ -1247,7 +1260,10 @@ function ACAB:ApplyPageIndicatorShape()
 			return
 		end
 
+		self.pageIndicatorShapeRetryPending = true
+
 		C_Timer.After(PAGE_INDICATOR_SHAPE_RETRY_INTERVAL, function()
+			ACAB.pageIndicatorShapeRetryPending = nil
 			ACAB:ApplyPageIndicatorShape()
 		end)
 

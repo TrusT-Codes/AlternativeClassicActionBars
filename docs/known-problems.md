@@ -35,7 +35,6 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
 - **`string.match` is available despite being Lua 5.1.** `Core.lua`'s slash dispatcher / `HandleProfileCommand` rely on it, and it works live. Presumably one of the client mods supplies it. Don't "fix" it to `string.find` captures. Check: `/run print(string.match, string.gmatch)`.
 - **`X and X(...)` truncates a multi-return call to one value** (stock Lua, env §2). Capture multi-return APIs (`GetPetActionInfo`: 7 values incl. `subtext` in position 2) inside a real `if X then ... end` block.
 - **Lua 5.0 caps each function at 32 upvalues.** The local `luac` (5.1) allows 60 and won't catch it. Watch big settings builders when adding file-level locals; `SettingsBars.lua` peaks around 18.
-- **Global `_` is written by pet-slot captures** in `Button.lua` `ACABButtonMixin:Refresh` / `OnEnter` (`name, _, texture, ...` with no `local _`). Harmless so far. Declaring `local _` there is a behavior-scoped change.
 
 ### Frames, rects and layout
 - **Lazy, top-down rect resolution (env §4.6).** A child read before its ancestor caches a stale rect. Discarded ancestor reads before child reads are load-bearing in:
@@ -232,12 +231,10 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
 ### Dead code kept on purpose (would change saved data or chat output)
 - **`stanceBarNativeGap`.** `PetStanceBars.lua` `CaptureStanceBarNativeGap` and `ACABDB.stanceBarNativeGap` are captured but never used for layout (`GetStanceBarBaselineY` uses fixed `PET_BAR_NATIVE_GAP`). Removing them changes a WARNING print and saved data. Remove together: the capture, its two call sites, and the EnsureDB self-heal.
 - **Legacy profile fields.** The reserved "ModernBase" profile name (`Database.lua` `MODERN_BASE_PROFILE_NAME`) is legacy but still hides old `ACABProfilesDB["ModernBase"]` entries. "Default" (`LEGACY_DEFAULT_PROFILE_NAME`) stays reserved so a new user profile can never be mistaken for the pre-rename Default Vanilla. `disableBlizzardArt`, `mainBarPaginationEnabled`, `mainBarStanceSwapEnabled`, `mainBarPageBarAssignment` and `mainBarStanceBarAssignment` stay in saves forever. Cleaning up needs a one-shot migration.
-- **`RunLoginSequence` params.** `Core.lua` `ACAB:RunLoginSequence(earlyLeft, earlyTop, settledLeft, settledTop, waited)` reads none of its parameters.
-- **`Button.lua` stubs.** The stance tooltip fallback for missing `GameTooltip.SetShapeshift` never runs, stock-API guards never fail, and `OnDragStop` is empty.
+- **`Button.lua` stubs.** The stance tooltip fallback for missing `GameTooltip.SetShapeshift` never runs, stock-API guards never fail, and `OnDragStop` is empty (still assigned in `Init`, so it stays).
 
 ### Tech debt
 - **Pet Bar reflow rewrites `cfg.nativeAnchor.y`.** `PetStanceBars.lua` `ReflowPetBarForBar3Toggle` does this, so treat the Pet Bar `nativeAnchor` as "last default-stack position", not the true capture.
-- **Page Indicator retry chains can stack.** Parallel `C_Timer.After(0.1)` retry chains in `CreatePageIndicatorContainer` / `ApplyPageIndicatorShape` share one elapsed counter. Harmless so far; a "retry pending" flag would bound it.
 - **Extra Bar fallback size.** `Database.lua` `GetDefaultExtraBarLayout` returns `BUTTON_SIZE` on the normal path but `GetCurrentButtonSizeBaseline()` on the fallback path.
 - **Two screen-size reads.** `Settings.lua` `GetScreenCoordinateRange` and `Bar.lua` `RebuildLayoutGrid` use `UIParent:GetWidth()/GetHeight()` instead of `GetUIParentAnchorSize`. It's harmless in both today (legacy range only / covered by overshoot lines). In `RebuildLayoutGrid`, `GetLayoutGridSpacing()` is already in local units, so don't divide it by effective scale.
 - **Sidebar rows follow `getElementFrame`.** `SettingsBars.lua` `RefreshBarList` shows a simple-page row only when its config's `getElementFrame()` is non-nil. New simple pages need a `getElementFrame`.
@@ -260,7 +257,6 @@ Done: range-ticker write cache (`rangeKey` in `UpdateRange`), Pet Bar layout coa
 - **Modern button factory.** `SetupWizard.lua` `CreateWizardButton`, `UIWidgets.lua` `ACAB:CreateResetButton`, and hand-rolled `CreateFrame` + `StyleModernButton` sequences elsewhere could share one `ACAB:CreateModernButton(parent, config)` with a danger/prominent `variant`. `CreateResetButton` anchors before styling, the others style first, so confirm live that the order doesn't matter.
 - **Login settle polls.** `Core.lua` has three near-identical tickers. See the login-timing entry in §3 before unifying.
 - **`Fit*` candidate lists.** `Settings.lua` (~60 lines of `AppendCandidate` calls) could be name tables. The resulting array must be identical and in the same order.
-- **Assignment-row stance count.** `SettingsBars.lua` `RebuildDefaultBarAssignmentRows` is the only live stance-count read without the `MAX_STANCE_BUTTONS` clamp, so it doesn't use `GetClampedLiveStanceCount`. It only differs above 10 forms.
 - **Default-bar overlays.** `DefaultBars.lua`'s own overlays have wheel handlers similar to `ACAB:ResizeBarFromWheel`.
 
 ### Decomposition ideas (need `.toc` + CLAUDE.md updates)
