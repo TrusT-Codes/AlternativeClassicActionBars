@@ -1,6 +1,6 @@
 -- ExperienceBar.lua
 -- Experience Bar: position/enable/scale, bar-fill colors, rested-XP overlay/tick/glow pulse, and the
--- "Better Experience Bar" text overlay. Built on DefaultBars.lua's single-native-frame container engine.
+-- "Better Experience Bar" text overlay. Built on ElementEngine.lua's single-native-frame container engine.
 
 local ACAB = AlternativeClassicActionBars
 

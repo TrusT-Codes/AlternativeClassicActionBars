@@ -1,12 +1,12 @@
 -- NativeElements.lua
--- Bag Bar, Micro Menu, Key Ring, Latency Bar, Cast Bar, built on DefaultBars.lua's engine, plus the Modern Layout
+-- Bag Bar, Micro Menu, Key Ring, Latency Bar, Cast Bar, built on ElementEngine.lua's engine, plus the Modern Layout
 -- corner cluster and Reset-to-Modern-Base resets for them.
--- Must load after DefaultBars.lua: the top-level InstallShowGuard/InstallReanchorGuard calls below need it.
+-- Must load after ElementEngine.lua: the top-level InstallShowGuard/InstallReanchorGuard calls below need it.
 
 local ACAB = AlternativeClassicActionBars
 
 -------------------------------------------------------------------------
--- Local helpers (shared single-frame helpers live in DefaultBars.lua)
+-- Local helpers (shared single-frame helpers live in ElementEngine.lua)
 -------------------------------------------------------------------------
 
 -- Installs InstallReanchorGuard(flagName) on every button in `buttons`.

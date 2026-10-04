@@ -10,6 +10,7 @@ Core.lua
 UpdateCheck.lua
 Database.lua
 ProfileIO.lua
+ElementEngine.lua
 DefaultBars.lua
 NativeElements.lua
 PageIndicator.lua
