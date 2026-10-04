@@ -15,6 +15,12 @@ Each has a repro or a `/run` check.
 
 Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars sit 12 slots apart, no overlap; no 2x2 grid preset exists by design), Stance Bar form change (fixed: event fires, the native buttons just needed `ShapeshiftBar_Update()` after reparenting), native-anchor capture (cleared: all three anchors present after copy, import and on both built-in profiles), Exp Bar colors (fixed: revert to native goes through `ExhaustionTick_Update`), layout baseline delay (fixed: `SetupWizard.lua` `WaitForBaselineSettle` polls the measured native frames instead of a fixed 2 s; Modern, unlocked Vanilla and Default Modern copy all placed correctly after ~0.3 s), unlocked Vanilla bars ~76 px left (fixed: `GetDefaultVanillaData` saves live data before the wizard copies it), mod-presence detectors in `Core.lua` `ACAB:CheckRequiredMods` (cleared: each DLL removed in turn gives exactly its own chat line; without ClassicAPI the addon stays disabled with no errors), client crash during the wizard's baseline reload (closed as a one-off: seen once on a fresh Modern install, never reproduced; the client crashed occasionally before this addon existed. If it recurs, note whether the layout chat line printed and `/run print(ACABDB.pendingLayoutBaseline)`).
 
+### Hotkey text stale after binding in Blizzard's Key Bindings UI
+- **Status:** suspected, found while narrowing the stance aura refresh.
+- **Where:** `Button.lua` `UpdateHotkeyText`; nothing listens to `UPDATE_BINDINGS`.
+- **What:** hotkey text only updates on `Refresh`/`Rebind`, hoverbind binds and font-size changes. A key set in the native Key Bindings UI (e.g. an `ACABBIND` entry) should stay missing on the button until a page swap or `/reload`. Stance buttons used to pick it up by accident on the next aura change.
+- **Verify:** bind a key to a custom-bar slot in Esc → Key Bindings, close it, and check the button's hotkey text before any reload.
+
 ### First-login default-bar anchor seeded at the wrong scale
 - **Status:** unexplained; harmless since `GetDefaultVanillaData` saves live data before copying (the same login's recapture fixes it).
 - **Where:** `Database.lua` `seedDefaultBars` / `EnsureDB`; `Core.lua` `RunLoginSequence`
@@ -185,6 +191,7 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
   - The dispatcher copies `event`/`arg1` into locals before looping, since per-button code can clobber the globals.
   - It's created on the first `Init`, not at file load, so it registers after `Events.lua`'s frames (same order as the old per-button registration). Pool buttons are never destroyed, so the lists only grow.
   - Pet/stance buttons get no `ACTIONBAR_SLOT_CHANGED` for their own small slot index anymore (was an accidental match against action slots 1-10).
+  - `PLAYER_AURAS_CHANGED` doesn't `Refresh` stance buttons: `UpdateStanceFormChange` compares `GetShapeshiftFormInfo`'s texture/isActive/isCastable against the cache `Refresh` writes, and only on a change updates icon + glow (plus every stance cooldown). `UPDATE_SHAPESHIFT_FORMS` (fires on learning a form), `PLAYER_ENTERING_WORLD` and `Rebind` still do a full `Refresh`.
 
 ### Removed intra-addon existence guards
 - **Where:** `Bar.lua`, `Button.lua`, `HoverBind.lua` (removed in the refactor); `Core.lua`/`Events.lua` still have some
