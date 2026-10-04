@@ -231,6 +231,35 @@ function ACAB:ResetExpBarLayout()
 	self:ApplyExpBarPosition()
 end
 
+-- Centers the Experience Bar at the bottom of its settings page's Y range, keeping its scale.
+function ACAB:PlaceExpBarAtBottom()
+	local frame = getglobal(self.EXP_BAR_FRAME_NAME)
+
+	if not frame then
+		return
+	end
+
+	local _, _, minY = self:GetSimpleElementCoordinateRange(frame, 2)
+
+	if not minY then
+		return
+	end
+
+	ACABDB.expBarPosition = {
+		point = "CENTER", relativePoint = "CENTER", visualCenter = true,
+		x = 0,
+		y = minY,
+	}
+
+	self:ApplyExpBarPosition()
+end
+
+-- "Reset to Modern Layout Default": scale 1, centered at the bottom of the screen.
+function ACAB:ResetExpBarLayoutToModernBase()
+	self:ResetExpBarLayout()
+	self:PlaceExpBarAtBottom()
+end
+
 function ACAB:StartExpBarDrag()
 	self:CaptureExpBarPositionIfNeeded()
 
