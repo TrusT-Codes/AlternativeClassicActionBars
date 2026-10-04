@@ -54,21 +54,12 @@ ACAB.DEFAULT_BAR_BINDING_PREFIXES = {
 	[5] = "MULTIACTIONBAR4BUTTON", -- Right 2.
 }
 
--- Fills ref as the hoverbind reference for a pool button (fixedSlotBar = default-bar button with a nativeBindingId).
-local function FillButtonRef(ref, btn, barId, slotIndex)
-	ref.kind = "custom"
+-- Fills ref as the hoverbind reference (frame, bindingId) for a pool button.
+local function FillButtonRef(ref, btn)
 	ref.frame = btn
 	ref.bindingId = ACAB:GetHoverBindingId(btn)
-	ref.actionSlot = btn.actionSlot
-	ref.barId = barId
-	ref.slotIndex = slotIndex
-	ref.fixedSlotBar = btn.nativeBindingId and true or nil
 
 	return ref
-end
-
-local function MakeButtonRef(btn, barId, slotIndex)
-	return FillButtonRef({}, btn, barId, slotIndex)
 end
 
 -- Reused by every ForEachButton call.
@@ -83,7 +74,7 @@ function ACAB:ForEachButton(fn)
 			for i = 1, table.getn(bar.buttons) do
 				local btn = bar.buttons[i]
 				if btn and btn.slotVisible then
-					fn(FillButtonRef(sharedButtonRef, btn, barId, i))
+					fn(FillButtonRef(sharedButtonRef, btn))
 				end
 			end
 		end
@@ -254,7 +245,7 @@ end
 function ACAB:SetHoverBindHoveredCustomButton(btn)
 	if not self.hoverBindCaptureFrame or not btn or not btn.parentBar or not btn.parentBar.config then return end
 
-	self.hoverBindCaptureFrame.hoveredButton = MakeButtonRef(btn, btn.parentBar.config.id, btn.slotIndex)
+	self.hoverBindCaptureFrame.hoveredButton = FillButtonRef({}, btn)
 end
 
 function ACAB:ClearHoverBindHoveredButton(frame)
