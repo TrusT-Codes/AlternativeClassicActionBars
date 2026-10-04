@@ -746,6 +746,11 @@ function ACAB:SetBarPosition(bar, x, y, point, relativePoint)
 
 	self:ApplyBarPosition(bar)
 
+	-- Manual X/Y: styled Pet/Stance Bar stop following the vanilla stack.
+	if bar.config.id == self.PET_BAR_ID or bar.config.id == self.STANCE_BAR_ID then
+		bar.config.styledDefaultPosition = false
+	end
+
 	-- Manual X/Y: clears an Extra Bar's "at default position" flag and resettles its dependants.
 	if self:IsExtraBarId(bar.config.id) and bar.config.usesDefaultPosition ~= false then
 		bar.config.usesDefaultPosition = false
@@ -1210,7 +1215,7 @@ function ACAB:SetExtraBarEnabled(barId, enabled)
 		bar:Hide()
 	end
 
-	-- A default-positioned Extra Bar counts toward Stance/Pet Bar's stack (and Cast Bar's while vanilla stacking is active).
+	-- A default-positioned Extra Bar counts toward Stance/Pet/Cast Bar's stack.
 	if enabled ~= wasEnabled and bar.config.usesDefaultPosition ~= false then
 		self:ReflowExtraBarDependants(barId)
 	end
@@ -1258,6 +1263,10 @@ function ACAB:StopBarDrag(bar)
 	self:StopSharedDrag()
 
 	-- Same "at default position" flag handling as SetBarPosition.
+	if bar.config and (bar.config.id == self.PET_BAR_ID or bar.config.id == self.STANCE_BAR_ID) then
+		bar.config.styledDefaultPosition = false
+	end
+
 	if bar.config and self:IsExtraBarId(bar.config.id) and bar.config.usesDefaultPosition ~= false then
 		bar.config.usesDefaultPosition = false
 

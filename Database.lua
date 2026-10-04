@@ -595,8 +595,8 @@ function ACAB:GetExtraBarStackPitch(extraBarId)
 	return (bar:GetHeight() or 0) + self:GetBarEffectiveSpacing(bar.config)
 end
 
--- Resettles Stance/Pet Bar (each Reflow* self-guards on its default-position flag) when Extra Bar 1/2's stacking
--- contribution changes; Cast Bar only while vanilla stacking is active.
+-- Resettles Stance/Pet/Cast Bar when Extra Bar 1/2's stacking contribution changes, in every profile; each
+-- Reflow* only moves its element while it sits at its default (vanilla) position.
 function ACAB:ReflowExtraBarDependants(extraBarId)
 	local index = extraBarId - self.EXTRA_BAR_ID_START
 
@@ -608,9 +608,7 @@ function ACAB:ReflowExtraBarDependants(extraBarId)
 		self:ReflowPetBarForBar3Toggle(bar3Cfg and bar3Cfg.enabled)
 	end
 
-	if self:IsVanillaStackingActive() then
-		self:ReflowCastBarForStackToggle()
-	end
+	self:ReflowCastBarForStackToggle()
 end
 
 -- Allocates one Extra Bar's config.
@@ -962,7 +960,7 @@ local SANITIZE_COLOR_KEYS = {
 local SANITIZE_BAR_BOOLEAN_KEYS = {
 	"enabled", "usesDefaultPosition", "hoverOnly", "useNativeStanceBar", "useNativePetBar", "condenseEmptyPetSlots",
 	"spacingUnlocked", "buttonSizeUnlocked", "animateAutoCastGlow", "dynamicDefaultBar", "isPetBar", "isStanceBar",
-	"visualCenter",
+	"visualCenter", "styledDefaultPosition",
 }
 
 local SANITIZE_BAR_NUMBER_KEYS = { "hoverDuration", "nativeSpacing" }

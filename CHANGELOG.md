@@ -4,7 +4,7 @@
 
 ### Features
 
-- Stance Bar and Pet Bar sitting at their default spot now move above Extra Bar 1 / Extra Bar 2 whenever those get enabled or reset to their vanilla position - in every profile, not only with Force Vanilla Layout. Moved them yourself? They stay where you put them.
+- Stance Bar, Pet Bar and Cast Bar sitting at their default spot now move above Extra Bar 1 / Extra Bar 2 whenever those get enabled, disabled or reset to their vanilla position - in every profile, not only with Force Vanilla Layout, and for both the Vanilla and the ACAB-styled Pet/Stance Bar. Moved them yourself? They stay where you put them. A styled Pet/Stance Bar follows once you've used its "Reset to Vanilla Layout".
 
 ### Bugfixes
 

@@ -34,6 +34,39 @@ local function GetStackedBaselineY(self, stackBarId, stackBarEnabled, extraBarId
 	return referenceY + self.PET_BAR_NATIVE_GAP + container:GetHeight()
 end
 
+-- Styled mode: re-stacks default bar barId's pool bar onto its vanilla spot above stackBarId (+ extraBarId), like the
+-- native-mode reflows. Only while cfg.styledDefaultPosition is true, which only its styled Reset to Vanilla Layout sets.
+local function ReflowStyledStackBar(self, barId, stackBarId, stackBarEnabled, extraBarId)
+	local cfg = ACABDB.defaultBars[barId]
+	local bar = self.bars and self.bars[barId]
+
+	if not cfg or not bar or bar.config ~= cfg or cfg.styledDefaultPosition ~= true then
+		return
+	end
+
+	local y = GetStackedBaselineY(self, stackBarId, stackBarEnabled, extraBarId, bar)
+
+	if not y then
+		return
+	end
+
+	-- Modern style: the stack bar's reset corner sits MODERN_BUTTON_SIZE_POSITION_SHIFT higher (ResetDefaultBarLayout).
+	if not self:IsVanillaBorderStyle() then
+		y = y + self.MODERN_BUTTON_SIZE_POSITION_SHIFT
+	end
+
+	-- y is a top edge - write it in TOPLEFT/BOTTOMLEFT terms, ApplyBarPosition converts back.
+	self:ConvertPositionAnchor(bar, cfg, "TOPLEFT", "BOTTOMLEFT", nil, nil, "TOPLEFT")
+
+	cfg.y = y
+
+	self:ApplyBarPosition(bar)
+
+	if self.RefreshBarSettingsPage then
+		self:RefreshBarSettingsPage(barId)
+	end
+end
+
 -- Writes cfg.hoverOnly on default bar barId's saved cfg, then re-runs applyFn.
 local function SetBarCfgHoverOnly(self, barId, enabled, applyFn)
 	self:EnsureDB()
@@ -96,6 +129,11 @@ end
 
 -- Re-stacks Pet Bar's Y off Bar 3's state (Default Layout only). No-op once cfg.usesDefaultPosition is false.
 function ACAB:ReflowPetBarForBar3Toggle(bar3Enabled)
+	if not self:IsPetBarNativeModeEffective() then
+		ReflowStyledStackBar(self, self.PET_BAR_ID, 3, bar3Enabled, self.EXTRA_BAR_ID_START + 1)
+		return
+	end
+
 	local cfg = ACABDB.defaultBars[self.PET_BAR_ID]
 	local container = self.petBarNativeContainer
 
@@ -382,6 +420,8 @@ function ACAB:ResetPetBarLayoutToModernBase()
 	cfg.relativePoint = "BOTTOMLEFT"
 	cfg.x = bar3Right - insetRight - barWidth
 	cfg.y = bar3Top + insetBottom
+
+	cfg.styledDefaultPosition = false
 
 	self:ApplyBarPosition(petBar)
 	self:SetBarLayout(petBar, cfg.cols, cfg.rows)
@@ -741,6 +781,7 @@ function ACAB:ResetStanceBarShapeToModernBase()
 	cfg.relativePoint = "BOTTOMLEFT"
 	cfg.x = mainBarLeft - insetRight - buttonSize
 	cfg.y = mainBarBottom + insetBottom
+	cfg.styledDefaultPosition = false
 
 	self:ApplyBarPosition(stanceBar)
 	self:SetBarLayout(stanceBar, cfg.cols, cfg.rows)
@@ -766,6 +807,11 @@ end
 
 -- Re-stacks Stance Bar's Y off Bar 2's state (Default Layout only). No-op once stanceBarUsesDefaultPosition is false.
 function ACAB:ReflowStanceBarForBar2Toggle(bar2Enabled)
+	if not self:IsStanceBarNativeModeEffective() then
+		ReflowStyledStackBar(self, self.STANCE_BAR_ID, 2, bar2Enabled, self.EXTRA_BAR_ID_START)
+		return
+	end
+
 	if ACABDB.stanceBarUsesDefaultPosition == false then
 		return
 	end
