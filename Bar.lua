@@ -750,9 +750,7 @@ function ACAB:SetBarPosition(bar, x, y, point, relativePoint)
 	if self:IsExtraBarId(bar.config.id) and bar.config.usesDefaultPosition ~= false then
 		bar.config.usesDefaultPosition = false
 
-		if self:IsVanillaStackingActive() then
-			self:ReflowExtraBarDependants(bar.config.id)
-		end
+		self:ReflowExtraBarDependants(bar.config.id)
 	end
 end
 
@@ -1144,9 +1142,7 @@ function ACAB:ResetExtraBarLayout(barId)
 	-- SetBarPosition cleared it; restore so dependants resettle.
 	bar.config.usesDefaultPosition = true
 
-	if self:IsVanillaStackingActive() then
-		self:ReflowExtraBarDependants(barId)
-	end
+	self:ReflowExtraBarDependants(barId)
 end
 
 -- Resets one Extra Bar to its Modern Layout slot, anchored to its live neighbor, without moving other bars.
@@ -1214,9 +1210,8 @@ function ACAB:SetExtraBarEnabled(barId, enabled)
 		bar:Hide()
 	end
 
-	-- A default-positioned Extra Bar counts toward Stance/Pet/Cast Bar's stack while vanilla stacking is active.
-	if enabled ~= wasEnabled and self:IsVanillaStackingActive()
-		and bar.config.usesDefaultPosition ~= false then
+	-- A default-positioned Extra Bar counts toward Stance/Pet Bar's stack (and Cast Bar's while vanilla stacking is active).
+	if enabled ~= wasEnabled and bar.config.usesDefaultPosition ~= false then
 		self:ReflowExtraBarDependants(barId)
 	end
 end
@@ -1266,9 +1261,7 @@ function ACAB:StopBarDrag(bar)
 	if bar.config and self:IsExtraBarId(bar.config.id) and bar.config.usesDefaultPosition ~= false then
 		bar.config.usesDefaultPosition = false
 
-		if self:IsVanillaStackingActive() then
-			self:ReflowExtraBarDependants(bar.config.id)
-		end
+		self:ReflowExtraBarDependants(bar.config.id)
 	end
 
 	-- Syncs the Settings X/Y sliders.
