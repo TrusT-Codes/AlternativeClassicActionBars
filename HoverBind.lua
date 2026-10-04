@@ -1,6 +1,6 @@
 -- HoverBind.lua
--- Hoverbind mode: hover a pool button, press a key to bind it. Default bars bind their native actions
--- (ACTIONBUTTON#, MULTIACTIONBAR#BUTTON#); custom/styled Pet/Stance slots bind bindings.xml's ACABBIND/ACABPETBIND/ACABSTANCEBIND.
+-- Hoverbind mode: hover a pool button, press a key to bind it (native actions on default bars, else bindings.xml's
+-- ACABBIND/ACABPETBIND/ACABSTANCEBIND).
 -- WARNING: SetBindingClick and SetBinding(key, "BONUSACTIONBUTTON1") never fire on this client - don't use them.
 
 local ACAB = AlternativeClassicActionBars
@@ -91,10 +91,7 @@ function ACAB:ForEachButton(fn)
 end
 
 -------------------------------------------------------------------------
--- Default-bar swap redirect: while a stance/page swap puts a default-bar
--- button's actionSlot in the pool range, its key is moved (session-only,
--- never saved) from nativeBindingId onto ACABBIND<n>, since native actions
--- always fire their fixed vanilla slot. btn.activeBindingId tracks where it is.
+-- Default-bar swap redirect: session-only key move onto ACABBIND<n> (btn.activeBindingId) while a swap shows a pool slot
 -------------------------------------------------------------------------
 
 -- Rebinds every key of fromId onto toId.
@@ -181,8 +178,7 @@ function ACAB:IsButtonBound(ref)
 end
 
 -------------------------------------------------------------------------
--- Tinting: bound/unbound icon tint while hoverbind mode is on (UpdateRange
--- skips its own tint then).
+-- Tinting: bound/unbound icon tint while hoverbind mode is on
 -------------------------------------------------------------------------
 
 local HOVERBIND_BOUND_COLOR   = { 0.2, 1.0, 0.2 }
@@ -211,7 +207,6 @@ local function TintHoverBindRef(ref)
 	ACAB:TintHoverBindButton(ref)
 end
 
--- Tint ticker callback, built once instead of per tick.
 local function HoverBindTintTick()
 	-- Skips a tick queued before hoverbind mode turned off.
 	if ACAB:IsHoverBindMode() then

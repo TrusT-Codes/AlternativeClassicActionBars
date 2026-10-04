@@ -1,8 +1,6 @@
 -- SetupWizard.lua
--- Setup Wizard (ACAB:ShowSetupWizard), hosted inside the settings window. Decision steps (name, Force Vanilla
--- lock, button style, layout) only collect choices; the lock/layout choice writes the chosen built-in baseline
--- onto the target profile and reloads. Every later step shows a real settings page that edits the active
--- profile live. The current step is saved in ACABCharDB.setupWizard, so any reload resumes the wizard there.
+-- Setup Wizard (ACAB:ShowSetupWizard) inside the settings window: decision steps write a built-in baseline and reload,
+-- later steps show real settings pages; ACABCharDB.setupWizard resumes the current step after any reload.
 
 local ACAB = AlternativeClassicActionBars
 
@@ -32,7 +30,7 @@ local function PreviewIconForSlot(n)
 end
 
 -------------------------------------------------------------------------
--- Cosmetic (non-interactive) preview bars for the button style step, same skin recipe as Button.lua's Init
+-- Cosmetic preview bars for the button style step (same skin as Button.lua's Init)
 -------------------------------------------------------------------------
 
 local function ComputePreviewBarWidth(buttonSize, spacing, count)
@@ -112,9 +110,8 @@ local EXTRA_BARS_HINTS = {
 		"from the left screen edge.",
 }
 
--- kind "decision": a frame on the wizard view; kind "page": a live settings page - a real one (page = ShowBarPage
--- id, or show()) or a wizard view frame (frame = true). short = sidebar label; hint = string or function(state);
--- onFirstVisit(state)/onShow() optional.
+-- kind "decision": a wizard view frame; kind "page": a real settings page (page = ShowBarPage id, or show()) or a
+-- wizard view frame (frame = true). short = sidebar label; hint = string or function(state); onFirstVisit/onShow optional.
 local STEPS = {
 	name = { kind = "decision", title = "Name Your Profile", short = "Profile Name" },
 	lock = { kind = "decision", title = "Force Vanilla Layout Mode", short = "Vanilla Lock" },
@@ -205,7 +202,7 @@ local STEPS = {
 -- Longest possible path, for the sidebar row pool.
 local MAX_STEP_COUNT = 16
 
--- Ordered step keys for state; Stance/Pet/Bag Bar/Key Ring steps only follow the Modern layout (the default while undecided).
+-- Ordered step keys for state; Stance/Pet/Bag Bar/Key Ring steps only on the Modern layout (default while undecided).
 local function BuildStepPath(state)
 	local path = {}
 

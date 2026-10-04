@@ -116,8 +116,7 @@ function ACAB:LayoutButtons(bar)
 end
 
 -------------------------------------------------------------------------
--- Bar-level edit-mode overlay: owns drag/right-click-settings/scroll-resize
--- in edit mode (TOOLTIP strata, above the buttons); inert otherwise.
+-- Bar edit-mode overlay: drag, right-click settings and wheel resize in edit mode
 -------------------------------------------------------------------------
 
 local barOverlays = {}
@@ -278,8 +277,7 @@ function ACAB:ApplyEditModeVisual()
 end
 
 -------------------------------------------------------------------------
--- Layout grid overlay (Edit Layout mode): screen-wide reference grid at
--- GetLayoutGridSpacing(); holding Ctrl inverts ACABDB.showLayoutGrid.
+-- Layout grid overlay (Edit Layout mode); holding Ctrl inverts ACABDB.showLayoutGrid
 -------------------------------------------------------------------------
 
 local LAYOUT_GRID_LINE_COLOR = { 0.4, 0.75, 1.0, 0.35 }
@@ -366,7 +364,7 @@ end
 function ACAB:RebuildLayoutGrid()
 	local frame = EnsureLayoutGridFrame()
 
-	-- Already in this frame's local units; do not divide by GetEffectiveScale (double-converts, shrinks the grid).
+	-- Already in local units: must not divide by GetEffectiveScale.
 	local spacing = self:GetLayoutGridSpacing()
 	if not spacing or spacing <= 0 then
 		HideLinesFrom(layoutGridVLines, 0)
@@ -541,9 +539,7 @@ function ACAB:SetBarHoverDuration(bar, duration)
 end
 
 -------------------------------------------------------------------------
--- Global border style sweep: re-styles every bar's buttons; on a real
--- vanilla/modern transition also shifts buttonSize, position and spacing
--- so buttonSize + spacing stays visually constant.
+-- Global border style sweep (a style switch also shifts buttonSize, position and spacing)
 -------------------------------------------------------------------------
 
 function ACAB:ApplyGlobalButtonStyle()
@@ -621,9 +617,7 @@ function ACAB:ApplyGlobalButtonStyle()
 end
 
 -------------------------------------------------------------------------
--- Global spacing/button-size overrides: drive every bar not unlocked via
--- cfg.spacingUnlocked/buttonSizeUnlocked. No-op while disabled or while
--- useDefaultLayout is on.
+-- Global spacing/button-size overrides (bars without spacingUnlocked/buttonSizeUnlocked)
 -------------------------------------------------------------------------
 
 function ACAB:ApplyGlobalSpacing()
@@ -857,8 +851,7 @@ function ACAB:GetNextFreeSlotStart(neededCount)
 end
 
 -------------------------------------------------------------------------
--- Bar shape: re-maps each pool button's slot (Rebind), shows up to
--- buttonCount, resizes and re-lays out. The pool itself is never rebuilt.
+-- Bar shape: re-binds each pool button's slot, shows up to buttonCount, resizes and re-lays out
 -------------------------------------------------------------------------
 
 -- Slot for pool button i: default-bar paging, fixed pet/stance slot, or slotStart + i - 1 (nil past the pool end).
@@ -906,7 +899,7 @@ function ACAB:ApplyBarShape(bar)
 
 	self:PixelSetSize(bar, barW, barH)
 
-	-- Re-asserted every call, or a native page/stance swap can re-level Bar 1 behind the art frame (art is LOW level 5).
+	-- Must re-assert every call, or a page/stance swap can bury Bar 1 behind the art frame (LOW level 5).
 	bar:SetFrameStrata("LOW")
 	bar:SetFrameLevel(10)
 
@@ -1133,7 +1126,7 @@ function ACAB:SetExtraBarEnabled(barId, enabled)
 	end
 end
 
--- Action slot of an Extra Bar's pool button; ignores enabled/IsShown so a hidden bar still supplies stance/page content.
+-- Action slot of an Extra Bar's pool button, also for a hidden bar (it still supplies stance/page content).
 function ACAB:GetExtraBarSlotForIndex(barId, slotIndex)
 	local bar = self.bars and self.bars[barId]
 	if not bar or not bar.config or not bar.config.slotStart then return nil end
