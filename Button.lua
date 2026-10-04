@@ -1576,6 +1576,7 @@ function ACABButtonMixin:UpdateCooldown()
 	if not self.actionSlot or not CooldownFrame_SetTimer then return end
 
 	local start, duration, enable
+	local macroKind = self:GetMacroTargetKind()
 
 	if self.isPetSlot then
 		if not GetPetActionCooldown then return end
@@ -1585,13 +1586,13 @@ function ACABButtonMixin:UpdateCooldown()
 		if not GetShapeshiftFormCooldown then return end
 
 		start, duration, enable = GetShapeshiftFormCooldown(self.actionSlot)
-	elseif self:GetMacroTargetKind() == "spell" then
+	elseif macroKind == "spell" then
 		start, duration, enable = GetSpellCooldown(self.macroTargetA, "spell")
-	elseif self:GetMacroTargetKind() == "bag" then
+	elseif macroKind == "bag" then
 		start, duration, enable = GetContainerItemCooldown(self.macroTargetA, self.macroTargetB)
-	elseif self:GetMacroTargetKind() == "equip" then
+	elseif macroKind == "equip" then
 		start, duration, enable = GetInventoryItemCooldown("player", self.macroTargetA)
-	elseif self:GetMacroTargetKind() == "missingItem" then
+	elseif macroKind == "missingItem" then
 		start, duration, enable = 0, 0, 0
 	else
 		if not GetActionCooldown then return end
