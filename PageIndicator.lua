@@ -1,13 +1,11 @@
 -- PageIndicator.lua
 -- Page Indicator: Main Bar's page-turn arrows + page-number FontString in a synthetic container, built inline
--- with plain CreateFrame (not ElementEngine.lua's chain engine).
+-- with plain CreateFrame (not ElementEngine.lua's chain engine). Position + Scale only.
 
 local ACAB = AlternativeClassicActionBars
 
 -------------------------------------------------------------------------
--- Page Indicator (Main Bar's page-turn arrows + page-number FontString in a synthetic container)
--- Position + Scale only; own layout (two stacked arrows, text beside them) instead of the chain engine.
--- Builds only if all three real frames exist.
+-- Page Indicator (builds only if all three real frames exist)
 -------------------------------------------------------------------------
 
 ACAB.PAGE_INDICATOR_UP_NAME = "ActionBarUpButton"
@@ -25,9 +23,7 @@ local PAGE_INDICATOR_MAIN_BAR_GAP = 6
 -- frame's left, top, right, bottom, or nil while any edge is unresolved.
 local function RealRect(frame)
 	local l, t, r, b = frame:GetLeft(), frame:GetTop(), frame:GetRight(), frame:GetBottom()
-	if not (l and t and r and b) then
-		return nil
-	end
+	if not (l and t and r and b) then return nil end
 	return l, t, r, b
 end
 
@@ -35,17 +31,12 @@ end
 function ACAB:CreatePageIndicatorContainer()
 	self:EnsureDB()
 
-	if self.pageIndicatorContainer then
-		return
-	end
+	if self.pageIndicatorContainer then return end
 
 	local up = getglobal(self.PAGE_INDICATOR_UP_NAME)
 	local down = getglobal(self.PAGE_INDICATOR_DOWN_NAME)
 	local text = getglobal(self.PAGE_INDICATOR_TEXT_NAME)
-
-	if not up or not down or not text then
-		return
-	end
+	if not up or not down or not text then return end
 
 	-- Native anchors, read before any reparenting.
 	local upPoint, upRelTo, upRelPoint, upX, upY = up:GetPoint(1)
@@ -58,9 +49,7 @@ function ACAB:CreatePageIndicatorContainer()
 
 	if not nativeLeft or not nativeTop then
 		-- A retry chain is already running; it owns the elapsed counter.
-		if self.pageIndicatorCreateRetryPending then
-			return
-		end
+		if self.pageIndicatorCreateRetryPending then return end
 
 		self.pageIndicatorCreateRetryElapsed = (self.pageIndicatorCreateRetryElapsed or 0)
 			+ PAGE_INDICATOR_SHAPE_RETRY_INTERVAL
@@ -85,10 +74,7 @@ function ACAB:CreatePageIndicatorContainer()
 
 	local upScale = up:GetEffectiveScale()
 	local uiParentScale = UIParent:GetEffectiveScale()
-
-	if not upScale or not uiParentScale or uiParentScale == 0 then
-		return
-	end
+	if not upScale or not uiParentScale or uiParentScale == 0 then return end
 
 	nativeLeft = (nativeLeft * upScale) / uiParentScale
 	nativeTop = (nativeTop * upScale) / uiParentScale
@@ -100,9 +86,7 @@ function ACAB:CreatePageIndicatorContainer()
 
 	-- Sharing Up's relativeTo: anchor to Up from GetPoint offsets - must not use rect reads (stale after login).
 	local function SiblingAnchor(point, relTo, relPoint, x, y)
-		if not relTo or relTo ~= upRelTo then
-			return nil
-		end
+		if not relTo or relTo ~= upRelTo then return nil end
 
 		-- Measures MainMenuBar instead of MainMenuBarArtFrame, whose own size is recalibrated by art positioning.
 		local sizeFrame = relTo
@@ -113,10 +97,7 @@ function ACAB:CreatePageIndicatorContainer()
 
 		local relWidth = sizeFrame.GetWidth and sizeFrame:GetWidth()
 		local relHeight = sizeFrame.GetHeight and sizeFrame:GetHeight()
-
-		if not relWidth or not relHeight then
-			return nil
-		end
+		if not relWidth or not relHeight then return nil end
 
 		local fx, fy = self:GetPointFractions(relPoint)
 		local upFx, upFy = self:GetPointFractions(upRelPoint)
@@ -190,10 +171,7 @@ function ACAB:ApplyPageIndicatorShape()
 	local up = self.pageIndicatorUp
 	local down = self.pageIndicatorDown
 	local text = self.pageIndicatorText
-
-	if not container or not up or not down or not text then
-		return
-	end
+	if not container or not up or not down or not text then return end
 
 	up:ClearAllPoints()
 	self:PixelSetPoint(up, "TOPLEFT", container, "TOPLEFT", 0, 0)
@@ -244,9 +222,7 @@ function ACAB:ApplyPageIndicatorShape()
 	-- Just-reparented rects can read nil for a beat - retries on a timer instead of sizing a partial box.
 	if not (upL and downL and textL) then
 		-- A retry chain is already running; it owns the elapsed counter.
-		if self.pageIndicatorShapeRetryPending then
-			return
-		end
+		if self.pageIndicatorShapeRetryPending then return end
 
 		self.pageIndicatorShapeRetryElapsed = (self.pageIndicatorShapeRetryElapsed or 0)
 			+ PAGE_INDICATOR_SHAPE_RETRY_INTERVAL
@@ -293,9 +269,7 @@ function ACAB:ApplyPageIndicatorShape()
 
 	self:PixelSetSize(container, width, height)
 
-	if self:ApplyGroupedIfActive("pageindicator") then
-		return
-	end
+	if self:ApplyGroupedIfActive("pageindicator") then return end
 
 	container:SetScale(ACABDB.mainBarPageIndicatorScale or 1)
 
@@ -308,10 +282,7 @@ end
 -- Up/Down above MainMenuBarArtFrame (MEDIUM) - they keep the art's strata after reparenting otherwise.
 function ACAB:ApplyPageIndicatorStrata()
 	local container = self.pageIndicatorContainer
-
-	if not container then
-		return
-	end
+	if not container then return end
 
 	container:SetFrameStrata("LOW")
 	container:SetFrameLevel(11)
@@ -331,17 +302,11 @@ end
 function ACAB:GetPageIndicatorDefaultPosition()
 	local bar1 = self.bars and self.bars[1]
 	local container = self.pageIndicatorContainer
-
-	if not bar1 or not bar1.config or not container then
-		return nil
-	end
+	if not bar1 or not bar1.config or not container then return nil end
 
 	local barLeft, barRight, barBottom, barTop = self:GetPositionFrameRect(bar1, bar1.config, "TOPLEFT")
 	local uiParentScale = UIParent:GetEffectiveScale()
-
-	if not barLeft or not uiParentScale or uiParentScale == 0 then
-		return nil
-	end
+	if not barLeft or not uiParentScale or uiParentScale == 0 then return nil end
 
 	local barScale = bar1:GetEffectiveScale() / uiParentScale
 	local _, barInsetR, barInsetT, barInsetB = self:GetVisualInsets(bar1)
@@ -368,9 +333,7 @@ end
 function ACAB:ApplyPageIndicatorPosition()
 	self:ApplyPageIndicatorStrata()
 
-	if self:ApplyGroupedIfActive("pageindicator") then
-		return
-	end
+	if self:ApplyGroupedIfActive("pageindicator") then return end
 
 	local container = self.pageIndicatorContainer
 
@@ -383,10 +346,7 @@ function ACAB:ApplyPageIndicatorPosition()
 	end
 
 	local pos = ACABDB.mainBarPageIndicatorPosition
-
-	if not pos or not container then
-		return
-	end
+	if not pos or not container then return end
 
 	self:ApplySavedPosition(container, pos)
 	self:EnsureElementOverlayAndHover("pageindicator", container)
@@ -398,15 +358,11 @@ function ACAB:SetPageIndicatorScale(scale)
 
 	scale = self:ClampScaleSetting(scale)
 
-	if not scale then
-		return
-	end
+	if not scale then return end
 
 	ACABDB.mainBarPageIndicatorScale = scale
 
-	if self:ApplyGroupedIfActive("pageindicator") then
-		return
-	end
+	if self:ApplyGroupedIfActive("pageindicator") then return end
 
 	if self.pageIndicatorContainer then
 		self.pageIndicatorContainer:SetScale(scale)
@@ -442,10 +398,7 @@ end
 -- No enable flag of its own - shown exactly while default-bar pagination is enabled.
 function ACAB:ApplyPageIndicatorVisibility()
 	local container = self.pageIndicatorContainer
-
-	if not container then
-		return
-	end
+	if not container then return end
 
 	if ACABDB.defaultBarPaginationEnabled ~= false then
 		container:Show()
@@ -456,10 +409,7 @@ end
 
 function ACAB:StartPageIndicatorDrag()
 	local pos = ACABDB.mainBarPageIndicatorPosition
-
-	if not pos then
-		return
-	end
+	if not pos then return end
 
 	-- Must clear before the drag ticks, or follow mode snaps it back to Main Bar every frame.
 	self.pageIndicatorFollowedBeforeDrag = ACABDB.mainBarPageIndicatorFollowsMainBar ~= false
@@ -481,9 +431,7 @@ function ACAB:StopPageIndicatorDrag()
 	if self.pageIndicatorFollowedBeforeDrag
 		and math.abs(cursorX - startX) < 3 and math.abs(cursorY - startY) < 3 then
 		ACABDB.mainBarPageIndicatorFollowsMainBar = true
-		if self.ApplyPageIndicatorPosition then
-			self:ApplyPageIndicatorPosition()
-		end
+		self:ApplyPageIndicatorPosition()
 	end
 
 	self.pageIndicatorFollowedBeforeDrag = nil
@@ -491,7 +439,5 @@ function ACAB:StopPageIndicatorDrag()
 	self.pageIndicatorCursorStartY = nil
 
 	-- Its Scale slider lives on Main Bar's settings page (barId 1).
-	if self.RefreshBarSettingsPage then
-		self:RefreshBarSettingsPage(1)
-	end
+	self:RefreshBarSettingsPage(1)
 end

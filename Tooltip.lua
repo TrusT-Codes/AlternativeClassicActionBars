@@ -4,8 +4,7 @@
 local ACAB = AlternativeClassicActionBars
 
 -------------------------------------------------------------------------
--- Tooltip (synthetic frame the fixed-position GameTooltip is redirected onto)
--- Only tooltips placed via GameTooltip_SetDefaultAnchor move; widget-relative tooltips stay untouched.
+-- Tooltip: only tooltips placed via GameTooltip_SetDefaultAnchor move; widget-relative ones stay untouched.
 -------------------------------------------------------------------------
 
 ACAB.TOOLTIP_FRAME_WIDTH = 200
@@ -27,9 +26,7 @@ end
 function ACAB:EnsureTooltipFrame()
 	self:EnsureDB()
 
-	if self.tooltipFrame then
-		return
-	end
+	if self.tooltipFrame then return end
 
 	local frame = CreateFrame("Frame", "ACABTooltipFrame", UIParent)
 
@@ -48,10 +45,7 @@ function ACAB:ApplyTooltipPosition()
 
 	local pos = ACABDB.tooltipPosition
 	local frame = self.tooltipFrame
-
-	if not pos or not frame then
-		return
-	end
+	if not pos or not frame then return end
 
 	self:ApplySavedPosition(frame, pos)
 	self:EnsureContainerOverlay(frame, self.StartTooltipDrag, self.StopTooltipDrag, "tooltip", self.SetTooltipScale, nil, "Tooltip")
@@ -69,9 +63,7 @@ function ACAB:SetTooltipScale(scale)
 
 	scale = self:ClampScaleSetting(scale)
 
-	if not scale then
-		return
-	end
+	if not scale then return end
 
 	local oldScale = ACABDB.tooltipScale or 1
 	local pos = ACABDB.tooltipPosition
@@ -98,9 +90,7 @@ end
 function ACAB:SetTooltipAnchorCorner(corner)
 	self:EnsureDB()
 
-	if corner ~= "TOPLEFT" and corner ~= "TOPRIGHT" and corner ~= "BOTTOMLEFT" and corner ~= "BOTTOMRIGHT" then
-		return
-	end
+	if corner ~= "TOPLEFT" and corner ~= "TOPRIGHT" and corner ~= "BOTTOMLEFT" and corner ~= "BOTTOMRIGHT" then return end
 
 	ACABDB.tooltipAnchorCorner = corner
 end
@@ -131,28 +121,16 @@ function ACAB:ResetTooltipLayout()
 end
 
 function ACAB:StartTooltipDrag()
-	local pos = ACABDB.tooltipPosition
-
-	if not pos then
-		return
-	end
-
-	self:StartSharedDrag("tooltip", nil, pos.x or 0, pos.y or 0)
+	self:StartElementDrag("tooltip")
 end
 
 function ACAB:StopTooltipDrag()
-	self:StopSharedDrag()
-
-	if self.RefreshBarSettingsPage then
-		self:RefreshBarSettingsPage("tooltip")
-	end
+	self:StopElementDrag("tooltip")
 end
 
 -- Redirects every fixed-position GameTooltip onto the synthetic frame (other tooltip objects are skipped).
 function ACAB:HookGameTooltipDefaultAnchor()
-	if self.tooltipDefaultAnchorHooked then
-		return
-	end
+	if self.tooltipDefaultAnchorHooked then return end
 
 	self.tooltipDefaultAnchorHooked = true
 
@@ -164,17 +142,11 @@ function ACAB:HookGameTooltipDefaultAnchor()
 	end
 
 	hooksecurefunc("GameTooltip_SetDefaultAnchor", function(tooltip, owner)
-		if tooltip ~= GameTooltip then
-			return
-		end
+		if tooltip ~= GameTooltip then return end
 
-		if not ACABDB.tooltipEnabled then
-			return
-		end
+		if not ACABDB.tooltipEnabled then return end
 
-		if not ACAB.tooltipFrame then
-			return
-		end
+		if not ACAB.tooltipFrame then return end
 
 		local corner = ACABDB.tooltipAnchorCorner or "BOTTOMRIGHT"
 
