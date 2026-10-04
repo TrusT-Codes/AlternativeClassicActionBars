@@ -342,6 +342,21 @@ local function EnsurePoolButtonDispatcher()
 	if CleveRoids and CleveRoids.RegisterActionEventHandler then
 		CleveRoids.RegisterActionEventHandler(OnCleveRoidActionChanged)
 	end
+
+	-- With nampower key events, CleveRoid neither polls Shift/Ctrl/Alt nor handles their KEY_DOWN/KEY_UP, so its
+	-- [mod] picks only update on other events; this requeues its re-test on those keys (codes 0/1/2).
+	if CleveRoids and CleveRoids.QueueActionUpdate and CleveRoids.NampowerAPI and CleveRoids.NampowerAPI.features
+		and CleveRoids.NampowerAPI.features.hasKeyEvents then
+		local modifierKeyFrame = CreateFrame("Frame")
+
+		modifierKeyFrame:RegisterEvent("KEY_DOWN")
+		modifierKeyFrame:RegisterEvent("KEY_UP")
+		modifierKeyFrame:SetScript("OnEvent", function()
+			if arg1 == 0 or arg1 == 1 or arg1 == 2 then
+				CleveRoids.QueueActionUpdate()
+			end
+		end)
+	end
 end
 
 -- Adds a new pool button to the dispatcher's lists and slot map.
@@ -1233,14 +1248,13 @@ function ACABButtonMixin:ResolveMacroTarget()
 	return nil
 end
 
--- Login chat note when SuperCleveRoidMacros is loaded, describing where macro buttons can differ from its pick.
+-- Login chat note when SuperCleveRoidMacros is loaded.
 function ACAB:PrintMacroAddonNote()
 	if not (CleveRoids and CleveRoids.GetAction) then
 		return
 	end
 
-	self:Print("SuperCleveRoidMacros found: macro buttons with [conditions] show the ability it currently picks.")
-	self:Print("When that pick is Auto Shot, Attack or Shoot, or none of the [conditions] match, the button shows the macro's first ability instead - its icon, tooltip and cooldown can then differ from what a click casts. Add \"#showtooltip <name>\" to a macro to pin what it shows.")
+	self:Print("SuperCleveRoidMacros found: some macro tooltips/icons might differ, but what a click casts stays the same. Please report any macro errors you encounter.")
 end
 
 -- Icon for a filled action slot: the macro target's icon when ResolveMacroTarget picks one, else GetActionTexture.
