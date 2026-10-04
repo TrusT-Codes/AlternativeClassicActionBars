@@ -142,7 +142,25 @@ local stancePoolButtons = {}
 -- Action slot -> action pool buttons currently showing it (paging can put two buttons on one slot).
 local actionSlotButtons = {}
 
--- Event -> button list + method to call on each; playerOnly skips events whose arg1 isn't "player".
+-- PLAYER_AURAS_CHANGED: updates only stance buttons whose form changed, then every stance cooldown if any did.
+local function RefreshStanceButtonsOnAuraChange()
+	local anyChanged = false
+	local i
+
+	for i = 1, table.getn(stancePoolButtons) do
+		if stancePoolButtons[i]:UpdateStanceFormChange() then
+			anyChanged = true
+		end
+	end
+
+	if anyChanged then
+		for i = 1, table.getn(stancePoolButtons) do
+			stancePoolButtons[i]:UpdateCooldown()
+		end
+	end
+end
+
+-- Event -> button list + method to call on each (or a handler); playerOnly skips events whose arg1 isn't "player".
 local POOL_BUTTON_EVENT_ROUTES = {
 	BAG_UPDATE = { list = actionPoolButtons, method = "UpdateCount" },
 	BAG_UPDATE_COOLDOWN = { list = allPoolButtons, method = "UpdateCooldown" },
@@ -159,12 +177,17 @@ local POOL_BUTTON_EVENT_ROUTES = {
 	CRAFT_CLOSE = { list = allPoolButtons, method = "UpdateState" },
 	TRADE_SKILL_SHOW = { list = allPoolButtons, method = "UpdateState" },
 	TRADE_SKILL_CLOSE = { list = allPoolButtons, method = "UpdateState" },
+	-- Auto Shot / Auto Attack start and stop (target cleared or dead).
+	START_AUTOREPEAT_SPELL = { list = actionPoolButtons, method = "UpdateState" },
+	STOP_AUTOREPEAT_SPELL = { list = actionPoolButtons, method = "UpdateState" },
+	PLAYER_ENTER_COMBAT = { list = actionPoolButtons, method = "UpdateState" },
+	PLAYER_LEAVE_COMBAT = { list = actionPoolButtons, method = "UpdateState" },
 	UNIT_INVENTORY_CHANGED = { list = actionPoolButtons, method = "UpdateEquipRing", playerOnly = true },
 	UNIT_PET = { list = petPoolButtons, method = "Refresh", playerOnly = true },
 	PET_BAR_UPDATE = { list = petPoolButtons, method = "Refresh" },
 	PLAYER_ENTERING_WORLD = { list = allPoolButtons, method = "Refresh" },
 	-- UPDATE_SHAPESHIFT_FORM/_FORMS never fire here on form toggles (kept anyway); PLAYER_AURAS_CHANGED drives refresh.
-	PLAYER_AURAS_CHANGED = { list = stancePoolButtons, method = "Refresh" },
+	PLAYER_AURAS_CHANGED = { handler = RefreshStanceButtonsOnAuraChange },
 	UPDATE_SHAPESHIFT_FORMS = { list = stancePoolButtons, method = "Refresh" },
 	UPDATE_SHAPESHIFT_FORM = { list = stancePoolButtons, method = "Refresh" },
 }
@@ -246,6 +269,11 @@ local function PoolButtonDispatcher_OnEvent()
 	local route = POOL_BUTTON_EVENT_ROUTES[ev]
 
 	if not route or (route.playerOnly and changedArg ~= "player") then
+		return
+	end
+
+	if route.handler then
+		route.handler()
 		return
 	end
 
@@ -804,7 +832,20 @@ function ACABButtonMixin:UpdateState()
 	end
 
 	-- Vanilla ActionButton_UpdateState, driving self.glow instead of SetChecked.
-	if (IsCurrentAction and IsCurrentAction(self.actionSlot)) or (IsAutoRepeatAction and IsAutoRepeatAction(self.actionSlot)) then
+	local slot = self.actionSlot
+	local isCurrent = IsCurrentAction and IsCurrentAction(slot)
+	local isAutoRepeat = IsAutoRepeatAction and IsAutoRepeatAction(slot)
+
+	-- Macros (slots with action text) never glow for Auto Shot / Auto Attack, only for their own current cast.
+	if GetActionText and GetActionText(slot) then
+		if isAutoRepeat or (IsAttackAction and IsAttackAction(slot)) then
+			isCurrent = nil
+		end
+
+		isAutoRepeat = nil
+	end
+
+	if isCurrent or isAutoRepeat then
 		self.glow:Show()
 	else
 		self.glow:Hide()
@@ -982,11 +1023,19 @@ function ACABButtonMixin:Refresh()
 		self.equipRing:Hide()
 	elseif self.isStanceSlot then
 		-- GetShapeshiftFormInfo(index) returns texture, name, isActive, isCastable.
-		local texture
+		local texture, isActive, isCastable
 
 		if GetShapeshiftFormInfo then
-			texture = GetShapeshiftFormInfo(self.actionSlot)
+			local textureVal, nameVal, activeVal, castableVal = GetShapeshiftFormInfo(self.actionSlot)
+			texture = textureVal
+			isActive = activeVal
+			isCastable = castableVal
 		end
+
+		-- Cache compared by UpdateStanceFormChange.
+		self.stanceFormTexture = texture
+		self.stanceFormActive = isActive
+		self.stanceFormCastable = isCastable
 
 		self.icon:SetTexture(texture)
 		self.equipRing:Hide()
@@ -1022,6 +1071,29 @@ function ACABButtonMixin:Refresh()
 			end)
 		end
 	end
+end
+
+-- Stance slot: re-reads the form and updates icon + glow only if texture/isActive/isCastable changed; true on change.
+function ACABButtonMixin:UpdateStanceFormChange()
+	if not GetShapeshiftFormInfo then
+		return false
+	end
+
+	-- Texture re-read too: some forms swap their icon on activation.
+	local texture, nameVal, isActive, isCastable = GetShapeshiftFormInfo(self.actionSlot)
+
+	if texture == self.stanceFormTexture and isActive == self.stanceFormActive and isCastable == self.stanceFormCastable then
+		return false
+	end
+
+	self.stanceFormTexture = texture
+	self.stanceFormActive = isActive
+	self.stanceFormCastable = isCastable
+
+	self.icon:SetTexture(texture)
+	self:UpdateState()
+
+	return true
 end
 
 -- Cooldown spiral from the pet, shapeshift or action cooldown (all plain start, duration, enable).
@@ -1192,8 +1264,12 @@ function ACABButtonMixin.OnClick()
 		this:UpdateState()
 	elseif this:IsSlotFilled() and UseAction then
 		UseAction(this.actionSlot, 0, 0)
+
 		-- Like ActionButtonUp: update the glow now instead of waiting on ACTIONBAR_UPDATE_STATE.
-		this:UpdateState()
+		-- Not for macros, or a "/cast Auto Shot" toggle leaves the glow stuck on.
+		if not (GetActionText and GetActionText(this.actionSlot)) then
+			this:UpdateState()
+		end
 	end
 end
 
