@@ -375,8 +375,7 @@ function ACAB:GetOrCreateGeneralPanel()
 	panel.modernBorderStyleCheckbox = modernBorderStyleCheckbox
 
 	-------------------------------------------------------------------------
-	-- Global Spacing / Button size overrides: each slider is shown only while its checkbox is on.
-	-- Applies to every bar (not simple pages); a bar opts out via its own lock icon.
+	-- Global Spacing / Button size overrides (slider shown only while its checkbox is on)
 	-------------------------------------------------------------------------
 
 	-- OnClick is set below, once its slider exists.
@@ -1005,7 +1004,6 @@ end
 
 -------------------------------------------------------------------------
 -- General panel reflow: re-anchors the checkbox/slider stack so hidden optional sliders leave no gap
--- (Hide() alone keeps a frame's slot in its neighbors' anchor chain).
 -------------------------------------------------------------------------
 
 -- Stack columns (x indent) and vertical gaps between entry kinds.

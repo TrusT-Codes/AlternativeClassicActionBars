@@ -233,10 +233,9 @@ end
 
 -------------------------------------------------------------------------
 -- Native/simple-element X/Y position clamp range
--- Symmetric around screen center minus half the element's scaled visual footprint;
--- extraMaxYPixels (optional) adds real screen pixels of headroom above the top edge.
 -------------------------------------------------------------------------
 
+-- Symmetric around screen center minus half the element's scaled visual footprint; extraMaxYPixels adds top headroom.
 function ACAB:GetSimpleElementCoordinateRange(frame, extraMaxYPixels)
 	local screenWidth, screenHeight = ACAB:GetUIParentAnchorSize()
 	local visualWidth, visualHeight = 0, 0
@@ -311,8 +310,7 @@ function ACAB:RefreshSimplePositionSliderRange(page, key)
 end
 
 -------------------------------------------------------------------------
--- Reusable scrollable content area: every settings page/tab scrolls through
--- CreateScrollFrame + UpdateScrollFrame.
+-- Scrollable content areas (CreateScrollFrame + UpdateScrollFrame)
 -------------------------------------------------------------------------
 
 -- Pixels scrolled per mouse-wheel notch.
@@ -638,11 +636,9 @@ function ACAB:CreateSettingsFrame()
 
 	-------------------------------------------------------------------------
 	-- Right content panel: contentScrollFrame is the Bars-view viewport, contentPanel its scroll child.
-	-- Other views get their own pair (ACAB:CreateWideContentScrollFrame).
-	-- WARNING: keep every scrollframe paired with the scrollchild it was created with - re-targeting
-	-- it leaves the new child with no resolvable position/size.
 	-------------------------------------------------------------------------
 
+	-- must stay paired with its original scroll child, see known-problems.md: "ScrollFrame must stay paired"
 	f.contentScrollFrame = ACAB:CreateScrollFrame(f, "ACABSettingsContentScrollFrame")
 
 	f.contentScrollFrame:SetHeight(610)
@@ -706,8 +702,7 @@ function ACAB:CreateWideContentScrollFrame(name)
 
 	scrollFrame:SetHeight(610)
 
-	-- Sized from settingsFrame:GetWidth() (a fixed literal), not anchors, which may not be resolved yet.
-	-- Reserves scrollbar width only while the scrollbar is shown, and the step list's width in the Setup Wizard.
+	-- Width from settingsFrame:GetWidth(), not anchors; reserves scrollbar width while shown and the wizard step list's.
 	scrollFrame.applyScrollbarReserve = function()
 		local reserve = scrollFrame.needsScrollbar and SETTINGS_SCROLLBAR_RESERVED_WIDTH or 0
 		local sidebar = 0
@@ -737,8 +732,7 @@ function ACAB:CreateWideContentScrollFrame(name)
 end
 
 -------------------------------------------------------------------------
--- Default-profile lock: while the Default profile is active every page shows a red banner and locks
--- its controls. Independent of ApplyDefaultLayoutGating below; both can apply at once.
+-- Default-profile lock: red banner + locked controls (independent of ApplyDefaultLayoutGating)
 -------------------------------------------------------------------------
 
 -- Banner text while the Default profile is active (wins over the layout-lock text).
@@ -970,9 +964,7 @@ function ACAB:ApplyProfileLockGating(page, alsoCheckLayoutLock)
 end
 
 -------------------------------------------------------------------------
--- Default-layout gating (General tab's "Force Vanilla Layout Mode")
--- Called by simple/native-backed pages only; default bars get it via ApplyProfileLockGating's
--- alsoCheckLayoutLock, custom bars never gate on it.
+-- Default-layout gating ("Force Vanilla Layout Mode"), simple/native-backed pages only
 -------------------------------------------------------------------------
 
 -- Position stepper buttons and click-to-edit readouts, gated like the sliders they flank.

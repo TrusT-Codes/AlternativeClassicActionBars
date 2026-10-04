@@ -266,8 +266,7 @@ function ACAB:SetSliderEndLabels(slider, lowText, highText)
 end
 
 -------------------------------------------------------------------------
--- Position sliders: stepper buttons + click-to-edit readout. Drag, stepper and typed edit all go
--- through slider:SetValue(); OnValueChanged applies the change.
+-- Position sliders: stepper buttons + click-to-edit readout
 -------------------------------------------------------------------------
 
 -- Position units per one physical screen pixel (read live, tracks UI Scale).
@@ -433,14 +432,8 @@ function ACAB:MakePositionValueEditable(page, valueText, slider, namePrefix)
 	return clickCatcher, editBox
 end
 
--------------------------------------------------------------------------
--- ACAB:CreatePositionAxisSlider: one X or Y position column (slider, end labels, steppers,
--- click-to-edit readout), stored on page[axisKey .. "Slider"/"ValueText"/"StepperMinus"/...].
--- config = { axisKey = "x"|"y", namePrefix, anchor = {point, relativeTo, relativePoint, x, y},
---   min, max, lowText, highText, onApply = function(appliedValue) end }
--- Registers with ACAB:AddHoverOnlyReflowRow. Returns the slider.
--------------------------------------------------------------------------
-
+-- One X/Y position column (slider, steppers, editable readout) stored on page[axisKey .. "Slider"/...]; returns the slider.
+-- config = { axisKey = "x"|"y", namePrefix, anchor = {point, relativeTo, relativePoint, x, y}, min, max, lowText, highText, onApply }
 function ACAB:CreatePositionAxisSlider(page, config)
 	local axisKey = config.axisKey
 	local axisSuffix = (axisKey == "x") and "X" or "Y"
@@ -503,14 +496,9 @@ function ACAB:CreatePositionAxisSlider(page, config)
 	return slider
 end
 
--------------------------------------------------------------------------
--- ACAB:CreateLabeledSlider: title-less slider + centered live-value readout.
--- config = { width (300), anchor = {point, relativeTo, relativePoint, x, y} (required), min, max,
---   step (0), lowText, highText, initialText (""), round = function(value) end,
---   format = function(value) end, onChange = function(value, suppressApply) end }
--- Returns slider, valueText, lowLabel, highLabel.
--------------------------------------------------------------------------
-
+-- Title-less slider + live-value readout; returns slider, valueText, lowLabel, highLabel.
+-- config = { width (300), anchor (required), min, max, step (0), lowText, highText, initialText (""),
+--   round(value), format(value), onChange(value, suppressApply) }
 function ACAB:CreateLabeledSlider(parent, name, config)
 	config = config or {}
 
@@ -557,15 +545,8 @@ function ACAB:CreateLabeledSlider(parent, name, config)
 	return slider, valueText, lowLabel, highLabel
 end
 
--------------------------------------------------------------------------
--- ACAB:CreateLabeledCheckbox: UICheckButtonTemplate checkbox with label/anchor/OnClick/tooltip.
--- config = { width (24), height (24), anchor = {point, relativeTo, relativePoint, x, y} (required),
---   label, onClick = function() end, onLockedClick = function() end,
---   tooltip = { title, lines = {...} },
---   lockedText (string or function; red tooltip shown instead while checkbox.ACABLocked) }
--- Returns the checkbox.
--------------------------------------------------------------------------
-
+-- UICheckButtonTemplate checkbox; config = { width (24), height (24), anchor (required), label, onClick,
+--   onLockedClick, tooltip = { title, lines }, lockedText (string or function; red tooltip while ACABLocked) }
 function ACAB:CreateLabeledCheckbox(parent, name, config)
 	config = config or {}
 
@@ -640,13 +621,7 @@ function ACAB:CreateLabeledCheckbox(parent, name, config)
 	return checkbox
 end
 
--------------------------------------------------------------------------
--- ACAB:CreateResetButton: modern-styled "Reset ..." button.
--- config = { name, text ("Reset"), height (22), minWidth (90), maxWidth (90),
---   anchor = {point, relativeTo, relativePoint, x, y}, onClick = function() end }
--- Returns the button.
--------------------------------------------------------------------------
-
+-- Modern-styled "Reset" button; config = { name, text ("Reset"), height (22), minWidth (90), maxWidth (90), anchor, onClick }.
 function ACAB:CreateResetButton(parent, config)
 	config = config or {}
 
@@ -668,13 +643,8 @@ function ACAB:CreateResetButton(parent, config)
 	return button
 end
 
--------------------------------------------------------------------------
--- ACAB:CreateLockToggleButton: 16x16 padlock button; caller drives it via button:SetLocked(bool).
--- config = { anchor = {point, relativeTo, relativePoint, x, y} (required),
---   tooltipTitle, lockedLine, unlockedLine, onClick = function() end }
--- Returns the button.
--------------------------------------------------------------------------
-
+-- 16x16 padlock button driven via button:SetLocked(bool).
+-- config = { anchor (required), tooltipTitle, lockedLine, unlockedLine, onClick }
 function ACAB:CreateLockToggleButton(parent, name, config)
 	config = config or {}
 
@@ -760,8 +730,7 @@ function ACAB:SetColorSwatchColor(swatch, color)
 	swatch.colorTexture:SetVertexColor(color.r or 1, color.g or 1, color.b or 1)
 end
 
--- Opens the native ColorPickerFrame on getter()'s color, beside anchorFrame; setter(r, g, b) gets live
--- drags and Cancel's restore, and swatch follows along.
+-- Opens ColorPickerFrame on getter()'s color beside anchorFrame; setter(r, g, b) gets drags and Cancel's restore.
 function ACAB:OpenColorPicker(swatch, getter, setter, anchorFrame)
 	local current = getter() or { r = 1, g = 1, b = 1 }
 
@@ -772,7 +741,7 @@ function ACAB:OpenColorPicker(swatch, getter, setter, anchorFrame)
 		ACAB:SetColorSwatchColor(swatch, getter())
 	end
 
-	-- No alpha channel; opacityFunc is still a no-op in case the client calls it anyway.
+	-- No alpha channel.
 	ColorPickerFrame.opacityFunc = function() end
 	ColorPickerFrame.hasOpacity = false
 
@@ -795,8 +764,7 @@ function ACAB:OpenColorPicker(swatch, getter, setter, anchorFrame)
 end
 
 -------------------------------------------------------------------------
--- ACABDialogMixin: one lazily-created dialog (ACAB.activeDialog), reconfigured per ACAB:ShowDialog.
--- mode = "confirm" | "textinput" (EditBox) | "dropdown" (inline dropdown) | "textarea" (scrolling EditBox)
+-- ACABDialogMixin: one lazily-created dialog (ACAB.activeDialog), reconfigured per ACAB:ShowDialog
 -------------------------------------------------------------------------
 
 ACABDialogMixin = {}
@@ -944,18 +912,9 @@ function ACABDialogMixin:OnLoad()
 	self:Hide()
 end
 
--- config = {
---   title, message, mode = "confirm"|"textinput"|"dropdown"|"textarea",
---   defaultText,                -- textinput/textarea starting value
---   options = {...},            -- dropdown values
---   warningText,                -- optional red line under the message
---   reserveErrorBanner = true,  -- reserves space for :ShowInlineError
---   liveValidate = function(value) return ok, errorMessage end, -- textarea only
---   buttons = { { text, isDefault, danger, keepOpen,
---     variant = "prominent"|"minor",  -- prominent = larger + blue, minor = smaller + red
---     validate = function(value) return ok, errorMessage end,
---     onClick = function(value) end }, ... },
--- }
+-- config = { title, message, mode = "confirm"|"textinput"|"dropdown"|"textarea", defaultText, options, warningText,
+--   reserveErrorBanner, liveValidate(text) (textarea only), buttons = { { text, isDefault, danger, keepOpen,
+--   variant = "prominent" (larger, blue)|"minor" (smaller, red), validate(value), onClick(value) }, ... } }
 function ACABDialogMixin:Init(config)
 	config = config or {}
 
@@ -1269,10 +1228,7 @@ function ACAB:ShowDialog(config)
 end
 
 -------------------------------------------------------------------------
--- ACABFadeStripMixin / ACAB:CreateFadeStrip: horizontal fade highlight built from ARTWORK textures
--- owned by `parent` itself (see known-problems.md: "Fade strip textures live on the parent").
--- Normal: clear -> solid -> clear (3 textures); options.inverted: solid -> clear -> solid (4).
--- options.edgeFraction: each edge's share of the width (default 0.1).
+-- ACABFadeStripMixin: horizontal fade highlight built from ARTWORK textures on the parent
 -------------------------------------------------------------------------
 
 ACABFadeStripMixin = {}
@@ -1293,7 +1249,8 @@ local function ChainStripTexture(texture, previous, width, height)
 	texture:SetHeight(height)
 end
 
--- width/height: initial strip size (resize later via SetStripWidth/SetStripHeight).
+-- clear -> solid -> clear (3 textures); options.inverted: solid -> clear -> solid (4); options.edgeFraction (0.1).
+-- must stay textures on parent, see known-problems.md: "Fade strip textures live on the parent"
 function ACAB:CreateFadeStrip(parent, width, height, options)
 	options = options or {}
 
@@ -1438,7 +1395,7 @@ ACABListRowMixin = {}
 function ACAB:CreateListRow(parent, name)
 	local row = CreateFrame("Button", name, parent)
 
-	-- must capture native SetWidth/SetHeight BEFORE Mixin, or the overrides recurse infinitely
+	-- must capture native SetWidth/SetHeight before Mixin, or the overrides recurse
 	row.nativeSetWidth = row.SetWidth
 	row.nativeSetHeight = row.SetHeight
 
