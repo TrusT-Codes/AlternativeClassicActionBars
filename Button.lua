@@ -129,6 +129,176 @@ local function EnsureSharedRangeTicker()
 	end)
 end
 
+-------------------------------------------------------------------------
+-- Shared event dispatcher: one frame routes each event to the pool buttons that need it
+-------------------------------------------------------------------------
+
+-- Every pool button, and the same buttons split by slot type (filled by RegisterPoolButton).
+local allPoolButtons = {}
+local actionPoolButtons = {}
+local petPoolButtons = {}
+local stancePoolButtons = {}
+
+-- Action slot -> action pool buttons currently showing it (paging can put two buttons on one slot).
+local actionSlotButtons = {}
+
+-- Event -> button list + method to call on each; playerOnly skips events whose arg1 isn't "player".
+local POOL_BUTTON_EVENT_ROUTES = {
+	BAG_UPDATE = { list = actionPoolButtons, method = "UpdateCount" },
+	BAG_UPDATE_COOLDOWN = { list = allPoolButtons, method = "UpdateCooldown" },
+	SPELL_UPDATE_COOLDOWN = { list = allPoolButtons, method = "UpdateCooldown" },
+	ACTIONBAR_UPDATE_COOLDOWN = { list = allPoolButtons, method = "UpdateCooldown" },
+	PET_BAR_UPDATE_COOLDOWN = { list = petPoolButtons, method = "UpdateCooldown" },
+	UPDATE_SHAPESHIFT_COOLDOWN = { list = stancePoolButtons, method = "UpdateCooldown" },
+	ACTIONBAR_UPDATE_USABLE = { list = actionPoolButtons, method = "UpdateRange" },
+	SPELL_UPDATE_USABLE = { list = actionPoolButtons, method = "UpdateRange" },
+	PLAYER_TARGET_CHANGED = { list = actionPoolButtons, method = "UpdateRange" },
+	UPDATE_SHAPESHIFT_USABLE = { list = stancePoolButtons, method = "UpdateRange" },
+	ACTIONBAR_UPDATE_STATE = { list = allPoolButtons, method = "UpdateState" },
+	CRAFT_SHOW = { list = allPoolButtons, method = "UpdateState" },
+	CRAFT_CLOSE = { list = allPoolButtons, method = "UpdateState" },
+	TRADE_SKILL_SHOW = { list = allPoolButtons, method = "UpdateState" },
+	TRADE_SKILL_CLOSE = { list = allPoolButtons, method = "UpdateState" },
+	UNIT_INVENTORY_CHANGED = { list = actionPoolButtons, method = "UpdateEquipRing", playerOnly = true },
+	UNIT_PET = { list = petPoolButtons, method = "Refresh", playerOnly = true },
+	PET_BAR_UPDATE = { list = petPoolButtons, method = "Refresh" },
+	PLAYER_ENTERING_WORLD = { list = allPoolButtons, method = "Refresh" },
+	-- UPDATE_SHAPESHIFT_FORM/_FORMS never fire here on form toggles (kept anyway); PLAYER_AURAS_CHANGED drives refresh.
+	PLAYER_AURAS_CHANGED = { list = stancePoolButtons, method = "Refresh" },
+	UPDATE_SHAPESHIFT_FORMS = { list = stancePoolButtons, method = "Refresh" },
+	UPDATE_SHAPESHIFT_FORM = { list = stancePoolButtons, method = "Refresh" },
+}
+
+local poolButtonDispatcher
+
+local function CallOnPoolButtons(list, method)
+	local i
+
+	for i = 1, table.getn(list) do
+		local btn = list[i]
+
+		btn[method](btn)
+	end
+end
+
+local function AddToActionSlotMap(btn, slot)
+	local list = actionSlotButtons[slot]
+
+	if not list then
+		list = {}
+		actionSlotButtons[slot] = list
+	end
+
+	table.insert(list, btn)
+end
+
+local function RemoveFromActionSlotMap(btn, slot)
+	local list = actionSlotButtons[slot]
+
+	if not list then
+		return
+	end
+
+	local i
+
+	for i = table.getn(list), 1, -1 do
+		if list[i] == btn then
+			table.remove(list, i)
+		end
+	end
+end
+
+-- Refreshes the action pool buttons showing slot.
+local function RefreshActionSlotButtons(slot)
+	local list = actionSlotButtons[slot]
+
+	if not list then
+		return
+	end
+
+	local i
+
+	for i = 1, table.getn(list) do
+		local btn = list[i]
+
+		if btn and btn.actionSlot == slot then
+			btn:Refresh()
+		end
+	end
+end
+
+local function PoolButtonDispatcher_OnEvent()
+	-- Copied first: per-button code can clobber the event/arg1 globals mid-loop.
+	local ev = event
+	local changedArg = arg1
+
+	-- ACTIONBAR_SLOT_CHANGED arg1 0/nil means every slot.
+	if ev == "ACTIONBAR_SLOT_CHANGED" then
+		if not changedArg or changedArg == 0 then
+			CallOnPoolButtons(allPoolButtons, "Refresh")
+		else
+			RefreshActionSlotButtons(changedArg)
+		end
+
+		return
+	end
+
+	local route = POOL_BUTTON_EVENT_ROUTES[ev]
+
+	if not route or (route.playerOnly and changedArg ~= "player") then
+		return
+	end
+
+	CallOnPoolButtons(route.list, route.method)
+end
+
+-- Creates the dispatcher on the first pool button, so it registers after Events.lua's frames like the old per-button registration.
+local function EnsurePoolButtonDispatcher()
+	if poolButtonDispatcher then
+		return
+	end
+
+	poolButtonDispatcher = CreateFrame("Frame")
+	poolButtonDispatcher:RegisterEvent("ACTIONBAR_SLOT_CHANGED")
+
+	local ev
+
+	for ev in pairs(POOL_BUTTON_EVENT_ROUTES) do
+		poolButtonDispatcher:RegisterEvent(ev)
+	end
+
+	poolButtonDispatcher:SetScript("OnEvent", PoolButtonDispatcher_OnEvent)
+end
+
+-- Adds a new pool button to the dispatcher's lists and slot map.
+local function RegisterPoolButton(btn)
+	table.insert(allPoolButtons, btn)
+
+	if btn.isPetSlot then
+		table.insert(petPoolButtons, btn)
+	elseif btn.isStanceSlot then
+		table.insert(stancePoolButtons, btn)
+	else
+		table.insert(actionPoolButtons, btn)
+		AddToActionSlotMap(btn, btn.actionSlot)
+	end
+
+	EnsurePoolButtonDispatcher()
+end
+
+-- Moves an action pool button's slot-map entry after Rebind changed its slot.
+local function MovePoolButtonActionSlot(btn, oldSlot, newSlot)
+	if btn.isPetSlot or btn.isStanceSlot or oldSlot == newSlot then
+		return
+	end
+
+	if oldSlot then
+		RemoveFromActionSlotMap(btn, oldSlot)
+	end
+
+	AddToActionSlotMap(btn, newSlot)
+end
+
 -- Creates the vanilla-style border texture (UI-Quickslot2, centered with native 0/-1 offset, below other overlays).
 local function CreateNativeBorder(btn)
 	btn.border = btn:CreateTexture(nil, "OVERLAY")
@@ -359,41 +529,8 @@ function ACABButtonMixin:Init(parent, actionSlot, slotIndex)
 	self:SetScript("OnLeave", ACABButtonMixin.OnLeave)
 	self:SetScript("OnMouseDown", ACABButtonMixin.OnMouseDown)
 
-	self:RegisterEvent("ACTIONBAR_SLOT_CHANGED")
-	-- Stack-count text.
-	self:RegisterEvent("BAG_UPDATE")
-	self:RegisterEvent("BAG_UPDATE_COOLDOWN")
-	self:RegisterEvent("SPELL_UPDATE_COOLDOWN")
-	self:RegisterEvent("ACTIONBAR_UPDATE_COOLDOWN")
-	self:RegisterEvent("ACTIONBAR_UPDATE_USABLE")
-	self:RegisterEvent("SPELL_UPDATE_USABLE")
-	self:RegisterEvent("PLAYER_TARGET_CHANGED")
-	self:RegisterEvent("PLAYER_ENTERING_WORLD")
-	-- Equip-quality ring.
-	self:RegisterEvent("UNIT_INVENTORY_CHANGED")
-	-- Checked/glow state, including a profession window's active action.
-	self:RegisterEvent("ACTIONBAR_UPDATE_STATE")
-	self:RegisterEvent("CRAFT_SHOW")
-	self:RegisterEvent("CRAFT_CLOSE")
-	self:RegisterEvent("TRADE_SKILL_SHOW")
-	self:RegisterEvent("TRADE_SKILL_CLOSE")
-
-	if self.isPetSlot then
-		self:RegisterEvent("PET_BAR_UPDATE")
-		self:RegisterEvent("PET_BAR_UPDATE_COOLDOWN")
-		self:RegisterEvent("UNIT_PET")
-	end
-
-	-- UPDATE_SHAPESHIFT_FORM/_FORMS never fire here on form toggles (kept anyway); PLAYER_AURAS_CHANGED drives refresh.
-	if self.isStanceSlot then
-		self:RegisterEvent("UPDATE_SHAPESHIFT_FORMS")
-		self:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
-		self:RegisterEvent("UPDATE_SHAPESHIFT_COOLDOWN")
-		self:RegisterEvent("UPDATE_SHAPESHIFT_USABLE")
-		self:RegisterEvent("PLAYER_AURAS_CHANGED")
-	end
-
-	self:SetScript("OnEvent", ACABButtonMixin.OnEvent)
+	-- Events reach this button through the shared dispatcher.
+	RegisterPoolButton(self)
 
 	self:Refresh()
 
@@ -579,6 +716,8 @@ function ACABButtonMixin:Rebind(newActionSlot)
 	end
 
 	self.actionSlot = newActionSlot
+
+	MovePoolButtonActionSlot(self, oldActionSlot, newActionSlot)
 
 	if newActionSlot >= ACAB.ACTION_SLOT_START then
 		ACAB.customBindTargets[newActionSlot - 72] = self
@@ -1021,37 +1160,6 @@ function ACABButtonMixin:PlaceCursor()
 end
 
 -- Script handlers below use global `this`.
-
-function ACABButtonMixin.OnEvent()
-	if event == "ACTIONBAR_SLOT_CHANGED" then
-		local changedSlot = arg1
-		if not changedSlot or changedSlot == 0 or changedSlot == this.actionSlot then
-			this:Refresh()
-		end
-	elseif event == "BAG_UPDATE" then
-		this:UpdateCount()
-	elseif event == "ACTIONBAR_UPDATE_COOLDOWN" or event == "SPELL_UPDATE_COOLDOWN" or event == "BAG_UPDATE_COOLDOWN"
-		or event == "PET_BAR_UPDATE_COOLDOWN" or event == "UPDATE_SHAPESHIFT_COOLDOWN" then
-		this:UpdateCooldown()
-	elseif event == "ACTIONBAR_UPDATE_USABLE" or event == "SPELL_UPDATE_USABLE" or event == "PLAYER_TARGET_CHANGED"
-		or event == "UPDATE_SHAPESHIFT_USABLE" then
-		this:UpdateRange()
-	elseif event == "ACTIONBAR_UPDATE_STATE" or event == "CRAFT_SHOW" or event == "CRAFT_CLOSE" or event == "TRADE_SKILL_SHOW" or event == "TRADE_SKILL_CLOSE" then
-		this:UpdateState()
-	elseif event == "UNIT_INVENTORY_CHANGED" then
-		if arg1 == "player" then
-			this:UpdateEquipRing()
-		end
-	elseif event == "UNIT_PET" then
-		if arg1 == "player" then
-			this:Refresh()
-		end
-	elseif event == "PLAYER_ENTERING_WORLD" or event == "PET_BAR_UPDATE" or event == "PLAYER_AURAS_CHANGED"
-		or event == "UPDATE_SHAPESHIFT_FORMS" or event == "UPDATE_SHAPESHIFT_FORM" then
-		-- Full Refresh: some forms also swap their icon on activation.
-		this:Refresh()
-	end
-end
 
 -- Uses/casts the slot, or places the cursor's action. Edit mode never reaches here (bar overlay covers the button).
 function ACABButtonMixin.OnClick()
