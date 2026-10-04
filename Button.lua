@@ -873,7 +873,7 @@ function ACABButtonMixin:UpdateEquipRing()
 	end
 end
 
--- Stack-count text: a consumable/stackable action with 1 left shows "1", a non-stacking action stays blank.
+-- Stack-count text, only for consumable/stackable actions; equippable items (rings, trinkets) stay blank.
 function ACABButtonMixin:UpdateCount()
 	if not self.count then
 		return
@@ -881,15 +881,13 @@ function ACABButtonMixin:UpdateCount()
 
 	local text = ""
 
-	if not self.isPetSlot and not self.isStanceSlot and GetActionCount and self:IsSlotFilled() then
+	if not self.isPetSlot and not self.isStanceSlot and GetActionCount and self:IsSlotFilled()
+		and ((IsConsumableAction and IsConsumableAction(self.actionSlot))
+			or (IsStackableAction and IsStackableAction(self.actionSlot))) then
 		local count = GetActionCount(self.actionSlot)
 
-		if count and count > 1 then
+		if count and count > 0 then
 			text = tostring(count)
-		elseif count and count == 1 and
-			((IsConsumableAction and IsConsumableAction(self.actionSlot)) or
-			 (IsStackableAction and IsStackableAction(self.actionSlot))) then
-			text = "1"
 		end
 	end
 
