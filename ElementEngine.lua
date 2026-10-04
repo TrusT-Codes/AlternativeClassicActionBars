@@ -48,8 +48,7 @@ end
 -------------------------------------------------------------------------
 -------------------------------------------------------------------------
 -- Shared cursor-tracking drag engine (Edit Layout mode)
--- One OnUpdate drives every drag kind: bars via Bar.lua's StartBarDrag ("bar"), native elements via their
--- own Start*Drag. Edit-mode overlays sit above the real buttons, so native OnDragStart never fires.
+-- One OnUpdate drives every drag kind: bars via Bar.lua's StartBarDrag ("bar"), native elements via StartElementDrag.
 -------------------------------------------------------------------------
 
 -- Created lazily once; only one drag can run at a time.
@@ -75,8 +74,7 @@ function ACAB:ApplyDragSnap(frame, pos, centerSnap)
 
 	local topLeftPos = self:GetPositionInAnchor(frame, pos, "TOPLEFT", "BOTTOMLEFT")
 
-	-- Inflates the box by its visual inset (vanilla-style bar borders) so snapping compares border edges;
-	-- deflated again before writing to pos.
+	-- Box inflated by the visual inset (vanilla bar borders) so snapping compares border edges.
 	local il, ir, it, ib = ACAB:GetElementVisualInset(frame)
 	local ilPx, irPx, itPx, ibPx = il * scale, ir * scale, it * scale, ib * scale
 
@@ -307,8 +305,7 @@ end
 
 -------------------------------------------------------------------------
 -- Chain/grid-anchored container engine (Bag Bar, Micro Menu, Stance Bar, native Pet Bar)
--- Elements without a native container get a synthetic one with their real buttons reparented into it,
--- chained button-to-button (Bartender2's pattern). Element-specific code lives in NativeElements/PetStanceBars.lua.
+-- Real buttons reparented into a synthetic container and chained button-to-button.
 -------------------------------------------------------------------------
 
 -- Bag Bar's 5 real bag buttons (Key Ring excluded) and Micro Menu's 8 real micro buttons.
@@ -399,8 +396,8 @@ local function ComputeMedianGap(lefts, widths)
 	return math.floor(median + 0.5)
 end
 
--- Builds a HIGH-strata container (above MainMenuBarArtFrame's art) and reparents `buttons` (sorted left-to-right)
--- into it; layout itself is ApplyChainAnchoredShape/ApplyGridAnchoredShape.
+-- Builds a LOW-strata level-10 container (above MainMenuBarArtFrame's art) and reparents `buttons` (sorted
+-- left-to-right) into it; layout itself is ApplyChainAnchoredShape/ApplyGridAnchoredShape.
 -- Returns container, button 1's native left/top in UIParent units, and the chain's median native gap.
 function ACAB:BuildChainAnchoredContainer(frameName, buttons)
 	local lefts, tops, widths, heights = {}, {}, {}, {}
@@ -1122,7 +1119,7 @@ function ACAB:CopyNativePosition(native)
 	}
 end
 
--- Lazily seeds ACABDB[posField] from frame's live TOPLEFT (UIParent units) and ACABDB[nativeField] once from GetPoint(1).
+-- Lazily seeds ACABDB[posField] from frame's live TOPLEFT (UIParent units), ACABDB[nativeField] once from GetPoint(1).
 function ACAB:CaptureAbsolutePosition(frame, posField, nativeField)
 	self:EnsureDB()
 

@@ -1,13 +1,11 @@
 -- PageIndicator.lua
 -- Page Indicator: Main Bar's page-turn arrows + page-number FontString in a synthetic container, built inline
--- with plain CreateFrame (not ElementEngine.lua's chain engine).
+-- with plain CreateFrame (not ElementEngine.lua's chain engine). Position + Scale only.
 
 local ACAB = AlternativeClassicActionBars
 
 -------------------------------------------------------------------------
--- Page Indicator (Main Bar's page-turn arrows + page-number FontString in a synthetic container)
--- Position + Scale only; own layout (two stacked arrows, text beside them) instead of the chain engine.
--- Builds only if all three real frames exist.
+-- Page Indicator (builds only if all three real frames exist)
 -------------------------------------------------------------------------
 
 ACAB.PAGE_INDICATOR_UP_NAME = "ActionBarUpButton"

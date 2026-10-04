@@ -402,7 +402,7 @@ function ACAB:CaptureKeyRingNativeTopLeft()
 	}
 end
 
--- Reasserts KeyRingButton's LOW strata/level (above art frame) and sets its effective scale, cancelling the scale inherited from MainMenuBarArtFrame.
+-- Reasserts KeyRingButton's LOW strata/level 10 (above the art) and its effective scale (cancelling the art's scale).
 function ACAB:ApplyKeyRingStrataAndScale(frame, scale)
 	frame:SetFrameStrata("LOW")
 	frame:SetFrameLevel(10)
@@ -625,8 +625,7 @@ function ACAB:ResetCastBarLayout()
 end
 
 -------------------------------------------------------------------------
--- Cast Bar dynamic stacking (Default Layout only): floor Y + Action Bar 1/2's buttonSize + Extra Bar 1/2's
--- buttonSize + Pet Bar's height, each only while active.
+-- Cast Bar dynamic stacking (Default Layout only): floor Y + the active Action Bar 1/2, Extra Bar 1/2, Pet Bar pitches
 -------------------------------------------------------------------------
 
 -- Captures the stacking floor Y once; reflows only ever recompute off it.
@@ -726,9 +725,8 @@ function ACAB:StopCastBarDrag()
 end
 
 -------------------------------------------------------------------------
--- Modern Layout corners: Bag Bar in the bottom-right corner with Key Ring to its left; Latency Bar in the
--- bottom-left corner with Micro Menu to its right, Latency Bar's overlay top level with Micro Menu's.
--- Every gap is flush, from the elements' live sizes.
+-- Modern Layout corners: Bag Bar bottom-right with Key Ring left of it; Latency Bar bottom-left with Micro Menu
+-- right of it (overlay tops level). Every gap is flush, from the elements' live sizes.
 -------------------------------------------------------------------------
 
 -- Saved position anchored BOTTOMRIGHT to BOTTOMRIGHT at x, y.
@@ -861,8 +859,8 @@ function ACAB:ApplyModernSingleLatencyBar()
 end
 
 -------------------------------------------------------------------------
--- "Reset to Modern Layout Default": reset the element's layout/scale to its Vanilla defaults, then apply
--- its Modern position. Layout first - the position measurements read the settled size.
+-- "Reset to Modern Layout Default": Vanilla layout/scale reset first (measurements read the settled size), then the
+-- element's Modern position.
 -------------------------------------------------------------------------
 
 -- Modern Layout's Bag Bar is flush (spacing 0).
