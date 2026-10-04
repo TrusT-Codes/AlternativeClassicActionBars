@@ -25,7 +25,6 @@ local function InitializeMenu()
 	UIDropDownMenu_AddButton(info)
 
 	info = NewToggleInfo("Configure Layout", ACAB:IsEditMode(), function() ACAB:ToggleEditMode() end)
-
 	if ACAB:IsDefaultProfileActive() then
 		info.disabled = 1
 		info.tooltipWhileDisabled = 1

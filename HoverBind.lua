@@ -107,12 +107,9 @@ end
 
 -- Moves the key back onto btn.nativeBindingId; called before a hoverbind edit/clear reads or writes it.
 function ACAB:RehomeDefaultBarBinding(btn)
-	if not btn or not btn.nativeBindingId then
-		return
-	end
+	if not btn or not btn.nativeBindingId then return end
 
 	local liveId = btn.activeBindingId or btn.nativeBindingId
-
 	if liveId ~= btn.nativeBindingId then
 		MoveBindingKeys(liveId, btn.nativeBindingId)
 	end
@@ -122,9 +119,7 @@ end
 
 -- Moves the key onto ACABBIND<n> while btn.actionSlot is in the pool range, else back home. Idempotent.
 function ACAB:SyncDefaultBarBindingRedirect(btn)
-	if not btn or not btn.nativeBindingId then
-		return
-	end
+	if not btn or not btn.nativeBindingId then return end
 
 	local targetId = btn.nativeBindingId
 
@@ -133,7 +128,6 @@ function ACAB:SyncDefaultBarBindingRedirect(btn)
 	end
 
 	local liveId = btn.activeBindingId or btn.nativeBindingId
-
 	if liveId == targetId then
 		btn.activeBindingId = targetId
 		return
@@ -196,9 +190,7 @@ local HOVERBIND_UNBOUND_COLOR = { 1.0, 0.25, 0.25 }
 
 function ACAB:TintHoverBindButton(ref)
 	local icon = ref.frame.icon
-	if not icon then
-		return
-	end
+	if not icon then return end
 
 	local color = self:IsButtonBound(ref)
 		and HOVERBIND_BOUND_COLOR
@@ -265,17 +257,13 @@ end
 -------------------------------------------------------------------------
 
 function ACAB:SetHoverBindHoveredCustomButton(btn)
-	if not self.hoverBindCaptureFrame or not btn or not btn.parentBar or not btn.parentBar.config then
-		return
-	end
+	if not self.hoverBindCaptureFrame or not btn or not btn.parentBar or not btn.parentBar.config then return end
 
 	self.hoverBindCaptureFrame.hoveredButton = MakeButtonRef(btn, btn.parentBar.config.id, btn.slotIndex)
 end
 
 function ACAB:ClearHoverBindHoveredButton(frame)
-	if not self.hoverBindCaptureFrame then
-		return
-	end
+	if not self.hoverBindCaptureFrame then return end
 	local hovered = self.hoverBindCaptureFrame.hoveredButton
 	if hovered and hovered.frame == frame then
 		self.hoverBindCaptureFrame.hoveredButton = nil
@@ -377,14 +365,10 @@ end
 -- Escape clears the hovered button's binding instead of being bound.
 local function HoverBindCaptureFrame_OnKeyDown()
 	local key = arg1
-	if not key or MODIFIER_KEYS[key] then
-		return
-	end
+	if not key or MODIFIER_KEYS[key] then return end
 
 	local hovered = this.hoveredButton
-	if not hovered then
-		return
-	end
+	if not hovered then return end
 
 	if key == "ESCAPE" then
 		ClearHoverBindKey(hovered)
@@ -398,14 +382,10 @@ end
 function ACAB:HandleHoverBindMouseButton(frame, buttonName)
 	local captureFrame = self.hoverBindCaptureFrame
 	local hovered = captureFrame and captureFrame.hoveredButton
-	if not hovered or hovered.frame ~= frame then
-		return
-	end
+	if not hovered or hovered.frame ~= frame then return end
 
 	local key = MOUSE_BUTTON_BINDING_KEYS[buttonName]
-	if not key then
-		return
-	end
+	if not key then return end
 
 	ApplyHoverBindKey(hovered, BuildComboString(key))
 end

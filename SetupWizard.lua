@@ -474,7 +474,6 @@ function ACABSetupWizardMixin:BuildExtraBarsStep(panel)
 			label = "Only show on hover",
 			onClick = function()
 				local bar = ACAB.bars and ACAB.bars[barId]
-
 				if bar then
 					ACAB:SetBarHoverOnly(bar, this:GetChecked() and true or false)
 				end
@@ -483,7 +482,6 @@ function ACABSetupWizardMixin:BuildExtraBarsStep(panel)
 
 		section.swatches = ACAB:CreateGridSwatchRow(step, barId, ACAB.INDENT_CONTROL, y - 52, function(cols, rows)
 			local bar = ACAB.bars and ACAB.bars[barId]
-
 			if bar then
 				ACAB:SetBarLayout(bar, cols, rows)
 			end
@@ -506,7 +504,6 @@ function ACABSetupWizardMixin:RefreshExtraBarsStep()
 	for i = 1, table.getn(step.sections) do
 		local section = step.sections[i]
 		local cfg = ACAB:GetBarConfig(section.barId)
-
 		if cfg then
 			section.enableCheckbox:SetChecked(cfg.enabled == true)
 			section.hoverCheckbox:SetChecked(cfg.hoverOnly == true)
@@ -518,10 +515,7 @@ end
 -- Builds the wizard's chrome on the settings window once: step header, step list sidebar, Back/Next row.
 function ACABSetupWizardMixin:EnsureChrome()
 	local f = ACAB.settingsFrame
-
-	if f.wizardStepList then
-		return
-	end
+	if f.wizardStepList then return end
 
 	local stepText = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	stepText:SetPoint("TOPLEFT", f, "TOPLEFT", 18, -40)
@@ -703,10 +697,7 @@ end
 -- True if key is reachable from the sidebar: an earlier decision step before the reload, a visited page after it.
 function ACABSetupWizardMixin:CanJumpToStep(key)
 	local def = STEPS[key]
-
-	if not def or key == self.currentStep then
-		return false
-	end
+	if not def or key == self.currentStep then return false end
 
 	if self.wizardState.live then
 		return def.kind == "page" and self.wizardState.visited[key] == true
@@ -745,7 +736,6 @@ function ACABSetupWizardMixin:RefreshChrome()
 	for i = 1, table.getn(rows) do
 		local row = rows[i]
 		local rowKey = path[i]
-
 		if rowKey then
 			row.stepKey = rowKey
 			row:SetLabel(tostring(i) .. ". " .. STEPS[rowKey].short)
@@ -782,10 +772,7 @@ end
 -- Shows step key: a decision frame on the wizard view, or the real settings page.
 function ACABSetupWizardMixin:ShowStep(key)
 	local def = STEPS[key]
-
-	if not def then
-		return
-	end
+	if not def then return end
 
 	-- DropDownList1 is one shared popout; close it before switching pages.
 	if CloseDropDownMenus then
@@ -828,9 +815,7 @@ end
 function ACABSetupWizardMixin:StartDragMode()
 	ACAB:SetEditMode(true)
 
-	if not ACAB:IsEditMode() then
-		return
-	end
+	if not ACAB:IsEditMode() then return end
 
 	ACAB.reopenSetupWizardAfterEditMode = true
 	ACAB.settingsFrame:Hide()
@@ -844,7 +829,6 @@ function ACABSetupWizardMixin:GoNext()
 
 	local index = IndexOfStep(self.path, self.currentStep)
 	local nextKey = index and self.path[index + 1]
-
 	if nextKey then
 		self:ShowStep(nextKey)
 	else
@@ -855,7 +839,6 @@ end
 function ACABSetupWizardMixin:GoBack()
 	local index = IndexOfStep(self.path, self.currentStep)
 	local previousKey = index and self.path[index - 1]
-
 	if previousKey and STEPS[previousKey].kind == STEPS[self.currentStep].kind then
 		self:ShowStep(previousKey)
 	end
@@ -865,7 +848,6 @@ end
 function ACABSetupWizardMixin:AdvanceFromName()
 	local step = self.steps.name
 	local name = step.editBox:GetText()
-
 	if not name or name == "" then
 		step.errorText:SetText("Profile name cannot be empty.")
 		step.errorText:Show()
@@ -973,9 +955,7 @@ end
 function ACABSetupWizardMixin:ApplyBaselineAndReload(kind)
 	local state = self.wizardState
 
-	if not self:WriteTargetProfile(BuildBaselineData(state, kind)) then
-		return
-	end
+	if not self:WriteTargetProfile(BuildBaselineData(state, kind)) then return end
 
 	if kind == "locked" then
 		ACABCharDB.setupWizard = nil
@@ -1137,10 +1117,7 @@ end
 -- Login: reopens a wizard run saved before a reload, if it belongs to the active profile. Returns true if resumed.
 function ACAB:ResumeSetupWizardIfPending()
 	local saved = ACABCharDB and ACABCharDB.setupWizard
-
-	if not saved then
-		return false
-	end
+	if not saved then return false end
 
 	if saved.profileName ~= ACABCharDB.activeProfile or not STEPS[saved.step] or STEPS[saved.step].kind ~= "page" then
 		ACABCharDB.setupWizard = nil
