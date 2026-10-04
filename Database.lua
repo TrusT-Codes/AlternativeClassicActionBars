@@ -595,7 +595,8 @@ function ACAB:GetExtraBarStackPitch(extraBarId)
 	return (bar:GetHeight() or 0) + self:GetBarEffectiveSpacing(bar.config)
 end
 
--- Resettles Stance/Pet/Cast Bar when Extra Bar 1/2's stacking contribution changes (each Reflow* self-guards).
+-- Resettles Stance/Pet Bar (each Reflow* self-guards on its default-position flag) when Extra Bar 1/2's stacking
+-- contribution changes; Cast Bar only while vanilla stacking is active.
 function ACAB:ReflowExtraBarDependants(extraBarId)
 	local index = extraBarId - self.EXTRA_BAR_ID_START
 
@@ -607,7 +608,7 @@ function ACAB:ReflowExtraBarDependants(extraBarId)
 		self:ReflowPetBarForBar3Toggle(bar3Cfg and bar3Cfg.enabled)
 	end
 
-	if self.ReflowCastBarForStackToggle then
+	if self:IsVanillaStackingActive() then
 		self:ReflowCastBarForStackToggle()
 	end
 end

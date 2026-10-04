@@ -2,6 +2,10 @@
 
 ## 1.3.0-rc2 (Unreleased)
 
+### Features
+
+- Stance Bar and Pet Bar sitting at their default spot now move above Extra Bar 1 / Extra Bar 2 whenever those get enabled or reset to their vanilla position - in every profile, not only with Force Vanilla Layout. Moved them yourself? They stay where you put them.
+
 ### Bugfixes
 
 - Fix Main Bar page switching (page arrows, Shift+1-6) landing on the page of an action bar that's already shown, when Blizzard's own "Show Right ActionBar 2" option was off.
