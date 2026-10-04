@@ -1,6 +1,7 @@
 -- DefaultBars.lua
--- Default bars 1-5 (wrapping Blizzard's MainMenuBar/MultiBar* frames), Main Bar art + grouped elements, and the
--- action-bar Modern Layout geometry. Must load after ElementEngine.lua: the top-level MainMenuBarArtFrame
+-- Default bars 1-5 (wrapping Blizzard's MainMenuBar/MultiBar* frames), Main Bar art + grouped elements, the
+-- action-bar Modern Layout geometry, and the pending-layout baseline pass run after login.
+-- Must load after ElementEngine.lua: the top-level MainMenuBarArtFrame
 -- InstallReanchorGuard call needs it.
 
 local ACAB = AlternativeClassicActionBars
@@ -1604,6 +1605,160 @@ function ACAB:ResetBarLayoutToModernBase(id)
 	if id == 4 or id == 5 then
 		self:ApplyModernSingleVerticalBar(id)
 	end
+end
+
+-------------------------------------------------------------------------
+-- Baseline geometry for a profile carrying pendingLayoutBaseline: applied once the UI settled after login,
+-- then saved and reloaded, so the final layout always loads from saved data (RunLoginSequence).
+-------------------------------------------------------------------------
+
+-- Settle poll before the baseline pass measures live frames; delay before the follow-up reload.
+local BASELINE_POLL_INTERVAL = 0.1
+local BASELINE_STABLE_READS = 2
+local BASELINE_SETTLE_TIMEOUT = 5
+local BASELINE_RELOAD_DELAY = 0.5
+
+-- Native frames the baseline pass measures (Main Bar, Micro Menu, Latency Bar, Key Ring, Exp Bar).
+local BASELINE_SETTLE_FRAMES = {
+	"ActionButton1", "MainMenuBar", "CharacterMicroButton", "MainMenuBarPerformanceBarFrame",
+	"KeyRingButton", "MainMenuExpBar",
+}
+
+-- One string of every settle frame's rect (nil sides included) plus UIParent's scale.
+local function ReadBaselineSettleSignature()
+	local parts = { tostring(UIParent:GetEffectiveScale()) }
+	local i
+
+	for i = 1, table.getn(BASELINE_SETTLE_FRAMES) do
+		local frame = getglobal(BASELINE_SETTLE_FRAMES[i])
+
+		if frame then
+			table.insert(parts, tostring(frame:GetLeft()) .. "," .. tostring(frame:GetTop()) .. "," ..
+				tostring(frame:GetWidth()) .. "," .. tostring(frame:GetHeight()))
+		end
+	end
+
+	return table.concat(parts, "|")
+end
+
+-- Calls callback once every settle frame's rect held for BASELINE_STABLE_READS polls (or on timeout).
+local function WaitForBaselineSettle(callback)
+	local last = ReadBaselineSettleSignature()
+	local stableCount = 0
+	local elapsed = 0
+
+	local ticker
+	ticker = C_Timer.NewTicker(BASELINE_POLL_INTERVAL, function()
+		elapsed = elapsed + BASELINE_POLL_INTERVAL
+
+		local current = ReadBaselineSettleSignature()
+
+		if current == last then
+			stableCount = stableCount + 1
+		else
+			stableCount = 0
+		end
+
+		last = current
+
+		local settled = stableCount >= BASELINE_STABLE_READS
+
+		if settled or elapsed >= BASELINE_SETTLE_TIMEOUT then
+			ticker:Cancel()
+
+			if not settled then
+				ACAB:Print("WARNING: UI did not settle within " .. tostring(BASELINE_SETTLE_TIMEOUT) ..
+					"s - applying the layout anyway.")
+			end
+
+			callback()
+		end
+	end)
+end
+
+-- Applies Modern Layout geometry to the live ACABDB via the per-element reset functions.
+function ACAB:ApplyModernLayoutGeometry()
+	self:ApplyModernMainActionBarsLayout()
+	self:ApplyModernVerticalBarClusterLayout()
+
+	self:ResetPetBarLayoutToModernBase()
+	self:ResetStanceBarPositionToModernBase()
+
+	self:ResetPageIndicatorToModernBase()
+
+	self:ApplyModernCornerClusterLayout()
+end
+
+-- Centers the Experience Bar at the bottom of its settings page's Y range.
+local function PlaceExpBarAtBottom()
+	local frame = getglobal(ACAB.EXP_BAR_FRAME_NAME)
+
+	if not frame then
+		return
+	end
+
+	local _, _, minY = ACAB:GetSimpleElementCoordinateRange(frame, 2)
+
+	if not minY then
+		return
+	end
+
+	ACABDB.expBarPosition = {
+		point = "CENTER", relativePoint = "CENTER", visualCenter = true,
+		x = 0,
+		y = minY,
+	}
+
+	ACAB:ApplyExpBarPosition()
+end
+
+-- Applies the pending baseline ("modern" geometry or the "vanilla" reset) to the live bars.
+local function RunLayoutBaselinePass(self, layout)
+	if layout == "modern" then
+		-- must place the Exp Bar first: GetModernBaseExpBarClearance reads its saved position
+		PlaceExpBarAtBottom()
+		self:ApplyModernLayoutGeometry()
+	elseif layout == "vanilla" then
+		self:ResetAllElementsToVanillaLayout()
+	end
+
+	if ACABDB.pendingDisableExtraBars then
+		ACABDB.pendingDisableExtraBars = nil
+
+		local id
+
+		for id = self.EXTRA_BAR_ID_START, self.EXTRA_BAR_ID_START + self.EXTRA_BAR_COUNT - 1 do
+			self:SetExtraBarEnabled(id, false)
+		end
+	end
+
+	-- Must run after Main Bar's final position.
+	self:ApplyMainBarGroupedElements()
+end
+
+-- Schedules the loaded profile's pending baseline pass and the reload after it. Returns true if one is pending.
+function ACAB:ApplyPendingLayoutBaseline()
+	local layout = ACABDB.pendingLayoutBaseline
+
+	if not layout then
+		return false
+	end
+
+	self:Print("Applying the " .. (layout == "modern" and "Modern" or "Vanilla") .. " layout - your UI reloads in a moment.")
+
+	WaitForBaselineSettle(function()
+		ACABDB.pendingLayoutBaseline = nil
+
+		RunLayoutBaselinePass(ACAB, layout)
+
+		ACAB:SaveActiveProfileData()
+
+		C_Timer.After(BASELINE_RELOAD_DELAY, function()
+			ReloadUI()
+		end)
+	end)
+
+	return true
 end
 
 -------------------------------------------------------------------------
