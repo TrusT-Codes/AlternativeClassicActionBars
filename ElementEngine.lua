@@ -138,7 +138,8 @@ function ACAB:ApplyDragSnap(frame, pos, centerSnap)
 end
 
 -- Drag kinds that move a saved position table: getPos() -> table whose x/y are written, getFrame() ->
--- frame snapped against, apply = ACAB method re-anchoring it, centerSnap = ApplyDragSnap's flag.
+-- frame snapped against, apply = ACAB method re-anchoring it, centerSnap = ApplyDragSnap's flag,
+-- capture = optional ACAB method StartElementDrag runs first to seed the position.
 local POSITION_DRAG_KINDS = {
 	stanceBar = {
 		getPos = function() return ACABDB.stanceBarPosition end,
@@ -159,22 +160,26 @@ local POSITION_DRAG_KINDS = {
 		getPos = function() return ACABDB.keyRingPosition end,
 		getFrame = function() return getglobal(ACAB.KEYRING_BUTTON_NAME) end,
 		apply = "ApplyKeyRingPosition",
+		capture = "CaptureKeyRingPositionIfNeeded",
 	},
 	latencyBar = {
 		getPos = function() return ACABDB.latencyBarPosition end,
 		getFrame = function() return getglobal(ACAB.LATENCY_BAR_FRAME_NAME) end,
 		apply = "ApplyLatencyBarPosition",
+		capture = "CaptureLatencyBarPositionIfNeeded",
 	},
 	expBar = {
 		getPos = function() return ACABDB.expBarPosition end,
 		getFrame = function() return getglobal(ACAB.EXP_BAR_FRAME_NAME) end,
 		apply = "ApplyExpBarPosition",
+		capture = "CaptureExpBarPositionIfNeeded",
 	},
 	castBar = {
 		getPos = function() return ACABDB.castBarPosition end,
 		getFrame = function() return getglobal(ACAB.CAST_BAR_FRAME_NAME) end,
 		apply = "ApplyCastBarPosition",
 		centerSnap = true,
+		capture = "CaptureCastBarPositionIfNeeded",
 	},
 	pageIndicator = {
 		getPos = function() return ACABDB.mainBarPageIndicatorPosition end,
@@ -193,6 +198,9 @@ local POSITION_DRAG_KINDS = {
 		apply = "ApplyPetBarNativePosition",
 	},
 }
+
+-- Reused per-tick scratch position for bar drags.
+local barDragPos = {}
 
 -- Shared OnUpdate body for every drag kind - `this` is dragFrame (engine-invoked handler).
 function ACAB:DefaultBarDrag_OnUpdate()
@@ -217,13 +225,13 @@ function ACAB:DefaultBarDrag_OnUpdate()
 		local bar = ACAB.bars and ACAB.bars[this.dragId]
 
 		if bar and bar.config then
-			local pos = {
-				point = bar.config.point or "TOPLEFT",
-				relativePoint = bar.config.relativePoint or "TOPLEFT",
-				visualCenter = bar.config.visualCenter,
-				x = this.dragStartX + dx,
-				y = this.dragStartY + dy,
-			}
+			local pos = barDragPos
+
+			pos.point = bar.config.point or "TOPLEFT"
+			pos.relativePoint = bar.config.relativePoint or "TOPLEFT"
+			pos.visualCenter = bar.config.visualCenter
+			pos.x = this.dragStartX + dx
+			pos.y = this.dragStartY + dy
 
 			ACAB:ApplyDragSnap(bar, pos)
 
@@ -270,6 +278,26 @@ function ACAB:StopSharedDrag()
 
 	dragFrame:SetScript("OnUpdate", nil)
 	dragFrame:Hide()
+end
+
+-- Starts a POSITION_DRAG_KINDS drag from its saved position (running its capture first); no-op without one.
+function ACAB:StartElementDrag(dragKind)
+	local kind = POSITION_DRAG_KINDS[dragKind]
+
+	if kind.capture then
+		self[kind.capture](self)
+	end
+
+	local pos = kind.getPos()
+	if not pos then return end
+
+	self:StartSharedDrag(dragKind, nil, pos.x or 0, pos.y or 0)
+end
+
+-- Stops the shared drag and refreshes settingsKey's settings page.
+function ACAB:StopElementDrag(settingsKey)
+	self:StopSharedDrag()
+	self:RefreshBarSettingsPage(settingsKey)
 end
 
 -- True only while Edit Layout mode is on AND useDefaultLayout == false - the shared drag gate.
@@ -1092,4 +1120,76 @@ function ACAB:CopyNativePosition(native)
 		x = native.x,
 		y = native.y,
 	}
+end
+
+-- Lazily seeds ACABDB[posField] from frame's live TOPLEFT (UIParent units) and ACABDB[nativeField] once from GetPoint(1).
+function ACAB:CaptureAbsolutePosition(frame, posField, nativeField)
+	self:EnsureDB()
+
+	if ACABDB[posField] or not frame then return end
+
+	local left = frame:GetLeft()
+	local top = frame:GetTop()
+	if not left or not top then return end
+
+	local frameScale = frame:GetEffectiveScale()
+	local uiParentScale = UIParent:GetEffectiveScale()
+	local x, y = left, top
+
+	if frameScale and uiParentScale and uiParentScale ~= 0 then
+		x = (left * frameScale) / uiParentScale
+		y = (top * frameScale) / uiParentScale
+	end
+
+	ACABDB[posField] = {
+		point = "TOPLEFT",
+		relativePoint = "BOTTOMLEFT",
+		x = x,
+		y = y,
+	}
+
+	if not ACABDB[nativeField] then
+		ACABDB[nativeField] = self:ReadNativeAnchor(frame)
+	end
+end
+
+-- Stores ACABDB[field] as a boolean and shows/hides frame to match.
+function ACAB:StoreElementEnabled(field, frame, enabled)
+	self:EnsureDB()
+
+	enabled = enabled and true or false
+
+	ACABDB[field] = enabled
+
+	self:SetElementShown(frame, enabled)
+end
+
+-- StoreCompensatedScale, then applies it: applyScale(self, frame, scale) or frame:SetScale; applyPosition(self) if positioned.
+function ACAB:SetElementScale(scaleField, posField, frame, scale, applyScale, applyPosition)
+	local pos
+
+	scale, pos = self:StoreCompensatedScale(scaleField, posField, frame, scale)
+	if not scale then return end
+
+	if applyScale then
+		applyScale(self, frame, scale)
+	elseif frame then
+		frame:SetScale(scale)
+	end
+
+	if pos then
+		applyPosition(self)
+	end
+end
+
+-- Clamps spacing to minValue..maxValue, stores it in ACABDB[field] and runs applyShape(self).
+function ACAB:SetElementSpacing(field, spacing, minValue, maxValue, applyShape)
+	self:EnsureDB()
+
+	spacing = self:ClampSpacingSetting(spacing, minValue, maxValue)
+	if not spacing then return end
+
+	ACABDB[field] = spacing
+
+	applyShape(self)
 end

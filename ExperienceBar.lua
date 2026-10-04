@@ -48,40 +48,7 @@ ACAB.EXP_RESTED_FRAME_NAME = "ExhaustionLevelFillBar"
 
 -- Captures MainMenuExpBar's position once (scale-converted to UIParent units) plus its native GetPoint(1) anchor.
 function ACAB:CaptureExpBarPositionIfNeeded()
-	self:EnsureDB()
-
-	if ACABDB.expBarPosition then return end
-
-	local frame = getglobal(self.EXP_BAR_FRAME_NAME)
-	if not frame then return end
-
-	local left = frame:GetLeft()
-	local top = frame:GetTop()
-	if not left or not top then return end
-
-	local buttonScale = frame:GetEffectiveScale()
-	local uiParentScale = UIParent:GetEffectiveScale()
-
-	local x, y = left, top
-
-	if buttonScale and uiParentScale and uiParentScale ~= 0 then
-		x = (left * buttonScale) / uiParentScale
-		y = (top * buttonScale) / uiParentScale
-	end
-
-	local anchor = {
-		point = "TOPLEFT",
-		relativePoint = "BOTTOMLEFT",
-		x = x,
-		y = y,
-	}
-
-	ACABDB.expBarPosition = anchor
-
-	-- Permanent pristine snapshot for "Reset to Vanilla Layout"; captured once, never rewritten.
-	if not ACABDB.expBarNativeAnchor then
-		ACABDB.expBarNativeAnchor = self:ReadNativeAnchor(frame)
-	end
+	self:CaptureAbsolutePosition(getglobal(self.EXP_BAR_FRAME_NAME), "expBarPosition", "expBarNativeAnchor")
 end
 
 -- Gradient strip covering the bottom 3 units of MainMenuExpBar that its native border art leaves bare.
@@ -110,6 +77,11 @@ local function EnsureExpBarBottomBorderStrip(frame)
 	frame.ACABBottomBorderStrip = strip
 
 	return strip
+end
+
+-- Hover-only fade duration for ApplyHoverOnlyState.
+local function GetExpBarHoverDuration()
+	return ACABDB.expBarHoverDuration or 3
 end
 
 -- Applies ACABDB.expBarPosition to MainMenuExpBar and ensures its overlay, border strip, and hover-only state.
@@ -141,7 +113,7 @@ function ACAB:ApplyExpBarPosition()
 	EnsureExpBarBottomBorderStrip(frame)
 
 	-- Also fades the rested-glow child texture (it inherits this frame's alpha).
-	self:ApplyHoverOnlyState(frame, ACABDB.expBarHoverOnly, function() return ACABDB.expBarHoverDuration or 3 end)
+	self:ApplyHoverOnlyState(frame, ACABDB.expBarHoverOnly, GetExpBarHoverDuration)
 end
 
 function ACAB:SetExpBarPosition(x, y)
@@ -152,15 +124,9 @@ end
 
 -- Shows/hides MainMenuExpBar together with its drag overlay and text overlay.
 function ACAB:SetExpBarEnabled(enabled)
-	self:EnsureDB()
-
-	enabled = enabled and true or false
-
-	ACABDB.expBarEnabled = enabled
-
 	local frame = getglobal(self.EXP_BAR_FRAME_NAME)
 
-	self:SetElementShown(frame, enabled)
+	self:StoreElementEnabled("expBarEnabled", frame, enabled)
 
 	-- Must re-show explicitly, or the text overlay stays hidden after a disable/re-enable cycle.
 	if frame and frame.ACABTextOverlay then
@@ -177,20 +143,7 @@ end
 
 -- Clamps, compensates the saved position around the bar's center, then applies the new scale.
 function ACAB:SetExpBarScale(scale)
-	local frame = getglobal(self.EXP_BAR_FRAME_NAME)
-	local pos
-
-	scale, pos = self:StoreCompensatedScale("expBarScale", "expBarPosition", frame, scale)
-
-	if not scale then return end
-
-	if frame then
-		frame:SetScale(scale)
-	end
-
-	if pos then
-		self:ApplyExpBarPosition()
-	end
+	self:SetElementScale("expBarScale", "expBarPosition", getglobal(self.EXP_BAR_FRAME_NAME), scale, nil, self.ApplyExpBarPosition)
 end
 
 -- Experience Bar settings page "Only show on hover" checkbox/slider.
@@ -240,20 +193,11 @@ function ACAB:ResetExpBarLayoutToModernBase()
 end
 
 function ACAB:StartExpBarDrag()
-	self:CaptureExpBarPositionIfNeeded()
-
-	local pos = ACABDB.expBarPosition
-	if not pos then return end
-
-	self:StartSharedDrag("expBar", nil, pos.x or 0, pos.y or 0)
+	self:StartElementDrag("expBar")
 end
 
 function ACAB:StopExpBarDrag()
-	self:StopSharedDrag()
-
-	if self.RefreshBarSettingsPage then
-		self:RefreshBarSettingsPage("expbar")
-	end
+	self:StopElementDrag("expbar")
 end
 
 -------------------------------------------------------------------------

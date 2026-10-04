@@ -52,9 +52,7 @@ local function ReflowStyledStackBar(self, barId, stackBarId, stackBarEnabled, ex
 
 	self:ApplyBarPosition(bar)
 
-	if self.RefreshBarSettingsPage then
-		self:RefreshBarSettingsPage(barId)
-	end
+	self:RefreshBarSettingsPage(barId)
 end
 
 -- Writes cfg.hoverOnly on default bar barId's saved cfg, then re-runs applyFn.
@@ -137,9 +135,7 @@ function ACAB:ReflowPetBarForBar3Toggle(bar3Enabled)
 
 	self:ApplyPetBarNativePosition()
 
-	if self.RefreshBarSettingsPage then
-		self:RefreshBarSettingsPage(self.PET_BAR_ID)
-	end
+	self:RefreshBarSettingsPage(self.PET_BAR_ID)
 end
 
 function ACAB:CreatePetBarNativeContainer()
@@ -378,25 +374,18 @@ function ACAB:ResetPetBarLayoutToModernBase()
 end
 
 function ACAB:StartPetBarNativeDrag()
-	local cfg = ACABDB.defaultBars[self.PET_BAR_ID]
-	if not cfg then return end
-
-	self:StartSharedDrag("petBarNative", nil, cfg.x or 0, cfg.y or 0)
+	self:StartElementDrag("petBarNative")
 end
 
+-- Manually moved - stops auto-stacking its Y.
 function ACAB:StopPetBarNativeDrag()
-	self:StopSharedDrag()
-
-	-- Manually moved - stop auto-stacking its Y.
 	local cfg = ACABDB.defaultBars[self.PET_BAR_ID]
 
 	if cfg then
 		cfg.usesDefaultPosition = false
 	end
 
-	if self.RefreshBarSettingsPage then
-		self:RefreshBarSettingsPage(self.PET_BAR_ID)
-	end
+	self:StopElementDrag(self.PET_BAR_ID)
 end
 
 -------------------------------------------------------------------------
@@ -693,13 +682,7 @@ end
 
 -- The container's Show()/Hide() cascades to every real stance button.
 function ACAB:SetStanceBarEnabled(enabled)
-	self:EnsureDB()
-
-	enabled = enabled and true or false
-
-	ACABDB.stanceBarEnabled = enabled
-
-	self:SetElementShown(self.stanceBarContainer, enabled)
+	self:StoreElementEnabled("stanceBarEnabled", self.stanceBarContainer, enabled)
 end
 
 -- "Use Vanilla Stance Bar" switch, before its reload: native (ACABDB.stanceBarPosition) and styled (defaultBars cfg)
@@ -762,9 +745,7 @@ function ACAB:ReflowStanceBarForBar2Toggle(bar2Enabled)
 
 	self:ApplyStanceBarPosition()
 
-	if self.RefreshBarSettingsPage then
-		self:RefreshBarSettingsPage(self.STANCE_BAR_ID)
-	end
+	self:RefreshBarSettingsPage(self.STANCE_BAR_ID)
 end
 
 -- Re-lays-out the real stance buttons from saved spacing/orientation/scale. No-op until the container exists.
@@ -849,29 +830,11 @@ end
 
 -- Plain 0-20 range in both border styles.
 function ACAB:SetStanceBarSpacing(spacing)
-	self:EnsureDB()
-
-	spacing = self:ClampSpacingSetting(spacing, 0, 20)
-
-	if not spacing then return end
-
-	ACABDB.stanceBarSpacing = spacing
-
-	self:ApplyStanceBarShape()
+	self:SetElementSpacing("stanceBarSpacing", spacing, 0, 20, self.ApplyStanceBarShape)
 end
 
 function ACAB:SetStanceBarScale(scale)
-	local pos
-
-	scale, pos = self:StoreCompensatedScale("stanceBarScale", "stanceBarPosition", self.stanceBarContainer, scale)
-
-	if not scale then return end
-
-	self:ApplyStanceBarShape()
-
-	if pos then
-		self:ApplyStanceBarPosition()
-	end
+	self:SetElementScale("stanceBarScale", "stanceBarPosition", self.stanceBarContainer, scale, self.ApplyStanceBarShape, self.ApplyStanceBarPosition)
 end
 
 function ACAB:SetStanceBarNativeHoverOnly(enabled)
@@ -894,21 +857,13 @@ function ACAB:ResetStanceBarLayout()
 end
 
 function ACAB:StartStanceBarDrag()
-	local pos = ACABDB.stanceBarPosition
-	if not pos then return end
-
-	self:StartSharedDrag("stanceBar", nil, pos.x or 0, pos.y or 0)
+	self:StartElementDrag("stanceBar")
 end
 
+-- Manually moved - stops auto-stacking its Y.
 function ACAB:StopStanceBarDrag()
-	self:StopSharedDrag()
-
-	-- Manually moved - stop auto-stacking its Y.
 	ACABDB.stanceBarUsesDefaultPosition = false
-
-	if self.RefreshBarSettingsPage then
-		self:RefreshBarSettingsPage(self.STANCE_BAR_ID)
-	end
+	self:StopElementDrag(self.STANCE_BAR_ID)
 end
 
 -------------------------------------------------------------------------

@@ -172,9 +172,7 @@ function ACAB:SetDefaultBarPaginationEnabled(enabled)
 	self:RefreshDefaultBarSlots()
 
 	-- Page Indicator visibility derives from this toggle (bar-1-only).
-	if self.ApplyPageIndicatorVisibility then
-		self:ApplyPageIndicatorVisibility()
-	end
+	self:ApplyPageIndicatorVisibility()
 end
 
 function ACAB:SetDefaultBarStanceSwapEnabled(enabled)
@@ -780,7 +778,12 @@ function ACAB:EnsureElementOverlayAndHover(elementKey, frame)
 	)
 
 	if element.hoverOnlyField then
-		self:ApplyHoverOnlyState(frame, ACABDB[element.hoverOnlyField], function() return ACABDB[element.hoverDurationField] or 3 end)
+		-- Built once per element; runs every Main Bar drag tick.
+		if not element.getHoverDuration then
+			element.getHoverDuration = function() return ACABDB[element.hoverDurationField] or 3 end
+		end
+
+		self:ApplyHoverOnlyState(frame, ACABDB[element.hoverOnlyField], element.getHoverDuration)
 	end
 end
 
@@ -838,9 +841,7 @@ function ACAB:ToggleElementGroupLock(elementKey)
 	self:ApplyMainBarGroupedElements()
 	self:ApplyDefaultLayoutEditVisual()
 
-	if self.RefreshBarSettingsPage then
-		self:RefreshBarSettingsPage(element.settingsKey)
-	end
+	self:RefreshBarSettingsPage(element.settingsKey)
 end
 
 -- Re-applies every groupable element: grouped ones to Main Bar, the rest to their own saved scale/position.
@@ -1713,7 +1714,7 @@ function ACAB:SetDefaultBarEnabled(id, enabled)
 	end
 
 	-- Cast Bar independently stacks above an actually-shown Pet Bar (GetCastBarBaselineY, NativeElements.lua).
-	if id == self.PET_BAR_ID and self:IsVanillaStackingActive() and self.ReflowCastBarForStackToggle then
+	if id == self.PET_BAR_ID and self:IsVanillaStackingActive() then
 		self:ReflowCastBarForStackToggle()
 	end
 

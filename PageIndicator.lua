@@ -433,9 +433,7 @@ function ACAB:StopPageIndicatorDrag()
 	if self.pageIndicatorFollowedBeforeDrag
 		and math.abs(cursorX - startX) < 3 and math.abs(cursorY - startY) < 3 then
 		ACABDB.mainBarPageIndicatorFollowsMainBar = true
-		if self.ApplyPageIndicatorPosition then
-			self:ApplyPageIndicatorPosition()
-		end
+		self:ApplyPageIndicatorPosition()
 	end
 
 	self.pageIndicatorFollowedBeforeDrag = nil
@@ -443,7 +441,5 @@ function ACAB:StopPageIndicatorDrag()
 	self.pageIndicatorCursorStartY = nil
 
 	-- Its Scale slider lives on Main Bar's settings page (barId 1).
-	if self.RefreshBarSettingsPage then
-		self:RefreshBarSettingsPage(1)
-	end
+	self:RefreshBarSettingsPage(1)
 end
