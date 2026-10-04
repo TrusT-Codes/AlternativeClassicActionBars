@@ -54,20 +54,27 @@ ACAB.DEFAULT_BAR_BINDING_PREFIXES = {
 	[5] = "MULTIACTIONBAR4BUTTON", -- Right 2.
 }
 
--- Hoverbind reference for a pool button (fixedSlotBar = default-bar button with a nativeBindingId).
-local function MakeButtonRef(btn, barId, slotIndex)
-	return {
-		kind = "custom",
-		frame = btn,
-		bindingId = ACAB:GetHoverBindingId(btn),
-		actionSlot = btn.actionSlot,
-		barId = barId,
-		slotIndex = slotIndex,
-		fixedSlotBar = btn.nativeBindingId and true or nil,
-	}
+-- Fills ref as the hoverbind reference for a pool button (fixedSlotBar = default-bar button with a nativeBindingId).
+local function FillButtonRef(ref, btn, barId, slotIndex)
+	ref.kind = "custom"
+	ref.frame = btn
+	ref.bindingId = ACAB:GetHoverBindingId(btn)
+	ref.actionSlot = btn.actionSlot
+	ref.barId = barId
+	ref.slotIndex = slotIndex
+	ref.fixedSlotBar = btn.nativeBindingId and true or nil
+
+	return ref
 end
 
--- Calls fn(ref) for every visible pool button.
+local function MakeButtonRef(btn, barId, slotIndex)
+	return FillButtonRef({}, btn, barId, slotIndex)
+end
+
+-- Reused by every ForEachButton call.
+local sharedButtonRef = {}
+
+-- Calls fn(ref) for every visible pool button. ref is one reused table: fn must not keep it.
 function ACAB:ForEachButton(fn)
 	local barId
 	for barId, bar in pairs(self.bars) do
@@ -76,7 +83,7 @@ function ACAB:ForEachButton(fn)
 			for i = 1, table.getn(bar.buttons) do
 				local btn = bar.buttons[i]
 				if btn and btn.slotVisible then
-					fn(MakeButtonRef(btn, barId, i))
+					fn(FillButtonRef(sharedButtonRef, btn, barId, i))
 				end
 			end
 		end
@@ -198,11 +205,26 @@ function ACAB:TintHoverBindButton(ref)
 		or HOVERBIND_UNBOUND_COLOR
 
 	icon:SetVertexColor(color[1], color[2], color[3])
+
+	-- Forces UpdateRange to repaint once hoverbind ends.
+	ref.frame.rangeKey = nil
 end
 
 -- Recomputes the button's normal range/usability tint immediately.
 local function RestoreButtonIconTint(ref)
 	ref.frame:UpdateRange()
+end
+
+local function TintHoverBindRef(ref)
+	ACAB:TintHoverBindButton(ref)
+end
+
+-- Tint ticker callback, built once instead of per tick.
+local function HoverBindTintTick()
+	-- Skips a tick queued before hoverbind mode turned off.
+	if ACAB:IsHoverBindMode() then
+		ACAB:ForEachButton(TintHoverBindRef)
+	end
 end
 
 -- Must re-tint on a ticker, not once: MultiBarRight/MultiBarLeft buttons revert to white after a one-shot tint.
@@ -216,18 +238,14 @@ function ACAB:ApplyHoverBindVisual(enabled)
 	end
 
 	if enabled then
-		self:ForEachButton(function(ref) self:TintHoverBindButton(ref) end)
-		if C_Timer and C_Timer.NewTicker then
-			self.hoverBindTintTicker = C_Timer.NewTicker(HOVERBIND_TINT_INTERVAL, function()
-				-- Skips a tick queued before hoverbind mode turned off.
-				if ACAB:IsHoverBindMode() then
-					ACAB:ForEachButton(function(ref) ACAB:TintHoverBindButton(ref) end)
-				end
-			end)
-		end
+		self:ForEachButton(TintHoverBindRef)
+		self.hoverBindTintTicker = C_Timer.NewTicker(HOVERBIND_TINT_INTERVAL, HoverBindTintTick)
 	else
 		self:ForEachButton(RestoreButtonIconTint)
 	end
+
+	-- Empty slots show while binding and revert to their normal visibility afterwards.
+	self:SweepCustomBarGridVisibility()
 
 	local captureFrame = self.hoverBindCaptureFrame
 	if captureFrame then
@@ -292,9 +310,10 @@ end
 -- Refreshes tint/hotkey text for hovered after its binding changed.
 local function RefreshHoverBindTarget(hovered)
 	ACAB:TintHoverBindButton(hovered)
-	if hovered.frame.UpdateHotkeyText then
-		hovered.frame:UpdateHotkeyText()
-	end
+	-- A key moved off another button must clear that button's hotkey text too.
+	ACAB:ForEachPoolButton(function(btn)
+		btn:UpdateHotkeyText()
+	end)
 end
 
 -- Binds combo to the hovered button's action (replacing its old keys), saves, and refreshes it.

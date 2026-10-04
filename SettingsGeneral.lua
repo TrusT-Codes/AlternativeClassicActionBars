@@ -529,6 +529,11 @@ end
 
 -- Pasted-string import onto the active profile (validated live), then reload.
 function ACAB:ShowImportProfileDialog()
+	if self:IsBuiltInProfileName(ACABCharDB and ACABCharDB.activeProfile) then
+		self:Print("Built-in profiles cannot be overwritten - create or select a custom profile first.")
+		return
+	end
+
 	self:ShowDialog({
 		title = "Import Profile",
 		message = "You are about to Import a Profile on to your currently " ..
@@ -544,9 +549,13 @@ function ACAB:ShowImportProfileDialog()
 				isDefault = true,
 				validate = ValidateImportText,
 				onClick = function(value)
-					local ok, data = ACAB:ParseProfileImportString(value)
+					local ok, data, warning = ACAB:ParseProfileImportString(value)
 
 					if ok then
+						if warning then
+							ACAB:Print(warning)
+						end
+
 						ACAB:ApplyImportedProfileData(data)
 						ReloadUI()
 					end
@@ -1333,13 +1342,11 @@ function ACAB:HighlightGeneralLayoutCheckbox()
 	strip:Show()
 
 	-- Three pulses.
-	if C_Timer then
-		C_Timer.After(0.45, function() strip:Hide() end)
-		C_Timer.After(0.75, function() strip:Show() end)
-		C_Timer.After(1.2, function() strip:Hide() end)
-		C_Timer.After(1.5, function() strip:Show() end)
-		C_Timer.After(1.95, function() strip:Hide() end)
-	end
+	C_Timer.After(0.45, function() strip:Hide() end)
+	C_Timer.After(0.75, function() strip:Show() end)
+	C_Timer.After(1.2, function() strip:Hide() end)
+	C_Timer.After(1.5, function() strip:Show() end)
+	C_Timer.After(1.95, function() strip:Hide() end)
 end
 
 function ACAB:ShowProfilesView()

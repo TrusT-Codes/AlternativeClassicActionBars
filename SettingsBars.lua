@@ -277,6 +277,7 @@ local function CreateDropdownRow(parent, y, labelText, dropdownWidth, dropdownNa
 	dropdown:SetPoint("LEFT", label, "RIGHT", -8, -2)
 	dropdown:SetOptions(options)
 
+	row.label = label
 	row.dropdown = dropdown
 
 	return row, dropdown
@@ -807,7 +808,7 @@ local GRID_LAYOUT_LOCKS = {
 }
 
 -- (Re)builds a page's swatch row at swatchY from GetGridPresetsForBar(barId). Stance Bar's presets are live,
--- so its row is rebuilt on every page refresh.
+-- so its row is rebuilt on every page refresh. Swatches are pooled per page by preset and only created once.
 local function RebuildGridSwatches(page, barId, swatchY)
 	local i
 
@@ -825,13 +826,26 @@ local function RebuildGridSwatches(page, barId, swatchY)
 
 	page.gridSwatches = {}
 
+	if not page.gridSwatchPool then
+		page.gridSwatchPool = {}
+	end
+
 	local gridPresets = GetGridPresetsForBar(barId)
 
+	-- page.noStancesText is set only while shown (hover reflow and height fit read it); the FontString is pooled.
 	if barId == ACAB.STANCE_BAR_ID and table.getn(gridPresets) == 0 then
-		local noStancesText = page:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		local noStancesText = page.noStancesTextPooled
 
+		if not noStancesText then
+			noStancesText = page:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+			noStancesText:SetText("No stances currently available.")
+
+			page.noStancesTextPooled = noStancesText
+		end
+
+		noStancesText:ClearAllPoints()
 		noStancesText:SetPoint("TOPLEFT", page, "TOPLEFT", ACAB.INDENT_CONTROL, swatchY)
-		noStancesText:SetText("No stances currently available.")
+		noStancesText:Show()
 
 		page.noStancesText = noStancesText
 	end
@@ -841,18 +855,30 @@ local function RebuildGridSwatches(page, barId, swatchY)
 
 	for i = 1, table.getn(gridPresets) do
 		local preset = gridPresets[i]
+		local poolKey = tostring(preset.cols) .. "x" .. tostring(preset.rows)
+		local swatch = page.gridSwatchPool[poolKey]
 
-		local swatch = CreateGridSwatch(page, preset)
+		if swatch then
+			-- Back to a new swatch's state; selection and gating re-run after every rebuild.
+			ACAB:LockControl(swatch, false)
+			swatch:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+			swatch:Show()
+		else
+			swatch = CreateGridSwatch(page, preset)
+
+			swatch.page = page
+
+			swatch:SetScript("OnClick", GridSwatch_OnClick)
+
+			-- Once per swatch: a second guard would wrap the first.
+			if lock then
+				ACAB:InstallGroupLockGuard(swatch, lock.isLocked, lock.text, lock.onLockedClick)
+			end
+
+			page.gridSwatchPool[poolKey] = swatch
+		end
 
 		swatch:SetPoint("TOPLEFT", page, "TOPLEFT", xOffset, swatchY)
-
-		swatch.page = page
-
-		swatch:SetScript("OnClick", GridSwatch_OnClick)
-
-		if lock then
-			ACAB:InstallGroupLockGuard(swatch, lock.isLocked, lock.text, lock.onLockedClick)
-		end
 
 		page.gridSwatches[i] = swatch
 
@@ -1105,28 +1131,26 @@ function ACAB:HighlightMainBarArtModeDropdown()
 	strip:Show()
 
 	-- Three on/off pulses; steps from an older call are skipped.
-	if C_Timer then
-		local generation = strip.pulseGeneration
-		local function Step(show)
-			return function()
-				if strip.pulseGeneration ~= generation then
-					return
-				end
+	local generation = strip.pulseGeneration
+	local function Step(show)
+		return function()
+			if strip.pulseGeneration ~= generation then
+				return
+			end
 
-				if show then
-					strip:Show()
-				else
-					strip:Hide()
-				end
+			if show then
+				strip:Show()
+			else
+				strip:Hide()
 			end
 		end
-
-		C_Timer.After(0.45, Step(false))
-		C_Timer.After(0.75, Step(true))
-		C_Timer.After(1.2, Step(false))
-		C_Timer.After(1.5, Step(true))
-		C_Timer.After(1.95, Step(false))
 	end
+
+	C_Timer.After(0.45, Step(false))
+	C_Timer.After(0.75, Step(true))
+	C_Timer.After(1.2, Step(false))
+	C_Timer.After(1.5, Step(true))
+	C_Timer.After(1.95, Step(false))
 end
 
 -- Opens Main Bar's page, then pulses its art-mode dropdown - for locked controls on other pages.
@@ -3231,7 +3255,7 @@ end
 local EXTRA_BAR_ASSIGNMENT_DROPDOWN_OPTIONS = BuildExtraBarAssignmentDropdownOptions()
 
 -- One assignment row (unanchored). getFn/setFn use the raw ACABDB value (6-9, -1 or nil), never the
--- 0 sentinel. dropdownName must be unique per rebuild (see RebuildDefaultBarAssignmentRows).
+-- 0 sentinel. dropdownName must be unique per pool slot, and each pool slot is created once (see RebuildDefaultBarAssignmentRows).
 local function CreateExtraBarAssignmentRow(parent, labelText, getFn, setFn, dropdownName)
 	local row, dropdown = CreateDropdownRow(parent, nil, labelText, 140, dropdownName, EXTRA_BAR_ASSIGNMENT_DROPDOWN_OPTIONS)
 
@@ -3246,13 +3270,86 @@ local function CreateExtraBarAssignmentRow(parent, labelText, getFn, setFn, drop
 		RefreshValue()
 	end
 
+	row.RefreshValue = RefreshValue
+
 	RefreshValue()
 
 	return row
 end
 
+-- Re-shows a pooled assignment row with a new label: unlocked like a new row, width and value re-applied.
+local function ReuseExtraBarAssignmentRow(row, labelText)
+	local dropdown = row.dropdown
+
+	row.label:SetText(labelText)
+
+	-- Same lookup as ApplyProfileLockGating; it re-locks after RefreshBarSettingsPage's rebuild.
+	local dropdownButton = getglobal(dropdown:GetName() .. "Button")
+
+	if dropdownButton then
+		ACAB:LockControl(dropdownButton, false)
+	else
+		ACAB:LockControl(dropdown, false)
+	end
+
+	UIDropDownMenu_SetWidth(dropdown.widthPixels, dropdown)
+	row.RefreshValue()
+
+	row:Show()
+end
+
+-- Stance row for form s on default bar barId, created once per page pool slot.
+local function CreateStanceAssignmentRow(container, barId, s, labelText)
+	return CreateExtraBarAssignmentRow(
+		container,
+		labelText,
+		function()
+			return ACABDB.defaultBarStanceBarAssignment
+				and ACABDB.defaultBarStanceBarAssignment[barId]
+				and ACABDB.defaultBarStanceBarAssignment[barId][s]
+		end,
+		function(value)
+			if not ACABDB.defaultBarStanceBarAssignment then
+				ACABDB.defaultBarStanceBarAssignment = {}
+			end
+
+			if not ACABDB.defaultBarStanceBarAssignment[barId] then
+				ACABDB.defaultBarStanceBarAssignment[barId] = {}
+			end
+
+			ACABDB.defaultBarStanceBarAssignment[barId][s] = value
+
+			ACAB:RefreshDefaultBarSlots()
+		end,
+		"ACABDefaultBarStanceAssignmentDropdown" .. tostring(barId) .. "_" .. tostring(s)
+	)
+end
+
+-- "Page 2 Content Source" row for default bar barId, created once per page.
+local function CreatePageAssignmentRow(container, barId)
+	return CreateExtraBarAssignmentRow(
+		container,
+		"Page 2 Content Source:",
+		function()
+			return ACABDB.defaultBarPageBarAssignment
+				and ACABDB.defaultBarPageBarAssignment[barId]
+		end,
+		function(value)
+			if not ACABDB.defaultBarPageBarAssignment then
+				ACABDB.defaultBarPageBarAssignment = {}
+			end
+
+			ACABDB.defaultBarPageBarAssignment[barId] = value
+
+			ACAB:RefreshDefaultBarSlots()
+		end,
+		"ACABDefaultBarPageBarAssignmentDropdown" .. tostring(barId)
+	)
+end
+
 -- Rebuilds default bar barId's (1-5) assignment rows: one per stance (if stance swap is on) plus one
--- Page 2 row (if pagination is on). No-op if the page isn't built.
+-- Page 2 row (if pagination is on). Rows are pooled per page (stance rows by form index, "page" for the
+-- Page 2 row) and only created once. No-op if the page isn't built.
 function ACAB:RebuildDefaultBarAssignmentRows(barId)
 	local page = ACAB.settingsFrame and ACAB.settingsFrame.pages[barId]
 
@@ -3260,23 +3357,23 @@ function ACAB:RebuildDefaultBarAssignmentRows(barId)
 		return
 	end
 
-	-- DropDownList1 is one shared popout; close it before tearing down its owner.
+	-- DropDownList1 is one shared popout; close it before re-pointing its owner.
 	if CloseDropDownMenus then
 		CloseDropDownMenus()
 	end
 
-	-- Per-rebuild suffix on every dropdown name: must stay, or same-named dropdowns corrupt each other's
-	-- native sub-piece lookups (fragmented skin / blank label).
-	page.assignmentRebuildGeneration = (page.assignmentRebuildGeneration or 0) + 1
+	-- Each pooled dropdown's name is created exactly once: a second CreateFrame with the same name would make a
+	-- second frame and corrupt native sub-piece lookups (fragmented skin / blank label).
+	if not page.assignmentRowPool then
+		page.assignmentRowPool = {}
+	end
 
-	local generationSuffix = "_" .. tostring(page.assignmentRebuildGeneration)
-
+	local pool = page.assignmentRowPool
 	local container = page.assignmentContainer
 	local i
 
 	for i = 1, table.getn(page.assignmentRows) do
 		page.assignmentRows[i]:Hide()
-		page.assignmentRows[i]:SetParent(nil)
 	end
 
 	page.assignmentRows = {}
@@ -3285,39 +3382,24 @@ function ACAB:RebuildDefaultBarAssignmentRows(barId)
 	local y = 0
 
 	local stanceSwapOn = ACABDB.defaultBarStanceSwapEnabled ~= false
-	local count = stanceSwapOn and GetNumShapeshiftForms and GetNumShapeshiftForms() or 0
+	local count = stanceSwapOn and ACAB:GetClampedLiveStanceCount() or 0
 
 	if count and count > 0 then
 		local s
 
 		for s = 1, count do
 			local icon, name = GetShapeshiftFormInfo(s)
-			local label = (name and name ~= "" and name) or ("Stance " .. tostring(s))
+			local label = ((name and name ~= "" and name) or ("Stance " .. tostring(s))) .. ":"
+			local row = pool[s]
 
-			local row = CreateExtraBarAssignmentRow(
-				container,
-				label .. ":",
-				function()
-					return ACABDB.defaultBarStanceBarAssignment
-						and ACABDB.defaultBarStanceBarAssignment[barId]
-						and ACABDB.defaultBarStanceBarAssignment[barId][s]
-				end,
-				function(value)
-					if not ACABDB.defaultBarStanceBarAssignment then
-						ACABDB.defaultBarStanceBarAssignment = {}
-					end
+			if row then
+				ReuseExtraBarAssignmentRow(row, label)
+			else
+				row = CreateStanceAssignmentRow(container, barId, s, label)
+				pool[s] = row
+			end
 
-					if not ACABDB.defaultBarStanceBarAssignment[barId] then
-						ACABDB.defaultBarStanceBarAssignment[barId] = {}
-					end
-
-					ACABDB.defaultBarStanceBarAssignment[barId][s] = value
-
-					ACAB:RefreshDefaultBarSlots()
-				end,
-				"ACABDefaultBarStanceAssignmentDropdown" .. tostring(barId) .. "_" .. tostring(s) .. generationSuffix
-			)
-
+			row:ClearAllPoints()
 			row:SetPoint("TOPLEFT", container, "TOPLEFT", 0, y)
 
 			rowIndex = rowIndex + 1
@@ -3328,25 +3410,16 @@ function ACAB:RebuildDefaultBarAssignmentRows(barId)
 	end
 
 	if ACABDB.defaultBarPaginationEnabled ~= false then
-		local row = CreateExtraBarAssignmentRow(
-			container,
-			"Page 2 Content Source:",
-			function()
-				return ACABDB.defaultBarPageBarAssignment
-					and ACABDB.defaultBarPageBarAssignment[barId]
-			end,
-			function(value)
-				if not ACABDB.defaultBarPageBarAssignment then
-					ACABDB.defaultBarPageBarAssignment = {}
-				end
+		local row = pool.page
 
-				ACABDB.defaultBarPageBarAssignment[barId] = value
+		if row then
+			ReuseExtraBarAssignmentRow(row, "Page 2 Content Source:")
+		else
+			row = CreatePageAssignmentRow(container, barId)
+			pool.page = row
+		end
 
-				ACAB:RefreshDefaultBarSlots()
-			end,
-			"ACABDefaultBarPageBarAssignmentDropdown" .. tostring(barId) .. generationSuffix
-		)
-
+		row:ClearAllPoints()
 		row:SetPoint("TOPLEFT", container, "TOPLEFT", 0, y)
 
 		rowIndex = rowIndex + 1
@@ -3365,7 +3438,7 @@ function ACAB:RebuildDefaultBarAssignmentRows(barId)
 	container:SetHeight(height)
 end
 
--- Rebuilds the assignment rows of every default bar (1-5) page built this session.
+-- Refreshes every default bar (1-5) page built this session, so its assignment rows are rebuilt and re-gated.
 function ACAB:RebuildAllDefaultBarAssignmentRows()
 	if not ACAB.settingsFrame then
 		return
@@ -3375,7 +3448,7 @@ function ACAB:RebuildAllDefaultBarAssignmentRows()
 
 	for id = 1, 5 do
 		if ACAB.settingsFrame.pages[id] then
-			self:RebuildDefaultBarAssignmentRows(id)
+			self:RefreshBarSettingsPage(id)
 		end
 	end
 end
@@ -3599,9 +3672,18 @@ end
 -------------------------------------------------------------------------
 
 -- One sidebar row for a default bar, simple page or Extra Bar, with an inline enable checkbox where the
--- element can be toggled. generationSuffix keeps checkbox names unique per RefreshBarList rebuild.
-local function CreateBarListRow(barId, isDefault, cfg, generationSuffix)
-	local row = ACAB:CreateListRow(ACAB.settingsFrame.listContent, nil)
+-- element can be toggled. Rows and checkboxes are pooled per barId and reconfigured on every refresh.
+local function CreateBarListRow(barId, isDefault, cfg)
+	local rowPool = ACAB.settingsFrame.barRowPool
+	local row = rowPool[barId]
+
+	if row then
+		row:Show()
+		row:SetSelected(false)
+	else
+		row = ACAB:CreateListRow(ACAB.settingsFrame.listContent, nil)
+		rowPool[barId] = row
+	end
 
 	-- Fits the longest name ("Right Action Bar 2") plus the inline checkbox.
 	row:SetWidth(110)
@@ -3655,18 +3737,25 @@ local function CreateBarListRow(barId, isDefault, cfg, generationSuffix)
 		end
 	end
 
+	if not wantsCheckbox and row.checkbox then
+		row.checkbox:Hide()
+	end
+
 	if wantsCheckbox then
-		local checkbox = CreateFrame(
+		-- One named frame per barId for the whole session (see known-problems.md: same-name CreateFrame).
+		local checkbox = row.checkbox or CreateFrame(
 			"CheckButton",
-			-- Rebuild-unique name (see RefreshBarList).
-			"ACABBarList" .. tostring(barId) .. "Checkbox" .. generationSuffix,
+			"ACABBarList" .. tostring(barId) .. "Checkbox",
 			ACAB.settingsFrame.listContent,
 			"UICheckButtonTemplate"
 		)
 
+		checkbox:Show()
+
 		checkbox:SetWidth(20)
 		checkbox:SetHeight(20)
 
+		checkbox:ClearAllPoints()
 		checkbox:SetPoint("LEFT", row, "RIGHT", 2, 0)
 
 		checkbox:SetChecked(checkedState)
@@ -3697,18 +3786,16 @@ local function CreateBarListRow(barId, isDefault, cfg, generationSuffix)
 
 		if not isNumberedDefaultBar then
 			ACAB:LockControl(checkbox, ACAB:IsDefaultProfileActive())
-		end
-
-		-- Bar 5's checkbox mirrors its page's enableCheckbox lock.
-		if isNumberedDefaultBar and barId == 5 then
+		elseif barId == 5 then
+			-- Bar 5's checkbox mirrors its page's enableCheckbox lock.
 			ACAB:LockControl(checkbox, not IsBar5EnableAllowed())
+		else
+			ACAB:LockControl(checkbox, false)
 		end
 	end
 
 	-- Greys out (and blocks) bar 5's row itself while it can't be enabled.
-	if isDefault and barId == 5 then
-		row:SetDisabled(not IsBar5EnableAllowed())
-	end
+	row:SetDisabled(isDefault and barId == 5 and not IsBar5EnableAllowed())
 
 	return row
 end
@@ -3734,15 +3821,16 @@ function ACAB:RefreshBarList()
 	ACAB.settingsFrame.barButtons = {}
 	ACAB.settingsFrame.barButtonsByBarId = {}
 
-	-- Per-rebuild suffix for the rows' checkbox names, same as RebuildDefaultBarAssignmentRows.
-	ACAB.settingsFrame.barListRebuildGeneration = (ACAB.settingsFrame.barListRebuildGeneration or 0) + 1
-	local generationSuffix = "_" .. tostring(ACAB.settingsFrame.barListRebuildGeneration)
+	if not ACAB.settingsFrame.barRowPool then
+		ACAB.settingsFrame.barRowPool = {}
+	end
 
 	local yOffset = -24
 	local rowIndex = 0
 
 	-- Anchors row at the running offset and records it under key.
 	local function PlaceRow(row, key)
+		row:ClearAllPoints()
 		row:SetPoint("TOPLEFT", ACAB.settingsFrame.listContent, "TOPLEFT", 0, yOffset)
 
 		rowIndex = rowIndex + 1
@@ -3760,7 +3848,7 @@ function ACAB:RefreshBarList()
 		local cfg = ACABDB.defaultBars[id]
 
 		if cfg then
-			PlaceRow(CreateBarListRow(id, true, cfg, generationSuffix), id)
+			PlaceRow(CreateBarListRow(id, true, cfg), id)
 		end
 	end
 
@@ -3778,19 +3866,27 @@ function ACAB:RefreshBarList()
 		end
 
 		if exists then
-			PlaceRow(CreateBarListRow(key, true, nil, generationSuffix), key)
+			PlaceRow(CreateBarListRow(key, true, nil), key)
 		end
 	end
 
 	-- Divider between default and custom bars; tracked in barButtons (not barButtonsByBarId) so it's
 	-- hidden/recreated with the rows.
-	local divider = ACAB.settingsFrame.listContent:CreateTexture(nil, "ARTWORK")
+	local divider = ACAB.settingsFrame.barListDivider
 
-	divider:SetTexture("Interface\\Buttons\\WHITE8X8")
-	divider:SetVertexColor(0.5, 0.5, 0.5, 0.6)
-	divider:SetWidth(120)
-	divider:SetHeight(2)
+	if not divider then
+		divider = ACAB.settingsFrame.listContent:CreateTexture(nil, "ARTWORK")
 
+		divider:SetTexture("Interface\\Buttons\\WHITE8X8")
+		divider:SetVertexColor(0.5, 0.5, 0.5, 0.6)
+		divider:SetWidth(120)
+		divider:SetHeight(2)
+
+		ACAB.settingsFrame.barListDivider = divider
+	end
+
+	divider:Show()
+	divider:ClearAllPoints()
 	divider:SetPoint("TOPLEFT", ACAB.settingsFrame.listContent, "TOPLEFT", 2, yOffset + 2)
 
 	rowIndex = rowIndex + 1
@@ -3804,7 +3900,7 @@ function ACAB:RefreshBarList()
 		local cfg = ACABDB.bars[i]
 
 		if cfg then
-			PlaceRow(CreateBarListRow(cfg.id, false, cfg, generationSuffix), cfg.id)
+			PlaceRow(CreateBarListRow(cfg.id, false, cfg), cfg.id)
 		end
 	end
 

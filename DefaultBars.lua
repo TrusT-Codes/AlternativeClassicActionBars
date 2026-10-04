@@ -270,7 +270,7 @@ end
 local function WaitForMainBarArtSettle(callback)
 	local artFrame = MainMenuBarArtFrame
 
-	if not artFrame or not C_Timer or not C_Timer.NewTicker then
+	if not artFrame then
 		WarmMainBarArtAncestorChain()
 		callback(artFrame and artFrame:GetLeft(), artFrame and artFrame:GetTop())
 		return
