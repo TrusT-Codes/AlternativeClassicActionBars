@@ -1689,38 +1689,19 @@ function ACAB:ApplyModernLayoutGeometry()
 	self:ApplyModernCornerClusterLayout()
 end
 
--- Centers the Experience Bar at the bottom of its settings page's Y range.
-local function PlaceExpBarAtBottom()
-	local frame = getglobal(ACAB.EXP_BAR_FRAME_NAME)
-
-	if not frame then
-		return
-	end
-
-	local _, _, minY = ACAB:GetSimpleElementCoordinateRange(frame, 2)
-
-	if not minY then
-		return
-	end
-
-	ACABDB.expBarPosition = {
-		point = "CENTER", relativePoint = "CENTER", visualCenter = true,
-		x = 0,
-		y = minY,
-	}
-
-	ACAB:ApplyExpBarPosition()
-end
-
 -- Applies the pending baseline ("modern" geometry or the "vanilla" reset) to the live bars.
 local function RunLayoutBaselinePass(self, layout)
 	if layout == "modern" then
 		-- must place the Exp Bar first: GetModernBaseExpBarClearance reads its saved position
-		PlaceExpBarAtBottom()
+		self:PlaceExpBarAtBottom()
+		self:ResetCastBarLayout()
 		self:ApplyModernLayoutGeometry()
 	elseif layout == "vanilla" then
 		self:ResetAllElementsToVanillaLayout()
 	end
+
+	-- Native GameTooltip spot at the current UI scale.
+	self:ResetTooltipLayout()
 
 	if ACABDB.pendingDisableExtraBars then
 		ACABDB.pendingDisableExtraBars = nil
@@ -1750,6 +1731,8 @@ function ACAB:ApplyPendingLayoutBaseline()
 		ACABDB.pendingLayoutBaseline = nil
 
 		RunLayoutBaselinePass(ACAB, layout)
+
+		ACABDB.layoutUIScale = UIParent:GetEffectiveScale()
 
 		ACAB:SaveActiveProfileData()
 
@@ -1858,6 +1841,14 @@ function ACAB:SetDefaultBarEnabled(id, enabled)
 		if control and control.SetChecked then
 			control:SetChecked(enabled)
 		end
+	end
+
+	-- What MultiActionBar_Update would do: ActionBar_PageUp/Down skip the pages of shown bars.
+	local pageGlobal = ACAB.DEFAULT_BAR_PAGE_GLOBAL[id]
+	local page = pageGlobal and getglobal(pageGlobal)
+
+	if page and VIEWABLE_ACTION_BAR_PAGES then
+		VIEWABLE_ACTION_BAR_PAGES[page] = (not enabled) and 1 or nil
 	end
 
 	self:FixRightActionBar2Checkbox()

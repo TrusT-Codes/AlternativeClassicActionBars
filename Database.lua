@@ -401,11 +401,9 @@ function ACAB:ReapplyAfterNativeRecapture()
 	self:Print("All Bars and UI-Elements applied to their correct position after recapture.")
 end
 
--- Clears the stored native anchor + position of Key Ring/Latency Bar/Exp Bar/Cast Bar so the next reload
--- recaptures them.
-function ACAB:RecaptureWrappedNativeFrameAnchors()
-	self:EnsureDB()
-
+-- Clears the stored native anchor + position of Key Ring/Latency Bar/Exp Bar/Cast Bar so the next login's
+-- "native capture" stage recaptures them.
+local function ClearWrappedNativeFrameAnchors()
 	ACABDB.keyRingPosition = nil
 	ACABDB.keyRingNativeAnchor = nil
 	ACABDB.latencyBarPosition = nil
@@ -417,8 +415,102 @@ function ACAB:RecaptureWrappedNativeFrameAnchors()
 
 	-- Must clear alongside castBarPosition above, or the stack-reflow floor stays stale.
 	ACABDB.castBarStackBaseY = nil
+end
+
+-- /acab recapture: clears Key Ring/Latency Bar/Exp Bar/Cast Bar's native anchors so the next reload recaptures them.
+function ACAB:RecaptureWrappedNativeFrameAnchors()
+	self:EnsureDB()
+
+	ClearWrappedNativeFrameAnchors()
 
 	self:Print("Key Ring/Latency Bar/Exp Bar/Cast Bar native anchors cleared - /reload now to capture them fresh.")
+end
+
+-------------------------------------------------------------------------
+-- UI scale change: ACABDB.layoutUIScale is the UIParent effective scale the profile was laid out at
+-------------------------------------------------------------------------
+
+-- Scale differences below this count as unchanged.
+local UI_SCALE_TOLERANCE = 0.001
+
+-- Multiplies x/y of every canonical position table inside t by ratio.
+local function ScaleCanonicalPositions(self, t, ratio, depth)
+	if depth > 6 then
+		return
+	end
+
+	local k, v
+
+	for k, v in pairs(t) do
+		if type(v) == "table" then
+			if self:IsCanonicalPosition(v) and type(v.x) == "number" and type(v.y) == "number" then
+				v.x = v.x * ratio
+				v.y = v.y * ratio
+			end
+
+			ScaleCanonicalPositions(self, v, ratio, depth + 1)
+		end
+	end
+end
+
+-- Recaptures every default bar's native anchor/spacing without moving the bars themselves.
+local function RefreshDefaultBarNativeAnchors(self)
+	local fresh = seedDefaultBars(self)
+	local i
+
+	for i = 1, table.getn(self.DEFAULT_BAR_IDS) do
+		local id = self.DEFAULT_BAR_IDS[i]
+		local oldCfg = ACABDB.defaultBars[id]
+		local newCfg = fresh[id]
+
+		if oldCfg and newCfg and newCfg.nativeAnchor then
+			oldCfg.nativeAnchor = newCfg.nativeAnchor
+			oldCfg.nativeSpacing = newCfg.nativeSpacing
+		end
+	end
+end
+
+-- Login, before the "anchor recapture" stage: on a UI scale change, a built-in profile is rebuilt for the new scale
+-- (native recapture + its layout baseline pass + one reload), a custom profile's positions are scaled so every
+-- element keeps its screen spot. A profile without a stored scale just records the current one.
+function ACAB:HandleUIScaleChange()
+	local current = UIParent:GetEffectiveScale()
+	local saved = ACABDB.layoutUIScale
+
+	if not current or current <= 0 then
+		return
+	end
+
+	if not saved or saved <= 0 then
+		ACABDB.layoutUIScale = current
+		return
+	end
+
+	if math.abs(saved - current) < UI_SCALE_TOLERANCE then
+		return
+	end
+
+	if self:IsBuiltInProfileName(self.activeProfileName) then
+		-- layoutUIScale is written by ApplyPendingLayoutBaseline once the pass ran.
+		if self.activeProfileName == self.MODERN_PROFILE_NAME then
+			ACABDB.pendingLayoutBaseline = "modern"
+		else
+			ACABDB.pendingLayoutBaseline = "vanilla"
+		end
+
+		ACABDB.pendingDefaultBarRecapture = true
+		ClearWrappedNativeFrameAnchors()
+
+		self:Print("UI scale changed - rebuilding \"" .. self.activeProfileName .. "\" for the new scale.")
+		return
+	end
+
+	ScaleCanonicalPositions(self, ACABDB, saved / current, 1)
+	RefreshDefaultBarNativeAnchors(self)
+	ACABDB.castBarStackBaseY = nil
+	ACABDB.layoutUIScale = current
+
+	self:Print("UI scale changed - moved this profile's elements so they keep their screen positions.")
 end
 
 -- Fallback Extra Bar position (stacked vertically by index) when the reference bar's native anchor is missing.
@@ -435,8 +527,8 @@ local EXTRA_BAR_DEFAULT_REFERENCE = {
 	[3] = { refId = 5, side = "left",  pitchCount = 2 }, -- Extra Bar 4: left of Right Action Bar 2 (double pitch, i.e. left of Extra Bar 3).
 }
 
--- Extra Bar `index`'s default layout (seeding and ResetExtraBarLayout): the reference bar's size, spacing and grid,
--- one bar pitch (its frame plus its own button gap) above/left of it. Reads the built reference bar's current
+-- Extra Bar `index`'s default layout (seeding and ResetExtraBarLayout): the reference bar's size and spacing, its
+-- vanilla grid, one bar pitch (the Extra Bar's frame plus its button gap) above/left of it. Reads the built reference bar's current
 -- config, else its Reset-to-Vanilla values. Returns TOPLEFT/BOTTOMLEFT x, y, cols, rows, buttonSize, spacing.
 function ACAB:GetDefaultExtraBarLayout(index)
 	local ref = EXTRA_BAR_DEFAULT_REFERENCE[index]
@@ -455,38 +547,36 @@ function ACAB:GetDefaultExtraBarLayout(index)
 		left, right, bottom, top = self:GetPositionFrameRect(refBar, refCfg, "TOPLEFT")
 	end
 
-	local buttonSize, spacing, cols, rows
+	local buttonSize, spacing
+
+	-- Always the reference bar's vanilla grid (12x1 above bars 2/3, 1x12 left of bar 5), whatever its current grid.
+	local cols = grid.cols
+	local rows = grid.rows
 
 	if left then
 		buttonSize = refCfg.buttonSize
 		spacing = refCfg.spacing or 0
-		cols = refCfg.cols or grid.cols
-		rows = refCfg.rows or grid.rows
 	else
 		-- Same values ResetDefaultBarLayout gives the reference bar (Modern style: corner shifted up-left).
 		local shift = self:IsVanillaBorderStyle() and 0 or self.MODERN_BUTTON_SIZE_POSITION_SHIFT
 
 		buttonSize = self:GetCurrentButtonSizeBaseline()
 		spacing = self:GetDefaultBarNativeSpacing(refCfg)
-		cols = grid.cols
-		rows = grid.rows
-
-		local width, height = self:GetBarFrameSize({ cols = cols, rows = rows, buttonCount = cols * rows, buttonSize = buttonSize, spacing = spacing })
 
 		left = refCfg.nativeAnchor.x - shift
 		top = refCfg.nativeAnchor.y + shift
-		right = left + width
-		bottom = top - height
 	end
 
+	-- Pitch is the Extra Bar's own frame plus its button gap.
+	local width, height = self:GetBarFrameSize({ cols = cols, rows = rows, buttonCount = cols * rows, buttonSize = buttonSize, spacing = spacing })
 	local gap = self:GetBarEffectiveSpacing({ buttonSize = buttonSize, spacing = spacing })
 	local x = left
 	local y = top
 
 	if ref.side == "above" then
-		y = top + (((top - bottom) + gap) * ref.pitchCount)
+		y = top + ((height + gap) * ref.pitchCount)
 	elseif ref.side == "left" then
-		x = left - (((right - left) + gap) * ref.pitchCount)
+		x = left - ((width + gap) * ref.pitchCount)
 	end
 
 	return x, y, cols, rows, buttonSize, spacing
@@ -853,7 +943,7 @@ local SANITIZE_NUMBER_KEYS = {
 	"bagBarHoverDuration", "microMenuHoverDuration", "latencyBarHoverDuration", "expBarHoverDuration",
 	"expBarGlowPulseInterval", "microMenuCols", "microMenuRows", "stanceBarNativeGap",
 	"bagBarSpacing", "bagBarNativeSpacing", "microMenuSpacing", "microMenuNativeSpacing", "stanceBarSpacing",
-	"stanceBarNativeSpacing", "castBarStackBaseY",
+	"stanceBarNativeSpacing", "castBarStackBaseY", "layoutUIScale",
 }
 
 -- Numbers that must stay above 0 (scales, font sizes, grid size).
