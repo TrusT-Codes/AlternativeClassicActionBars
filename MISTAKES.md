@@ -45,6 +45,7 @@ Solved mistakes, so they don't happen twice. Each entry has three parts: **what 
 - **What happened:** diagnostics were written for a 511-character `/run` limit.
 - **Root cause:** an unverified figure. The live limit is 261 characters total.
 - **Prevention:** count the full command, `/run ` included. Anything longer goes into a temporary `/acab diagN`.
+- **Update (2026-10-04):** a 259-character `/run` was cut off live (`'end' expected near <eof>`). Stay at 250 or below until the exact limit is re-checked.
 
 ### Live check that didn't reproduce the native call
 - **What happened:** a `/run` calling `ExhaustionTick_Update()` showed no repaint, and another used the global `ACAB`, which doesn't exist (the global is `AlternativeClassicActionBars`). One test also left `event` set and broke chat.
@@ -260,3 +261,8 @@ Solved mistakes, so they don't happen twice. Each entry has three parts: **what 
 - **What happened:** turning Better Experience Bar off left the custom color in place.
 - **Root cause:** the off branch was an early `return`.
 - **Prevention:** "off" must actively restore the native baseline, not just skip applying.
+
+### Backslashes lost through a shell heredoc
+- **What happened:** the macro `?`-icon check never matched live. `Button.lua` held `"interface\icons\..."`: Lua reads `\i` as `i`, so the constant had no backslashes. `luac -p` accepted it, and the offline harness passed because its test string went through the same heredoc and lost its backslashes too.
+- **Root cause:** code was written into a file through a bash heredoc / generated Lua script that collapsed `\\` to `\`.
+- **Prevention:** write code and harness files that contain backslashes with the Edit/Write tools, never a shell heredoc. After any scripted edit, grep the result for texture paths with single backslashes.

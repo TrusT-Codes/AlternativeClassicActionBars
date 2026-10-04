@@ -1880,6 +1880,10 @@ function ACAB:RunLoginSequence(earlyLeft, earlyTop, settledLeft, settledTop, wai
 		ACAB:CheckForUpdates()
 	end)
 
+	RunLoginStage(failures, "macro addon note", function()
+		ACAB:PrintMacroAddonNote()
+	end)
+
 	-- A pending baseline reloads shortly; the wizard resumes after that reload.
 	RunLoginStage(failures, "startup dialogs", function()
 		if baselinePending then
