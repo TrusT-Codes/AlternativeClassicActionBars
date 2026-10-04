@@ -200,8 +200,8 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
   - `PLAYER_AURAS_CHANGED` doesn't `Refresh` stance buttons: `UpdateStanceFormChange` compares `GetShapeshiftFormInfo`'s texture/isActive/isCastable against the cache `Refresh` writes, and only on a change updates icon + glow (plus every stance cooldown). `UPDATE_SHAPESHIFT_FORMS` (fires on learning a form), `PLAYER_ENTERING_WORLD` and `Rebind` still do a full `Refresh`.
 
 ### Removed intra-addon existence guards
-- **Where:** `Bar.lua`, `Button.lua`, `HoverBind.lua` (removed in the refactor); `Core.lua`/`Events.lua` still have some
-- **What:** Guards like `if ACAB.RefreshBarSettingsPage then` were dropped because every guarded member is defined at the top level of a file that always loads, and every call runs after login. So:
+- **Where:** `Bar.lua`, `Button.lua`, `HoverBind.lua`, `Core.lua`, `Events.lua`
+- **What:** Same for `C_Timer` hedges: ClassicAPI is enforced at login (`CheckRequiredMods`, the only place that still checks `type(C_Timer)`), so tickers/`C_Timer.After` calls are unguarded. Guards like `if ACAB.RefreshBarSettingsPage then` were dropped because every guarded member is defined at the top level of a file that always loads, and every call runs after login. So:
   - Nothing may call `CreateActionButton` / `ApplyEditModeVisual` / `ApplyGlobalButtonStyle` / `ApplyHoverOnlyState` at file-load time.
   - `HoverBind.lua`'s top-level `customBindTargets = {}` must run before any button is created.
   - `Core.lua`'s hover-fade code calls `ACAB:GetCursorPositionUIScale` (defined later, in DefaultBars.lua): runtime-only.
@@ -240,8 +240,6 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
 - **Legacy profile fields.** The reserved "ModernBase" profile name (`Database.lua` `MODERN_BASE_PROFILE_NAME`) is legacy but still hides old `ACABProfilesDB["ModernBase"]` entries. "Default" (`LEGACY_DEFAULT_PROFILE_NAME`) stays reserved so a new user profile can never be mistaken for the pre-rename Default Vanilla. `disableBlizzardArt`, `mainBarPaginationEnabled`, `mainBarStanceSwapEnabled`, `mainBarPageBarAssignment` and `mainBarStanceBarAssignment` stay in saves forever. Cleaning up needs a one-shot migration.
 - **`RunLoginSequence` params.** `Core.lua` `ACAB:RunLoginSequence(earlyLeft, earlyTop, settledLeft, settledTop, waited)` reads none of its parameters.
 - **`Button.lua` stubs.** The stance tooltip fallback for missing `GameTooltip.SetShapeshift` never runs, stock-API guards never fail, and `OnDragStop` is empty.
-- **C_Timer hedges.** `Settings.lua` `DeferFit` and `SettingsGeneral.lua` `HighlightGeneralLayoutCheckbox` check for `C_Timer`. ClassicAPI is a hard dependency, and `DeferFit`'s synchronous fallback would bring back the stale-rect bug.
-- **Redundant guards.** `Core.lua` (`ApplyHoverBindVisual`, `GetBarFrameSize`) and `Events.lua` (`RefreshBarSettingsPage`, `RebuildAllDefaultBarAssignmentRows`) still guard members that are always defined.
 
 ### Tech debt
 - **Pet Bar reflow rewrites `cfg.nativeAnchor.y`.** `PetStanceBars.lua` `ReflowPetBarForBar3Toggle` does this, so treat the Pet Bar `nativeAnchor` as "last default-stack position", not the true capture.
