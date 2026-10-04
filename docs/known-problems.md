@@ -148,7 +148,7 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
 - **Recapture mutates in place.** `Database.lua` `RecaptureDefaultBarNativeAnchors` must mutate cfg tables in place, since `bars[id].config` *is* `ACABDB.defaultBars[id]`. Replacing the table detaches live bars.
 - **CreateProfile falls back to the live `ACABDB`**, never an empty table. `ACABProfilesDB["Default"]` only exists after a logout or switch, and an empty fallback leaves new profiles without `defaultBars`.
 - **Profile writes hit both `ACABDB` and `ACABProfilesDB`.** Logout / `ReloadUI` runs `SaveActiveProfileData`, which writes live `ACABDB` back under `activeProfileName`. Deleting the active profile must also repoint `activeProfileName`.
-- **Export format is byte-stable** (`TBVPROFILE1:`). Never add whitespace to `SerializeValue`, or older parsers reject it. The parser doesn't trim bare tokens (`[1]=false }` fails), and numbers round-trip at 14 significant digits.
+- **Export format is byte-stable** (`TBVPROFILE1:`). Never add whitespace to `ProfileIO.lua` `SerializeValue`, or older parsers reject it. The parser doesn't trim bare tokens (`[1]=false }` fails), and numbers round-trip at 14 significant digits.
 
 - **Sanitizer key lists are hand-kept.** `ACAB:SanitizeProfileData` (Database.lua) type-checks only the fields named in its `SANITIZE_*` lists plus `defaultBars`/`bars`; it runs on every saved profile at login and on imports. A new persisted field with a crash-prone type must be added there.
 - **Coverage:** every `ACABDB` field the code reads is type-checked, except one-shot migration flags (never touched on purpose) and legacy fields nothing reads anymore (`disableBlizzardArt`, `groupedElementOffsets`, `mainBar*Assignment`/`*Enabled`). Per-bar `nativeAnchor`/`fixedActionSlots` are structural: a bad one resets all of `defaultBars`, like a bad position. Other per-bar fields (`SANITIZE_BAR_*`) drop only that field, since every reader is nil-safe. `customGridSize` must stay above 0 because the layout grid steps by it.
@@ -257,7 +257,7 @@ Done: range-ticker write cache (`rangeKey` in `UpdateRange`), Pet Bar layout coa
 - **`DefaultBars.lua`** holds three subsystems: default-bar paging / Modern geometry, Main Bar art + grouped elements, and the shared drag / container / guard engine. Move the engine to its own file loaded before `DefaultBars.lua`, keeping the top-level `InstallReanchorGuard(MainMenuBarArtFrame, ...)` after it.
 - **`SettingsBars.lua`** (~3800 lines): the simple-page subsystem is ~1100 self-contained lines. The Force-Vanilla cascade isn't UI code. Shared `CreateReflow*` locals would need to become `ACAB:` methods first, which also helps the upvalue cap.
 - **`NativeElements.lua`**: Tooltip and Page Indicator could become their own files.
-- **`Database.lua`**: the serializer/parser could become `ProfileIO.lua`, and the first-login/create-profile dialogs are UI.
+- **`Database.lua`**: the first-login/create-profile dialogs are UI.
 - **`SetupWizard.lua`**: the baseline geometry pass (`ApplyModernLayoutGeometry`, `ApplyPendingLayoutBaseline`) isn't wizard UI and could move next to the Modern layout code in `DefaultBars.lua`.
 - **`UIWidgets.lua`**: `ACABDialogMixin` is the largest self-contained unit.
 - **`Bar.lua`**: the layout-grid overlay and the Extra Bar policy are separable.
