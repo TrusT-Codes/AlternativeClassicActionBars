@@ -28,7 +28,7 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
 - **Verify:** fresh install, then `/run print(ACABProfilesDB["Default Vanilla"].defaultBars[1].nativeAnchor.x)` right after the first `/reload`.
 
 ### Assignment rows unlocked after a rebuild outside a page refresh
-- **Status:** suspected, found while pooling the rows; behavior unchanged by the pooling.
+- **Status:** fix on branch `bugfix/assignment-row-lock-gating`, awaiting live check (`RebuildAllDefaultBarAssignmentRows` now calls `RefreshBarSettingsPage` per built page, so the full gating chain runs). Move to the Resolved line once confirmed.
 - **Where:** `SettingsBars.lua` `RebuildAllDefaultBarAssignmentRows`, called from `Events.lua` (`UPDATE_SHAPESHIFT_FORMS`) and `SettingsGeneral.lua` (pagination / stance-swap checkboxes).
 - **What:** those callers rebuild the stance/page dropdown rows without the `ApplyProfileLockGating` pass that follows `RebuildDefaultBarAssignmentRows` in `RefreshBarSettingsPage`, so on a built-in (locked) profile the rows come back clickable until the page is refreshed.
 - **Verify:** on Default Vanilla, open Main Bar's page, learn/lose a form (or toggle the General stance-swap checkbox twice if it's clickable there), and check whether the stance dropdowns are greyed.
