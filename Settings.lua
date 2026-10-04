@@ -414,15 +414,7 @@ end
 
 -- Dark translucent bordered backdrop shared by the bar list and every content viewport.
 local function ApplyPanelBackdrop(frame)
-	frame:SetBackdrop({
-		bgFile   = "Interface\\Tooltips\\UI-Tooltip-Background",
-		edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-		tile = true,
-		tileSize = 8,
-		edgeSize = 8,
-		insets = { left = 2, right = 2, top = 2, bottom = 2 },
-	})
-
+	frame:SetBackdrop(ACAB.PANEL_BACKDROP)
 	frame:SetBackdropColor(0, 0, 0, 0.3)
 end
 
@@ -762,14 +754,7 @@ function ACAB:CreateProfileLockWarning(page)
 	banner:SetHeight(PROFILE_LOCK_BANNER_HEIGHT)
 	banner:SetFrameLevel(page:GetFrameLevel() + 5)
 
-	banner:SetBackdrop({
-		bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-		edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-		tile = true,
-		tileSize = 16,
-		edgeSize = 12,
-		insets = { left = 2, right = 2, top = 2, bottom = 2 },
-	})
+	banner:SetBackdrop(ACAB.BANNER_BACKDROP)
 
 	banner.lockedBackdropColor = { 0.35, 0, 0, 0.9 }
 	banner.hoverBackdropColor = { 0.5, 0.08, 0.08, 0.9 }
