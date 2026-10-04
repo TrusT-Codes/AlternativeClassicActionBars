@@ -241,7 +241,6 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
 
 ### Tech debt
 - **Pet Bar reflow rewrites `cfg.nativeAnchor.y`.** `PetStanceBars.lua` `ReflowPetBarForBar3Toggle` does this, so treat the Pet Bar `nativeAnchor` as "last default-stack position", not the true capture.
-- **Page Indicator retry chains can stack.** Parallel `C_Timer.After(0.1)` retry chains in `CreatePageIndicatorContainer` / `ApplyPageIndicatorShape` share one elapsed counter. Harmless so far; a "retry pending" flag would bound it.
 - **Extra Bar fallback size.** `Database.lua` `GetDefaultExtraBarLayout` returns `BUTTON_SIZE` on the normal path but `GetCurrentButtonSizeBaseline()` on the fallback path.
 - **Two screen-size reads.** `Settings.lua` `GetScreenCoordinateRange` and `Bar.lua` `RebuildLayoutGrid` use `UIParent:GetWidth()/GetHeight()` instead of `GetUIParentAnchorSize`. It's harmless in both today (legacy range only / covered by overshoot lines). In `RebuildLayoutGrid`, `GetLayoutGridSpacing()` is already in local units, so don't divide it by effective scale.
 - **Sidebar rows follow `getElementFrame`.** `SettingsBars.lua` `RefreshBarList` shows a simple-page row only when its config's `getElementFrame()` is non-nil. New simple pages need a `getElementFrame`.
