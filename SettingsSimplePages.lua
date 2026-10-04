@@ -651,13 +651,75 @@ end
 -- Simple page configs: each page's controls mapped onto the element's ACAB:Set*/Reset*/Get* API
 -------------------------------------------------------------------------
 
--- Stance Bar native mode (numeric STANCE_BAR_ID, reached only via IsStanceBarNativeMode). Drives the
--- native-mode ACABDB.stanceBar* fields, separate from the styled mode's defaultBars[STANCE_BAR_ID].
-ACAB.simpleBarPageConfigs[ACAB.STANCE_BAR_ID] = {
+-- Getter for ACABDB[field] (or default when that is nil/false).
+local function DBGetter(field, default)
+	if default then
+		return function() return ACABDB[field] or default end
+	end
+
+	return function() return ACABDB[field] end
+end
+
+-- Getter for defaultBars[barId][field] (or default when given and that is nil/false).
+local function DefaultBarCfgGetter(barId, field, default)
+	if default then
+		return function()
+			local cfg = ACABDB.defaultBars[barId]
+			return (cfg and cfg[field]) or default
+		end
+	end
+
+	return function()
+		local cfg = ACABDB.defaultBars[barId]
+		return cfg and cfg[field]
+	end
+end
+
+-- Setter forwarding the value to ACAB:<methodName> (x, y for Position setters).
+local function Setter(methodName)
+	if string.find(methodName, "Position$") then
+		return function(x, y) ACAB[methodName](ACAB, x, y) end
+	end
+
+	return function(v) ACAB[methodName](ACAB, v) end
+end
+
+-- Fills every accessor pair cfg doesn't set itself, per its has* flags: get<Field> reads ACABDB[db .. Field]
+-- (skipped when db is nil; HoverDuration defaults to 3), set<Field> calls ACAB:Set<method><Field>.
+-- e.g. db "bagBar", method "BagBar": ACABDB.bagBarScale / ACAB:SetBagBarScale. Returns cfg.
+local function ElementConfig(db, method, cfg)
+	local function Pair(field, default)
+		if db and cfg["get" .. field] == nil then
+			cfg["get" .. field] = DBGetter(db .. field, default)
+		end
+
+		if cfg["set" .. field] == nil then
+			cfg["set" .. field] = Setter("Set" .. method .. field)
+		end
+	end
+
+	Pair("Position")
+
+	if cfg.hasEnable then Pair("Enabled") end
+	if cfg.hasSpacing then Pair("Spacing") end
+	if cfg.hasScale then Pair("Scale") end
+
+	if cfg.hasHoverOnly then
+		Pair("HoverOnly")
+		Pair("HoverDuration", 3)
+	end
+
+	return cfg
+end
+
+-- Stance Bar native mode (numeric STANCE_BAR_ID, reached only via IsStanceBarNativeMode): ACABDB.stanceBar*,
+-- separate from the styled mode's defaultBars[STANCE_BAR_ID] (whose hover-only settings it shares).
+ACAB.simpleBarPageConfigs[ACAB.STANCE_BAR_ID] = ElementConfig("stanceBar", "StanceBar", {
 	title = "Stance Bar",
 	hasEnable = true,
-	getPosition = function() return ACABDB.stanceBarPosition end,
-	setPosition = function(x, y) ACAB:SetStanceBarPosition(x, y) end,
+	hasSpacing = true,
+	hasScale = true,
+	hasHoverOnly = true,
 	getElementFrame = function() return ACAB.stanceBarContainer end,
 	-- Layout before position (both resets): layout writes scale without reapplying position.
 	reset = function()
@@ -668,34 +730,20 @@ ACAB.simpleBarPageConfigs[ACAB.STANCE_BAR_ID] = {
 		ACAB:ResetStanceBarLayout()
 		ACAB:ResetStanceBarPositionToModernBase()
 	end,
-	getEnabled = function() return ACABDB.stanceBarEnabled end,
-	setEnabled = function(v) ACAB:SetStanceBarEnabled(v) end,
-	hasSpacing = true,
-	getSpacing = function() return ACABDB.stanceBarSpacing end,
-	setSpacing = function(v) ACAB:SetStanceBarSpacing(v) end,
-	hasScale = true,
-	getScale = function() return ACABDB.stanceBarScale end,
-	setScale = function(v) ACAB:SetStanceBarScale(v) end,
-	-- Hover-only is shared with the styled Stance Bar: defaultBars[STANCE_BAR_ID].hoverOnly/hoverDuration.
-	hasHoverOnly = true,
-	getHoverOnly = function()
-		local cfg = ACABDB.defaultBars[ACAB.STANCE_BAR_ID]
-		return cfg and cfg.hoverOnly
-	end,
-	setHoverOnly = function(v) ACAB:SetStanceBarNativeHoverOnly(v) end,
-	getHoverDuration = function()
-		local cfg = ACABDB.defaultBars[ACAB.STANCE_BAR_ID]
-		return (cfg and cfg.hoverDuration) or 3
-	end,
-	setHoverDuration = function(v) ACAB:SetStanceBarNativeHoverDuration(v) end,
-}
+	getHoverOnly = DefaultBarCfgGetter(ACAB.STANCE_BAR_ID, "hoverOnly"),
+	setHoverOnly = Setter("SetStanceBarNativeHoverOnly"),
+	getHoverDuration = DefaultBarCfgGetter(ACAB.STANCE_BAR_ID, "hoverDuration", 3),
+	setHoverDuration = Setter("SetStanceBarNativeHoverDuration"),
+})
 
 -- Bag Bar: ACAB-owned chain-anchored container, so it also gets Spacing/Scale/Grid.
-ACAB.simpleBarPageConfigs["bagbar"] = {
+ACAB.simpleBarPageConfigs["bagbar"] = ElementConfig("bagBar", "BagBar", {
 	title = "Bag Bar",
 	hasEnable = true,
-	getPosition = function() return ACABDB.bagBarPosition end,
-	setPosition = function(x, y) ACAB:SetBagBarPosition(x, y) end,
+	hasSpacing = true,
+	hasScale = true,
+	hasGrid = true,
+	hasHoverOnly = true,
 	getElementFrame = function() return ACAB.bagBarContainer end,
 	-- Layout before position: layout writes scale without reapplying position.
 	reset = function()
@@ -703,180 +751,93 @@ ACAB.simpleBarPageConfigs["bagbar"] = {
 		ACAB:ResetBagBarPosition()
 	end,
 	resetModern = function() ACAB:ResetBagBarLayoutToModernBase() end,
-	getEnabled = function() return ACABDB.bagBarEnabled end,
-	setEnabled = function(v) ACAB:SetBagBarEnabled(v) end,
-	hasSpacing = true,
-	getSpacing = function() return ACABDB.bagBarSpacing end,
-	setSpacing = function(v) ACAB:SetBagBarSpacing(v) end,
-	hasScale = true,
-	getScale = function() return ACABDB.bagBarScale end,
-	setScale = function(v) ACAB:SetBagBarScale(v) end,
-	hasGrid = true,
 	-- Swatch clicks call ACAB:SetBagBarOrientation directly (GridSwatch_OnClick); this only syncs the selection.
 	getGridLayout = function() return ACAB:GetBagBarEffectiveGrid() end,
-	hasHoverOnly = true,
-	getHoverOnly = function() return ACABDB.bagBarHoverOnly end,
-	setHoverOnly = function(v) ACAB:SetBagBarHoverOnly(v) end,
-	getHoverDuration = function() return ACABDB.bagBarHoverDuration or 3 end,
-	setHoverDuration = function(v) ACAB:SetBagBarHoverDuration(v) end,
-}
+})
 
 -- Key Ring: the single real KeyRingButton frame, independent of Bag Bar.
-ACAB.simpleBarPageConfigs["keyring"] = {
+ACAB.simpleBarPageConfigs["keyring"] = ElementConfig("keyRing", "KeyRing", {
 	title = "Key Ring",
 	hasEnable = true,
-	getPosition = function() return ACABDB.keyRingPosition end,
-	setPosition = function(x, y) ACAB:SetKeyRingPosition(x, y) end,
+	hasScale = true,
+	hasHoverOnly = true,
 	getElementFrame = function() return getglobal(ACAB.KEYRING_BUTTON_NAME) end,
 	reset = function() ACAB:ResetKeyRingPosition() end,
 	resetModern = function() ACAB:ResetKeyRingLayoutToModernBase() end,
-	getEnabled = function() return ACABDB.keyRingEnabled end,
-	setEnabled = function(v) ACAB:SetKeyRingEnabled(v) end,
-	hasScale = true,
-	getScale = function() return ACABDB.keyRingScale end,
-	setScale = function(v) ACAB:SetKeyRingScale(v) end,
-	hasHoverOnly = true,
-	getHoverOnly = function() return ACABDB.keyRingHoverOnly end,
-	setHoverOnly = function(v) ACAB:SetKeyRingHoverOnly(v) end,
-	getHoverDuration = function() return ACABDB.keyRingHoverDuration or 3 end,
-	setHoverDuration = function(v) ACAB:SetKeyRingHoverDuration(v) end,
-}
+})
 
 -- Pet Bar native mode (numeric PET_BAR_ID, reached only via IsPetBarNativeMode). Shares
--- defaultBars[PET_BAR_ID] with the styled mode, so x/y/spacing never drift between modes.
-ACAB.simpleBarPageConfigs[ACAB.PET_BAR_ID] = {
+-- defaultBars[PET_BAR_ID] with the styled mode, so x/y/spacing/hover never drift between modes.
+ACAB.simpleBarPageConfigs[ACAB.PET_BAR_ID] = ElementConfig(nil, "PetBarNative", {
 	title = "Pet Bar",
 	hasEnable = true,
+	hasSpacing = true,
+	hasScale = true,
+	hasHoverOnly = true,
 	getPosition = function() return ACABDB.defaultBars[ACAB.PET_BAR_ID] end,
-	setPosition = function(x, y) ACAB:SetPetBarNativePosition(x, y) end,
 	getElementFrame = function() return ACAB.petBarNativeContainer end,
 	reset = function() ACAB:ResetPetBarNativeLayout() end,
 	resetModern = function() ACAB:ResetPetBarLayoutToModernBase() end,
-	getEnabled = function()
-		local cfg = ACABDB.defaultBars[ACAB.PET_BAR_ID]
-		return cfg and cfg.enabled
-	end,
+	getEnabled = DefaultBarCfgGetter(ACAB.PET_BAR_ID, "enabled"),
 	setEnabled = function(v) ACAB:SetDefaultBarEnabled(ACAB.PET_BAR_ID, v) end,
-	hasSpacing = true,
-	getSpacing = function()
-		local cfg = ACABDB.defaultBars[ACAB.PET_BAR_ID]
-		return cfg and cfg.spacing
-	end,
-	setSpacing = function(v) ACAB:SetPetBarNativeSpacing(v) end,
-	hasScale = true,
-	getScale = function()
-		local cfg = ACABDB.defaultBars[ACAB.PET_BAR_ID]
-		return cfg and cfg.scale
-	end,
-	setScale = function(v) ACAB:SetPetBarNativeScale(v) end,
-	-- Hover-only shared with the styled Pet Bar, like the Stance Bar's.
-	hasHoverOnly = true,
-	getHoverOnly = function()
-		local cfg = ACABDB.defaultBars[ACAB.PET_BAR_ID]
-		return cfg and cfg.hoverOnly
-	end,
-	setHoverOnly = function(v) ACAB:SetPetBarNativeHoverOnly(v) end,
-	getHoverDuration = function()
-		local cfg = ACABDB.defaultBars[ACAB.PET_BAR_ID]
-		return (cfg and cfg.hoverDuration) or 3
-	end,
-	setHoverDuration = function(v) ACAB:SetPetBarNativeHoverDuration(v) end,
-}
+	getSpacing = DefaultBarCfgGetter(ACAB.PET_BAR_ID, "spacing"),
+	getScale = DefaultBarCfgGetter(ACAB.PET_BAR_ID, "scale"),
+	getHoverOnly = DefaultBarCfgGetter(ACAB.PET_BAR_ID, "hoverOnly"),
+	getHoverDuration = DefaultBarCfgGetter(ACAB.PET_BAR_ID, "hoverDuration", 3),
+})
 
 -- Latency Bar: Scale only - Blizzard owns MainMenuBarPerformanceBarFrame's internal layout.
-ACAB.simpleBarPageConfigs["latencybar"] = {
+ACAB.simpleBarPageConfigs["latencybar"] = ElementConfig("latencyBar", "LatencyBar", {
 	title = "Latency Bar",
 	hasEnable = true,
-	getPosition = function() return ACABDB.latencyBarPosition end,
-	setPosition = function(x, y) ACAB:SetLatencyBarPosition(x, y) end,
-	getElementFrame = function() return getglobal(ACAB.LATENCY_BAR_FRAME_NAME) end,
-	reset = function()
-		ACAB:ResetLatencyBarLayout()
-	end,
-	resetModern = function() ACAB:ResetLatencyBarLayoutToModernBase() end,
-	getEnabled = function() return ACABDB.latencyBarEnabled end,
-	setEnabled = function(v) ACAB:SetLatencyBarEnabled(v) end,
 	hasScale = true,
-	getScale = function() return ACABDB.latencyBarScale end,
-	setScale = function(v) ACAB:SetLatencyBarScale(v) end,
 	hasHoverOnly = true,
-	getHoverOnly = function() return ACABDB.latencyBarHoverOnly end,
-	setHoverOnly = function(v) ACAB:SetLatencyBarHoverOnly(v) end,
-	getHoverDuration = function() return ACABDB.latencyBarHoverDuration or 3 end,
-	setHoverDuration = function(v) ACAB:SetLatencyBarHoverDuration(v) end,
-}
+	getElementFrame = function() return getglobal(ACAB.LATENCY_BAR_FRAME_NAME) end,
+	reset = function() ACAB:ResetLatencyBarLayout() end,
+	resetModern = function() ACAB:ResetLatencyBarLayoutToModernBase() end,
+})
 
 -- Experience Bar: the container's Position/Scale/Enable/Reset (Better Experience Bar controls are separate).
-ACAB.simpleBarPageConfigs["expbar"] = {
+ACAB.simpleBarPageConfigs["expbar"] = ElementConfig("expBar", "ExpBar", {
 	title = "Experience Bar",
 	hasEnable = true,
-	getPosition = function() return ACABDB.expBarPosition end,
-	setPosition = function(x, y) ACAB:SetExpBarPosition(x, y) end,
+	hasScale = true,
+	hasHoverOnly = true,
 	getElementFrame = function() return getglobal(ACAB.EXP_BAR_FRAME_NAME) end,
 	-- Extra Y-max headroom in real screen pixels (lets the top sliver go off-screen).
 	extraMaxYPixels = 2,
-	reset = function()
-		ACAB:ResetExpBarLayout()
-	end,
-	resetModern = function()
-		ACAB:ResetExpBarLayoutToModernBase()
-	end,
-	getEnabled = function() return ACABDB.expBarEnabled end,
-	setEnabled = function(v) ACAB:SetExpBarEnabled(v) end,
-	hasScale = true,
-	getScale = function() return ACABDB.expBarScale end,
-	setScale = function(v) ACAB:SetExpBarScale(v) end,
-	hasHoverOnly = true,
-	getHoverOnly = function() return ACABDB.expBarHoverOnly end,
-	setHoverOnly = function(v) ACAB:SetExpBarHoverOnly(v) end,
-	getHoverDuration = function() return ACABDB.expBarHoverDuration or 3 end,
-	setHoverDuration = function(v) ACAB:SetExpBarHoverDuration(v) end,
-}
+	reset = function() ACAB:ResetExpBarLayout() end,
+	resetModern = function() ACAB:ResetExpBarLayoutToModernBase() end,
+})
 
 -- Cast Bar: Position + Scale only, no Enable checkbox.
-ACAB.simpleBarPageConfigs["castbar"] = {
+ACAB.simpleBarPageConfigs["castbar"] = ElementConfig("castBar", "CastBar", {
 	title = "Cast Bar",
-	getPosition = function() return ACABDB.castBarPosition end,
-	setPosition = function(x, y) ACAB:SetCastBarPosition(x, y) end,
-	getElementFrame = function() return getglobal(ACAB.CAST_BAR_FRAME_NAME) end,
-	reset = function()
-		ACAB:ResetCastBarLayout()
-	end,
-	-- No Modern Layout position of its own (it stacks off the default bars) - same as the vanilla reset.
-	resetModern = function()
-		ACAB:ResetCastBarLayout()
-	end,
 	hasScale = true,
-	getScale = function() return ACABDB.castBarScale end,
-	setScale = function(v) ACAB:SetCastBarScale(v) end,
-}
+	getElementFrame = function() return getglobal(ACAB.CAST_BAR_FRAME_NAME) end,
+	reset = function() ACAB:ResetCastBarLayout() end,
+	-- No Modern Layout position of its own (it stacks off the default bars) - same as the vanilla reset.
+	resetModern = function() ACAB:ResetCastBarLayout() end,
+})
 
 -- Tooltip: repositions only the fixed-position GameTooltip; widget-relative tooltips are untouched.
-ACAB.simpleBarPageConfigs["tooltip"] = {
+ACAB.simpleBarPageConfigs["tooltip"] = ElementConfig("tooltip", "Tooltip", {
 	title = "Tooltip",
 	hasEnable = true,
-	getPosition = function() return ACABDB.tooltipPosition end,
-	setPosition = function(x, y) ACAB:SetTooltipPosition(x, y) end,
-	getElementFrame = function() return ACAB.tooltipFrame end,
-	reset = function()
-		ACAB:ResetTooltipLayout()
-	end,
-	-- No Modern Layout position of its own - same as the vanilla reset.
-	resetModern = function()
-		ACAB:ResetTooltipLayout()
-	end,
-	getEnabled = function() return ACABDB.tooltipEnabled end,
-	setEnabled = function(v) ACAB:SetTooltipEnabled(v) end,
 	hasScale = true,
-	getScale = function() return ACABDB.tooltipScale end,
-	setScale = function(v) ACAB:SetTooltipScale(v) end,
-}
+	getElementFrame = function() return ACAB.tooltipFrame end,
+	reset = function() ACAB:ResetTooltipLayout() end,
+	-- No Modern Layout position of its own - same as the vanilla reset.
+	resetModern = function() ACAB:ResetTooltipLayout() end,
+})
 
-ACAB.simpleBarPageConfigs["micromenu"] = {
+ACAB.simpleBarPageConfigs["micromenu"] = ElementConfig("microMenu", "MicroMenu", {
 	title = "Micro Menu",
 	hasEnable = true,
-	getPosition = function() return ACABDB.microMenuPosition end,
-	setPosition = function(x, y) ACAB:SetMicroMenuPosition(x, y) end,
+	hasSpacing = true,
+	hasScale = true,
+	hasGrid = true,
+	hasHoverOnly = true,
 	getElementFrame = function() return ACAB.microMenuContainer end,
 	extraMaxYPixels = 4,
 	-- Layout before position: layout writes scale without reapplying position.
@@ -885,24 +846,10 @@ ACAB.simpleBarPageConfigs["micromenu"] = {
 		ACAB:ResetMicroMenuPosition()
 	end,
 	resetModern = function() ACAB:ResetMicroMenuLayoutToModernBase() end,
-	getEnabled = function() return ACABDB.microMenuEnabled end,
-	setEnabled = function(v) ACAB:SetMicroMenuEnabled(v) end,
-	hasSpacing = true,
 	-- -10 floor instead of ACAB.SPACING_MIN, so the native buttons can overlap slightly.
 	spacingMin = -10,
 	-- Displayed = stored spacing + 4 (the native button art's padding makes 0 look like a gap).
 	spacingUiOffset = 4,
-	getSpacing = function() return ACABDB.microMenuSpacing end,
-	setSpacing = function(v) ACAB:SetMicroMenuSpacing(v) end,
-	hasScale = true,
-	getScale = function() return ACABDB.microMenuScale end,
-	setScale = function(v) ACAB:SetMicroMenuScale(v) end,
-	hasGrid = true,
 	-- Swatch clicks call ACAB:SetMicroMenuLayout directly (GridSwatch_OnClick); this only syncs the selection.
 	getGridLayout = function() return ACAB:GetMicroMenuEffectiveGrid() end,
-	hasHoverOnly = true,
-	getHoverOnly = function() return ACABDB.microMenuHoverOnly end,
-	setHoverOnly = function(v) ACAB:SetMicroMenuHoverOnly(v) end,
-	getHoverDuration = function() return ACABDB.microMenuHoverDuration or 3 end,
-	setHoverDuration = function(v) ACAB:SetMicroMenuHoverDuration(v) end,
-}
+})
