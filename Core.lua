@@ -93,6 +93,14 @@ ACAB.SHOW_MULTI_ACTIONBAR_GLOBAL = {
 	[5] = "SHOW_MULTI_ACTIONBAR_4",
 }
 
+-- Native FrameXML global holding the action page each default bar shows; Main Bar paging skips it while the bar is on.
+ACAB.DEFAULT_BAR_PAGE_GLOBAL = {
+	[2] = "BOTTOMLEFT_ACTIONBAR_PAGE",
+	[3] = "BOTTOMRIGHT_ACTIONBAR_PAGE",
+	[4] = "RIGHT_ACTIONBAR_PAGE",
+	[5] = "LEFT_ACTIONBAR_PAGE",
+}
+
 -- Friendly display names for the default-bar family.
 ACAB.DEFAULT_BAR_NAMES = {
 	[1] = "Main Bar",
@@ -1713,6 +1721,11 @@ function ACAB:RunLoginSequence()
 		ACAB:Print("|cffff4040Could not load your profile - addon not set up. Please report the error shown.|r")
 		return
 	end
+
+	-- Must run before "anchor recapture": a UI scale change can request one.
+	RunLoginStage(failures, "ui scale", function()
+		ACAB:HandleUIScaleChange()
+	end)
 
 	-- Must run before anything moves Main Bar's art (ActionButton1's parent) - native anchors are only measurable until then.
 	local recapturedAtLogin = false

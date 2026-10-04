@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.0-rc2 (Unreleased)
+
+### Bugfixes
+
+- Fix Main Bar page switching (page arrows, Shift+1-6) landing on the page of an action bar that's already shown, when Blizzard's own "Show Right ActionBar 2" option was off.
+- Fix action bars, Experience Bar, Page Indicator, Micro Menu, Latency Bar, Key Ring and Bag Bar ending up in the wrong spots after changing the UI scale. Default Vanilla and Default Modern now rebuild themselves for the new scale (one automatic reload); custom profiles keep every element at its screen position.
+- Fix Experience Bar's "Reset to Modern Layout Default" not placing it at the bottom center.
+- Fix Extra Bars' "Reset to Vanilla Layout" copying the shape of the bar they sit next to: Extra Bar 1/2 now reset to 12x1, Extra Bar 3/4 to 1x12.
+- Fix macros that also start Auto Shot never glowing: macros now flash briefly whenever their own ability fires (instant ones too), never for Auto Shot.
+
 ## 1.3.0-rc1
 
 ### Features

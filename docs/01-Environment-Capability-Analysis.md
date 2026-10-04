@@ -83,6 +83,7 @@ Other mod features, noted but not used: SuperWoW `UnitPosition`, `TrackUnit`, `S
 | `SPELL_FAILED_SELF` | 1=spellId, 2=reason code? (35, 77), 3=0/1 flag |
 | `SPELL_FAILED_OTHER` | 1=caster GUID, 2=spellId |
 | `SPELL_CAST_EVENT` | 1=0/1 (queued?), 2=spellId, 3=2, 4=short hex id (not a GUID), 5=0 |
+- **`SPELL_CAST_EVENT` fires for instant spells** (Arcane Shot, Serpent Sting) as well as Auto Shot, with `arg2` = spell id; SuperWoW `SpellInfo(arg2)` returns the spell name. `IsCurrentAction(slot)` on a macro slot returns `true` or `1` (both seen) and stays true while a `/cast Auto Shot` in the same macro is active.
 
 ### 4.4 Keybinding
 - **`SetBindingClick` / `SetBinding(key, "CLICK frame:button")` and `SetBinding(key, "BONUSACTIONBUTTON1")` are dead ends.** They get recorded (`GetBindingAction` and `bindings-cache.wtf` show them) but never fire.
@@ -91,6 +92,7 @@ Other mod features, noted but not used: SuperWoW `UnitPosition`, `TrackUnit`, `S
 
 ### 4.5 Native globals and saved state
 - **Lock Action Bars is the plain global `LOCK_ACTIONBAR`**, the string `"1"`/`"0"`. It is not a CVar, and it persists in the WTF `SavedVariables.lua`.
+- **Main Bar paging reads `VIEWABLE_ACTION_BAR_PAGES`, which follows Blizzard's saved toggles, not the session globals.** Live: `GetActionBarToggles()` returned `1 1 1 nil` while `SHOW_MULTI_ACTIONBAR_1-4` were all `1` (set by ACAB), and `VIEWABLE_ACTION_BAR_PAGES` still had page 4 viewable.
 - **`SHOW_MULTI_ACTIONBAR_1-4` do not persist across logout** on this fork (they are absent from WTF). They are fine for same-session reads, but never treat them as the source of truth at login. The addon's own saved flag is authoritative, and it gets pushed into the client every login.
 - **`ACABDB` is account-wide.** Any login or `/reload` on any character consumes a one-shot migration marker. That's fine for migrations, but useless for "force one recapture I can watch". Use an explicit command for that (`/acab recapture`).
 - The in-game AddOns folder name is `AlternativeClassicActionBars`, so texture paths must use `Interface\AddOns\AlternativeClassicActionBars\...`. A wrong segment renders blank with no error.
