@@ -11,24 +11,15 @@ Read this when something doesn't behave the way the code suggests it should. It 
 
 ## 1. Suspected bugs (unconfirmed — verify live before fixing)
 
-None of these were fixed during the refactor. Each has a repro or a `/run` check.
+Each has a repro or a `/run` check.
 
-### Slot allocator reserves cols*rows slots, but a bar's pool binds all 12
-- **Status:** allocator fixed (full 12-slot block). Re-inspect later: live test could neither shrink an Extra Bar to 2x2 nor add a new one (even with Extra Bar 4 at 1 button). Low priority.
-- **Where:** `Bar.lua` — `IsActionSlotUsed`, `ApplyBarShape` / `ResolvePoolSlot`
-- **What:** The allocator counts a bar as `slotStart .. slotStart + cols*rows - 1`. Every one of the `MAX_BAR_BUTTONS` pool buttons (hidden ones too) binds `slotStart + i - 1` and registers in `customBindTargets`. A shrunk bar plus a later-seeded Extra Bar can overlap. Low impact, since Extra Bars normally seed once.
-- **Verify:** `/run local c=ACABDB.bars for i=1,table.getn(c) do DEFAULT_CHAT_FRAME:AddMessage(c[i].id.." "..tostring(c[i].slotStart).." "..(c[i].cols*c[i].rows)) end`. Two slotStarts less than 12 apart confirm an overlap. Fix: count `MAX_BAR_BUTTONS` for pool-backed bars.
+Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars sit 12 slots apart, no overlap; no 2x2 grid preset exists by design), Stance Bar form change (fixed: event fires, the native buttons just needed `ShapeshiftBar_Update()` after reparenting), native-anchor capture (cleared: all three anchors present after copy, import and on both built-in profiles), Exp Bar colors (fixed: revert to native goes through `ExhaustionTick_Update`), layout baseline delay (fixed: `SetupWizard.lua` `WaitForBaselineSettle` polls the measured native frames instead of a fixed 2 s; Modern, unlocked Vanilla and Default Modern copy all placed correctly after ~0.3 s), unlocked Vanilla bars ~76 px left (fixed: `GetDefaultVanillaData` saves live data before the wizard copies it), mod-presence detectors in `Core.lua` `ACAB:CheckRequiredMods` (cleared: each DLL removed in turn gives exactly its own chat line; without ClassicAPI the addon stays disabled with no errors), client crash during the wizard's baseline reload (closed as a one-off: seen once on a fresh Modern install, never reproduced; the client crashed occasionally before this addon existed. If it recurs, note whether the layout chat line printed and `/run print(ACABDB.pendingLayoutBaseline)`); assignment rows unlocked after an outside rebuild (fixed: `RebuildAllDefaultBarAssignmentRows` goes through `RefreshBarSettingsPage`, full gating chain), hotkey text stale after binding in Blizzard's Key Bindings UI (fixed: `UPDATE_BINDINGS` routes to `UpdateHotkeyText` on every pool button via `POOL_BUTTON_EVENT_ROUTES`).
 
-### Stance Bar rebuild relies on UPDATE_SHAPESHIFT_FORMS, which may never fire here
-- **Status:** still untested live. Flagged for later review.
-- **Where:** `Events.lua` — `stanceFormEventFrame`; `PetStanceBars.lua` — `RebuildStanceBarContainer`
-- **What:** The only runtime trigger for `RebuildStanceBarContainer` / `ApplyStanceBarLiveShape` / `RebuildAllDefaultBarAssignmentRows` is `UPDATE_SHAPESHIFT_FORMS`. env §4.12 confirmed it doesn't fire on form *toggles*; nobody has tested whether it fires when the set of forms *changes*. If it doesn't, a newly learned form or a respec won't reshape the Stance Bar until `/reload`. A class with no forms at login never builds the container. Keep the registration regardless.
-- **Verify:** On a low-level druid/warrior, learn a new form/stance and watch for the button without `/reload`. Or trace `UPDATE_SHAPESHIFT_FORMS` + `SPELLS_CHANGED` / `LEARNED_SPELL_IN_TAB`.
-
-### Layout baseline pass waits a fixed delay after login
-- **Status:** first live test of the in-frame version misplaced the Modern corner cluster (Micro Menu off the edge, Latency Bar too high); now deferred + reloaded, retest pending.
-- **Where:** `SetupWizard.lua` — `ACAB:ApplyPendingLayoutBaseline` (`BASELINE_SETTLE_DELAY`), scheduled near the end of `Core.lua` `RunLoginSequence`
-- **What:** The pass measures overlay rects and container sizes (corner cluster, stacked action bars), which aren't settled in the login frame. It runs `BASELINE_SETTLE_DELAY` seconds later, saves, and reloads, so the final layout loads from saved data like the old wizard's. If a slow client still measures unsettled rects, raise the delay or wait on a settle poll instead.
+### First-login default-bar anchor seeded at the wrong scale
+- **Status:** unexplained; harmless since `GetDefaultVanillaData` saves live data before copying (the same login's recapture fixes it).
+- **Where:** `Database.lua` `seedDefaultBars` / `EnsureDB`; `Core.lua` `RunLoginSequence`
+- **What:** on a fresh install, `ACABDB.defaultBars[1].nativeAnchor.x` already reads 178 (Main Bar centered at UI scale 1.0) at the start of `RunLoginSequence`, while `ActionButton1` measures 254. A temporary trace in `seedDefaultBars` printed nothing before that point, so the early seed happens before chat output shows, or somewhere else.
+- **Verify:** fresh install, then `/run print(ACABProfilesDB["Default Vanilla"].defaultBars[1].nativeAnchor.x)` right after the first `/reload`.
 
 ---
 
@@ -38,7 +29,6 @@ None of these were fixed during the refactor. Each has a repro or a `/run` check
 - **`string.match` is available despite being Lua 5.1.** `Core.lua`'s slash dispatcher / `HandleProfileCommand` rely on it, and it works live. Presumably one of the client mods supplies it. Don't "fix" it to `string.find` captures. Check: `/run print(string.match, string.gmatch)`.
 - **`X and X(...)` truncates a multi-return call to one value** (stock Lua, env §2). Capture multi-return APIs (`GetPetActionInfo`: 7 values incl. `subtext` in position 2) inside a real `if X then ... end` block.
 - **Lua 5.0 caps each function at 32 upvalues.** The local `luac` (5.1) allows 60 and won't catch it. Watch big settings builders when adding file-level locals; `SettingsBars.lua` peaks around 18.
-- **Global `_` is written by pet-slot captures** in `Button.lua` `ACABButtonMixin:Refresh` / `OnEnter` (`name, _, texture, ...` with no `local _`). Harmless so far. Declaring `local _` there is a behavior-scoped change.
 
 ### Frames, rects and layout
 - **Lazy, top-down rect resolution (env §4.6).** A child read before its ancestor caches a stale rect. Discarded ancestor reads before child reads are load-bearing in:
@@ -46,10 +36,11 @@ None of these were fixed during the refactor. Each has a repro or a `/run` check
   - `DefaultBars.lua` `WarmMainBarArtAncestorChain` / `GetButton1ScreenAnchor` / `ResolveNativeTopLeft`
   - `NativeElements.lua` Page Indicator (`UIParent:GetLeft(); container:GetLeft()` before `RealRect`)
 - **No rect until sized (env §4.6).** A frame with only `SetPoint` returns nil rects forever. Placeholder `SetWidth(1)/SetHeight(1)` at creation is load-bearing (Page Indicator container, `Settings.lua` bar-list scroll child). `MainMenuBarArtFrame` needs its native width/height re-asserted on every `ApplyMainBarArtPosition` (order: size → scale → ClearAllPoints → SetPoint).
-- **Same-name `CreateFrame` makes a second frame (env §4.7).** Per-rebuild name counters in `SettingsBars.lua` (`RebuildDefaultBarAssignmentRows`, `RefreshBarList`) are load-bearing. The Setup Wizard uses fixed names and is only safe because it's a build-once singleton: if steps ever get rebuilt, suffix a counter on every name.
+- **Same-name `CreateFrame` makes a second frame (env §4.7).** `SettingsBars.lua` `RebuildDefaultBarAssignmentRows` and `RefreshBarList` pool their named frames: one fixed name per pool slot (barId / form index), created once and re-shown after that. Any path that creates such a frame again instead of reusing it needs a per-rebuild name counter. The Setup Wizard uses fixed names and is only safe because it's a build-once singleton: if steps ever get rebuilt, suffix a counter on every name.
 - **ScrollFrame must stay paired with its original scroll child** (`Settings.lua` `CreateSettingsFrame`, `CreateWideContentScrollFrame`). Pointing a ScrollFrame at a new child leaves that child unresolvable. Build a new pair instead.
 - **FontString anchored only by TOPLEFT+TOPRIGHT won't wrap.** Set an explicit `SetWidth` before `SetText`, then read `GetHeight` (`Settings.lua` `SetProfileLockBannerMessage`).
 - **Strata survives reparenting.** ActionBarUp/DownButton keep `MainMenuBarArtFrame`'s MEDIUM strata after `SetParent`. `NativeElements.lua` `ApplyPageIndicatorStrata` reasserts LOW + explicit levels on every apply. Bars (`Bar.lua` `ApplyBarShape`) re-set LOW/level 10 on every shape pass, because page/stance swaps or `MainMenuBarArtFrame:Raise()` otherwise bury Bar 1 (env §4.8).
+- **Reparenting raises a button's level, not its children's.** Native Pet/Stance buttons moved into their container leave `<name>Cooldown` / `<name>AutoCast` behind the icon (GCD spiral invisible). `PetStanceBars.lua` `LiftButtonChildrenAboveButtons` re-lifts them after every reparent (`CreatePetBarNativeContainer`, `CreateStanceBarContainer`, `RebuildStanceBarContainer`).
 - **Edit-mode overlays are parented to UIParent** (`DefaultBars.lua` `EnsureContainerOverlay`) so all overlays compare FrameLevel in one tree. Hiding an element never hides its overlay: every disable path must `overlay:Hide()` + `EnableMouse(false)` itself. Overlapping overlays need distinct explicit levels (Key Ring 150 vs default 100).
 - **Page Indicator is laid out from `GetPoint` data, not rect deltas** (`NativeElements.lua` `CreatePageIndicatorContainer` / `ApplyPageIndicatorShape`). Right after login, sibling rects can still be cached from before the art moved. `MainMenuBarPageNumber` (FontString) has no `GetEffectiveScale`, so `ACAB:PixelSetPoint` falls back to plain `SetPoint`.
 - **Latency Bar Modern reset measures one frame late** (`NativeElements.lua` `ResetLatencyBarLayoutToModernBase`). Overlay rects don't reflect `SetScale(1)` until the next frame. `ApplyModernCornerClusterLayout` takes every measurement before any `Apply*Position`.
@@ -62,6 +53,11 @@ None of these were fixed during the refactor. Each has a repro or a `/run` check
 - **`ShapeshiftButton` backdrop must be a separate frame** (`PetStanceBars.lua` `ApplyStanceBarBorderStyle`). `SetBackdrop` on the real button draws over the icon and greys it out.
 - **`SHOW_MULTI_ACTIONBAR_1-4` don't survive logout (env §4.5).** `Database.lua` `SeedOneDefaultBar` seeds `enabled` from `DEFAULT_BAR_GRID`.
 - **Edit mode's Escape exit is a keybinding swap** (`Core.lua` `ACAB_EditModeEscapeFire` / `Enable/DisableEditModeEscapeBinding`). An `EnableKeyboard(true)` capture frame blocks every other key on this client. So `ESCAPE` is bound to `ACABEDITMODEESCAPE` (bindings.xml → plain global), never saved, and reverts on reload. Don't add `SaveBindings` here; keep the global.
+- **Macro slots use our own parser, not the client's pick, and CleveRoid's only for `[conditions]`** (user decision). SuperCleveRoidMacros replaces the global `GetActionTexture`, `IsUsableAction`, `IsActionInRange`, `IsCurrentAction`, `GetActionCooldown`, `GetActionCount`, `IsConsumableAction` and `GameTooltip.SetAction` for macro slots, picking the first action whose `[conditions]` pass (live: the bow icon on a "/cast Serpent Sting + /cast !Auto Shot" macro, `?` while Auto Shot runs). `Button.lua` `ResolveMacroTarget` picks the target itself: an explicit `#showtooltip`/`#show`/ShaguTweaks `--showtooltip` name; else, for macros containing `[` with CleveRoid loaded, the first `;` option whose conditions pass by `CleveRoids.TestAction(cmd, option)` (re-tested on every 0.2 s range tick, `UpdateConditionalMacroPick`, repaint only on change) that isn't Auto Shot, Attack, Shoot or `?`-prefixed; else the first `/cast`/`/use`/`CastSpellByName("...")` that isn't (first `;` alternative). That target drives icon (always the spell's or item's own, even over a custom macro icon), tooltip, count, cooldown, quality ring and range/usable tint (nampower `IsSpellUsable`/`IsSpellInRange` by spell name). `ACAB:PrintMacroAddonNote` prints a one-line note for CleveRoid users at login.
+  - **Macro glow** ignores `IsCurrentAction` (CleveRoid answers it through a proxy slot, which left Auto Shot glows stuck): Auto Shot/Shoot glow while `START/STOP_AUTOREPEAT_SPELL` says so, Attack per `PLAYER_ENTER/LEAVE_COMBAT`, other spells while `SPELLCAST_START`'s `arg1` names them (cast-time spells only; channels and instants never glow).
+  - **CleveRoid's own stored pick isn't used.** Live, `CleveRoids.GetAction(slot).active` was `nil` for "/cast [mod:shift] Arcane Shot; Serpent Sting" with no modifier held, and with nampower key events (`hasKeyEvents` true) CleveRoid neither polls Shift/Ctrl/Alt nor handles their `KEY_DOWN`/`KEY_UP` (key codes 0/1/2), so its pick never follows modifiers (its bug; Blizzard/pfUI bars show the same stale icon). Testing each option with `TestAction` ourselves avoids both.
+  - **Out-of-stock items** keep their icon, greyed, via a session-only cache (`knownItemTextures`); after a `/reload` with none left, the macro's own icon shows until one is looted.
+  - ShaguTweaks-extras "Macro Icons" only repaints Blizzard's own (hidden) buttons; "Macro Tweaks" supplies `/use` and `/equip`; "actionbar-reagents" only writes Blizzard button counts. ShaguTweaks "Reduced Actionbar" moves native bar frames this addon also manages; not checked here.
 - **Native-mode Pet/Stance bars are outside hoverbind.** They wrap real `PetActionButton` / `ShapeshiftButton` frames, so they bind only through Blizzard's Keybindings UI.
 
 ### Input / locking
@@ -154,6 +150,11 @@ None of these were fixed during the refactor. Each has a repro or a `/run` check
 - **Profile writes hit both `ACABDB` and `ACABProfilesDB`.** Logout / `ReloadUI` runs `SaveActiveProfileData`, which writes live `ACABDB` back under `activeProfileName`. Deleting the active profile must also repoint `activeProfileName`.
 - **Export format is byte-stable** (`TBVPROFILE1:`). Never add whitespace to `SerializeValue`, or older parsers reject it. The parser doesn't trim bare tokens (`[1]=false }` fails), and numbers round-trip at 14 significant digits.
 
+- **Sanitizer key lists are hand-kept.** `ACAB:SanitizeProfileData` (Database.lua) type-checks only the fields named in its `SANITIZE_*` lists plus `defaultBars`/`bars`; it runs on every saved profile at login and on imports. A new persisted field with a crash-prone type must be added there.
+- **Coverage:** every `ACABDB` field the code reads is type-checked, except one-shot migration flags (never touched on purpose) and legacy fields nothing reads anymore (`disableBlizzardArt`, `groupedElementOffsets`, `mainBar*Assignment`/`*Enabled`). Per-bar `nativeAnchor`/`fixedActionSlots` are structural: a bad one resets all of `defaultBars`, like a bad position. Other per-bar fields (`SANITIZE_BAR_*`) drop only that field, since every reader is nil-safe. `customGridSize` must stay above 0 because the layout grid steps by it.
+- **Import limits:** 256 KB string, 12 table levels, finite numbers only, string/number keys only, `schemaVersion` must be a number. Deep-recursion behavior on the real Lua 5.0 client is unverified (harness ran Lua 5.1); the depth cap makes it moot.
+- **Import never targets a built-in profile** (`ApplyImportedProfileData` and `ShowImportProfileDialog` refuse). Duplicate keys in an import: last one wins.
+
 ### Setup Wizard baseline write and resume
 - **Where:** `SetupWizard.lua` — `BuildBaselineData`, `WriteTargetProfile`, `ApplyBaselineAndReload`, `SaveResumeState`
 - **What:**
@@ -175,9 +176,19 @@ None of these were fixed during the refactor. Each has a repro or a `/run` check
   - Button and cooldown set LOW strata explicitly (below bags).
   - `ApplyBorderStyle` shares the `Init` helpers, so new border pieces go there.
 
+### Pool-button event dispatcher
+- **Where:** `Button.lua` — `RegisterPoolButton`, `MovePoolButtonActionSlot`, `PoolButtonDispatcher_OnEvent`, `POOL_BUTTON_EVENT_ROUTES`
+- **What:**
+  - Buttons register no events themselves. One dispatcher frame routes each event to the action/pet/stance list in `POOL_BUTTON_EVENT_ROUTES`; `ACTIONBAR_SLOT_CHANGED` looks up `actionSlotButtons[arg1]` (0/nil refreshes all).
+  - Every `btn.actionSlot` change must go through `ACABButtonMixin:Rebind`, or the slot map goes stale and that button stops refreshing on slot changes.
+  - The dispatcher copies `event`/`arg1` into locals before looping, since per-button code can clobber the globals.
+  - It's created on the first `Init`, not at file load, so it registers after `Events.lua`'s frames (same order as the old per-button registration). Pool buttons are never destroyed, so the lists only grow.
+  - Pet/stance buttons get no `ACTIONBAR_SLOT_CHANGED` for their own small slot index anymore (was an accidental match against action slots 1-10).
+  - `PLAYER_AURAS_CHANGED` doesn't `Refresh` stance buttons: `UpdateStanceFormChange` compares `GetShapeshiftFormInfo`'s texture/isActive/isCastable against the cache `Refresh` writes, and only on a change updates icon + glow (plus every stance cooldown). `UPDATE_SHAPESHIFT_FORMS` (fires on learning a form), `PLAYER_ENTERING_WORLD` and `Rebind` still do a full `Refresh`.
+
 ### Removed intra-addon existence guards
-- **Where:** `Bar.lua`, `Button.lua`, `HoverBind.lua` (removed in the refactor); `Core.lua`/`Events.lua` still have some
-- **What:** Guards like `if ACAB.RefreshBarSettingsPage then` were dropped because every guarded member is defined at the top level of a file that always loads, and every call runs after login. So:
+- **Where:** `Bar.lua`, `Button.lua`, `HoverBind.lua`, `Core.lua`, `Events.lua`
+- **What:** Same for `C_Timer` hedges: ClassicAPI is enforced at login (`CheckRequiredMods`, the only place that still checks `type(C_Timer)`), so tickers/`C_Timer.After` calls are unguarded. Guards like `if ACAB.RefreshBarSettingsPage then` were dropped because every guarded member is defined at the top level of a file that always loads, and every call runs after login. So:
   - Nothing may call `CreateActionButton` / `ApplyEditModeVisual` / `ApplyGlobalButtonStyle` / `ApplyHoverOnlyState` at file-load time.
   - `HoverBind.lua`'s top-level `customBindTargets = {}` must run before any button is created.
   - `Core.lua`'s hover-fade code calls `ACAB:GetCursorPositionUIScale` (defined later, in DefaultBars.lua): runtime-only.
@@ -204,6 +215,7 @@ None of these were fixed during the refactor. Each has a repro or a `/run` check
 - **Setup Wizard reads saved Exp Bar position.** `DefaultBars.lua` `GetModernBaseExpBarClearance` must read the saved Exp Bar position, not a live rect. `ApplyPendingLayoutBaseline` writes it first.
 - **Exp Bar layered under Latency Bar.** `ExperienceBar.lua` `ApplyExpBarPosition` copies Latency Bar's strata at level −1. This interacts with `MainMenuBarArtFrame`'s pinned LOW/level-5 masking (env §4.8), so change both together.
 - **Wheel resize.** `Bar.lua` `ACAB:ResizeBarFromWheel` is shared by the bar overlay and the button handler. The button's wheel handler must stay installed, since it swallows camera zoom over buttons outside edit mode.
+- **Login stages.** `Core.lua` `RunLoginSequence` runs each step through `RunLoginStage` (`xpcall` → client error handler, then continue). Only the "profile" stage aborts the sequence (live-confirmed: a forced "tooltip" failure left every other element in place; a forced "profile" failure disabled the addon cleanly). A failed stage leaves later stages running on whatever it left half-built, so expect follow-up errors from the stage that broke first; report that one. New steps go into an existing stage or a new named one, in the same position the order comments require.
 - **Login timing.** The settle polls (`Core.lua` `WaitForNativeBarSettle`, `WaitForWrappedFrameAnchorSettle`, `WaitForPostLoginSettleThenVerify`) are load-bearing: `stableCount` resets on any mismatch/nil, the check runs after `elapsed++`, and only a timeout without settling warns. Test any change with `/reload` and a fresh login.
 
 ---
@@ -213,27 +225,19 @@ None of these were fixed during the refactor. Each has a repro or a `/run` check
 ### Dead code kept on purpose (would change saved data or chat output)
 - **`stanceBarNativeGap`.** `PetStanceBars.lua` `CaptureStanceBarNativeGap` and `ACABDB.stanceBarNativeGap` are captured but never used for layout (`GetStanceBarBaselineY` uses fixed `PET_BAR_NATIVE_GAP`). Removing them changes a WARNING print and saved data. Remove together: the capture, its two call sites, and the EnsureDB self-heal.
 - **Legacy profile fields.** The reserved "ModernBase" profile name (`Database.lua` `MODERN_BASE_PROFILE_NAME`) is legacy but still hides old `ACABProfilesDB["ModernBase"]` entries. "Default" (`LEGACY_DEFAULT_PROFILE_NAME`) stays reserved so a new user profile can never be mistaken for the pre-rename Default Vanilla. `disableBlizzardArt`, `mainBarPaginationEnabled`, `mainBarStanceSwapEnabled`, `mainBarPageBarAssignment` and `mainBarStanceBarAssignment` stay in saves forever. Cleaning up needs a one-shot migration.
-- **`RunLoginSequence` params.** `Core.lua` `ACAB:RunLoginSequence(earlyLeft, earlyTop, settledLeft, settledTop, waited)` reads none of its parameters.
-- **`Button.lua` stubs.** The stance tooltip fallback for missing `GameTooltip.SetShapeshift` never runs, stock-API guards never fail, and `OnDragStop` is empty.
-- **C_Timer hedges.** `Settings.lua` `DeferFit` and `SettingsGeneral.lua` `HighlightGeneralLayoutCheckbox` check for `C_Timer`. ClassicAPI is a hard dependency, and `DeferFit`'s synchronous fallback would bring back the stale-rect bug.
-- **Redundant guards.** `Core.lua` (`ApplyHoverBindVisual`, `GetBarFrameSize`) and `Events.lua` (`RefreshBarSettingsPage`, `RebuildAllDefaultBarAssignmentRows`) still guard members that are always defined.
+- **`Button.lua` stubs.** The stance tooltip fallback for missing `GameTooltip.SetShapeshift` never runs, stock-API guards never fail, and `OnDragStop` is empty (still assigned in `Init`, so it stays).
 
 ### Tech debt
-- **Native anchor capture skipped when a position exists.** `NativeElements.lua` `Capture{KeyRing,LatencyBar,CastBar}PositionIfNeeded` return early before capturing `*NativeAnchor`. A writer that sets the position first (Modern corner cluster, import) leaves the native anchor nil forever, and the Vanilla reset then silently no-ops. Check: `/run print(ACABDB.keyRingNativeAnchor, ACABDB.latencyBarNativeAnchor, ACABDB.castBarNativeAnchor)`.
 - **Pet Bar reflow rewrites `cfg.nativeAnchor.y`.** `PetStanceBars.lua` `ReflowPetBarForBar3Toggle` does this, so treat the Pet Bar `nativeAnchor` as "last default-stack position", not the true capture.
-- **Page Indicator retry chains can stack.** Parallel `C_Timer.After(0.1)` retry chains in `CreatePageIndicatorContainer` / `ApplyPageIndicatorShape` share one elapsed counter. Harmless so far; a "retry pending" flag would bound it.
 - **Extra Bar fallback size.** `Database.lua` `GetDefaultExtraBarLayout` returns `BUTTON_SIZE` on the normal path but `GetCurrentButtonSizeBaseline()` on the fallback path.
 - **Two screen-size reads.** `Settings.lua` `GetScreenCoordinateRange` and `Bar.lua` `RebuildLayoutGrid` use `UIParent:GetWidth()/GetHeight()` instead of `GetUIParentAnchorSize`. It's harmless in both today (legacy range only / covered by overshoot lines). In `RebuildLayoutGrid`, `GetLayoutGridSpacing()` is already in local units, so don't divide it by effective scale.
 - **Sidebar rows follow `getElementFrame`.** `SettingsBars.lua` `RefreshBarList` shows a simple-page row only when its config's `getElementFrame()` is non-nil. New simple pages need a `getElementFrame`.
 - **Composed names hide greppable identifiers.** The Pet/Stance "Use Vanilla" checkbox name and field are built by concatenation (`CreateUseVanillaBarCheckbox`). Grep the factory name.
 
 ### Performance (measured as fine so far; look here first if something stutters)
-- **Settings frame leak.** `SettingsBars.lua` `RebuildGridSwatches`, `RefreshBarList` and `RebuildDefaultBarAssignmentRows` make new frames on every rebuild and only hide the old ones. Check `gcinfo()` before/after opening the Stance page ~50 times. Pooling with names unique per pool slot would bound it without reintroducing env §4.7.
-- **Hover-bind ticker allocation.** `HoverBind.lua`'s ticker builds a ref table per visible button every 0.25 s while hoverbind mode is on.
-- **Range ticker writes.** `Button.lua`'s shared range ticker calls `IsSlotFilled` three times per button and does unconditional `Show`/`Hide`/color writes every 0.2 s. It's the hottest path in the addon; caching the last state per button would cut it.
-- **Pet Bar re-layout.** `Button.lua` `Refresh` on a pet slot re-lays out the whole Pet Bar, so one `PET_BAR_UPDATE` means 10 full layouts.
 - **Main Bar drag.** Every tick re-applies the art frame (texture Hide/Show redraw, which is load-bearing) plus all grouped elements, each with a fresh hover closure.
-- **Rested-glow pulse.** `ExperienceBar.lua`'s 20 Hz pulse ticker keeps running while the Exp Bar is disabled.
+
+Done: range-ticker write cache (`rangeKey` in `UpdateRange`), Pet Bar layout coalescing (`petLayoutPending` in `Refresh`), rested-glow pulse stops with the Exp Bar, pooled bar-list rows (`RefreshBarList`), grid swatches and assignment rows (`RebuildGridSwatches`, `RebuildDefaultBarAssignmentRows`), one shared event dispatcher for all pool buttons (`Button.lua` `POOL_BUTTON_EVENT_ROUTES`), hover-bind tint ticker reuses one callback and one ref table (`HoverBind.lua` `ForEachButton`).
 
 ### Remaining duplication
 - **`AppendCandidate`** is file-local in both `Core.lua` (grid-snap candidates) and `Settings.lua` (height-fit). It was left alone because the Settings copy sits inside the resolve-pass machinery. If shared, define it in Core.lua and keep the candidate order.
@@ -247,7 +251,6 @@ None of these were fixed during the refactor. Each has a repro or a `/run` check
 - **Modern button factory.** `SetupWizard.lua` `CreateWizardButton`, `UIWidgets.lua` `ACAB:CreateResetButton`, and hand-rolled `CreateFrame` + `StyleModernButton` sequences elsewhere could share one `ACAB:CreateModernButton(parent, config)` with a danger/prominent `variant`. `CreateResetButton` anchors before styling, the others style first, so confirm live that the order doesn't matter.
 - **Login settle polls.** `Core.lua` has three near-identical tickers. See the login-timing entry in §3 before unifying.
 - **`Fit*` candidate lists.** `Settings.lua` (~60 lines of `AppendCandidate` calls) could be name tables. The resulting array must be identical and in the same order.
-- **Assignment-row stance count.** `SettingsBars.lua` `RebuildDefaultBarAssignmentRows` is the only live stance-count read without the `MAX_STANCE_BUTTONS` clamp, so it doesn't use `GetClampedLiveStanceCount`. It only differs above 10 forms.
 - **Default-bar overlays.** `DefaultBars.lua`'s own overlays have wheel handlers similar to `ACAB:ResizeBarFromWheel`.
 
 ### Decomposition ideas (need `.toc` + CLAUDE.md updates)

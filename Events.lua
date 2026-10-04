@@ -21,9 +21,13 @@ loadFrame:SetScript("OnEvent", function()
 
 	loadFrame:UnregisterEvent("PLAYER_ENTERING_WORLD")
 
+	if not ACAB:CheckRequiredMods() then
+		return
+	end
+
 	-- WaitForNativeBarSettle calls its callback as a plain function; the wrapper keeps RunLoginSequence's self.
-	ACAB:WaitForNativeBarSettle(function(earlyLeft, earlyTop, settledLeft, settledTop, waited)
-		ACAB:RunLoginSequence(earlyLeft, earlyTop, settledLeft, settledTop, waited)
+	ACAB:WaitForNativeBarSettle(function()
+		ACAB:RunLoginSequence()
 	end)
 end)
 
@@ -34,8 +38,11 @@ end)
 local gridVisibilityFrame = CreateFrame("Frame")
 gridVisibilityFrame:RegisterEvent("ACTIONBAR_SHOWGRID")
 gridVisibilityFrame:RegisterEvent("ACTIONBAR_HIDEGRID")
+gridVisibilityFrame:RegisterEvent("PET_BAR_SHOWGRID")
+gridVisibilityFrame:RegisterEvent("PET_BAR_HIDEGRID")
 gridVisibilityFrame:SetScript("OnEvent", function()
-	ACAB.isShowingActionGrid = (event == "ACTIONBAR_SHOWGRID")
+	-- Pet spell drags fire the PET_BAR_* pair instead of the ACTIONBAR_* pair.
+	ACAB.isShowingActionGrid = (event == "ACTIONBAR_SHOWGRID" or event == "PET_BAR_SHOWGRID")
 
 	ACAB:SweepCustomBarGridVisibility()
 end)
@@ -98,6 +105,11 @@ stanceFormEventFrame:SetScript("OnEvent", function()
 	-- Native mode.
 	ACAB:RebuildStanceBarContainer()
 
+	-- Reparented native buttons only draw after the game's own refresh.
+	if ACAB:IsStanceBarNativeModeEffective() then
+		ShapeshiftBar_Update()
+	end
+
 	-- Styled mode: re-lay-out the pool bar if the live form count changed its shape.
 	if ACAB:ApplyStanceBarLiveShape() then
 		local styledBar = ACAB.bars and ACAB.bars[ACAB.STANCE_BAR_ID]
@@ -106,15 +118,11 @@ stanceFormEventFrame:SetScript("OnEvent", function()
 			ACAB:ApplyBarShape(styledBar)
 		end
 
-		if ACAB.RefreshBarSettingsPage then
-			ACAB:RefreshBarSettingsPage(ACAB.STANCE_BAR_ID)
-		end
+		ACAB:RefreshBarSettingsPage(ACAB.STANCE_BAR_ID)
 	end
 
 	-- Re-syncs bars 1-5's per-stance assignment rows on any already-built settings page.
-	if ACAB.RebuildAllDefaultBarAssignmentRows then
-		ACAB:RebuildAllDefaultBarAssignmentRows()
-	end
+	ACAB:RebuildAllDefaultBarAssignmentRows()
 end)
 
 -------------------------------------------------------------------------

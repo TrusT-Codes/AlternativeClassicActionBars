@@ -66,6 +66,21 @@ local function SetBarCfgHoverDuration(self, barId, duration, applyFn)
 	applyFn(self)
 end
 
+-- Puts each button's <name><suffix> child (e.g. "Cooldown") on the button's strata, one level above it.
+-- Must run after every reparent into a container: the button's level changes but its children keep theirs.
+local function LiftButtonChildrenAboveButtons(buttons, suffix)
+	local b
+
+	for b = 1, table.getn(buttons) do
+		local child = getglobal(buttons[b]:GetName() .. suffix)
+
+		if child then
+			child:SetFrameStrata(buttons[b]:GetFrameStrata())
+			child:SetFrameLevel(buttons[b]:GetFrameLevel() + 1)
+		end
+	end
+end
+
 -------------------------------------------------------------------------
 -- Pet Bar, native mode (the real PetActionButton1-10 in a synthetic container)
 -- Position/spacing live on ACABDB.defaultBars[PET_BAR_ID], shared with styled mode; only cfg.scale is native-only.
@@ -127,7 +142,18 @@ function ACAB:CreatePetBarNativeContainer()
 
 	self:SortButtonsByNativeLeft(buttons)
 
+	-- Native pet buttons don't get right-clicks by default, which blocks the autocast toggle.
+	local b
+
+	for b = 1, table.getn(buttons) do
+		buttons[b]:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+	end
+
 	local container = self:BuildChainAnchoredContainer("ACABPetBarNativeContainer", buttons)
+
+	-- The container raised the buttons' level; lift each autocast shine model and cooldown above its button again.
+	LiftButtonChildrenAboveButtons(buttons, "AutoCast")
+	LiftButtonChildrenAboveButtons(buttons, "Cooldown")
 
 	self.petBarNativeContainer = container
 	self.petBarNativeButtons = buttons
@@ -486,6 +512,9 @@ function ACAB:CreateStanceBarContainer()
 	self.stanceBarContainer = container
 	self.stanceBarButtons = buttons
 
+	-- Otherwise the GCD/cooldown spiral draws behind the icons.
+	LiftButtonChildrenAboveButtons(buttons, "Cooldown")
+
 	self:SeedNativePosition("stanceBarNativeAnchor", "stanceBarPosition", nativeLeft, nativeTop)
 
 	if not ACABDB.stanceBarNativeSpacing then
@@ -534,6 +563,13 @@ function ACAB:RebuildStanceBarContainer()
 
 	if not container then
 		self:CreateStanceBarContainer()
+
+		-- Same stacking pass RunLoginSequence runs after its own CreateStanceBarContainer.
+		if ACABDB.useDefaultLayout ~= false then
+			local bar2Cfg = ACABDB.defaultBars[2]
+			self:ReflowStanceBarForBar2Toggle(bar2Cfg and bar2Cfg.enabled)
+		end
+
 		return
 	end
 
@@ -554,6 +590,8 @@ function ACAB:RebuildStanceBarContainer()
 	container.chainHeights = heights
 
 	self.stanceBarButtons = buttons
+
+	LiftButtonChildrenAboveButtons(buttons, "Cooldown")
 
 	self:ApplyStanceBarShape()
 	self:ApplyStanceBarBorderStyle()

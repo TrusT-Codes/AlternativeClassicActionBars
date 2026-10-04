@@ -332,7 +332,6 @@ function ACAB:RecaptureDefaultBarNativeAnchors()
 	self:EnsureDB()
 
 	self:Print("Recapturing positions to align Bars with your Screen.")
-
 	local fresh = seedDefaultBars(self)
 	local i
 
@@ -780,7 +779,8 @@ end
 function ACAB:GetDefaultVanillaData()
 	ACABProfilesDB = ACABProfilesDB or {}
 
-	if not ACABProfilesDB[self.DEFAULT_PROFILE_NAME] and self.activeProfileName == self.DEFAULT_PROFILE_NAME then
+	-- Live data first while Default Vanilla is loaded: the snapshot misses this session's recapture.
+	if self.activeProfileName == self.DEFAULT_PROFILE_NAME then
 		self:EnsureDB()
 		self:SaveActiveProfileData()
 	end
@@ -826,18 +826,365 @@ function ACAB:EnsureModernBaseProfile()
 	end
 end
 
+-------------------------------------------------------------------------
+-- Profile data sanitizing: drops wrong-typed fields so EnsureDB reseeds them (runs on saved profiles at login
+-- and on imported data). Never touches one-shot flags.
+-------------------------------------------------------------------------
+
+local SANITIZE_LIMIT = 1e15
+
+local SANITIZE_BOOLEAN_KEYS = {
+	"editMode", "useDefaultLayout", "modernBorderStyle", "bypassRightActionBar2Dependency", "lastAppliedVanillaStyle",
+	"globalSpacingEnabled", "globalButtonSizeEnabled", "defaultBarPaginationEnabled", "defaultBarStanceSwapEnabled",
+	"mainBarPageIndicatorFollowsMainBar", "tintWholeButtonOnRange", "snapToAdjacentElements", "showLayoutGrid",
+	"snapToGrid", "useCustomGridSize", "bagBarEnabled", "microMenuEnabled", "stanceBarEnabled", "keyRingEnabled",
+	"latencyBarEnabled", "tooltipEnabled", "expBarEnabled", "stanceBarUsesDefaultPosition",
+	"castBarUsesDefaultPosition", "bagBarHoverOnly", "microMenuHoverOnly", "latencyBarHoverOnly", "expBarHoverOnly",
+	"keyRingHoverOnly", "betterExpBarEnabled", "expBarShowCurrentOverMax", "expBarShowPercent", "expBarShowLevel",
+	"expBarShowRestedPercent", "expBarShowRestedTotal", "bagBarOrientation", "stanceBarOrientation", "showMacroText",
+	"bagBarGroupUnlocked", "keyRingGroupUnlocked", "microMenuGroupUnlocked", "latencyBarGroupUnlocked",
+	"pageIndicatorGroupUnlocked", "hoverBindMode", "vanillaLayoutStacking", "pendingDefaultBarRecapture",
+	"pendingDisableExtraBars",
+}
+
+local SANITIZE_NUMBER_KEYS = {
+	"minimapAngle", "globalSpacingValue", "globalButtonSizeValue", "keyRingHoverDuration",
+	"bagBarHoverDuration", "microMenuHoverDuration", "latencyBarHoverDuration", "expBarHoverDuration",
+	"expBarGlowPulseInterval", "microMenuCols", "microMenuRows", "stanceBarNativeGap",
+	"bagBarSpacing", "bagBarNativeSpacing", "microMenuSpacing", "microMenuNativeSpacing", "stanceBarSpacing",
+	"stanceBarNativeSpacing", "castBarStackBaseY",
+}
+
+-- Numbers that must stay above 0 (scales, font sizes, grid size).
+local SANITIZE_SCALE_KEYS = {
+	"mainBarPageIndicatorScale", "tooltipScale", "expBarScale", "latencyBarScale", "castBarScale", "keyRingScale",
+	"bagBarScale", "microMenuScale", "stanceBarScale",
+	"hotkeyFontSize", "countFontSize", "macroFontSize", "expBarFontSize", "customGridSize",
+}
+
+local SANITIZE_COLOR_KEYS = {
+	"expBarTextColor", "expBarColorEarned", "expBarColorRested", "expBarNativeColorEarned", "expBarNativeColorRested",
+}
+
+-- Per-bar cfg fields outside position/grid/slot; a wrong type drops only that field.
+local SANITIZE_BAR_BOOLEAN_KEYS = {
+	"enabled", "usesDefaultPosition", "hoverOnly", "useNativeStanceBar", "useNativePetBar", "condenseEmptyPetSlots",
+	"spacingUnlocked", "buttonSizeUnlocked", "animateAutoCastGlow", "dynamicDefaultBar", "isPetBar", "isStanceBar",
+	"visualCenter",
+}
+
+local SANITIZE_BAR_NUMBER_KEYS = { "hoverDuration", "nativeSpacing" }
+
+local SANITIZE_POSITION_KEYS = {
+	"bagBarPosition", "microMenuPosition", "keyRingPosition", "latencyBarPosition", "castBarPosition",
+	"expBarPosition", "tooltipPosition", "stanceBarPosition", "mainBarPageIndicatorPosition",
+	"bagBarNativeAnchor", "microMenuNativeAnchor", "keyRingNativeAnchor", "latencyBarNativeAnchor",
+	"castBarNativeAnchor", "expBarNativeAnchor", "stanceBarNativeAnchor", "mainBarPageIndicatorNativeAnchor",
+}
+
+local function IsFiniteNumber(v)
+	return type(v) == "number" and v == v and v > -SANITIZE_LIMIT and v < SANITIZE_LIMIT
+end
+
+local function IsIntegerInRange(v, low, high)
+	return IsFiniteNumber(v) and v == math.floor(v) and v >= low and v <= high
+end
+
+-- Position-style table: finite x/y, string anchors when present.
+local function IsValidPositionTable(t)
+	return type(t) == "table"
+		and (t.x == nil or IsFiniteNumber(t.x))
+		and (t.y == nil or IsFiniteNumber(t.y))
+		and (t.point == nil or type(t.point) == "string")
+		and (t.relativePoint == nil or type(t.relativePoint) == "string")
+end
+
+-- Bar cfg (default-bar family or custom bar): finite numeric fields, grid within MAX_BAR_BUTTONS, slot start in the pool.
+local function IsValidBarConfig(self, cfg)
+	if not IsValidPositionTable(cfg) then
+		return false
+	end
+
+	if cfg.cols ~= nil and not IsIntegerInRange(cfg.cols, 1, self.MAX_BAR_BUTTONS) then return false end
+	if cfg.rows ~= nil and not IsIntegerInRange(cfg.rows, 1, self.MAX_BAR_BUTTONS) then return false end
+
+	if cfg.cols and cfg.rows and cfg.cols * cfg.rows > self.MAX_BAR_BUTTONS then
+		return false
+	end
+
+	if cfg.buttonCount ~= nil and not IsIntegerInRange(cfg.buttonCount, 0, self.MAX_BAR_BUTTONS) then return false end
+	if cfg.slotStart ~= nil and not IsIntegerInRange(cfg.slotStart, self.ACTION_SLOT_START, self.ACTION_SLOT_END) then return false end
+	if cfg.buttonSize ~= nil and not (IsFiniteNumber(cfg.buttonSize) and cfg.buttonSize > 0) then return false end
+	if cfg.spacing ~= nil and not IsFiniteNumber(cfg.spacing) then return false end
+	if cfg.nativeAnchor ~= nil and not IsValidPositionTable(cfg.nativeAnchor) then return false end
+
+	if cfg.fixedActionSlots ~= nil then
+		if type(cfg.fixedActionSlots) ~= "table" then
+			return false
+		end
+
+		local k, slot
+
+		for k, slot in pairs(cfg.fixedActionSlots) do
+			if not IsIntegerInRange(slot, 1, self.ACTION_SLOT_END) then
+				return false
+			end
+		end
+	end
+
+	return true
+end
+
+local function IsValidColorTable(t)
+	return type(t) == "table" and IsFiniteNumber(t.r) and IsFiniteNumber(t.g) and IsFiniteNumber(t.b)
+end
+
+-- Drops wrong-typed non-structural fields from one bar cfg; `label` prefixes the issue lines.
+local function SanitizeBarExtras(cfg, label, issues)
+	local i, key
+
+	for i = 1, table.getn(SANITIZE_BAR_BOOLEAN_KEYS) do
+		key = SANITIZE_BAR_BOOLEAN_KEYS[i]
+
+		if cfg[key] ~= nil and type(cfg[key]) ~= "boolean" then
+			cfg[key] = nil
+
+			if issues then table.insert(issues, label .. "." .. key .. " must be true or false") end
+		end
+	end
+
+	for i = 1, table.getn(SANITIZE_BAR_NUMBER_KEYS) do
+		key = SANITIZE_BAR_NUMBER_KEYS[i]
+
+		if cfg[key] ~= nil and not IsFiniteNumber(cfg[key]) then
+			cfg[key] = nil
+
+			if issues then table.insert(issues, label .. "." .. key .. " must be a number") end
+		end
+	end
+
+	if cfg.scale ~= nil and not (IsFiniteNumber(cfg.scale) and cfg.scale > 0) then
+		cfg.scale = nil
+
+		if issues then table.insert(issues, label .. ".scale must be a number above 0") end
+	end
+end
+
+-- Drops wrong-typed fields from one profile's data in place; structural damage falls back to EnsureDB reseeding.
+-- Appends one "<field> <expectation>" line per dropped field to `issues` when given.
+function ACAB:SanitizeProfileData(data, issues)
+	local i, key
+
+	local function Drop(field, expected)
+		data[field] = nil
+
+		if issues then
+			table.insert(issues, field .. " " .. expected)
+		end
+	end
+
+	if type(data.schemaVersion) ~= "number" then
+		data.schemaVersion = self.SCHEMA_VERSION
+	end
+
+	for i = 1, table.getn(SANITIZE_BOOLEAN_KEYS) do
+		key = SANITIZE_BOOLEAN_KEYS[i]
+
+		if data[key] ~= nil and type(data[key]) ~= "boolean" then Drop(key, "must be true or false") end
+	end
+
+	for i = 1, table.getn(SANITIZE_NUMBER_KEYS) do
+		key = SANITIZE_NUMBER_KEYS[i]
+
+		if data[key] ~= nil and not IsFiniteNumber(data[key]) then Drop(key, "must be a number") end
+	end
+
+	for i = 1, table.getn(SANITIZE_SCALE_KEYS) do
+		key = SANITIZE_SCALE_KEYS[i]
+
+		if data[key] ~= nil and not (IsFiniteNumber(data[key]) and data[key] > 0) then
+			Drop(key, "must be a number above 0")
+		end
+	end
+
+	for i = 1, table.getn(SANITIZE_POSITION_KEYS) do
+		key = SANITIZE_POSITION_KEYS[i]
+
+		if data[key] ~= nil and not IsValidPositionTable(data[key]) then Drop(key, "must hold numeric x/y and text anchors") end
+	end
+
+	if data.tooltipAnchorCorner ~= nil and type(data.tooltipAnchorCorner) ~= "string" then
+		Drop("tooltipAnchorCorner", "must be text")
+	end
+
+	for i = 1, table.getn(SANITIZE_COLOR_KEYS) do
+		key = SANITIZE_COLOR_KEYS[i]
+
+		if data[key] ~= nil and not IsValidColorTable(data[key]) then Drop(key, "must hold numeric r/g/b") end
+	end
+
+	local artOffset = data.mainBarArtNativeOffset
+
+	if artOffset ~= nil and not (type(artOffset) == "table"
+		and (artOffset.y == nil or IsFiniteNumber(artOffset.y))
+		and (artOffset.gryphonRightFromFrameLeft == nil or IsFiniteNumber(artOffset.gryphonRightFromFrameLeft))
+		and (artOffset.width == nil or IsFiniteNumber(artOffset.width))
+		and (artOffset.height == nil or IsFiniteNumber(artOffset.height))) then
+		Drop("mainBarArtNativeOffset", "must hold numeric y/width/height")
+	end
+
+	if data.latestSeenVersion ~= nil and type(data.latestSeenVersion) ~= "string" then
+		Drop("latestSeenVersion", "must be text")
+	end
+
+	local artMode = data.mainBarArtMode
+
+	if artMode ~= nil and artMode ~= self.MAIN_BAR_ART_MODE_FULL and artMode ~= self.MAIN_BAR_ART_MODE_NO_GRYPHONS
+		and artMode ~= self.MAIN_BAR_ART_MODE_DISABLED then
+		Drop("mainBarArtMode", "must be \"full\", \"noGryphons\" or \"disabled\"")
+	end
+
+	if data.pendingLayoutBaseline ~= nil and data.pendingLayoutBaseline ~= "modern"
+		and data.pendingLayoutBaseline ~= "vanilla" then
+		Drop("pendingLayoutBaseline", "must be \"modern\" or \"vanilla\"")
+	end
+
+	-- Page/stance assignment maps: [id] -> number or { [stanceIndex] -> number }.
+	local assignmentKeys = { "defaultBarPageBarAssignment", "defaultBarStanceBarAssignment" }
+	local a, k, v
+
+	for a = 1, 2 do
+		key = assignmentKeys[a]
+
+		if data[key] ~= nil and type(data[key]) ~= "table" then
+			Drop(key, "must be a table")
+		elseif data[key] then
+			for k, v in pairs(data[key]) do
+				if type(v) ~= "number" and type(v) ~= "table" then
+					data[key][k] = nil
+
+					if issues then
+						table.insert(issues, key .. "[" .. tostring(k) .. "] must be a number or table")
+					end
+				end
+			end
+		end
+	end
+
+	-- Any damaged default-bar cfg reseeds the whole defaultBars table (Pet/Stance cfgs are reseeded alone by EnsureDB).
+	if data.defaultBars ~= nil then
+		local valid = type(data.defaultBars) == "table"
+
+		if valid then
+			for i = 1, 5 do
+				if not IsValidBarConfig(self, data.defaultBars[i]) then
+					valid = false
+				end
+			end
+
+			for k, v in pairs(data.defaultBars) do
+				if type(k) ~= "number" or not IsValidBarConfig(self, v) then
+					valid = false
+				end
+			end
+		end
+
+		if not valid then
+			Drop("defaultBars", "has a bar entry with missing or invalid values (reset to defaults)")
+		else
+			for k, v in pairs(data.defaultBars) do
+				SanitizeBarExtras(v, "defaultBars[" .. k .. "]", issues)
+			end
+		end
+	end
+
+	-- Custom/Extra bars: non-table or damaged entries are dropped (EnsureExtraBars reseeds missing Extra Bars).
+	if data.bars ~= nil then
+		local cleaned = {}
+		local n = 0
+
+		if type(data.bars) == "table" then
+			for i = 1, table.getn(data.bars) do
+				local cfg = data.bars[i]
+
+				if IsValidBarConfig(self, cfg) and IsIntegerInRange(cfg.id, 1, SANITIZE_LIMIT) then
+					SanitizeBarExtras(cfg, "bars[" .. i .. "]", issues)
+					n = n + 1
+					cleaned[n] = cfg
+				elseif issues then
+					table.insert(issues, "bars[" .. tostring(i) .. "] has invalid values (removed)")
+				end
+			end
+		elseif issues then
+			table.insert(issues, "bars must be a table")
+		end
+
+		data.bars = cleaned
+	end
+end
+
+-- Joins the first few sanitize issues into one line.
+local function FormatSanitizeIssues(issues)
+	local shown = {}
+	local total = table.getn(issues)
+	local i
+
+	for i = 1, math.min(total, 5) do
+		shown[i] = issues[i]
+	end
+
+	local text = table.concat(shown, "; ")
+
+	if total > 5 then
+		text = text .. "; and " .. tostring(total - 5) .. " more"
+	end
+
+	return text
+end
+
 -- Resolves this character's profile, migrates pre-profile account data into Default Vanilla once, rebuilds
 -- Default Modern, and loads the profile into ACABDB. Must run before EnsureDB.
 function ACAB:ResolveActiveProfile()
-	if not ACABCharDB then
+	if type(ACABCharDB) ~= "table" then
 		ACABCharDB = {
 			activeProfile = self.DEFAULT_PROFILE_NAME,
 			hasSelectedProfileBefore = false,
 		}
 	end
 
-	if not ACABProfilesDB then
+	if type(ACABProfilesDB) ~= "table" then
 		ACABProfilesDB = {}
+	end
+
+	if type(ACABDB) ~= "table" then
+		ACABDB = nil
+	end
+
+	-- Non-table profile entries and non-string names are unusable; damaged fields inside the rest are dropped.
+	local profileName, profileData
+
+	for profileName, profileData in pairs(ACABProfilesDB) do
+		if type(profileName) ~= "string" or type(profileData) ~= "table" then
+			ACABProfilesDB[profileName] = nil
+		else
+			local issues = {}
+
+			self:SanitizeProfileData(profileData, issues)
+
+			if issues[1] then
+				self:Print("Reset invalid saved settings in profile \"" .. profileName .. "\": " .. FormatSanitizeIssues(issues))
+			end
+		end
+	end
+
+	if ACABDB then
+		local issues = {}
+
+		self:SanitizeProfileData(ACABDB, issues)
+
+		if issues[1] then
+			self:Print("Reset invalid saved settings: " .. FormatSanitizeIssues(issues))
+		end
 	end
 
 	MigrateBuiltInProfileNames(self)
@@ -859,7 +1206,12 @@ function ACAB:ResolveActiveProfile()
 		self.pendingFirstLoginDialog = true
 	end
 
-	local activeProfile = ACABCharDB.activeProfile or self.DEFAULT_PROFILE_NAME
+	local activeProfile = ACABCharDB.activeProfile
+
+	if type(activeProfile) ~= "string" then
+		activeProfile = self.DEFAULT_PROFILE_NAME
+		ACABCharDB.activeProfile = activeProfile
+	end
 
 	-- Falls back to Default Vanilla when the saved profile was deleted on another character.
 	if activeProfile ~= self.DEFAULT_PROFILE_NAME and not ACABProfilesDB[activeProfile] then
@@ -1001,6 +1353,10 @@ end
 
 local PROFILE_EXPORT_PREFIX = "TBVPROFILE1:"
 
+-- Import strings beyond these limits are rejected (a real export is ~5 KB, 4 tables deep).
+local PROFILE_IMPORT_MAX_LENGTH = 262144
+local PROFILE_IMPORT_MAX_DEPTH = 12
+
 ACAB.PROFILE_IMPORT_ERROR_MESSAGE =
 	"Invalid Profile Import Syntax, please double check you copied all " ..
 	"Text correctly on your Export and try again"
@@ -1056,7 +1412,7 @@ end
 
 -- Recursive-descent parser for SerializeValue's grammar. Parse functions return value, or nil, errorString.
 local function NewImportParser(str)
-	return { str = str, pos = 1, len = string.len(str) }
+	return { str = str, pos = 1, len = string.len(str), depth = 0 }
 end
 
 local function SkipImportWhitespace(p)
@@ -1142,8 +1498,9 @@ local function ParseImportNumberOrKeyword(p)
 
 	local num = tonumber(token)
 
-	if not num then
-		return nil, "invalid token"
+	-- Rejects NaN and +-infinity.
+	if not num or num ~= num or num <= -SANITIZE_LIMIT or num >= SANITIZE_LIMIT then
+		return nil, "invalid value (expected true, false, nil or a normal number)"
 	end
 
 	return num
@@ -1152,6 +1509,11 @@ end
 -- Parses a {[key]=value,...} table starting at the opening brace; nil keys are skipped.
 local function ParseImportTable(p)
 	p.pos = p.pos + 1
+	p.depth = p.depth + 1
+
+	if p.depth > PROFILE_IMPORT_MAX_DEPTH then
+		return nil, "tables nested too deep"
+	end
 
 	local result = {}
 
@@ -1159,6 +1521,7 @@ local function ParseImportTable(p)
 
 	if string.sub(p.str, p.pos, p.pos) == "}" then
 		p.pos = p.pos + 1
+		p.depth = p.depth - 1
 		return result
 	end
 
@@ -1176,6 +1539,10 @@ local function ParseImportTable(p)
 
 		if key == nil and keyErr then
 			return nil, keyErr
+		end
+
+		if key ~= nil and type(key) ~= "string" and type(key) ~= "number" then
+			return nil, "invalid key type"
 		end
 
 		SkipImportWhitespace(p)
@@ -1224,6 +1591,8 @@ local function ParseImportTable(p)
 		end
 	end
 
+	p.depth = p.depth - 1
+
 	return result
 end
 
@@ -1245,53 +1614,100 @@ ParseImportValue = function(p)
 	end
 end
 
--- Parses one whole value; nil on any error or trailing input.
+-- Parses one whole value; returns the value, or nil, error, position on failure or trailing input.
 local function ParseImportBody(body)
 	local p = NewImportParser(body)
 	local value, err = ParseImportValue(p)
 
 	if err then
-		return nil
+		return nil, err, p.pos
 	end
 
 	SkipImportWhitespace(p)
 
 	if p.pos <= p.len then
-		return nil
+		return nil, "unexpected text after the end of the profile", p.pos
 	end
 
 	return value
 end
 
--- Validates and parses an exported profile string without applying it. Returns true, data or false, errorMessage.
+-- Error banner text: the general message plus what went wrong and where (character count includes the prefix).
+function ACAB:BuildImportErrorMessage(detail, body, pos)
+	local text = self.PROFILE_IMPORT_ERROR_MESSAGE .. "\nProblem: " .. detail
+
+	if body and pos then
+		local near = string.gsub(string.sub(body, math.max(pos - 12, 1), pos + 8), "%c", "?")
+
+		text = text .. " at character " .. tostring(pos + string.len(PROFILE_EXPORT_PREFIX)) .. " (near \"" .. near .. "\")"
+	end
+
+	return text
+end
+
+-- Validates and parses an exported profile string without applying it.
+-- Returns true, data, warningText-or-nil (fields dropped for wrong types) or false, errorMessage.
 function ACAB:ParseProfileImportString(str)
 	if type(str) ~= "string" then
-		return false, self.PROFILE_IMPORT_ERROR_MESSAGE
+		return false, self:BuildImportErrorMessage("the pasted value is not text")
+	end
+
+	if string.len(str) > PROFILE_IMPORT_MAX_LENGTH then
+		return false, self:BuildImportErrorMessage("the text is longer than " .. tostring(PROFILE_IMPORT_MAX_LENGTH / 1024) .. " KB")
 	end
 
 	local prefixLen = string.len(PROFILE_EXPORT_PREFIX)
 
 	if string.sub(str, 1, prefixLen) ~= PROFILE_EXPORT_PREFIX then
-		return false, self.PROFILE_IMPORT_ERROR_MESSAGE
+		return false, self:BuildImportErrorMessage("the text must start with " .. PROFILE_EXPORT_PREFIX)
 	end
 
 	local body = string.sub(str, prefixLen + 1)
-	local ok, result = pcall(ParseImportBody, body)
+	local ok, result, err, pos = pcall(ParseImportBody, body)
 
-	if not ok or type(result) ~= "table" then
-		return false, self.PROFILE_IMPORT_ERROR_MESSAGE
+	if not ok then
+		return false, self:BuildImportErrorMessage("the text could not be read")
 	end
 
-	return true, result
+	if err then
+		return false, self:BuildImportErrorMessage(err, body, pos)
+	end
+
+	if type(result) ~= "table" or type(result.schemaVersion) ~= "number" then
+		return false, self:BuildImportErrorMessage("this is not a profile (no numeric schemaVersion found)")
+	end
+
+	-- Marks the built-in Default Modern profile; only ACAB itself writes it.
+	result.builtInModernProfile = nil
+
+	local issues = {}
+
+	if not pcall(self.SanitizeProfileData, self, result, issues) then
+		return false, self:BuildImportErrorMessage("the profile values could not be checked")
+	end
+
+	local warning
+
+	if issues[1] then
+		warning = "Wrong-typed values will be reset to defaults: " .. FormatSanitizeIssues(issues)
+	end
+
+	return true, result, warning
 end
 
 -- Overwrites the active profile's live data and saved entry with parsed import data.
 -- Must write both, or the logout-time SaveActiveProfileData before ReloadUI clobbers the import.
 function ACAB:ApplyImportedProfileData(data)
+	if not self.activeProfileName or self:IsBuiltInProfileName(self.activeProfileName) then
+		return false
+	end
+
 	ACABDB = self:DeepCopyTable(data)
 
 	ACABProfilesDB = ACABProfilesDB or {}
 	ACABProfilesDB[self.activeProfileName] = self:DeepCopyTable(data)
+
+	return true
 end
 
 -- Switches this character to an existing profile and reloads the UI.
@@ -1353,7 +1769,18 @@ function ACAB:ShowFirstLoginDialog()
 		},
 	}
 
-	if table.getn(self:GetProfileNames()) > 1 then
+	-- Shown only when a custom (non-built-in) profile exists.
+	local names = self:GetProfileNames()
+	local hasCustomProfile = false
+	local i
+
+	for i = 1, table.getn(names) do
+		if not self:IsBuiltInProfileName(names[i]) then
+			hasCustomProfile = true
+		end
+	end
+
+	if hasCustomProfile then
 		table.insert(buttons, {
 			text = "use existing profile",
 			onClick = function()
@@ -1413,7 +1840,7 @@ local ANCHOR_RECAPTURE_FLAGS = {
 }
 
 function ACAB:EnsureDB()
-	if not ACABDB then
+	if type(ACABDB) ~= "table" then
 		ACABDB = {}
 	end
 

@@ -184,6 +184,9 @@ function ACAB:SetExpBarEnabled(enabled)
 			frame.ACABTextOverlay:Hide()
 		end
 	end
+
+	-- Stops the glow pulse on disable and restarts it on enable.
+	self:ApplyExpBarRestedOverlay()
 end
 
 -- Clamps, compensates the saved position around the bar's center, then applies the new scale.
@@ -363,15 +366,22 @@ function ACAB:ApplyExpBarColors()
 
 	local frame = getglobal(self.EXP_BAR_FRAME_NAME)
 	local restedFrame = getglobal(self.EXP_RESTED_FRAME_NAME)
-	local earned, rested
 
-	if ACABDB.betterExpBarEnabled then
-		earned = ACABDB.expBarColorEarned
-		rested = ACABDB.expBarColorRested
-	else
-		earned = ACABDB.expBarNativeColorEarned
-		rested = ACABDB.expBarNativeColorRested
+	if not ACABDB.betterExpBarEnabled then
+		-- Native repaint for the current rest state; ExhaustionTick_Update reads the global event/this.
+		local prevThis, prevEvent = this, event
+
+		this = ExhaustionTick
+		event = "UPDATE_EXHAUSTION"
+		ExhaustionTick_Update()
+		this, event = prevThis, prevEvent
+
+		self:ApplyExpBarRestedOverlay()
+		return
 	end
+
+	local earned = ACABDB.expBarColorEarned
+	local rested = ACABDB.expBarColorRested
 
 	if frame and frame.SetStatusBarColor and earned then
 		frame:SetStatusBarColor(earned.r, earned.g, earned.b)
@@ -598,7 +608,7 @@ end
 
 -- Starts the pulse ticker; no-op while already running.
 local function StartExpBarRestedGlowPulse(glow)
-	if expBarRestedGlowPulseTicker or not C_Timer or not C_Timer.NewTicker then
+	if expBarRestedGlowPulseTicker then
 		return
 	end
 
@@ -655,7 +665,7 @@ function ACAB:ApplyExpBarRestedOverlay()
 	local tick = frame.ACABRestedTick
 	local glow = frame.ACABRestedTickGlow
 
-	if not ACABDB.betterExpBarEnabled or not GetRestState or GetRestState() ~= 1 then
+	if not ACABDB.betterExpBarEnabled or ACABDB.expBarEnabled == false or not GetRestState or GetRestState() ~= 1 then
 		HideExpBarRestedOverlay(tex, tick, glow)
 
 		return
