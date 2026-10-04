@@ -4,8 +4,7 @@
 local ACAB = AlternativeClassicActionBars
 
 -------------------------------------------------------------------------
--- Tooltip (synthetic frame the fixed-position GameTooltip is redirected onto)
--- Only tooltips placed via GameTooltip_SetDefaultAnchor move; widget-relative tooltips stay untouched.
+-- Tooltip: only tooltips placed via GameTooltip_SetDefaultAnchor move; widget-relative ones stay untouched.
 -------------------------------------------------------------------------
 
 ACAB.TOOLTIP_FRAME_WIDTH = 200

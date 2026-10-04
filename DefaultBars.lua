@@ -1,8 +1,6 @@
 -- DefaultBars.lua
--- Default bars 1-5 (wrapping Blizzard's MainMenuBar/MultiBar* frames), Main Bar art + grouped elements, the
--- action-bar Modern Layout geometry, and the pending-layout baseline pass run after login.
--- Must load after ElementEngine.lua: the top-level MainMenuBarArtFrame
--- InstallReanchorGuard call needs it.
+-- Default bars 1-5, Main Bar art + grouped elements, action-bar Modern Layout geometry, pending-layout baseline pass.
+-- Must load after ElementEngine.lua: the top-level MainMenuBarArtFrame InstallReanchorGuard call needs it.
 
 local ACAB = AlternativeClassicActionBars
 
@@ -49,8 +47,7 @@ end
 
 -------------------------------------------------------------------------
 -- Default bars (1-5) action-slot source
--- Bar 1 pages via actionSlot = buttonID + (page-1)*12 (bonus bar offset -> page 6+offset);
--- bars 2-5 can only redirect to an assigned Extra Bar (GetDefaultBarSlotForIndex).
+-- Bar 1 pages (buttonID + (page-1)*12, bonus offset -> page 6+offset); bars 2-5 only redirect to an Extra Bar.
 -------------------------------------------------------------------------
 
 -- Page every default bar's buttons currently read from. Pagination toggle locks to page 1; stance-swap only applies on page 1.
@@ -74,7 +71,7 @@ function ACAB:GetDefaultBarEffectivePage()
 	return page
 end
 
--- Resolves which of the player's stance slots is currently active (GetBonusBarOffset alone isn't a 1:1 mapping to stance index).
+-- Index of the player's active stance/form, or nil.
 function ACAB:GetActiveStanceIndex()
 	local count = GetNumShapeshiftForms and GetNumShapeshiftForms() or 0
 	if not count or count <= 0 then return nil end
@@ -163,7 +160,7 @@ function ACAB:RefreshDefaultBarSlots()
 	end
 end
 
--- Written by Settings.lua General tab checkboxes; only changes which action slots buttons read from, not visibility.
+-- General tab toggles: change which action slots the buttons read from, not visibility.
 function ACAB:SetDefaultBarPaginationEnabled(enabled)
 	self:EnsureDB()
 
@@ -171,7 +168,6 @@ function ACAB:SetDefaultBarPaginationEnabled(enabled)
 
 	self:RefreshDefaultBarSlots()
 
-	-- Page Indicator visibility derives from this toggle (bar-1-only).
 	self:ApplyPageIndicatorVisibility()
 end
 
@@ -183,14 +179,14 @@ function ACAB:SetDefaultBarStanceSwapEnabled(enabled)
 	self:RefreshDefaultBarSlots()
 end
 
--- Hooks vanilla's ChangeActionBarPage so RefreshDefaultBarSlots reruns after CURRENT_ACTIONBAR_PAGE updates.
+-- Reruns RefreshDefaultBarSlots after every ChangeActionBarPage.
 if hooksecurefunc and ChangeActionBarPage then
 	hooksecurefunc("ChangeActionBarPage", function()
 		ACAB:RefreshDefaultBarSlots()
 	end)
 end
 
--- BonusActionBarFrame is a separate overlay frame shown on stance/bonus-bar changes; hidden+neutered unconditionally.
+-- Hides and neuters BonusActionBarFrame for good.
 function ACAB:HideBonusActionBarFrame()
 	self:NeuterFrameShow(BonusActionBarFrame)
 end
@@ -210,7 +206,7 @@ function ACAB:ApplyBlizzardArtVisibility()
 	artFrame:SetFrameStrata("LOW")
 	artFrame:SetFrameLevel(5)
 
-	-- MainMenuBar is MEDIUM and mouse-enabled; it swallows clicks meant for the LOW-strata bars below it.
+	-- Stops MainMenuBar (MEDIUM) swallowing clicks meant for the LOW-strata bars.
 	if MainMenuBar then
 		MainMenuBar:EnableMouse(false)
 	end
@@ -244,7 +240,6 @@ end
 
 -------------------------------------------------------------------------
 -- Main Bar art placement: MainMenuBarArtFrame follows ACABBar1's position and scales with its buttonSize.
--- Every art region anchors BOTTOM to the frame, so moving/scaling the frame carries them all.
 -------------------------------------------------------------------------
 
 -- Reads MainMenuBar's rect (values discarded) so MainMenuBarArtFrame never resolves against a stale parent (env §4.6).
@@ -299,10 +294,9 @@ local function WaitForMainBarArtSettle(callback)
 	end)
 end
 
--- Captures MainMenuBarArtFrame's native offset/size once, after its position settles (asynchronous), then
--- applies the art position. Until then ApplyMainBarArtPosition leaves the art at its native spot.
+-- Captures MainMenuBarArtFrame's native offset/size once its position settles (async), then applies the art position.
 function ACAB:CaptureMainBarArtNativeOffsetIfNeeded()
-	-- .width check re-captures saves from before width/height were stored.
+	-- Offsets saved without width/height are re-captured.
 	if ACABDB.mainBarArtNativeOffset and ACABDB.mainBarArtNativeOffset.width then return end
 
 	local artFrame = MainMenuBarArtFrame
@@ -397,7 +391,7 @@ function ACAB:GetMainBarArtScale(cfg)
 	return self:GetMainBarVanillaButtonSize(cfg) / self.BUTTON_SIZE
 end
 
--- Every bar's laid-out button gap: Main Bar's art-slot formula, shared so equal configs give equal footprints.
+-- Every bar's laid-out button gap (Main Bar's art-slot formula).
 function ACAB:GetBarEffectiveSpacing(cfg)
 	local spacing = (cfg and cfg.spacing) or 0
 	local scale = self:GetMainBarArtScale(cfg)
@@ -455,13 +449,11 @@ function ACAB:ApplyMainBarArtPosition()
 
 	local artY = baseY + measuredYCorrection + 10 * (scale - 1)
 
-	-- Always TOPLEFT/BOTTOMLEFT - artX/artY are bottom-left screen coordinates whatever Main Bar's own anchor
-	-- point is. Offsets resolve through artFrame's own scale - must divide by scale or the art drifts.
+	-- artX/artY are bottom-left screen coordinates; must divide by scale (offsets resolve through it) or the art drifts.
 	artFrame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", artX / scale, artY / scale)
 	artFrame.ACABApplyingMainBarArtPosition = nil
 
-	-- ActionButton1-12 are artFrame's children - from here on this session their live position is no
-	-- longer native (see Core.lua's VerifyDefaultBarAnchorsSettled).
+	-- ActionButton1-12 (artFrame's children) are off their native spot from now on (Core.lua VerifyDefaultBarAnchorsSettled).
 	self.mainBarArtMoved = true
 
 	-- Forces the shown art textures to redraw at the new anchor (Hide/Show each one).
@@ -481,18 +473,12 @@ function ACAB:ApplyMainBarArtPosition()
 end
 
 -------------------------------------------------------------------------
--- Elements grouped with Main Bar: Bag Bar, Key Ring, Micro Menu, Latency Bar, Page Indicator.
--- While grouped each sits at its vanilla offset (from native-anchor snapshots) from Main Bar's button 1,
--- scaled with Main Bar's art. Their Apply*Position/Apply*Shape (NativeElements.lua) try ApplyGroupedIfActive first.
+-- Elements grouped with Main Bar: each sits at its vanilla offset from Main Bar's button 1, scaled with the art.
 -------------------------------------------------------------------------
 
--- One descriptor per groupable element. Method-name fields resolve on ACAB at call time.
---   pixelCorrection: {x, y} screen-pixel nudge on the vanilla offset (+ right/up), scaled with Main Bar.
---   pixelNudgeY: whole physical pixels added to the final grouped Y, unscaled (+ up).
---   capture(): lazily captures the element's saved/native position before it's read.
---   getNativeTopLeft(): session snapshot of the native TOPLEFT, used instead of resolving the native anchor live.
---   applyScale(frame, scale): sets the element's grouped scale (and shape) before it's anchored.
---   applyUngrouped(): restores the element's own saved scale/position.
+-- One descriptor per groupable element; method-name fields resolve on ACAB at call time. pixelCorrection {x, y}:
+-- screen-pixel nudge (+ right/up, scaled with Main Bar); pixelNudgeY: unscaled whole-pixel Y nudge (+ up);
+-- getNativeTopLeft(): login snapshot used instead of resolving the native anchor live.
 local GROUPABLE_ELEMENTS = {
 	bagbar = {
 		name = "Bag Bar",
@@ -527,7 +513,7 @@ local GROUPABLE_ELEMENTS = {
 		hoverOnlyField = "keyRingHoverOnly",
 		hoverDurationField = "keyRingHoverDuration",
 		capture = function() ACAB:CaptureKeyRingPositionIfNeeded() end,
-		-- Its native anchor is Bag Bar's CharacterBag3Slot, which the grouped Bag Bar itself moves.
+		-- see known-problems.md: "Key Ring grouped placement uses a login snapshot"
 		getNativeTopLeft = function()
 			local p = ACAB.keyRingNativeTopLeft
 
@@ -715,8 +701,7 @@ function ACAB:GetGroupedElementPlacement(elementKey, frame)
 	return btn1X + (baseX * barScale), targetY, barScale
 end
 
--- Divides an absolute target by frame's effective-scale ratio to UIParent (SetPoint offsets resolve
--- through the frame's full effective scale). Must run after the frame's SetScale.
+-- Divides an absolute target by frame's effective-scale ratio to UIParent. Must run after the frame's SetScale.
 function ACAB:DivideForGroupedSetPoint(frame, targetX, targetY)
 	local frameScale = frame:GetEffectiveScale()
 	local targetScale = UIParent:GetEffectiveScale()
@@ -758,8 +743,7 @@ function ACAB:SetKeyRingOwnScaleForEffective(frame, desiredScale)
 	frame:SetScale(desiredScale / inheritedRatio)
 end
 
--- Shared tail of every groupable element's grouped and ungrouped position apply: ensures its edit-mode
--- overlay exists and reapplies its hover-only state.
+-- Ensures a groupable element's edit-mode overlay and reapplies its hover-only state (grouped or not).
 function ACAB:EnsureElementOverlayAndHover(elementKey, frame)
 	local element = GROUPABLE_ELEMENTS[elementKey]
 
@@ -778,7 +762,7 @@ function ACAB:EnsureElementOverlayAndHover(elementKey, frame)
 	)
 
 	if element.hoverOnlyField then
-		-- Built once per element; runs every Main Bar drag tick.
+		-- Cached per element (called every Main Bar drag tick).
 		if not element.getHoverDuration then
 			element.getHoverDuration = function() return ACABDB[element.hoverDurationField] or 3 end
 		end
@@ -905,8 +889,7 @@ local function GetOverlayCenterOffset(container)
 	return 0, 0
 end
 
--- Edit-mode lock icon for elementKey, parented/anchored to the element itself (not its overlay, whose
--- anchors Bag Bar/Micro Menu rebuild every shape pass) so it also hides with the element.
+-- Edit-mode lock icon for elementKey, parented/anchored to the element itself (hides with it), not its overlay.
 function ACAB:EnsureGroupLockIcon(elementKey, container)
 	if container.ACABGroupLockIcon then
 		return container.ACABGroupLockIcon
@@ -947,6 +930,7 @@ function ACAB:ApplyGroupedElementEditVisual(elementKey, container, enabledFlag, 
 	icon:SetLocked(not self:IsElementGroupUnlocked(elementKey))
 end
 
+-------------------------------------------------------------------------
 -- Default bars 1-5: shape, size, spacing (edit-mode overlays come from Bar.lua's EnsureBarOverlay)
 -------------------------------------------------------------------------
 
@@ -1064,7 +1048,7 @@ function ACAB:SetDefaultBarSpacing(id, spacing)
 		self:ApplyBarShape(bar)
 	end
 
-	-- Vanilla-style grid spacing includes Main Bar's configured spacing, not just buttonSize (Core.lua GetLayoutGridSpacing).
+	-- The layout grid's spacing includes Main Bar's spacing (Core.lua GetLayoutGridSpacing).
 	if id == 1 and self:IsEditMode() then
 		self:RebuildLayoutGrid()
 	end
@@ -1081,8 +1065,6 @@ end
 
 -------------------------------------------------------------------------
 -- Reset to Vanilla Layout (position, spacing, grid shape, size)
--- Position/spacing come from cfg.nativeAnchor/nativeSpacing (seeded by Database.lua's seedDefaultBars);
--- grid shape/button size from ACAB.DEFAULT_BAR_GRID and the current button-size baseline.
 -------------------------------------------------------------------------
 
 -- Writes cfg.nativeAnchor into cfg's position, moved `shift` up-left.
@@ -1155,8 +1137,7 @@ end
 
 -------------------------------------------------------------------------
 -- Modern Layout geometry (Setup Wizard + every "Reset to Modern Layout Default" button)
--- Positions are read off the real rendered edge of the neighboring bar (GetElementRealEdges) after it
--- is applied - never a buttonSize*N formula, or border-style insets go stale.
+-- Positions come from the neighboring bar's real rendered edge (GetElementRealEdges), never a buttonSize*N formula.
 -------------------------------------------------------------------------
 
 -- Button size/spacing Modern Layout uses everywhere: the General tab's global overrides if on, otherwise
@@ -1260,8 +1241,7 @@ function ACAB:ApplyModernMainActionBarsLayout()
 	self:SetDefaultBarEnabled(3, true)
 end
 
--- The Y that vertically centers a 12-row, 1-col Modern Layout vertical bar on screen.
--- Shared by Right Action Bar 1/2 and Extra Bar 1-4 so the six-bar cluster centers as one row.
+-- Y that vertically centers a 1x12 Modern Layout vertical bar (Right Action Bar 1/2, Extra Bar 1-4) on screen.
 function ACAB:GetModernVerticalBarCenteredY(buttonSize, spacing)
 	local _, screenHeight = self:GetUIParentAnchorSize()
 	local effectiveSpacing = self:GetBarEffectiveSpacing({ buttonSize = buttonSize, spacing = spacing })
@@ -1482,8 +1462,7 @@ function ACAB:ResetBarLayoutToModernBase(id)
 end
 
 -------------------------------------------------------------------------
--- Baseline geometry for a profile carrying pendingLayoutBaseline: applied once the UI settled after login,
--- then saved and reloaded, so the final layout always loads from saved data (RunLoginSequence).
+-- Pending layout baseline: applied once the UI settles after login, then saved and reloaded (RunLoginSequence).
 -------------------------------------------------------------------------
 
 -- Settle poll before the baseline pass measures live frames; delay before the follow-up reload.
@@ -1835,8 +1814,7 @@ if hooksecurefunc and MultiActionBar_Update then
 end
 
 -------------------------------------------------------------------------
--- Pool-bar creation (self.bars[id]) for every default bar - once at PLAYER_LOGIN, before ApplyAllDefaultBars.
--- Each bar's real Blizzard buttons are hidden for good (left alone if they can't be found).
+-- Pool-bar creation (self.bars[id]) for every default bar; their real Blizzard buttons are hidden for good.
 -------------------------------------------------------------------------
 
 -- ShapeshiftBar_Update() only keeps the Stance Bar's compact border while MultiBarBottomLeft is shown, so
@@ -1940,13 +1918,11 @@ function ACAB:ApplyAllDefaultBars()
 	end
 end
 
--- Only ApplyMainBarArtPosition may re-anchor MainMenuBarArtFrame. Top-level call: ElementEngine.lua must
--- load first (it defines InstallReanchorGuard) or login throws "attempt to call nil value".
+-- Only ApplyMainBarArtPosition may re-anchor MainMenuBarArtFrame. Top-level: needs ElementEngine.lua loaded first.
 ACAB:InstallReanchorGuard(MainMenuBarArtFrame, "ACABApplyingMainBarArtPosition")
 
 -------------------------------------------------------------------------
--- Edit-mode overlay refresh for native-wrapped elements and chain containers
--- (bars 1-5 use Bar.lua's ApplyEditModeVisual). Most are gated on CanDragDefaultLayout(), not edit mode alone.
+-- Edit-mode overlay refresh for native-wrapped elements (bars 1-5 use Bar.lua's ApplyEditModeVisual)
 -------------------------------------------------------------------------
 
 function ACAB:ApplyDefaultLayoutEditVisual()
@@ -1987,8 +1963,7 @@ end
 
 -------------------------------------------------------------------------
 -- Position reassert after combat / looting (PLAYER_REGEN_ENABLED, LOOT_CLOSED)
--- Re-applies every native-wrapped element FrameXML may have silently re-anchored; each Apply* is idempotent
--- and no-ops if unbuilt. Bars 1-5 are excluded - their real buttons stay hidden.
+-- Re-applies every native-wrapped element FrameXML may have re-anchored; each Apply* no-ops if unbuilt.
 -------------------------------------------------------------------------
 
 function ACAB:ReassertNativeElementPositions()

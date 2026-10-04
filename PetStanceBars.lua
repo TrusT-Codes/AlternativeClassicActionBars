@@ -30,8 +30,7 @@ local function GetStackedBaselineY(self, stackBarId, stackBarEnabled, extraBarId
 	return referenceY + self.PET_BAR_NATIVE_GAP + container:GetHeight()
 end
 
--- Styled mode: re-stacks default bar barId's pool bar onto its vanilla spot above stackBarId (+ extraBarId), like the
--- native-mode reflows. Only while cfg.styledDefaultPosition is true, which only its styled Reset to Vanilla Layout sets.
+-- Styled mode: re-stacks barId's pool bar above stackBarId (+ extraBarId) while cfg.styledDefaultPosition is true.
 local function ReflowStyledStackBar(self, barId, stackBarId, stackBarEnabled, extraBarId)
 	local cfg = ACABDB.defaultBars[barId]
 	local bar = self.bars and self.bars[barId]

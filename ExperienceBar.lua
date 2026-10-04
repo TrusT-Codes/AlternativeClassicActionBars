@@ -6,7 +6,6 @@ local ACAB = AlternativeClassicActionBars
 
 -------------------------------------------------------------------------
 -- Experience Bar (MainMenuExpBar) - single native frame; its rested/text regions move and scale with it.
--- Movable/scalable via EnsureContainerOverlay regardless of ACABDB.betterExpBarEnabled.
 -------------------------------------------------------------------------
 
 ACAB.EXP_BAR_FRAME_NAME = "MainMenuExpBar"
@@ -203,7 +202,6 @@ end
 -------------------------------------------------------------------------
 -- Bar-fill colors
 -- Earned fill = MainMenuExpBar StatusBar color; rested fill = ExhaustionLevelFillBar vertex color.
--- Both native baselines are captured lazily from the live frames, not seeded in EnsureDB.
 -------------------------------------------------------------------------
 
 -- Better Experience Bar's default overlay text size.
@@ -260,8 +258,7 @@ function ACAB:CaptureExpBarColorsIfNeeded()
 			r, g, b = frame:GetStatusBarColor()
 		end
 
-		-- Permanent pristine snapshot of the native fill (fallback purple if the live frame isn't available yet);
-		-- captured once, never rewritten.
+		-- Native fill snapshot (fallback purple), captured once, never rewritten.
 		ACABDB.expBarNativeColorEarned = {
 			r = r or 0.58,
 			g = g or 0.0,
@@ -377,14 +374,11 @@ function ACAB:ResetExpBarColors()
 end
 
 -------------------------------------------------------------------------
--- Custom rested-XP overlay, drawn over ExhaustionLevelFillBar (whose native width breaks with a large
--- rested pool). Fill and tick formulas ported from BEB/BEB.lua. Shown only while Better Experience Bar is
--- on and GetRestState() == 1; the native fill is never touched.
+-- Custom rested-XP overlay over ExhaustionLevelFillBar (formulas from BEB/BEB.lua); the native fill is never touched.
 -------------------------------------------------------------------------
 
--- Rested-pool calibration: GetXPExhaustion() units consumed per point of rested bonus XP, measured on the
--- character's first rested kill and saved in ACABCharDB.restPoolPerBonusXP. Uncalibrated = 1 (native formula).
--- see known-problems.md: "Rested overlay uses bonus XP, not GetXPExhaustion()"
+-- Rested-pool calibration: GetXPExhaustion() units per rested bonus XP, measured on the first rested kill
+-- (ACABCharDB.restPoolPerBonusXP, uncalibrated = 1). see known-problems.md: "Rested overlay uses bonus XP, not GetXPExhaustion()"
 
 -- Pool changes further than this from the XP chat line are not counted as that kill's drop.
 local REST_CALIBRATION_WINDOW = 2
@@ -729,9 +723,7 @@ end
 
 -------------------------------------------------------------------------
 -- "Better Experience Bar" text overlay
--- One centered FontString built from up to 5 toggleable segments (BEB TextVars.lua formulas), kept live by
--- Events.lua's betterExpBarEventFrame. Lives on its own "HIGH"-strata child frame of MainMenuExpBar so
--- MainMenuBarArtFrame (same "MEDIUM" tier as the bar) can't cover it.
+-- One FontString of up to 5 toggleable segments, on a HIGH-strata child of MainMenuExpBar (above the art).
 -------------------------------------------------------------------------
 
 -- Text overlay frame tracking MainMenuExpBar via SetAllPoints; starts hidden if the bar is disabled.
