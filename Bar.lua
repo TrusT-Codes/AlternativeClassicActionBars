@@ -900,7 +900,12 @@ function ACAB:ApplyBarShape(bar)
 	-- Creates the overlay or refreshes its inset anchors.
 	self:EnsureBarOverlay(bar)
 
-	self:ApplyHoverOnlyState(bar, cfg.hoverOnly, function() return cfg.hoverDuration or 3 end)
+	-- Built once per bar (bar.config never changes).
+	if not bar.ACABHoverDurationGetter then
+		bar.ACABHoverDurationGetter = function() return cfg.hoverDuration or 3 end
+	end
+
+	self:ApplyHoverOnlyState(bar, cfg.hoverOnly, bar.ACABHoverDurationGetter)
 	self:ApplyEditModeVisual()
 
 	-- Main Bar footprint changed: art and grouped elements follow. Size-gated so page/stance swaps skip it.
