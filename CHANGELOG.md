@@ -20,6 +20,7 @@
 - Missing client mods now get one clear chat message instead of a flood of errors: without ClassicAPI the addon stays disabled, and a missing SuperWoW, nampower or UnitXP_SP3 shows a warning at login.
 - Macros now show the tooltip, icon, cooldown, range/usable tint and item count of the ability or item they actually use (Auto Shot / Attack / Shoot and `?`-prefixed lines never take over); macros always show the ability's or item's own icon, even with a custom macro icon (items greyed once you run out), and equipped-item macros get the quality ring. Macros glow while their own ability runs (Auto Shot, Attack, cast-time spells). With SuperCleveRoidMacros, macros with `[conditions]` show the option whose conditions match right now (e.g. `[mod:shift]`), and a login note mentions it. `CastSpellByName("...")` and ShaguTweaks' `--showtooltip` macros are understood too.
 - An error while setting up one element at login no longer stops every element after it from loading; chat names the part that failed.
+- Fix stance/page assignment dropdowns becoming clickable on a locked profile (Default Vanilla / Default Modern) after learning a form or toggling the General pagination / stance-swap options.
 - Lower CPU use in combat: action buttons share one event handler.
 - Lower CPU use in raids: Stance Bar buttons only update when your form actually changes, not on every buff.
 
