@@ -252,6 +252,21 @@ function ACAB:GetElementVisualInset(frame)
 	return 0, 0, 0, 0
 end
 
+-- Appends frame's real-screen-pixel box to boxes unless excluded, a dragged Main Bar's follower, or hidden.
+local function AddSnapTargetBox(self, boxes, frame, excludeElement, draggingMainBar)
+	if not frame or frame == excludeElement then return end
+
+	if draggingMainBar and self:IsMainBarFollower(frame) then return end
+
+	if not frame.IsShown or not frame:IsShown() then return end
+
+	local left, right, top, bottom = GetRealScreenBounds(frame, self:GetElementVisualInset(frame))
+
+	if left then
+		table.insert(boxes, { left = left, right = right, top = top, bottom = bottom })
+	end
+end
+
 -- Every currently visible/enabled draggable element except `excludeElement`, as real-screen-pixel bounding boxes.
 function ACAB:GetAllSnapTargetBoxes(excludeElement)
 	local boxes = {}
@@ -259,36 +274,22 @@ function ACAB:GetAllSnapTargetBoxes(excludeElement)
 	-- Main Bar's followers move with it mid-drag - snapping to them feeds back into the drag (jitter).
 	local draggingMainBar = excludeElement ~= nil and self.bars ~= nil and excludeElement == self.bars[1]
 
-	local function AddBox(frame)
-		if not frame or frame == excludeElement then return end
-
-		if draggingMainBar and self:IsMainBarFollower(frame) then return end
-
-		if not frame.IsShown or not frame:IsShown() then return end
-
-		local left, right, top, bottom = GetRealScreenBounds(frame, self:GetElementVisualInset(frame))
-
-		if left then
-			table.insert(boxes, { left = left, right = right, top = top, bottom = bottom })
-		end
-	end
-
 	if self.bars then
-		local barId
+		local barId, bar
 
 		for barId, bar in pairs(self.bars) do
-			AddBox(bar)
+			AddSnapTargetBox(self, boxes, bar, excludeElement, draggingMainBar)
 		end
 	end
 
-	AddBox(self.bagBarContainer)
-	AddBox(self.microMenuContainer)
-	AddBox(self.stanceBarContainer)
-	AddBox(self.pageIndicatorContainer)
+	AddSnapTargetBox(self, boxes, self.bagBarContainer, excludeElement, draggingMainBar)
+	AddSnapTargetBox(self, boxes, self.microMenuContainer, excludeElement, draggingMainBar)
+	AddSnapTargetBox(self, boxes, self.stanceBarContainer, excludeElement, draggingMainBar)
+	AddSnapTargetBox(self, boxes, self.pageIndicatorContainer, excludeElement, draggingMainBar)
 
-	AddBox(getglobal(self.KEYRING_BUTTON_NAME))
-	AddBox(getglobal(self.LATENCY_BAR_FRAME_NAME))
-	AddBox(getglobal(self.EXP_BAR_FRAME_NAME))
+	AddSnapTargetBox(self, boxes, getglobal(self.KEYRING_BUTTON_NAME), excludeElement, draggingMainBar)
+	AddSnapTargetBox(self, boxes, getglobal(self.LATENCY_BAR_FRAME_NAME), excludeElement, draggingMainBar)
+	AddSnapTargetBox(self, boxes, getglobal(self.EXP_BAR_FRAME_NAME), excludeElement, draggingMainBar)
 
 	return boxes
 end
