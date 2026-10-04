@@ -1346,6 +1346,41 @@ local SETTLE_POLL_INTERVAL = 0.1
 local SETTLE_STABLE_READS_REQUIRED = 2
 local SETTLE_TIMEOUT = 3
 
+-- Polls sample() (up to two values) every SETTLE_POLL_INTERVAL until isSame(a, b, lastA, lastB) held
+-- stableReads ticks in a row, or timeout; then onDone(settled, lastA, lastB, elapsed).
+-- must keep: count resets on any mismatch/nil, check runs after elapsed++, Cancel before onDone (login timing).
+local function PollUntilSettled(sample, isSame, lastA, lastB, stableReads, timeout, onDone)
+	local stableCount = 0
+	local elapsed = 0
+
+	local ticker
+	ticker = C_Timer.NewTicker(SETTLE_POLL_INTERVAL, function()
+		elapsed = elapsed + SETTLE_POLL_INTERVAL
+
+		local a, b = sample()
+
+		if isSame(a, b, lastA, lastB) then
+			stableCount = stableCount + 1
+		else
+			stableCount = 0
+		end
+
+		lastA, lastB = a, b
+
+		local settled = stableCount >= stableReads
+
+		if settled or elapsed >= timeout then
+			ticker:Cancel()
+			onDone(settled, lastA, lastB, elapsed)
+		end
+	end)
+end
+
+-- True when both left/top reads exist and match the previous ones.
+local function SameLeftTop(left, top, lastLeft, lastTop)
+	return left and top and lastLeft and lastTop and left == lastLeft and top == lastTop
+end
+
 -- Polls ActionButton1 until its position holds steady (or SETTLE_TIMEOUT), then
 -- calls callback(earlyLeft, earlyTop, settledLeft, settledTop, elapsed).
 function ACAB:WaitForNativeBarSettle(callback)
@@ -1356,42 +1391,27 @@ function ACAB:WaitForNativeBarSettle(callback)
 	end
 
 	local earlyLeft, earlyTop = ref:GetLeft(), ref:GetTop()
-	local lastLeft, lastTop = earlyLeft, earlyTop
-	local stableCount = 0
-	local elapsed = 0
 
-	local ticker
-	ticker = C_Timer.NewTicker(SETTLE_POLL_INTERVAL, function()
-		elapsed = elapsed + SETTLE_POLL_INTERVAL
-
-		local left, top = ref:GetLeft(), ref:GetTop()
-
-		if left and top and lastLeft and lastTop
-			and left == lastLeft and top == lastTop then
-			stableCount = stableCount + 1
-		else
-			stableCount = 0
+	PollUntilSettled(function() return ref:GetLeft(), ref:GetTop() end, SameLeftTop, earlyLeft, earlyTop,
+		SETTLE_STABLE_READS_REQUIRED, SETTLE_TIMEOUT, function(settled, lastLeft, lastTop, elapsed)
+		if not settled then
+			ACAB:Print(
+				"WARNING: native action bar position did not settle within " ..
+				tostring(SETTLE_TIMEOUT) .. "s - proceeding with its current, " ..
+				"possibly not-yet-final position."
+			)
 		end
 
-		lastLeft, lastTop = left, top
-
-		local settled = stableCount >= SETTLE_STABLE_READS_REQUIRED
-		local timedOut = elapsed >= SETTLE_TIMEOUT
-
-		if settled or timedOut then
-			ticker:Cancel()
-
-			if timedOut and not settled then
-				ACAB:Print(
-					"WARNING: native action bar position did not settle within " ..
-					tostring(SETTLE_TIMEOUT) .. "s - proceeding with its current, " ..
-					"possibly not-yet-final position."
-				)
-			end
-
-			callback(earlyLeft, earlyTop, lastLeft, lastTop, elapsed)
-		end
+		callback(earlyLeft, earlyTop, lastLeft, lastTop, elapsed)
 	end)
+end
+
+-- True when both swallowed anchors exist and match field by field.
+local function SameAnchor(a, _, b)
+	if not a or not b then return false end
+
+	return a.point == b.point and a.relativeTo == b.relativeTo
+		and a.relativePoint == b.relativePoint and a.x == b.x and a.y == b.y
 end
 
 -- Like WaitForNativeBarSettle, but polls frame.ACABSwallowedAnchor; callback gets the settled anchor or nil.
@@ -1401,38 +1421,9 @@ local function WaitForWrappedFrameAnchorSettle(frame, callback)
 		return
 	end
 
-	local function SameAnchor(a, b)
-		if not a or not b then return false end
-
-		return a.point == b.point and a.relativeTo == b.relativeTo
-			and a.relativePoint == b.relativePoint and a.x == b.x and a.y == b.y
-	end
-
-	local lastAnchor = frame.ACABSwallowedAnchor
-	local stableCount = 0
-	local elapsed = 0
-
-	local ticker
-	ticker = C_Timer.NewTicker(SETTLE_POLL_INTERVAL, function()
-		elapsed = elapsed + SETTLE_POLL_INTERVAL
-
-		local anchor = frame.ACABSwallowedAnchor
-
-		if anchor and SameAnchor(anchor, lastAnchor) then
-			stableCount = stableCount + 1
-		else
-			stableCount = 0
-		end
-
-		lastAnchor = anchor
-
-		local settled = anchor and stableCount >= SETTLE_STABLE_READS_REQUIRED
-		local timedOut = elapsed >= SETTLE_TIMEOUT
-
-		if settled or timedOut then
-			ticker:Cancel()
-			callback(settled and lastAnchor or nil)
-		end
+	PollUntilSettled(function() return frame.ACABSwallowedAnchor end, SameAnchor, frame.ACABSwallowedAnchor, nil,
+		SETTLE_STABLE_READS_REQUIRED, SETTLE_TIMEOUT, function(settled, lastAnchor)
+		callback(settled and lastAnchor or nil)
 	end)
 end
 
@@ -1525,28 +1516,10 @@ local function WaitForPostLoginSettleThenVerify()
 	end
 
 	local lastLeft, lastTop = ref:GetLeft(), ref:GetTop()
-	local stableCount = 0
-	local elapsed = 0
 
-	local ticker
-	ticker = C_Timer.NewTicker(SETTLE_POLL_INTERVAL, function()
-		elapsed = elapsed + SETTLE_POLL_INTERVAL
-
-		local left, top = ref:GetLeft(), ref:GetTop()
-
-		if left and top and lastLeft and lastTop
-			and left == lastLeft and top == lastTop then
-			stableCount = stableCount + 1
-		else
-			stableCount = 0
-		end
-
-		lastLeft, lastTop = left, top
-
-		if stableCount >= POST_LOGIN_SETTLE_STABLE_READS or elapsed >= POST_LOGIN_SETTLE_TIMEOUT then
-			ticker:Cancel()
-			VerifyDefaultBarAnchorsSettled()
-		end
+	PollUntilSettled(function() return ref:GetLeft(), ref:GetTop() end, SameLeftTop, lastLeft, lastTop,
+		POST_LOGIN_SETTLE_STABLE_READS, POST_LOGIN_SETTLE_TIMEOUT, function()
+		VerifyDefaultBarAnchorsSettled()
 	end)
 end
 
