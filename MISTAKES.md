@@ -45,6 +45,7 @@ Solved mistakes, so they don't happen twice. Each entry has three parts: **what 
 - **What happened:** diagnostics were written for a 511-character `/run` limit.
 - **Root cause:** an unverified figure. The live limit is 261 characters total.
 - **Prevention:** count the full command, `/run ` included. Anything longer goes into a temporary `/acab diagN`.
+- **Update (2026-10-04):** a 259-character `/run` was cut off live (`'end' expected near <eof>`). Stay at 250 or below until the exact limit is re-checked.
 
 ### Live check that didn't reproduce the native call
 - **What happened:** a `/run` calling `ExhaustionTick_Update()` showed no repaint, and another used the global `ACAB`, which doesn't exist (the global is `AlternativeClassicActionBars`). One test also left `event` set and broke chat.
