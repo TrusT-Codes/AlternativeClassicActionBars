@@ -391,22 +391,13 @@ function ACAB:CreateCondenseEmptyPetSlotsCheckbox(page, y)
 				cfg.condenseEmptyPetSlots = checked
 			end
 
-			if ACAB.ApplyDefaultBarShape then
-				ACAB:ApplyDefaultBarShape(ACAB.PET_BAR_ID)
-			end
-
-			if ACAB.ApplyPetBarNativeShape then
-				ACAB:ApplyPetBarNativeShape()
-			end
+			ACAB:ApplyDefaultBarShape(ACAB.PET_BAR_ID)
+			ACAB:ApplyPetBarNativeShape()
 
 			if ACAB:IsPetBarNativeMode() then
-				if ACAB.RefreshSimpleBarPage then
-					ACAB:RefreshSimpleBarPage(ACAB.PET_BAR_ID)
-				end
+				ACAB:RefreshSimpleBarPage(ACAB.PET_BAR_ID)
 			else
-				if ACAB.RefreshPositionSliderRange then
-					ACAB:RefreshPositionSliderRange(page)
-				end
+				ACAB:RefreshPositionSliderRange(page)
 			end
 		end,
 	})
@@ -1409,7 +1400,7 @@ function ACAB:GetOrCreateBarPage(barId)
 				ACAB:ResetDefaultBarLayout(page.barId)
 
 				-- Page Indicator anchors off Main Bar, so it resets alongside it.
-				if page.barId == 1 and ACAB.ResetPageIndicatorLayout then
+				if page.barId == 1 then
 					ACAB:ResetPageIndicatorLayout()
 				end
 
@@ -1430,7 +1421,7 @@ function ACAB:GetOrCreateBarPage(barId)
 						ACAB:ResetBarLayoutToModernBase(page.barId)
 					end
 
-					if page.barId == 1 and ACAB.ResetPageIndicatorToModernBase then
+					if page.barId == 1 then
 						ACAB:ResetPageIndicatorToModernBase()
 					end
 
@@ -2141,15 +2132,10 @@ function ACAB:ApplyUseDefaultLayoutChange(checked)
 	local wasDefault = ACABDB.useDefaultLayout == true
 	ACABDB.useDefaultLayout = checked
 	ACAB:RefreshDefaultLayoutGatingOnAllPages()
-
-	if ACAB.ApplyAllDefaultBars then
-		ACAB:ApplyAllDefaultBars()
-	end
+	ACAB:ApplyAllDefaultBars()
 
 	-- Draggability depends on useDefaultLayout, so the edit-mode overlays refresh too.
-	if ACAB.ApplyDefaultLayoutEditVisual then
-		ACAB:ApplyDefaultLayoutEditVisual()
-	end
+	ACAB:ApplyDefaultLayoutEditVisual()
 
 	local styledPetOrStance = false
 
