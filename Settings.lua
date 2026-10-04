@@ -64,11 +64,7 @@ ACAB.INDENT_INPUT   = 85
 
 -- Runs fn on the next frame; every Fit*View call goes through this so freshly shown panels have real rects.
 function ACAB:DeferFit(fn)
-	if C_Timer and C_Timer.After then
-		C_Timer.After(0, fn)
-	else
-		fn()
-	end
+	C_Timer.After(0, fn)
 end
 
 -- Width reserved beside a content viewport while its scrollbar is shown.

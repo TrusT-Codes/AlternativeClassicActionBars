@@ -1342,13 +1342,11 @@ function ACAB:HighlightGeneralLayoutCheckbox()
 	strip:Show()
 
 	-- Three pulses.
-	if C_Timer then
-		C_Timer.After(0.45, function() strip:Hide() end)
-		C_Timer.After(0.75, function() strip:Show() end)
-		C_Timer.After(1.2, function() strip:Hide() end)
-		C_Timer.After(1.5, function() strip:Show() end)
-		C_Timer.After(1.95, function() strip:Hide() end)
-	end
+	C_Timer.After(0.45, function() strip:Hide() end)
+	C_Timer.After(0.75, function() strip:Show() end)
+	C_Timer.After(1.2, function() strip:Hide() end)
+	C_Timer.After(1.5, function() strip:Show() end)
+	C_Timer.After(1.95, function() strip:Hide() end)
 end
 
 function ACAB:ShowProfilesView()
