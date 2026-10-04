@@ -3382,7 +3382,7 @@ function ACAB:RebuildDefaultBarAssignmentRows(barId)
 	local y = 0
 
 	local stanceSwapOn = ACABDB.defaultBarStanceSwapEnabled ~= false
-	local count = stanceSwapOn and GetNumShapeshiftForms and GetNumShapeshiftForms() or 0
+	local count = stanceSwapOn and ACAB:GetClampedLiveStanceCount() or 0
 
 	if count and count > 0 then
 		local s
