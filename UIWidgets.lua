@@ -29,6 +29,26 @@ ACAB.SMALL_BACKDROP = {
 	insets = { left = 1, right = 1, top = 1, bottom = 1 },
 }
 
+-- Red banner skin for the dialog error banner and the settings profile-lock banner.
+ACAB.BANNER_BACKDROP = {
+	bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+	edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+	tile = true,
+	tileSize = 16,
+	edgeSize = 12,
+	insets = { left = 2, right = 2, top = 2, bottom = 2 },
+}
+
+-- Settings panel skin for the bar list, content viewports and grid swatches.
+ACAB.PANEL_BACKDROP = {
+	bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+	edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+	tile = true,
+	tileSize = 8,
+	edgeSize = 8,
+	insets = { left = 2, right = 2, top = 2, bottom = 2 },
+}
+
 -- Dialog-box skin for the settings window, dialogs and the setup wizard.
 ACAB.DIALOG_BACKDROP = {
 	bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
@@ -845,14 +865,7 @@ function ACABDialogMixin:OnLoad()
 	-- Inline validation-error banner (red backdrop).
 	local errorBanner = CreateFrame("Frame", nil, self)
 
-	errorBanner:SetBackdrop({
-		bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-		edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-		tile = true,
-		tileSize = 16,
-		edgeSize = 12,
-		insets = { left = 2, right = 2, top = 2, bottom = 2 },
-	})
+	errorBanner:SetBackdrop(ACAB.BANNER_BACKDROP)
 	errorBanner:SetBackdropColor(0.35, 0, 0, 0.9)
 
 	local errorBannerText = errorBanner:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
