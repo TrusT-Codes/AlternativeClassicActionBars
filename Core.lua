@@ -428,7 +428,7 @@ local function GetPositionMetrics(self, frame, width, height, needScreen)
 		return nil
 	end
 
-	if not width and frame.config and frame.config.buttonSize and self.GetBarFrameSize then
+	if not width and frame.config and frame.config.buttonSize then
 		width, height = self:GetBarFrameSize(frame.config)
 	end
 
@@ -1167,9 +1167,7 @@ function ACAB:SetHoverBindMode(enabled)
 
 	ACABDB.hoverBindMode = enabled
 
-	if self.ApplyHoverBindVisual then
-		self:ApplyHoverBindVisual(enabled)
-	end
+	self:ApplyHoverBindVisual(enabled)
 
 	if enabled then
 		self:ForceHoverFadeFramesVisible()
@@ -1265,7 +1263,7 @@ local hoverPollTicker = nil
 
 -- Single shared ticker for every registered hover-only frame, started lazily on first registration.
 local function StartHoverPollTicker()
-	if hoverPollTicker or not C_Timer or not C_Timer.NewTicker then
+	if hoverPollTicker then
 		return
 	end
 
@@ -1309,7 +1307,7 @@ function ACAB:StartHoverFadeTicker(frame, duration)
 
 	duration = tonumber(duration) or 0
 
-	if duration <= 0 or not C_Timer or not C_Timer.NewTicker then
+	if duration <= 0 then
 		frame:SetAlpha(0)
 		return
 	end
@@ -1443,7 +1441,7 @@ local SETTLE_TIMEOUT = 3
 function ACAB:WaitForNativeBarSettle(callback)
 	local ref = getglobal("ActionButton1")
 
-	if not ref or not C_Timer or not C_Timer.NewTicker then
+	if not ref then
 		callback(nil, nil, nil, nil, 0)
 		return
 	end
@@ -1489,7 +1487,7 @@ end
 
 -- Like WaitForNativeBarSettle, but polls frame.ACABSwallowedAnchor; callback gets the settled anchor or nil.
 local function WaitForWrappedFrameAnchorSettle(frame, callback)
-	if not frame or not C_Timer or not C_Timer.NewTicker then
+	if not frame then
 		callback(nil)
 		return
 	end
@@ -1629,7 +1627,7 @@ end
 local function WaitForPostLoginSettleThenVerify()
 	local ref = getglobal("ActionButton1")
 
-	if not ref or not C_Timer or not C_Timer.NewTicker then
+	if not ref then
 		VerifyDefaultBarAnchorsSettled()
 		return
 	end

@@ -439,13 +439,11 @@ function ACAB:ApplyLayoutGridVisual()
 		self:RebuildLayoutGrid()
 		self:RefreshLayoutGridVisibility()
 
-		if C_Timer and C_Timer.NewTicker then
-			layoutGridCtrlTicker = C_Timer.NewTicker(LAYOUT_GRID_CTRL_POLL_INTERVAL, function()
-				if ACAB:IsEditMode() then
-					ACAB:RefreshLayoutGridVisibility()
-				end
-			end)
-		end
+		layoutGridCtrlTicker = C_Timer.NewTicker(LAYOUT_GRID_CTRL_POLL_INTERVAL, function()
+			if ACAB:IsEditMode() then
+				ACAB:RefreshLayoutGridVisibility()
+			end
+		end)
 	else
 		EnsureLayoutGridFrame():Hide()
 	end

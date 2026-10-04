@@ -608,7 +608,7 @@ end
 
 -- Starts the pulse ticker; no-op while already running.
 local function StartExpBarRestedGlowPulse(glow)
-	if expBarRestedGlowPulseTicker or not C_Timer or not C_Timer.NewTicker then
+	if expBarRestedGlowPulseTicker then
 		return
 	end
 

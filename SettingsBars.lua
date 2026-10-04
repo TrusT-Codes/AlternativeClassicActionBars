@@ -1131,28 +1131,26 @@ function ACAB:HighlightMainBarArtModeDropdown()
 	strip:Show()
 
 	-- Three on/off pulses; steps from an older call are skipped.
-	if C_Timer then
-		local generation = strip.pulseGeneration
-		local function Step(show)
-			return function()
-				if strip.pulseGeneration ~= generation then
-					return
-				end
+	local generation = strip.pulseGeneration
+	local function Step(show)
+		return function()
+			if strip.pulseGeneration ~= generation then
+				return
+			end
 
-				if show then
-					strip:Show()
-				else
-					strip:Hide()
-				end
+			if show then
+				strip:Show()
+			else
+				strip:Hide()
 			end
 		end
-
-		C_Timer.After(0.45, Step(false))
-		C_Timer.After(0.75, Step(true))
-		C_Timer.After(1.2, Step(false))
-		C_Timer.After(1.5, Step(true))
-		C_Timer.After(1.95, Step(false))
 	end
+
+	C_Timer.After(0.45, Step(false))
+	C_Timer.After(0.75, Step(true))
+	C_Timer.After(1.2, Step(false))
+	C_Timer.After(1.5, Step(true))
+	C_Timer.After(1.95, Step(false))
 end
 
 -- Opens Main Bar's page, then pulses its art-mode dropdown - for locked controls on other pages.

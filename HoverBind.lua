@@ -239,9 +239,7 @@ function ACAB:ApplyHoverBindVisual(enabled)
 
 	if enabled then
 		self:ForEachButton(TintHoverBindRef)
-		if C_Timer and C_Timer.NewTicker then
-			self.hoverBindTintTicker = C_Timer.NewTicker(HOVERBIND_TINT_INTERVAL, HoverBindTintTick)
-		end
+		self.hoverBindTintTicker = C_Timer.NewTicker(HOVERBIND_TINT_INTERVAL, HoverBindTintTick)
 	else
 		self:ForEachButton(RestoreButtonIconTint)
 	end
