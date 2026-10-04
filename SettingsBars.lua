@@ -381,6 +381,10 @@ function ACAB:CreateUseVanillaBarCheckbox(page, y, kind, barId, cfgKey)
 								cfg[cfgKey] = checked
 							end
 
+							if barId == ACAB.STANCE_BAR_ID then
+								ACAB:CarryStanceBarPositionToMode(checked)
+							end
+
 							ReloadUI()
 						end,
 					},
