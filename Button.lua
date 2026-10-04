@@ -165,11 +165,59 @@ local function RefreshStanceButtonsOnAuraChange()
 	end
 end
 
--- Player's auto-repeat (Auto Shot / Shoot), auto-attack and current cast-time spell (lower case); macro glows read it.
-local playerActionState = { autoRepeat = false, autoAttack = false, castName = nil }
+-- Player's auto-repeat (Auto Shot / Shoot), auto-attack, current cast-time spell and last cast spell (lower case);
+-- macro glows read it.
+local playerActionState = { autoRepeat = false, autoAttack = false, castName = nil, firedName = nil, firedToken = 0 }
+
+-- Seconds a macro glows after its own spell was cast (SPELL_CAST_EVENT), instant spells included.
+local MACRO_CAST_FLASH_DURATION = 0.3
+
+-- Re-checks every action button's glow.
+local function UpdateActionButtonStates()
+	local i
+
+	for i = 1, table.getn(actionPoolButtons) do
+		actionPoolButtons[i]:UpdateState()
+	end
+end
+
+-- nampower SPELL_CAST_EVENT (arg2 = spell id): flashes macros targeting that spell; Auto Shot / Shoot / Attack never flash.
+local function FlashCastSpell(spellId)
+	local name = SpellInfo and spellId and SpellInfo(spellId)
+
+	if not name then
+		return
+	end
+
+	name = string.lower(name)
+
+	if name == "auto shot" or name == "shoot" or name == "attack" then
+		return
+	end
+
+	local token = playerActionState.firedToken + 1
+
+	playerActionState.firedToken = token
+	playerActionState.firedName = name
+
+	UpdateActionButtonStates()
+
+	C_Timer.After(MACRO_CAST_FLASH_DURATION, function()
+		if playerActionState.firedToken == token then
+			playerActionState.firedName = nil
+
+			UpdateActionButtonStates()
+		end
+	end)
+end
 
 -- Auto-repeat/auto-attack/cast events: updates playerActionState, then re-checks action button glows.
 local function UpdatePlayerActionState(changedArg, ev)
+	if ev == "SPELL_CAST_EVENT" then
+		FlashCastSpell(arg2)
+		return
+	end
+
 	if ev == "START_AUTOREPEAT_SPELL" then
 		playerActionState.autoRepeat = true
 	elseif ev == "STOP_AUTOREPEAT_SPELL" then
@@ -185,11 +233,7 @@ local function UpdatePlayerActionState(changedArg, ev)
 		playerActionState.castName = nil
 	end
 
-	local i
-
-	for i = 1, table.getn(actionPoolButtons) do
-		actionPoolButtons[i]:UpdateState()
-	end
+	UpdateActionButtonStates()
 end
 
 -- Event -> button list + method to call on each, or handler(arg1, event); playerOnly skips events whose arg1 isn't "player".
@@ -222,6 +266,8 @@ local POOL_BUTTON_EVENT_ROUTES = {
 	SPELLCAST_STOP = { handler = UpdatePlayerActionState },
 	SPELLCAST_FAILED = { handler = UpdatePlayerActionState },
 	SPELLCAST_INTERRUPTED = { handler = UpdatePlayerActionState },
+	-- nampower: any spell the player casts, instant ones included (macro glow flash).
+	SPELL_CAST_EVENT = { handler = UpdatePlayerActionState },
 	UNIT_INVENTORY_CHANGED = { list = actionPoolButtons, method = "UpdateInventoryDependents", playerOnly = true },
 	UNIT_PET = { list = petPoolButtons, method = "Refresh", playerOnly = true },
 	PET_BAR_UPDATE = { list = petPoolButtons, method = "Refresh" },
@@ -893,7 +939,7 @@ function ACABButtonMixin:UpdateState()
 end
 
 -- True while a macro's spell target is running: Auto Shot / Shoot while auto-repeating, Attack while
--- auto-attacking, any other spell while it's being cast (cast-time spells only).
+-- auto-attacking, any other spell while it's being cast or for MACRO_CAST_FLASH_DURATION after it was cast.
 function ACABButtonMixin:IsMacroTargetActive()
 	local spellName = self:GetMacroTargetKind() == "spell" and self.macroSpellName
 
@@ -911,7 +957,7 @@ function ACABButtonMixin:IsMacroTargetActive()
 		return playerActionState.autoAttack
 	end
 
-	return spellName == playerActionState.castName
+	return spellName == playerActionState.castName or spellName == playerActionState.firedName
 end
 
 -------------------------------------------------------------------------
