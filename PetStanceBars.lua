@@ -23,13 +23,9 @@ local function GetStackedBaselineY(self, stackBarId, stackBarEnabled, extraBarId
 		referenceY = referenceY + self:GetExtraBarStackPitch(extraBarId)
 	end
 
-	if not referenceY then
-		return nil
-	end
+	if not referenceY then return nil end
 
-	if not container then
-		return nil
-	end
+	if not container then return nil end
 
 	return referenceY + self.PET_BAR_NATIVE_GAP + container:GetHeight()
 end
@@ -39,16 +35,10 @@ end
 local function ReflowStyledStackBar(self, barId, stackBarId, stackBarEnabled, extraBarId)
 	local cfg = ACABDB.defaultBars[barId]
 	local bar = self.bars and self.bars[barId]
-
-	if not cfg or not bar or bar.config ~= cfg or cfg.styledDefaultPosition ~= true then
-		return
-	end
+	if not cfg or not bar or bar.config ~= cfg or cfg.styledDefaultPosition ~= true then return end
 
 	local y = GetStackedBaselineY(self, stackBarId, stackBarEnabled, extraBarId, bar)
-
-	if not y then
-		return
-	end
+	if not y then return end
 
 	-- Modern style: the stack bar's reset corner sits MODERN_BUTTON_SIZE_POSITION_SHIFT higher (ResetDefaultBarLayout).
 	if not self:IsVanillaBorderStyle() then
@@ -72,10 +62,7 @@ local function SetBarCfgHoverOnly(self, barId, enabled, applyFn)
 	self:EnsureDB()
 
 	local cfg = ACABDB.defaultBars[barId]
-
-	if not cfg then
-		return
-	end
+	if not cfg then return end
 
 	cfg.hoverOnly = enabled and true or false
 
@@ -90,9 +77,7 @@ local function SetBarCfgHoverDuration(self, barId, duration, applyFn)
 
 	duration = self:ClampHoverDuration(duration)
 
-	if not cfg or not duration then
-		return
-	end
+	if not cfg or not duration then return end
 
 	cfg.hoverDuration = duration
 
@@ -136,16 +121,10 @@ function ACAB:ReflowPetBarForBar3Toggle(bar3Enabled)
 
 	local cfg = ACABDB.defaultBars[self.PET_BAR_ID]
 	local container = self.petBarNativeContainer
-
-	if not cfg or not container or cfg.usesDefaultPosition == false then
-		return
-	end
+	if not cfg or not container or cfg.usesDefaultPosition == false then return end
 
 	local y = self:GetPetBarBaselineY(bar3Enabled)
-
-	if not y then
-		return
-	end
+	if not y then return end
 
 	-- y is a top edge - write it in TOPLEFT/BOTTOMLEFT terms, ApplyPetBarNativePosition converts back.
 	self:ConvertPositionAnchor(container, cfg, "TOPLEFT", "BOTTOMLEFT", nil, nil, "TOPLEFT")
@@ -167,16 +146,10 @@ function ACAB:CreatePetBarNativeContainer()
 	self:EnsureDB()
 
 	local cfg = ACABDB.defaultBars[self.PET_BAR_ID]
-
-	if not cfg or not self:IsPetBarNativeModeEffective() or self.petBarNativeContainer then
-		return
-	end
+	if not cfg or not self:IsPetBarNativeModeEffective() or self.petBarNativeContainer then return end
 
 	local buttons = self:GetDefaultBarButtons(self.PET_BAR_ID)
-
-	if not buttons then
-		return
-	end
+	if not buttons then return end
 
 	self:SortButtonsByNativeLeft(buttons)
 
@@ -205,10 +178,7 @@ end
 function ACAB:ApplyPetBarNativePosition()
 	local cfg = ACABDB and ACABDB.defaultBars and ACABDB.defaultBars[self.PET_BAR_ID]
 	local container = self.petBarNativeContainer
-
-	if not cfg or not container then
-		return
-	end
+	if not cfg or not container then return end
 
 	self:ApplyPositionToFrame(container, cfg, "TOPLEFT")
 
@@ -226,9 +196,7 @@ function ACAB:SetPetBarNativePosition(x, y)
 	x = tonumber(x)
 	y = tonumber(y)
 
-	if not cfg or not x or not y then
-		return
-	end
+	if not cfg or not x or not y then return end
 
 	cfg.x = x
 	cfg.y = y
@@ -244,10 +212,7 @@ function ACAB:ApplyPetBarNativeShape()
 	self:EnsureDB()
 
 	local cfg = ACABDB.defaultBars[self.PET_BAR_ID]
-
-	if not cfg then
-		return
-	end
+	if not cfg then return end
 
 	self:ApplyChainAnchoredShape(
 		self.petBarNativeContainer,
@@ -266,9 +231,7 @@ function ACAB:SetPetBarNativeSpacing(spacing)
 
 	spacing = self:ClampSpacingSetting(spacing, 0, 20)
 
-	if not cfg or not spacing then
-		return
-	end
+	if not cfg or not spacing then return end
 
 	cfg.spacing = spacing
 
@@ -282,9 +245,7 @@ function ACAB:SetPetBarNativeScale(scale)
 
 	scale = self:ClampScaleSetting(scale)
 
-	if not cfg or not scale then
-		return
-	end
+	if not cfg or not scale then return end
 
 	local oldScale = cfg.scale or 1
 
@@ -311,10 +272,7 @@ function ACAB:ResetPetBarNativeLayout()
 	self:EnsureDB()
 
 	local cfg = ACABDB.defaultBars[self.PET_BAR_ID]
-
-	if not cfg or not cfg.nativeAnchor then
-		return
-	end
+	if not cfg or not cfg.nativeAnchor then return end
 
 	cfg.point = cfg.nativeAnchor.point
 	cfg.relativePoint = cfg.nativeAnchor.relativePoint
@@ -347,16 +305,11 @@ function ACAB:ResetPetBarLayoutToModernBase()
 	self:EnsureDB()
 
 	local bar3 = self.bars and self.bars[3]
-
-	if not bar3 then
-		return
-	end
+	if not bar3 then return end
 
 	local _, bar3Right, bar3Top = self:GetElementRealEdges(bar3)
 
-	if not bar3Right then
-		return
-	end
+	if not bar3Right then return end
 
 	if self:IsPetBarNativeModeEffective() then
 		local cfg = ACABDB.defaultBars[self.PET_BAR_ID]
@@ -365,10 +318,7 @@ function ACAB:ResetPetBarLayoutToModernBase()
 		self:CreatePetBarNativeContainer()
 
 		local container = self.petBarNativeContainer
-
-		if not cfg or not container then
-			return
-		end
+		if not cfg or not container then return end
 
 		-- Scale must settle before positioning - PixelSetPoint reads the live effective scale.
 		cfg.scale = self:GetModernPetStanceScale()
@@ -399,10 +349,7 @@ function ACAB:ResetPetBarLayoutToModernBase()
 	self:EnsureFixedSlotBarCreated(self.PET_BAR_ID)
 
 	local petBar = self.bars[self.PET_BAR_ID]
-
-	if not petBar then
-		return
-	end
+	if not petBar then return end
 
 	local buttonSize, spacing = self:GetModernLayoutSizing()
 	local cfg = petBar.config
@@ -432,10 +379,7 @@ end
 
 function ACAB:StartPetBarNativeDrag()
 	local cfg = ACABDB.defaultBars[self.PET_BAR_ID]
-
-	if not cfg then
-		return
-	end
+	if not cfg then return end
 
 	self:StartSharedDrag("petBarNative", nil, cfg.x or 0, cfg.y or 0)
 end
@@ -463,28 +407,17 @@ end
 -- Captures once the topmost default bar (1 or 2) to ShapeshiftBarFrame gap.
 -- Must run before CreateFixedSlotDefaultBars, which hides bar 2's buttons and collapses that native anchor.
 function ACAB:CaptureStanceBarNativeGap()
-	if ACABDB.stanceBarNativeGap then
-		return
-	end
+	if ACABDB.stanceBarNativeGap then return end
 
 	local frame = ShapeshiftBarFrame
-
-	if not frame then
-		return
-	end
+	if not frame then return end
 
 	local bottom = frame:GetBottom()
-
-	if not bottom then
-		return
-	end
+	if not bottom then return end
 
 	local frameScale = frame:GetEffectiveScale()
 	local targetScale = UIParent:GetEffectiveScale()
-
-	if not frameScale or not targetScale or targetScale == 0 then
-		return
-	end
+	if not frameScale or not targetScale or targetScale == 0 then return end
 
 	local screenBottom = (bottom * frameScale) / targetScale
 
@@ -498,9 +431,7 @@ function ACAB:CaptureStanceBarNativeGap()
 		referenceY = cfg2.nativeAnchor.y
 	end
 
-	if not referenceY then
-		return
-	end
+	if not referenceY then return end
 
 	local gap = screenBottom - referenceY
 
@@ -527,19 +458,12 @@ function ACAB:CreateStanceBarContainer()
 	self:EnsureDB()
 
 	-- Styled mode drives the real buttons through Button.lua's pool - must not build over them.
-	if not self:IsStanceBarNativeModeEffective() then
-		return
-	end
+	if not self:IsStanceBarNativeModeEffective() then return end
 
-	if self.stanceBarContainer then
-		return
-	end
+	if self.stanceBarContainer then return end
 
 	local buttons = self:GetStanceBarButtons()
-
-	if not buttons then
-		return
-	end
+	if not buttons then return end
 
 	-- Safety net; the real capture runs earlier in the login sequence.
 	self:CaptureStanceBarNativeGap()
@@ -579,9 +503,7 @@ end
 function ACAB:RebuildStanceBarContainer()
 	self:EnsureDB()
 
-	if not self:IsStanceBarNativeModeEffective() then
-		return
-	end
+	if not self:IsStanceBarNativeModeEffective() then return end
 
 	HideShapeshiftBarFrame()
 
@@ -645,10 +567,7 @@ end
 function ACAB:ApplyStanceBarPosition()
 	local pos = ACABDB.stanceBarPosition
 	local container = self.stanceBarContainer
-
-	if not pos or not container then
-		return
-	end
+	if not pos or not container then return end
 
 	self:ApplyPositionToFrame(container, pos, "BOTTOMLEFT")
 
@@ -663,9 +582,7 @@ function ACAB:ApplyStanceBarPosition()
 end
 
 function ACAB:SetStanceBarPosition(x, y)
-	if not self:WriteSavedPositionXY("stanceBarPosition", x, y) then
-		return
-	end
+	if not self:WriteSavedPositionXY("stanceBarPosition", x, y) then return end
 
 	-- Manually positioned - stop auto-stacking its Y.
 	ACABDB.stanceBarUsesDefaultPosition = false
@@ -676,10 +593,7 @@ end
 -- Restores the native (Vanilla Layout) position on the computed stack baseline.
 function ACAB:ResetStanceBarPosition()
 	local native = ACABDB.stanceBarNativeAnchor
-
-	if not native then
-		return
-	end
+	if not native then return end
 
 	ACABDB.stanceBarPosition = self:CopyNativePosition(native)
 
@@ -710,20 +624,14 @@ function ACAB:ResetStanceBarPositionToModernBase()
 
 	local bar3 = self.bars and self.bars[3]
 	local container = self.stanceBarContainer
-
-	if not bar3 or not container then
-		return
-	end
+	if not bar3 or not container then return end
 
 	-- Scale must settle before positioning - PixelSetPoint reads the live effective scale.
 	ACABDB.stanceBarScale = self:GetModernPetStanceScale()
 	self:ApplyStanceBarShape()
 
 	local bar3Left, _, bar3Top = self:GetElementRealEdges(bar3)
-
-	if not bar3Left then
-		return
-	end
+	if not bar3Left then return end
 
 	local _, _, _, insetBottom = self:GetElementVisualInset(container)
 
@@ -748,16 +656,10 @@ function ACAB:ResetStanceBarShapeToModernBase()
 
 	local mainBar = self.bars and self.bars[1]
 	local stanceBar = self.bars and self.bars[self.STANCE_BAR_ID]
-
-	if not mainBar or not stanceBar then
-		return
-	end
+	if not mainBar or not stanceBar then return end
 
 	local mainBarLeft, _, _, mainBarBottom = self:GetElementRealEdges(mainBar)
-
-	if not mainBarLeft then
-		return
-	end
+	if not mainBarLeft then return end
 
 	local buttonSize, spacing = self:GetModernLayoutSizing()
 	local cfg = stanceBar.config
@@ -804,10 +706,7 @@ end
 -- positions are stored separately, so the current spot and "at default spot" state carry over to the other mode.
 function ACAB:CarryStanceBarPositionToMode(toNative)
 	local cfg = ACABDB.defaultBars[self.STANCE_BAR_ID]
-
-	if not cfg then
-		return
-	end
+	if not cfg then return end
 
 	if toNative then
 		if cfg.styledDefaultPosition == true then
@@ -847,22 +746,14 @@ function ACAB:ReflowStanceBarForBar2Toggle(bar2Enabled)
 		return
 	end
 
-	if ACABDB.stanceBarUsesDefaultPosition == false then
-		return
-	end
+	if ACABDB.stanceBarUsesDefaultPosition == false then return end
 
 	local pos = ACABDB.stanceBarPosition
 	local container = self.stanceBarContainer
-
-	if not pos or not container then
-		return
-	end
+	if not pos or not container then return end
 
 	local y = self:GetStanceBarBaselineY(bar2Enabled)
-
-	if not y then
-		return
-	end
+	if not y then return end
 
 	-- y is a top edge - write it in TOPLEFT/BOTTOMLEFT terms, ApplyStanceBarPosition converts back.
 	self:ConvertPositionAnchor(container, pos, "TOPLEFT", "BOTTOMLEFT", nil, nil, "BOTTOMLEFT")
@@ -891,10 +782,7 @@ end
 -- Applies the global border style to the real stance buttons (modern: no NormalTexture, dark backdrop, inset icon).
 function ACAB:ApplyStanceBarBorderStyle()
 	local buttons = self.stanceBarButtons
-
-	if not buttons then
-		return
-	end
+	if not buttons then return end
 
 	local vanilla = self:IsVanillaBorderStyle()
 	local i
@@ -965,9 +853,7 @@ function ACAB:SetStanceBarSpacing(spacing)
 
 	spacing = self:ClampSpacingSetting(spacing, 0, 20)
 
-	if not spacing then
-		return
-	end
+	if not spacing then return end
 
 	ACABDB.stanceBarSpacing = spacing
 
@@ -979,9 +865,7 @@ function ACAB:SetStanceBarScale(scale)
 
 	scale, pos = self:StoreCompensatedScale("stanceBarScale", "stanceBarPosition", self.stanceBarContainer, scale)
 
-	if not scale then
-		return
-	end
+	if not scale then return end
 
 	self:ApplyStanceBarShape()
 
@@ -1011,10 +895,7 @@ end
 
 function ACAB:StartStanceBarDrag()
 	local pos = ACABDB.stanceBarPosition
-
-	if not pos then
-		return
-	end
+	if not pos then return end
 
 	self:StartSharedDrag("stanceBar", nil, pos.x or 0, pos.y or 0)
 end
@@ -1037,10 +918,7 @@ end
 -- The first GetNumShapeshiftForms() ShapeshiftButtonN frames (not IsShown(): unreliable early), capped, or nil.
 function ACAB:GetStanceBarButtons()
 	local count = self:GetClampedLiveStanceCount()
-
-	if count <= 0 then
-		return nil
-	end
+	if count <= 0 then return nil end
 
 	local buttons = {}
 	local i
@@ -1056,9 +934,7 @@ function ACAB:GetStanceBarButtons()
 		buttons[i] = frame
 	end
 
-	if table.getn(buttons) == 0 then
-		return nil
-	end
+	if table.getn(buttons) == 0 then return nil end
 
 	return buttons
 end

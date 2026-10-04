@@ -24,16 +24,11 @@ end
 
 -- Applies the grouped placement or ACABDB.bagBarPosition and ensures the overlay. No-op until the container exists.
 function ACAB:ApplyBagBarPosition()
-	if self:ApplyGroupedIfActive("bagbar") then
-		return
-	end
+	if self:ApplyGroupedIfActive("bagbar") then return end
 
 	local pos = ACABDB.bagBarPosition
 	local container = self.bagBarContainer
-
-	if not pos or not container then
-		return
-	end
+	if not pos or not container then return end
 
 	self:ApplySavedPosition(container, pos)
 	self:EnsureElementOverlayAndHover("bagbar", container)
@@ -48,10 +43,7 @@ end
 -- Restores the saved native (Vanilla Layout) position.
 function ACAB:ResetBagBarPosition()
 	local native = ACABDB.bagBarNativeAnchor
-
-	if not native then
-		return
-	end
+	if not native then return end
 
 	ACABDB.bagBarPosition = self:CopyNativePosition(native)
 
@@ -79,9 +71,7 @@ end
 
 -- Bag Bar's orientation: horizontal while grouped with Main Bar, else its saved orientation.
 function ACAB:GetBagBarEffectiveVertical()
-	if self:IsElementGrouped("bagbar") then
-		return false
-	end
+	if self:IsElementGrouped("bagbar") then return false end
 
 	return ACABDB.bagBarOrientation == true
 end
@@ -99,9 +89,7 @@ end
 function ACAB:ApplyBagBarShape()
 	self:EnsureDB()
 
-	if self:ApplyGroupedIfActive("bagbar") then
-		return
-	end
+	if self:ApplyGroupedIfActive("bagbar") then return end
 
 	self:ApplyChainAnchoredShape(
 		self.bagBarContainer,
@@ -116,9 +104,7 @@ function ACAB:SetBagBarSpacing(spacing)
 
 	spacing = self:ClampSpacingSetting(spacing, 0, 20)
 
-	if not spacing then
-		return
-	end
+	if not spacing then return end
 
 	ACABDB.bagBarSpacing = spacing
 
@@ -130,9 +116,7 @@ function ACAB:SetBagBarScale(scale)
 
 	scale, pos = self:StoreCompensatedScale("bagBarScale", "bagBarPosition", self.bagBarContainer, scale)
 
-	if not scale then
-		return
-	end
+	if not scale then return end
 
 	self:ApplyBagBarShape()
 
@@ -163,10 +147,7 @@ end
 
 function ACAB:StartBagBarDrag()
 	local pos = ACABDB.bagBarPosition
-
-	if not pos then
-		return
-	end
+	if not pos then return end
 
 	self:StartSharedDrag("bagBar", nil, pos.x or 0, pos.y or 0)
 end
@@ -184,16 +165,11 @@ end
 -------------------------------------------------------------------------
 
 function ACAB:ApplyMicroMenuPosition()
-	if self:ApplyGroupedIfActive("micromenu") then
-		return
-	end
+	if self:ApplyGroupedIfActive("micromenu") then return end
 
 	local pos = ACABDB.microMenuPosition
 	local container = self.microMenuContainer
-
-	if not pos or not container then
-		return
-	end
+	if not pos or not container then return end
 
 	self:ApplySavedPosition(container, pos)
 	self:EnsureElementOverlayAndHover("micromenu", container)
@@ -207,10 +183,7 @@ end
 
 function ACAB:ResetMicroMenuPosition()
 	local native = ACABDB.microMenuNativeAnchor
-
-	if not native then
-		return
-	end
+	if not native then return end
 
 	ACABDB.microMenuPosition = self:CopyNativePosition(native)
 
@@ -248,9 +221,7 @@ end
 function ACAB:ApplyMicroMenuShape()
 	self:EnsureDB()
 
-	if self:ApplyGroupedIfActive("micromenu") then
-		return
-	end
+	if self:ApplyGroupedIfActive("micromenu") then return end
 
 	self:ApplyGridAnchoredShape(
 		self.microMenuContainer,
@@ -267,9 +238,7 @@ function ACAB:SetMicroMenuSpacing(spacing)
 	-- Stored range; the slider displays it shifted +4 (spacingUiOffset) as [-10, 20].
 	spacing = self:ClampSpacingSetting(spacing, -14, 16)
 
-	if not spacing then
-		return
-	end
+	if not spacing then return end
 
 	ACABDB.microMenuSpacing = spacing
 
@@ -283,16 +252,12 @@ function ACAB:SetMicroMenuLayout(cols, rows)
 	cols = tonumber(cols)
 	rows = tonumber(rows)
 
-	if not cols or not rows then
-		return false
-	end
+	if not cols or not rows then return false end
 
 	cols = math.floor(cols)
 	rows = math.floor(rows)
 
-	if cols < 1 or rows < 1 then
-		return false
-	end
+	if cols < 1 or rows < 1 then return false end
 
 	if cols * rows > table.getn(self.MICRO_MENU_BUTTON_NAMES) then
 		self:Print("Micro Menu layout cannot exceed " ..
@@ -313,9 +278,7 @@ function ACAB:SetMicroMenuScale(scale)
 
 	scale, pos = self:StoreCompensatedScale("microMenuScale", "microMenuPosition", self.microMenuContainer, scale)
 
-	if not scale then
-		return
-	end
+	if not scale then return end
 
 	self:ApplyMicroMenuShape()
 
@@ -338,10 +301,7 @@ end
 
 function ACAB:StartMicroMenuDrag()
 	local pos = ACABDB.microMenuPosition
-
-	if not pos then
-		return
-	end
+	if not pos then return end
 
 	self:StartSharedDrag("microMenu", nil, pos.x or 0, pos.y or 0)
 end
@@ -454,22 +414,14 @@ end)
 function ACAB:CaptureKeyRingPositionIfNeeded()
 	self:EnsureDB()
 
-	if ACABDB.keyRingPosition then
-		return
-	end
+	if ACABDB.keyRingPosition then return end
 
 	local frame = getglobal(self.KEYRING_BUTTON_NAME)
-
-	if not frame then
-		return
-	end
+	if not frame then return end
 
 	local left = frame:GetLeft()
 	local top = frame:GetTop()
-
-	if not left or not top then
-		return
-	end
+	if not left or not top then return end
 
 	local frameScale = frame:GetEffectiveScale()
 	local uiParentScale = UIParent:GetEffectiveScale()
@@ -500,10 +452,7 @@ end
 -- must run at login before anything moves the Bag Bar or Main Bar's art (RunLoginSequence)
 function ACAB:CaptureKeyRingNativeTopLeft()
 	local frame = getglobal(self.KEYRING_BUTTON_NAME)
-
-	if not frame then
-		return
-	end
+	if not frame then return end
 
 	-- must read UIParent first or the frame can resolve against a stale ancestor (env §4.6)
 	UIParent:GetLeft()
@@ -512,10 +461,7 @@ function ACAB:CaptureKeyRingNativeTopLeft()
 	local top = frame:GetTop()
 	local frameScale = frame:GetEffectiveScale()
 	local uiParentScale = UIParent:GetEffectiveScale()
-
-	if not left or not top or not frameScale or not uiParentScale or uiParentScale == 0 then
-		return
-	end
+	if not left or not top or not frameScale or not uiParentScale or uiParentScale == 0 then return end
 
 	self.keyRingNativeTopLeft = {
 		x = (left * frameScale) / uiParentScale,
@@ -532,17 +478,12 @@ end
 
 -- Applies the grouped placement or ACABDB.keyRingPosition to KeyRingButton and ensures its overlay.
 function ACAB:ApplyKeyRingPosition()
-	if self:ApplyGroupedIfActive("keyring") then
-		return
-	end
+	if self:ApplyGroupedIfActive("keyring") then return end
 
 	self:CaptureKeyRingPositionIfNeeded()
 
 	local frame = getglobal(self.KEYRING_BUTTON_NAME)
-
-	if not frame then
-		return
-	end
+	if not frame then return end
 
 	self:ApplyKeyRingStrataAndScale(frame, ACABDB.keyRingScale or 1)
 
@@ -610,9 +551,7 @@ function ACAB:SetKeyRingScale(scale)
 
 	scale, pos = self:StoreCompensatedScale("keyRingScale", "keyRingPosition", frame, scale)
 
-	if not scale then
-		return
-	end
+	if not scale then return end
 
 	if frame then
 		self:SetKeyRingOwnScaleForEffective(frame, scale)
@@ -627,10 +566,7 @@ function ACAB:StartKeyRingDrag()
 	self:CaptureKeyRingPositionIfNeeded()
 
 	local pos = ACABDB.keyRingPosition
-
-	if not pos then
-		return
-	end
+	if not pos then return end
 
 	self:StartSharedDrag("keyRing", nil, pos.x or 0, pos.y or 0)
 end
@@ -655,15 +591,10 @@ ACAB:InstallReanchorGuard(getglobal(ACAB.LATENCY_BAR_FRAME_NAME), "ACABApplyingL
 function ACAB:CaptureLatencyBarPositionIfNeeded()
 	self:EnsureDB()
 
-	if ACABDB.latencyBarPosition then
-		return
-	end
+	if ACABDB.latencyBarPosition then return end
 
 	local frame = getglobal(self.LATENCY_BAR_FRAME_NAME)
-
-	if not frame then
-		return
-	end
+	if not frame then return end
 
 	-- Reset to Vanilla Layout snapshot, captured once (natively BOTTOMRIGHT of MainMenuBar).
 	if not ACABDB.latencyBarNativeAnchor then
@@ -680,17 +611,12 @@ end
 
 -- Applies the grouped placement or ACABDB.latencyBarPosition to the real frame and ensures its overlay.
 function ACAB:ApplyLatencyBarPosition()
-	if self:ApplyGroupedIfActive("latencybar") then
-		return
-	end
+	if self:ApplyGroupedIfActive("latencybar") then return end
 
 	self:CaptureLatencyBarPositionIfNeeded()
 
 	local frame = getglobal(self.LATENCY_BAR_FRAME_NAME)
-
-	if not frame then
-		return
-	end
+	if not frame then return end
 
 	local pos = ACABDB.latencyBarPosition
 
@@ -726,9 +652,7 @@ function ACAB:SetLatencyBarScale(scale)
 
 	scale, pos = self:StoreCompensatedScale("latencyBarScale", "latencyBarPosition", frame, scale)
 
-	if not scale then
-		return
-	end
+	if not scale then return end
 
 	if frame then
 		frame:SetScale(scale)
@@ -764,10 +688,7 @@ function ACAB:StartLatencyBarDrag()
 	self:CaptureLatencyBarPositionIfNeeded()
 
 	local pos = ACABDB.latencyBarPosition
-
-	if not pos then
-		return
-	end
+	if not pos then return end
 
 	self:StartSharedDrag("latencyBar", nil, pos.x or 0, pos.y or 0)
 end
@@ -792,15 +713,10 @@ ACAB:InstallReanchorGuard(getglobal(ACAB.CAST_BAR_FRAME_NAME), "ACABApplyingCast
 function ACAB:CaptureCastBarPositionIfNeeded()
 	self:EnsureDB()
 
-	if ACABDB.castBarPosition then
-		return
-	end
+	if ACABDB.castBarPosition then return end
 
 	local frame = getglobal(self.CAST_BAR_FRAME_NAME)
-
-	if not frame then
-		return
-	end
+	if not frame then return end
 
 	-- Reset to Vanilla Layout snapshot, captured once.
 	if not ACABDB.castBarNativeAnchor then
@@ -819,10 +735,7 @@ function ACAB:ApplyCastBarPosition()
 	self:CaptureCastBarPositionIfNeeded()
 
 	local frame = getglobal(self.CAST_BAR_FRAME_NAME)
-
-	if not frame then
-		return
-	end
+	if not frame then return end
 
 	local pos = ACABDB.castBarPosition
 
@@ -834,9 +747,7 @@ function ACAB:ApplyCastBarPosition()
 end
 
 function ACAB:SetCastBarPosition(x, y)
-	if not self:WriteSavedPositionXY("castBarPosition", x, y) then
-		return
-	end
+	if not self:WriteSavedPositionXY("castBarPosition", x, y) then return end
 
 	-- Manually positioned - stop auto-stacking its Y.
 	ACABDB.castBarUsesDefaultPosition = false
@@ -850,9 +761,7 @@ function ACAB:SetCastBarScale(scale)
 
 	scale, pos = self:StoreCompensatedScale("castBarScale", "castBarPosition", frame, scale)
 
-	if not scale then
-		return
-	end
+	if not scale then return end
 
 	if frame then
 		frame:SetScale(scale)
@@ -893,9 +802,7 @@ end
 function ACAB:CaptureCastBarStackBaseYIfNeeded()
 	self:EnsureDB()
 
-	if ACABDB.castBarStackBaseY then
-		return
-	end
+	if ACABDB.castBarStackBaseY then return end
 
 	self:CaptureCastBarPositionIfNeeded()
 
@@ -913,10 +820,7 @@ function ACAB:GetCastBarBaselineY()
 	self:CaptureCastBarStackBaseYIfNeeded()
 
 	local baseY = ACABDB.castBarStackBaseY
-
-	if not baseY then
-		return nil
-	end
+	if not baseY then return nil end
 
 	local bar2Cfg = ACABDB.defaultBars and ACABDB.defaultBars[2]
 	local bar3Cfg = ACABDB.defaultBars and ACABDB.defaultBars[3]
@@ -964,17 +868,12 @@ end
 function ACAB:ReflowCastBarForStackToggle()
 	self:EnsureDB()
 
-	if ACABDB.castBarUsesDefaultPosition == false then
-		return
-	end
+	if ACABDB.castBarUsesDefaultPosition == false then return end
 
 	local pos = ACABDB.castBarPosition
 	local y = self:GetCastBarBaselineY()
 	local frame = getglobal(self.CAST_BAR_FRAME_NAME)
-
-	if not pos or not y or not frame then
-		return
-	end
+	if not pos or not y or not frame then return end
 
 	-- y is a top edge - written in TOPLEFT/BOTTOMLEFT terms, ApplyCastBarPosition converts back.
 	self:ConvertPositionAnchor(frame, pos, "TOPLEFT", "BOTTOMLEFT")
@@ -992,10 +891,7 @@ function ACAB:StartCastBarDrag()
 	self:CaptureCastBarPositionIfNeeded()
 
 	local pos = ACABDB.castBarPosition
-
-	if not pos then
-		return
-	end
+	if not pos then return end
 
 	self:StartSharedDrag("castBar", nil, pos.x or 0, pos.y or 0)
 end

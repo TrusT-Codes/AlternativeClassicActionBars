@@ -26,10 +26,7 @@ ACAB.MAX_STANCE_BUTTONS = 10
 -- Returns ordered table of real Blizzard button frames for a default bar id, or nil if unknown/not yet loaded.
 function ACAB:GetDefaultBarButtons(id)
 	local prefix = self.DEFAULT_BAR_FRAME_PREFIXES[id]
-
-	if not prefix then
-		return nil
-	end
+	if not prefix then return nil end
 
 	local buttons = {}
 	local i
@@ -45,9 +42,7 @@ function ACAB:GetDefaultBarButtons(id)
 		buttons[i] = frame
 	end
 
-	if table.getn(buttons) == 0 then
-		return nil
-	end
+	if table.getn(buttons) == 0 then return nil end
 
 	return buttons
 end
@@ -82,10 +77,7 @@ end
 -- Resolves which of the player's stance slots is currently active (GetBonusBarOffset alone isn't a 1:1 mapping to stance index).
 function ACAB:GetActiveStanceIndex()
 	local count = GetNumShapeshiftForms and GetNumShapeshiftForms() or 0
-
-	if not count or count <= 0 then
-		return nil
-	end
+	if not count or count <= 0 then return nil end
 
 	local i
 
@@ -213,10 +205,7 @@ end
 -- are ActionButton1-12. Level 5 must stay between MainMenuExpBar (2) and ACAB bars (10) or either renders wrong.
 function ACAB:ApplyBlizzardArtVisibility()
 	local artFrame = MainMenuBarArtFrame
-
-	if not artFrame then
-		return
-	end
+	if not artFrame then return end
 
 	self:EnsureDB()
 
@@ -316,41 +305,28 @@ end
 -- applies the art position. Until then ApplyMainBarArtPosition leaves the art at its native spot.
 function ACAB:CaptureMainBarArtNativeOffsetIfNeeded()
 	-- .width check re-captures saves from before width/height were stored.
-	if ACABDB.mainBarArtNativeOffset and ACABDB.mainBarArtNativeOffset.width then
-		return
-	end
+	if ACABDB.mainBarArtNativeOffset and ACABDB.mainBarArtNativeOffset.width then return end
 
 	local artFrame = MainMenuBarArtFrame
 	local cfg = ACABDB.defaultBars and ACABDB.defaultBars[1]
 	local nativeAnchor = cfg and cfg.nativeAnchor
-
-	if not artFrame or not nativeAnchor or artFrame.ACABArtSettlePolling then
-		return
-	end
+	if not artFrame or not nativeAnchor or artFrame.ACABArtSettlePolling then return end
 
 	artFrame.ACABArtSettlePolling = true
 
 	WaitForMainBarArtSettle(function(left, top)
 		artFrame.ACABArtSettlePolling = nil
 
-		if not left or not top then
-			return
-		end
+		if not left or not top then return end
 
 		local frameScale = artFrame:GetEffectiveScale()
 		local targetScale = UIParent:GetEffectiveScale()
-
-		if not frameScale or not targetScale or targetScale == 0 then
-			return
-		end
+		if not frameScale or not targetScale or targetScale == 0 then return end
 
 		local screenY = (top * frameScale) / targetScale
 		local frameW = artFrame:GetWidth()
 		local frameH = artFrame:GetHeight()
-
-		if not frameW or frameW <= 0 or not frameH or frameH <= 0 then
-			return
-		end
+		if not frameW or frameW <= 0 or not frameH or frameH <= 0 then return end
 
 		-- Left gryphon's right edge, in the frame's unscaled units from its left edge.
 		local gryphon = getglobal("MainMenuBarLeftEndCap")
@@ -385,10 +361,7 @@ local function GetButton1ScreenAnchor(bar)
 
 	local left = bar:GetLeft()
 	local top = bar:GetTop()
-
-	if not left or not top then
-		return nil
-	end
+	if not left or not top then return nil end
 
 	if not ACAB:IsVanillaBorderStyle() then
 		left = left + ACAB.MODERN_BUTTON_SIZE_POSITION_SHIFT
@@ -397,10 +370,7 @@ local function GetButton1ScreenAnchor(bar)
 
 	local barScale = bar:GetEffectiveScale()
 	local targetScale = UIParent:GetEffectiveScale()
-
-	if not barScale or not targetScale or targetScale == 0 then
-		return nil
-	end
+	if not barScale or not targetScale or targetScale == 0 then return nil end
 
 	local screenLeft = (left * barScale) / targetScale
 	local screenTop = (top * barScale) / targetScale
@@ -447,19 +417,14 @@ function ACAB:ApplyMainBarArtPosition()
 
 	local artFrame = MainMenuBarArtFrame
 	local bar = self.bars and self.bars[1]
-
-	if not artFrame or not bar or not bar.config then
-		return
-	end
+	if not artFrame or not bar or not bar.config then return end
 
 	self:CaptureMainBarArtNativeOffsetIfNeeded()
 
 	local offset = ACABDB.mainBarArtNativeOffset
 
 	-- Incomplete offset (no width) must not apply, or the art's rect dies and the capture can never finish.
-	if not offset or not offset.width or not offset.height then
-		return
-	end
+	if not offset or not offset.width or not offset.height then return end
 
 	local scale = self:GetMainBarArtScale(bar.config)
 
@@ -665,9 +630,7 @@ local function ResolveNativeTopLeft(native, frame)
 	if native.relativeTo and native.relativeTo ~= "UIParent" then
 		relFrame = getglobal(native.relativeTo)
 
-		if not relFrame then
-			return nil
-		end
+		if not relFrame then return nil end
 	end
 
 	local rfx, rfy = ACAB:GetPointFractions(native.relativePoint or "BOTTOMLEFT")
@@ -679,10 +642,7 @@ local function ResolveNativeTopLeft(native, frame)
 	if relFrame then
 		local left, right = relFrame:GetLeft(), relFrame:GetRight()
 		local top, bottom = relFrame:GetTop(), relFrame:GetBottom()
-
-		if not left or not right or not top or not bottom then
-			return nil
-		end
+		if not left or not right or not top or not bottom then return nil end
 
 		local ratio = relFrame:GetEffectiveScale() / UIParent:GetEffectiveScale()
 
@@ -705,10 +665,7 @@ local function GetGroupedElementBaseline(element, frame)
 	local mainCfg = ACABDB.defaultBars and ACABDB.defaultBars[1]
 	local mainNative = mainCfg and mainCfg.nativeAnchor
 	local native = ACABDB[element.nativeAnchorField]
-
-	if not mainNative or not native or not frame then
-		return nil
-	end
+	if not mainNative or not native or not frame then return nil end
 
 	local left, top
 
@@ -720,9 +677,7 @@ local function GetGroupedElementBaseline(element, frame)
 		left, top = ResolveNativeTopLeft(native, frame)
 	end
 
-	if not left or not top then
-		return nil
-	end
+	if not left or not top then return nil end
 
 	local correction = element.pixelCorrection
 	local uiScale = UIParent:GetEffectiveScale()
@@ -740,22 +695,13 @@ end
 function ACAB:GetGroupedElementPlacement(elementKey, frame)
 	local element = GROUPABLE_ELEMENTS[elementKey]
 	local bar = self.bars and self.bars[1]
-
-	if not element or not bar or not bar.config then
-		return nil
-	end
+	if not element or not bar or not bar.config then return nil end
 
 	local baseX, baseY = GetGroupedElementBaseline(element, frame)
-
-	if not baseX then
-		return nil
-	end
+	if not baseX then return nil end
 
 	local btn1X, btn1Y = GetButton1ScreenAnchor(bar)
-
-	if not btn1X or not btn1Y then
-		return nil
-	end
+	if not btn1X or not btn1Y then return nil end
 
 	local barScale = self:GetMainBarArtScale(bar.config)
 	local targetY = btn1Y + (baseY * barScale)
@@ -848,16 +794,10 @@ local function ApplyGroupedElementPosition(elementKey)
 	end
 
 	local frame = element.getFrame()
-
-	if not frame then
-		return false
-	end
+	if not frame then return false end
 
 	local x, y, scale = ACAB:GetGroupedElementPlacement(elementKey, frame)
-
-	if not x then
-		return false
-	end
+	if not x then return false end
 
 	element.applyScale(frame, scale)
 
@@ -883,9 +823,7 @@ end
 -- Applies elementKey's grouped placement if it's grouped. Returns true only if that happened, so callers
 -- fall back to their own ungrouped path otherwise.
 function ACAB:ApplyGroupedIfActive(elementKey)
-	if not self:IsElementGrouped(elementKey) then
-		return false
-	end
+	if not self:IsElementGrouped(elementKey) then return false end
 
 	return ApplyGroupedElementPosition(elementKey)
 end
@@ -893,10 +831,7 @@ end
 -- Flips elementKey's group lock - shared by the settings-page and edit-mode lock icons.
 function ACAB:ToggleElementGroupLock(elementKey)
 	local element = GROUPABLE_ELEMENTS[elementKey]
-
-	if not element then
-		return
-	end
+	if not element then return end
 
 	ACABDB[element.unlockField] = not (ACABDB[element.unlockField] == true)
 
@@ -926,9 +861,7 @@ end
 
 -- True if `frame` moves along with Main Bar: grouped with it, or the Page Indicator in follow mode.
 function ACAB:IsMainBarFollower(frame)
-	if not frame then
-		return false
-	end
+	if not frame then return false end
 
 	if frame == self.pageIndicatorContainer and ACABDB.mainBarPageIndicatorFollowsMainBar ~= false then
 		return true
@@ -1001,9 +934,7 @@ end
 function ACAB:ApplyGroupedElementEditVisual(elementKey, container, enabledFlag, show)
 	self:ApplyContainerOverlayVisual(container, enabledFlag, show and not self:IsElementGrouped(elementKey))
 
-	if not container or not container.ACABOverlay then
-		return
-	end
+	if not container or not container.ACABOverlay then return end
 
 	local icon = self:EnsureGroupLockIcon(elementKey, container)
 	local dx, dy = GetOverlayCenterOffset(container)
@@ -1022,9 +953,7 @@ end
 local function GetConfiguredDefaultBar(id)
 	ACAB:EnsureDB()
 
-	if not ACABDB.defaultBars[id] then
-		return nil
-	end
+	if not ACABDB.defaultBars[id] then return nil end
 
 	return ACAB.bars and ACAB.bars[id]
 end
@@ -1075,16 +1004,10 @@ end
 function ACAB:EnforceMainBarArtSpacing()
 	local cfg = ACABDB.defaultBars and ACABDB.defaultBars[1]
 	local bar = self.bars and self.bars[1]
-
-	if not cfg or not cfg.nativeSpacing or not bar or not self:IsMainBarArtEnabled() then
-		return
-	end
+	if not cfg or not cfg.nativeSpacing or not bar or not self:IsMainBarArtEnabled() then return end
 
 	local spacing = self:GetDefaultBarNativeSpacing(cfg)
-
-	if cfg.spacing == spacing then
-		return
-	end
+	if cfg.spacing == spacing then return end
 
 	cfg.spacing = spacing
 
@@ -1100,10 +1023,7 @@ end
 function ACAB:RestoreMainBarSpacingAfterArt()
 	local cfg = ACABDB.defaultBars and ACABDB.defaultBars[1]
 	local bar = self.bars and self.bars[1]
-
-	if not cfg or not bar or self:IsMainBarArtEnabled() then
-		return
-	end
+	if not cfg or not bar or self:IsMainBarArtEnabled() then return end
 
 	local previous = cfg.spacingBeforeArt
 
@@ -1121,10 +1041,7 @@ function ACAB:SetDefaultBarSpacing(id, spacing)
 	self:EnsureDB()
 
 	local cfg = ACABDB.defaultBars[id]
-
-	if not cfg then
-		return
-	end
+	if not cfg then return end
 
 	if id == 1 and self:IsMainBarArtEnabled() then
 		self:EnforceMainBarArtSpacing()
@@ -1136,9 +1053,7 @@ function ACAB:SetDefaultBarSpacing(id, spacing)
 
 	spacing = self:ClampSpacingSetting(spacing, minSpacing, self:GetSpacingMax())
 
-	if not spacing then
-		return
-	end
+	if not spacing then return end
 
 	cfg.spacing = spacing
 
@@ -1183,10 +1098,7 @@ function ACAB:ResetDefaultBarLayout(id)
 	self:EnsureDB()
 
 	local cfg = ACABDB.defaultBars[id]
-
-	if not cfg or not cfg.nativeAnchor then
-		return
-	end
+	if not cfg or not cfg.nativeAnchor then return end
 
 	local modern = not self:IsVanillaBorderStyle()
 	local shift = modern and self.MODERN_BUTTON_SIZE_POSITION_SHIFT or 0
@@ -1338,10 +1250,7 @@ function ACAB:ApplyModernMainActionBarsLayout()
 	local bar1 = self.bars and self.bars[1]
 	local bar2 = self.bars and self.bars[2]
 	local bar3 = self.bars and self.bars[3]
-
-	if not bar1 or not bar2 or not bar3 then
-		return
-	end
+	if not bar1 or not bar2 or not bar3 then return end
 
 	local buttonSize, spacing = self:GetModernLayoutSizing()
 
@@ -1426,10 +1335,7 @@ function ACAB:ApplyModernVerticalBarClusterLayout()
 
 	local bar4 = self.bars and self.bars[4]
 	local bar5 = self.bars and self.bars[5]
-
-	if not bar4 or not bar5 then
-		return
-	end
+	if not bar4 or not bar5 then return end
 
 	local extraStart = self.EXTRA_BAR_ID_START
 	local extra1 = self.bars[extraStart]
@@ -1501,10 +1407,7 @@ function ACAB:ApplyModernSingleMainBar()
 	self:EnsureDB()
 
 	local bar1 = self.bars and self.bars[1]
-
-	if not bar1 then
-		return
-	end
+	if not bar1 then return end
 
 	local buttonSize, spacing = self:GetModernLayoutSizing()
 
@@ -1515,9 +1418,7 @@ end
 -- Applies `bar`'s own modern position/shape only, stacked zero-gap on `belowBar`'s current real top edge
 -- (belowBar itself is never touched).
 function ACAB:ApplyModernSingleStackedActionBar(bar, belowBar)
-	if not bar or not belowBar then
-		return
-	end
+	if not bar or not belowBar then return end
 
 	local buttonSize, spacing = self:GetModernLayoutSizing()
 
@@ -1535,10 +1436,7 @@ function ACAB:ApplyModernSingleVerticalBar(id)
 	self:EnsureDB()
 
 	local bar = self.bars and self.bars[id]
-
-	if not bar then
-		return
-	end
+	if not bar then return end
 
 	local buttonSize, spacing = self:GetModernLayoutSizing()
 	local cfg = bar.config
@@ -1558,10 +1456,7 @@ function ACAB:ApplyModernSingleVerticalBar(id)
 		cfg.y = rowY
 	else
 		local bar4 = self.bars[4]
-
-		if not bar4 then
-			return
-		end
+		if not bar4 then return end
 
 		cfg.buttonSize = buttonSize
 		cfg.spacing = spacing
@@ -1733,10 +1628,7 @@ end
 -- Schedules the loaded profile's pending baseline pass and the reload after it. Returns true if one is pending.
 function ACAB:ApplyPendingLayoutBaseline()
 	local layout = ACABDB.pendingLayoutBaseline
-
-	if not layout then
-		return false
-	end
+	if not layout then return false end
 
 	self:Print("Applying the " .. (layout == "modern" and "Modern" or "Vanilla") .. " layout - your UI reloads in a moment.")
 
@@ -1772,10 +1664,7 @@ function ACAB:SetDefaultBarEnabled(id, enabled)
 	self:EnsureDB()
 
 	local cfg = ACABDB.defaultBars[id]
-
-	if not cfg then
-		return
-	end
+	if not cfg then return end
 
 	enabled = enabled and true or false
 
@@ -1887,9 +1776,7 @@ end
 -- Reconciles our own cfg.enabled (bars 2-5) from the native SHOW_MULTI_ACTIONBAR_1-4 globals whenever
 -- MultiActionBar_Update runs. Only trusted reactively - these globals don't survive a real logout.
 function ACAB:ReconcileDefaultBarEnabledFromNative()
-	if not (ACABDB and ACABDB.defaultBars) then
-		return
-	end
+	if not (ACABDB and ACABDB.defaultBars) then return end
 
 	local id
 
@@ -1925,10 +1812,7 @@ local RIGHT_ACTIONBAR2_LABEL_ENABLED_COLOR = { 1, 0.82, 0 }
 
 local function SetCheckbox5LabelEnabledColor()
 	local outer = getglobal("OptionsFrameCheckButton5")
-
-	if not outer then
-		return
-	end
+	if not outer then return end
 
 	local regions = { outer:GetRegions() }
 	local i
@@ -1994,9 +1878,7 @@ end
 local hasNeuteredMultiBarBottomLeft = false
 
 local function ForceShowMultiBarBottomLeft(parent)
-	if not parent then
-		return
-	end
+	if not parent then return end
 
 	parent:Show()
 
@@ -2021,9 +1903,7 @@ function ACAB:EnsureFixedSlotBarCreated(id)
 		return
 	end
 
-	if not (cfg and (cfg.fixedActionSlots or cfg.dynamicDefaultBar) and not self.bars[id]) then
-		return
-	end
+	if not (cfg and (cfg.fixedActionSlots or cfg.dynamicDefaultBar) and not self.bars[id]) then return end
 
 	local nativeButtons = self:GetDefaultBarButtons(id)
 

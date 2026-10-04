@@ -26,10 +26,7 @@ function ACAB:GetNativeExpOverlayText()
 	end
 
 	local overlayFrame = getglobal(self.EXP_OVERLAY_FRAME_NAME)
-
-	if not overlayFrame then
-		return nil
-	end
+	if not overlayFrame then return nil end
 
 	local regions = { overlayFrame:GetRegions() }
 	local i
@@ -53,22 +50,14 @@ ACAB.EXP_RESTED_FRAME_NAME = "ExhaustionLevelFillBar"
 function ACAB:CaptureExpBarPositionIfNeeded()
 	self:EnsureDB()
 
-	if ACABDB.expBarPosition then
-		return
-	end
+	if ACABDB.expBarPosition then return end
 
 	local frame = getglobal(self.EXP_BAR_FRAME_NAME)
-
-	if not frame then
-		return
-	end
+	if not frame then return end
 
 	local left = frame:GetLeft()
 	local top = frame:GetTop()
-
-	if not left or not top then
-		return
-	end
+	if not left or not top then return end
 
 	local buttonScale = frame:GetEffectiveScale()
 	local uiParentScale = UIParent:GetEffectiveScale()
@@ -128,10 +117,7 @@ function ACAB:ApplyExpBarPosition()
 	self:CaptureExpBarPositionIfNeeded()
 
 	local frame = getglobal(self.EXP_BAR_FRAME_NAME)
-
-	if not frame then
-		return
-	end
+	if not frame then return end
 
 	local pos = ACABDB.expBarPosition
 
@@ -196,9 +182,7 @@ function ACAB:SetExpBarScale(scale)
 
 	scale, pos = self:StoreCompensatedScale("expBarScale", "expBarPosition", frame, scale)
 
-	if not scale then
-		return
-	end
+	if not scale then return end
 
 	if frame then
 		frame:SetScale(scale)
@@ -234,16 +218,11 @@ end
 -- Centers the Experience Bar at the bottom of its settings page's Y range, keeping its scale.
 function ACAB:PlaceExpBarAtBottom()
 	local frame = getglobal(self.EXP_BAR_FRAME_NAME)
-
-	if not frame then
-		return
-	end
+	if not frame then return end
 
 	local _, _, minY = self:GetSimpleElementCoordinateRange(frame, 2)
 
-	if not minY then
-		return
-	end
+	if not minY then return end
 
 	ACABDB.expBarPosition = {
 		point = "CENTER", relativePoint = "CENTER", visualCenter = true,
@@ -264,10 +243,7 @@ function ACAB:StartExpBarDrag()
 	self:CaptureExpBarPositionIfNeeded()
 
 	local pos = ACABDB.expBarPosition
-
-	if not pos then
-		return
-	end
+	if not pos then return end
 
 	self:StartSharedDrag("expBar", nil, pos.x or 0, pos.y or 0)
 end
@@ -304,10 +280,7 @@ end
 -- see known-problems.md: "Native code repaints the Exp Bar fill colors"
 local function InstallExpBarColorGuard(frame, methodName, colorField)
 	local guardFlag = "ACABColorGuarded" .. methodName
-
-	if not frame or not frame[methodName] or frame[guardFlag] then
-		return
-	end
+	if not frame or not frame[methodName] or frame[guardFlag] then return end
 
 	local nativeSetColor = frame[methodName]
 
@@ -495,17 +468,12 @@ end
 
 -- CHAT_MSG_COMBAT_XP_GAIN handler: measures pool drop / rested bonus once per character.
 function ACAB:CalibrateRestPoolFromXPMessage(message)
-	if not ACABCharDB or ACABCharDB.restPoolPerBonusXP or not message then
-		return
-	end
+	if not ACABCharDB or ACABCharDB.restPoolPerBonusXP or not message then return end
 
 	-- First number inside the parentheses is the rested bonus, e.g. "(+31 exp Rested bonus)".
 	local _, _, bonusText = string.find(message, "%(%+?(%d+)")
 	local bonus = tonumber(bonusText)
-
-	if not bonus or bonus < REST_CALIBRATION_MIN_BONUS then
-		return
-	end
+	if not bonus or bonus < REST_CALIBRATION_MIN_BONUS then return end
 
 	local messageTime = GetTime()
 
@@ -520,10 +488,7 @@ function ACAB:CalibrateRestPoolFromXPMessage(message)
 		end
 
 		local drop = restPoolPrevious - restPoolCurrent
-
-		if drop <= 0 or ACABCharDB.restPoolPerBonusXP then
-			return
-		end
+		if drop <= 0 or ACABCharDB.restPoolPerBonusXP then return end
 
 		ACABCharDB.restPoolPerBonusXP = drop / bonus
 		ACAB:Print("Rested XP calibrated: " .. string.format("%.2f", ACABCharDB.restPoolPerBonusXP) .. " pool per bonus XP.")
@@ -534,10 +499,7 @@ end
 -- Remaining rested bonus XP (GetXPExhaustion() converted to real XP), or nil when not rested.
 local function GetRestedBonusXP()
 	local exhaustion = GetXPExhaustion and GetXPExhaustion()
-
-	if not exhaustion then
-		return nil
-	end
+	if not exhaustion then return nil end
 
 	local ratio = ACABCharDB and ACABCharDB.restPoolPerBonusXP or 1
 
@@ -637,9 +599,7 @@ end
 
 -- Starts the pulse ticker; no-op while already running.
 local function StartExpBarRestedGlowPulse(glow)
-	if expBarRestedGlowPulseTicker then
-		return
-	end
+	if expBarRestedGlowPulseTicker then return end
 
 	expBarRestedGlowPulseStartTime = GetTime()
 
@@ -685,10 +645,7 @@ function ACAB:ApplyExpBarRestedOverlay()
 	self:EnsureDB()
 
 	local frame = getglobal(self.EXP_BAR_FRAME_NAME)
-
-	if not frame then
-		return
-	end
+	if not frame then return end
 
 	local tex = frame.ACABRestedOverlay
 	local tick = frame.ACABRestedTick
@@ -940,15 +897,10 @@ function ACAB:CaptureNativeExpBarFontIfNeeded()
 		return self.NATIVE_EXPBAR_FONT
 	end
 
-	if not GameFontNormalSmall or not GameFontNormalSmall.GetFont then
-		return nil
-	end
+	if not GameFontNormalSmall or not GameFontNormalSmall.GetFont then return nil end
 
 	local path, size = GameFontNormalSmall:GetFont()
-
-	if not path then
-		return nil
-	end
+	if not path then return nil end
 
 	self.NATIVE_EXPBAR_FONT = { path = path, size = size }
 
@@ -960,10 +912,7 @@ function ACAB:ApplyBetterExpBarVisual()
 	self:EnsureDB()
 
 	local frame = getglobal(self.EXP_BAR_FRAME_NAME)
-
-	if not frame then
-		return
-	end
+	if not frame then return end
 
 	local nativeText = self:GetNativeExpOverlayText()
 
@@ -1052,9 +1001,7 @@ function ACAB:SetExpBarGlowPulseInterval(interval)
 
 	interval = tonumber(interval)
 
-	if not interval then
-		return
-	end
+	if not interval then return end
 
 	interval = ExpBarRound(interval * 10) / 10
 
