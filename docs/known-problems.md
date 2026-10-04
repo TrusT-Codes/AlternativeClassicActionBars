@@ -28,7 +28,7 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
 ### Lua / runtime
 - **`string.match` is available despite being Lua 5.1.** `Core.lua`'s slash dispatcher / `HandleProfileCommand` rely on it, and it works live. Presumably one of the client mods supplies it. Don't "fix" it to `string.find` captures. Check: `/run print(string.match, string.gmatch)`.
 - **`X and X(...)` truncates a multi-return call to one value** (stock Lua, env §2). Capture multi-return APIs (`GetPetActionInfo`: 7 values incl. `subtext` in position 2) inside a real `if X then ... end` block.
-- **Lua 5.0 caps each function at 32 upvalues.** The local `luac` (5.1) allows 60 and won't catch it. Watch big settings builders when adding file-level locals; `SettingsBars.lua` peaks around 18.
+- **Lua 5.0 caps each function at 32 upvalues.** The local `luac` (5.1) allows 60 and won't catch it. Watch big settings builders when adding file-level locals; the addon peaks around 13 (`Core.lua`), settings builders around 8.
 
 ### Frames, rects and layout
 - **Lazy, top-down rect resolution (env §4.6).** A child read before its ancestor caches a stale rect. Discarded ancestor reads before child reads are load-bearing in:
@@ -44,7 +44,7 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
 - **Edit-mode overlays are parented to UIParent** (`ElementEngine.lua` `EnsureContainerOverlay`) so all overlays compare FrameLevel in one tree. Hiding an element never hides its overlay: every disable path must `overlay:Hide()` + `EnableMouse(false)` itself. Overlapping overlays need distinct explicit levels (Key Ring 150 vs default 100).
 - **Page Indicator is laid out from `GetPoint` data, not rect deltas** (`PageIndicator.lua` `CreatePageIndicatorContainer` / `ApplyPageIndicatorShape`). Right after login, sibling rects can still be cached from before the art moved. `MainMenuBarPageNumber` (FontString) has no `GetEffectiveScale`, so `ACAB:PixelSetPoint` falls back to plain `SetPoint`.
 - **Latency Bar Modern reset measures one frame late** (`NativeElements.lua` `ResetLatencyBarLayoutToModernBase`). Overlay rects don't reflect `SetScale(1)` until the next frame. `ApplyModernCornerClusterLayout` takes every measurement before any `Apply*Position`.
-- **Simple-page reset refresh is deferred one frame** (`SettingsBars.lua` `CreateSimpleBarPage`), because the element's new size resolves next frame. It uses `ACAB:DeferFit`. If `DeferFit` ever starts coalescing, these need their own next-frame helper.
+- **Simple-page reset refresh is deferred one frame** (`SettingsSimplePages.lua` `CreateSimpleBarPage`), because the element's new size resolves next frame. It uses `ACAB:DeferFit`. If `DeferFit` ever starts coalescing, these need their own next-frame helper.
 
 ### Native frames and FrameXML
 - **Native code re-anchors wrapped frames without `ClearAllPoints`**: Key Ring, Latency Bar, Micro Menu and Bag Bar buttons (`MainMenuBarBackpackButton`, `QuestLogMicroButton` seen), the art frame. `ElementEngine.lua` `InstallReanchorGuard` swallows every unflagged `SetPoint`/`ClearAllPoints` and records the last swallowed anchor in `frame.ACABSwallowedAnchor`, which `Core.lua` `WaitForWrappedFrameAnchorSettle` polls. Every own re-anchor must set the element's guard flag around it. `relativeTo` can arrive as a name string, and indexing a string errors, so check for the string first. `ApplyGridAnchoredShape` hard-codes `ACABApplyingMicroMenuPosition`: fine while Micro Menu is the only grid container.
@@ -68,7 +68,7 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
   - Plain Frames have no OnClick.
   - To lock while keeping a "why is this locked" tooltip, use `LockControlKeepingTooltip` (`ACABLocked` flag, honored by `CreateLabeledCheckbox`'s OnClick wrapper).
 - **Position sliders must keep `SetValueStep(0)`** (`UIWidgets.lua` `CreatePositionAxisSlider`). A non-zero step re-snaps to a grid that isn't pixel-aligned. Drag values get pixel-snapped by hand; stepper/typed commits bypass that via `ACAB:SetSliderValueUnsnapped`.
-- **`SetMinMaxValues` fires `OnValueChanged` like a real drag.** Set `suppressApply`/`suppressSnap` before changing a range and clear them after the last `SetValue` (`SettingsBars.lua` `RefreshSimpleBarPage` / `RefreshBarSettingsPage`). `SetValue` with an unchanged value doesn't fire, hence the explicit `xAppliedValue`/`yAppliedValue`.
+- **`SetMinMaxValues` fires `OnValueChanged` like a real drag.** Set `suppressApply`/`suppressSnap` before changing a range and clear them after the last `SetValue` (`SettingsSimplePages.lua` `RefreshSimpleBarPage` / `SettingsBars.lua` `RefreshBarSettingsPage`). `SetValue` with an unchanged value doesn't fire, hence the explicit `xAppliedValue`/`yAppliedValue`.
 - **Never `SetValue` a slider from its own `OnValueChanged`.** It breaks the native drag for the rest of that gesture. Position pages read `page.*AppliedValue or slider:GetValue()`.
 
 ### Experience Bar (env §4.13)
@@ -108,7 +108,7 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
 - Same rule for the Exp Bar `Show` neuter (§2) and any other "capture original, then replace" pattern.
 
 ### Gating call order in settings page refreshes
-- **Where:** `SettingsBars.lua` — tail of `RefreshBarSettingsPage` and `RefreshSimpleBarPage`
+- **Where:** `SettingsBars.lua` — tail of `RefreshBarSettingsPage`; `SettingsSimplePages.lua` — tail of `RefreshSimpleBarPage`
 - **What:** `ApplyProfileLockGating` resets alpha/EnableMouse/Enable on every listed control, and always unlocks `enableCheckbox` on numbered default bars. Everything that only dims or locks further must run after it: grid-layout lock, Page-Indicator grouped lock, the Main Bar art dim, bar 5's enable lock, global-override gating, Use Vanilla / Condense `LockControlKeepingTooltip`, and `ApplySimpleElementGroupedLock` (which must also follow `ApplyDefaultLayoutGating`). Append new dim-only locks after these.
 
 ### InstallGroupLockGuard wraps existing handlers
@@ -116,7 +116,7 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
 - **What:** It captures the control's current OnEnter/OnLeave/OnClick (OnMouseDown for sliders), so it must be installed after the control's own scripts exist. Setting OnClick after guarding bypasses the lock.
 
 ### Simple-page scale change needs a full page refresh
-- **Where:** `SettingsBars.lua` — `CreateSimpleBarPage` Scale slider `onChange`
+- **Where:** `SettingsSimplePages.lua` — `CreateSimpleBarPage` Scale slider `onChange`
 - **What:** Scale compensates stored x/y, so the handler must call `RefreshSimpleBarPage(key)`, which re-syncs X/Y before re-clamping. `RefreshSimplePositionSliderRange` alone makes the element jump.
 
 ### ResetAllElementsToVanillaLayout ordering
@@ -255,7 +255,7 @@ Done: range-ticker write cache (`rangeKey` in `UpdateRange`), Pet Bar layout coa
 - **Default-bar overlays.** `ElementEngine.lua` `EnsureContainerOverlay`'s overlays have wheel handlers similar to `ACAB:ResizeBarFromWheel`.
 
 ### Decomposition ideas (need `.toc` + CLAUDE.md updates)
-- **`SettingsBars.lua`** (~3800 lines): the simple-page subsystem is ~1100 self-contained lines. The Force-Vanilla cascade isn't UI code. Shared `CreateReflow*` locals would need to become `ACAB:` methods first, which also helps the upvalue cap.
+- **`SettingsBars.lua`**: the Force-Vanilla cascade isn't UI code.
 - **`Database.lua`**: the first-login/create-profile dialogs are UI.
 - **`SetupWizard.lua`**: the baseline geometry pass (`ApplyModernLayoutGeometry`, `ApplyPendingLayoutBaseline`) isn't wizard UI and could move next to the Modern layout code in `DefaultBars.lua`.
 - **`UIWidgets.lua`**: `ACABDialogMixin` is the largest self-contained unit.
