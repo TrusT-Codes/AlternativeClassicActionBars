@@ -9,8 +9,12 @@
 Core.lua
 UpdateCheck.lua
 Database.lua
+ProfileIO.lua
+ElementEngine.lua
 DefaultBars.lua
 NativeElements.lua
+PageIndicator.lua
+Tooltip.lua
 PetStanceBars.lua
 ExperienceBar.lua
 Bar.lua
@@ -22,6 +26,7 @@ UIWidgets.lua
 SetupWizard.lua
 Settings.lua
 SettingsBars.lua
+SettingsSimplePages.lua
 SettingsGeneral.lua
 Events.lua
 bindings.xml

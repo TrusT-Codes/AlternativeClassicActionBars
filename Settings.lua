@@ -1,6 +1,6 @@
 -- Settings.lua
 -- Settings-window shell: frame, view tabs and scroll areas, position-range math, profile/layout lock
--- gating, and the dynamic window-height fit. Page builders live in SettingsBars.lua/SettingsGeneral.lua.
+-- gating, and the dynamic window-height fit. Page builders live in SettingsBars.lua/SettingsSimplePages.lua/SettingsGeneral.lua.
 
 local ACAB = AlternativeClassicActionBars
 
@@ -51,7 +51,7 @@ function ACAB:GetSpacingMax()
 	return ACAB.SPACING_MAX + ACAB:GetSpacingDisplayOffset()
 end
 
--- Simple-page configs by page key. must stay a top-level init: SettingsBars.lua fills it at load time.
+-- Simple-page configs by page key. must stay a top-level init: SettingsSimplePages.lua fills it at load time.
 ACAB.simpleBarPageConfigs = {}
 
 -- Every string-keyed simple page, in bar-list order.

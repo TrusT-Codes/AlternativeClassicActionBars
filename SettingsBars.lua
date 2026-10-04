@@ -1,6 +1,6 @@
 -- SettingsBars.lua
--- Bar settings pages (default/custom bars and simple native-element pages), their refresh/gating,
--- the bar-list sidebar, bar-page navigation, and the default bars' stance/page assignment rows.
+-- Bar settings pages (default/custom bars), their refresh/gating, the page-building helpers shared with
+-- SettingsSimplePages.lua, the bar-list sidebar, bar-page navigation, and the default bars' stance/page assignment rows.
 
 local ACAB = AlternativeClassicActionBars
 
@@ -92,14 +92,14 @@ local SIMPLE_BAR_NAMES = {
 
 
 -- True while the Pet Bar's stored "Use Vanilla Pet Bar" flag is on.
-local function IsPetBarNativeMode()
+function ACAB:IsPetBarNativeMode()
 	local cfg = ACABDB and ACABDB.defaultBars and ACABDB.defaultBars[ACAB.PET_BAR_ID]
 
 	return cfg and cfg.useNativePetBar == true
 end
 
 -- True while the Stance Bar's stored "Use Vanilla Stance Bar" flag is on.
-local function IsStanceBarNativeMode()
+function ACAB:IsStanceBarNativeMode()
 	local cfg = ACABDB and ACABDB.defaultBars and ACABDB.defaultBars[ACAB.STANCE_BAR_ID]
 
 	return cfg and cfg.useNativeStanceBar == true
@@ -108,18 +108,18 @@ end
 -- True when barId's page is a simple page: native-mode Pet/Stance Bar, or any string-keyed element.
 local function UsesSimpleBarPage(barId)
 	if barId == ACAB.PET_BAR_ID then
-		return IsPetBarNativeMode()
+		return ACAB:IsPetBarNativeMode()
 	end
 
 	if barId == ACAB.STANCE_BAR_ID then
-		return IsStanceBarNativeMode()
+		return ACAB:IsStanceBarNativeMode()
 	end
 
 	return ACAB.simpleBarPageConfigs[barId] ~= nil
 end
 
 -- Hides and uncaches a Pet/Stance page whose kind (simple vs full) no longer matches its native-mode flag.
-local function DropMismatchedBarPage(barId)
+function ACAB:DropMismatchedBarPage(barId)
 	if barId ~= ACAB.PET_BAR_ID and barId ~= ACAB.STANCE_BAR_ID then
 		return
 	end
@@ -142,7 +142,7 @@ local function GetBarDisplayName(barId)
 end
 
 -- value limited to [low, high] (low checked first).
-local function Clamp(value, low, high)
+function ACAB:Clamp(value, low, high)
 	if value < low then
 		value = low
 	end
@@ -155,12 +155,12 @@ local function Clamp(value, low, high)
 end
 
 -- True while the Default profile or Force Vanilla Layout Mode pins Pet/Stance Bar to native mode.
-local function IsVanillaModeLocked()
+function ACAB:IsVanillaModeLocked()
 	return ACAB:IsDefaultProfileActive() or ACABDB.useDefaultLayout == true
 end
 
 -- True while Force Vanilla Layout Mode forces Pet/Stance Bar native, whatever their stored flags say.
-local function IsVanillaModeForced()
+function ACAB:IsVanillaModeForced()
 	return ACABDB.useDefaultLayout ~= false
 end
 
@@ -216,7 +216,7 @@ end
 -------------------------------------------------------------------------
 
 -- TOPLEFT-anchored FontString at (x, y) on page, registered for hover-only reflow.
-local function CreateReflowText(page, font, x, y, text)
+function ACAB:CreateReflowText(page, font, x, y, text)
 	local fontString = page:CreateFontString(nil, "OVERLAY", font)
 
 	fontString:SetPoint("TOPLEFT", page, "TOPLEFT", x, y)
@@ -228,7 +228,7 @@ local function CreateReflowText(page, font, x, y, text)
 end
 
 -- ACAB:CreateLabeledSlider anchored at (INDENT_INPUT, y), registered for hover-only reflow. Same returns.
-local function CreateReflowSlider(page, name, y, config)
+function ACAB:CreateReflowSlider(page, name, y, config)
 	config.anchor = { "TOPLEFT", page, "TOPLEFT", ACAB.INDENT_INPUT, y }
 
 	local slider, valueText, lowLabel, highLabel = ACAB:CreateLabeledSlider(page, name, config)
@@ -239,7 +239,7 @@ local function CreateReflowSlider(page, name, y, config)
 end
 
 -- 200px ACAB:CreateResetButton at (INDENT_INPUT, y), registered for hover-only reflow.
-local function CreateReflowResetButton(page, y, text, onClick)
+function ACAB:CreateReflowResetButton(page, y, text, onClick)
 	local button = ACAB:CreateResetButton(page, {
 		anchor = { "TOPLEFT", page, "TOPLEFT", ACAB.INDENT_INPUT, y },
 		minWidth = 200,
@@ -255,7 +255,7 @@ end
 
 -- 500x32 row: 180px label + inline dropdown (row.dropdown). Anchored at (INDENT_SECTION, y) when y is given.
 -- Returns row, dropdown.
-local function CreateDropdownRow(parent, y, labelText, dropdownWidth, dropdownName, options)
+function ACAB:CreateDropdownRow(parent, y, labelText, dropdownWidth, dropdownName, options)
 	local row = CreateFrame("Frame", nil, parent)
 
 	row:SetWidth(500)
@@ -284,12 +284,12 @@ local function CreateDropdownRow(parent, y, labelText, dropdownWidth, dropdownNa
 end
 
 -- "X"/"Y" labels + position sliders starting at labelY. Returns xLabel, yLabel and the Y slider's y.
-local function CreatePositionSection(page, namePrefix, labelY, minX, maxX, minY, maxY, onApplyX, onApplyY)
+function ACAB:CreatePositionSection(page, namePrefix, labelY, minX, maxX, minY, maxY, onApplyX, onApplyY)
 	local xSliderY = labelY + 4
 	local yLabelY = xSliderY - 40
 	local ySliderY = yLabelY + 4
 
-	local xLabel = CreateReflowText(page, "GameFontNormalSmall", ACAB.INDENT_CONTROL, labelY, "X")
+	local xLabel = ACAB:CreateReflowText(page, "GameFontNormalSmall", ACAB.INDENT_CONTROL, labelY, "X")
 
 	ACAB:CreatePositionAxisSlider(page, {
 		axisKey = "x",
@@ -302,7 +302,7 @@ local function CreatePositionSection(page, namePrefix, labelY, minX, maxX, minY,
 		onApply = onApplyX,
 	})
 
-	local yLabel = CreateReflowText(page, "GameFontNormalSmall", ACAB.INDENT_CONTROL, yLabelY, "Y")
+	local yLabel = ACAB:CreateReflowText(page, "GameFontNormalSmall", ACAB.INDENT_CONTROL, yLabelY, "Y")
 
 	ACAB:CreatePositionAxisSlider(page, {
 		axisKey = "y",
@@ -343,7 +343,7 @@ end
 
 -- "Use Vanilla <kind> Bar" checkbox (kind "Pet"/"Stance") for both the grid page and the native page.
 -- Confirms, writes defaultBars[barId][cfgKey] and reloads. Stored as page.useVanilla<kind>BarCheckbox.
-local function CreateUseVanillaBarCheckbox(page, y, kind, barId, cfgKey)
+function ACAB:CreateUseVanillaBarCheckbox(page, y, kind, barId, cfgKey)
 	local barName = kind .. " Bar"
 	local title = "Use Vanilla " .. barName
 
@@ -403,7 +403,7 @@ local function CreateUseVanillaBarCheckbox(page, y, kind, barId, cfgKey)
 end
 
 -- "Condense empty Button Space" (both Pet Bar pages): applies live, re-running whichever mode's shape is active.
-local function CreateCondenseEmptyPetSlotsCheckbox(page, y)
+function ACAB:CreateCondenseEmptyPetSlotsCheckbox(page, y)
 	local checkbox = ACAB:CreateLabeledCheckbox(page, "ACABPetBarCondenseCheckbox", {
 		anchor = { "TOPLEFT", page, "TOPLEFT", ACAB.INDENT_SECTION, y },
 		label = "Condense empty Button Space",
@@ -426,7 +426,7 @@ local function CreateCondenseEmptyPetSlotsCheckbox(page, y)
 			end
 
 			-- The footprint changed: recompute the X/Y clamp range on whichever page kind is showing.
-			if IsPetBarNativeMode() then
+			if ACAB:IsPetBarNativeMode() then
 				if ACAB.RefreshSimpleBarPage then
 					ACAB:RefreshSimpleBarPage(ACAB.PET_BAR_ID)
 				end
@@ -888,7 +888,7 @@ end
 
 -- "Grid Layout" title + swatch row. Swatches are a dynamic array, so page.hoverOnlyExtraReflow repositions
 -- them (and the title) in place instead of registering them as reflow rows.
-local function CreateGridLayoutSection(page, barId, gridTitleY, swatchY)
+function ACAB:CreateGridLayoutSection(page, barId, gridTitleY, swatchY)
 	local gridTitle = page:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 
 	gridTitle:SetPoint("TOPLEFT", page, "TOPLEFT", ACAB.INDENT_SECTION, gridTitleY)
@@ -927,7 +927,7 @@ local function CreateGridLayoutSection(page, barId, gridTitleY, swatchY)
 end
 
 -- Gold border on the swatch matching the bar's current cols/rows.
-local function RefreshGridSwatchSelection(page, cols, rows)
+function ACAB:RefreshGridSwatchSelection(page, cols, rows)
 	local i
 
 	for i = 1, table.getn(page.gridSwatches) do
@@ -964,7 +964,7 @@ end
 
 -- Gold border on the swatch in swatches matching cols x rows.
 function ACAB:SelectGridSwatch(swatches, cols, rows)
-	RefreshGridSwatchSelection({ gridSwatches = swatches }, cols, rows)
+	ACAB:RefreshGridSwatchSelection({ gridSwatches = swatches }, cols, rows)
 end
 
 -- Dims the page's swatches while GRID_LAYOUT_LOCKS locks them (alpha only, so the locked tooltip still shows).
@@ -988,7 +988,7 @@ end
 -------------------------------------------------------------------------
 
 -- Simple pages whose element can be grouped with Main Bar (lock icon, guarded controls).
-local GROUPABLE_SIMPLE_PAGES = {
+ACAB.GROUPABLE_SIMPLE_PAGES = {
 	bagbar = true,
 	keyring = true,
 	micromenu = true,
@@ -996,7 +996,7 @@ local GROUPABLE_SIMPLE_PAGES = {
 }
 
 -- Controls on a groupable simple page that lock while its element is grouped.
-local GROUP_LOCK_CONTROL_NAMES = {
+ACAB.GROUP_LOCK_CONTROL_NAMES = {
 	"xSlider", "xStepperBigMinus", "xStepperMinus", "xStepperPlus", "xStepperBigPlus", "xValueClick",
 	"ySlider", "yStepperBigMinus", "yStepperMinus", "yStepperPlus", "yStepperBigPlus", "yValueClick",
 	"spacingSlider", "scaleSlider",
@@ -1010,7 +1010,7 @@ local GROUP_LOCK_TEXT_NAMES = {
 }
 
 -- Settings-page lock icon toggling elementKey's grouping with Main Bar. Starts locked.
-local function CreateGroupLockButton(page, name, anchor, tooltipTitle, elementKey)
+function ACAB:CreateGroupLockButton(page, name, anchor, tooltipTitle, elementKey)
 	local button = ACAB:CreateLockToggleButton(page, name, {
 		anchor = anchor,
 		tooltipTitle = tooltipTitle,
@@ -1043,8 +1043,8 @@ local function RefreshGroupLockButton(button, elementKey, extraShow)
 end
 
 -- While key's element is grouped, snaps its simple page back to the saved values and returns true (drop the edit).
-local function RevertIfGroupLocked(key)
-	if GROUPABLE_SIMPLE_PAGES[key] and ACAB:IsElementGrouped(key) then
+function ACAB:RevertIfGroupLocked(key)
+	if ACAB.GROUPABLE_SIMPLE_PAGES[key] and ACAB:IsElementGrouped(key) then
 		ACAB:RefreshSimpleBarPage(key)
 		return true
 	end
@@ -1055,7 +1055,7 @@ end
 -- Dims a groupable simple page's locked controls (alpha only - clicks go through InstallGroupLockGuard) and
 -- syncs its lock icon. Only ever dims: must run after ApplyDefaultLayoutGating/ApplyProfileLockGating.
 function ACAB:ApplySimpleElementGroupedLock(page)
-	if not page or not GROUPABLE_SIMPLE_PAGES[page.barId] then
+	if not page or not ACAB.GROUPABLE_SIMPLE_PAGES[page.barId] then
 		return
 	end
 
@@ -1064,8 +1064,8 @@ function ACAB:ApplySimpleElementGroupedLock(page)
 	local i
 
 	if locked then
-		for i = 1, table.getn(GROUP_LOCK_CONTROL_NAMES) do
-			local control = page[GROUP_LOCK_CONTROL_NAMES[i]]
+		for i = 1, table.getn(ACAB.GROUP_LOCK_CONTROL_NAMES) do
+			local control = page[ACAB.GROUP_LOCK_CONTROL_NAMES[i]]
 
 			if control then
 				control:SetAlpha(0.5)
@@ -1170,7 +1170,7 @@ function ACAB:GetOrCreateBarPage(barId)
 		ACAB:CreateSettingsFrame()
 	end
 
-	DropMismatchedBarPage(barId)
+	ACAB:DropMismatchedBarPage(barId)
 
 	if UsesSimpleBarPage(barId) then
 		return self:GetOrCreateSimpleBarPage(barId)
@@ -1318,7 +1318,7 @@ function ACAB:GetOrCreateBarPage(barId)
 	-------------------------------------------------------------------------
 
 	if isMainBarPage then
-		local row, dropdown = CreateDropdownRow(page, mainBarArtModeY, "Gryphons / Background Art:", 180, "ACABMainBarArtModeDropdown", {
+		local row, dropdown = ACAB:CreateDropdownRow(page, mainBarArtModeY, "Gryphons / Background Art:", 180, "ACABMainBarArtModeDropdown", {
 			{ text = "Fully Disabled", value = ACAB.MAIN_BAR_ART_MODE_DISABLED },
 			{ text = "Disable Gryphons", value = ACAB.MAIN_BAR_ART_MODE_NO_GRYPHONS },
 			{ text = "Fully Enabled", value = ACAB.MAIN_BAR_ART_MODE_FULL },
@@ -1371,13 +1371,13 @@ function ACAB:GetOrCreateBarPage(barId)
 	-------------------------------------------------------------------------
 
 	if isPetBarPage then
-		CreateUseVanillaBarCheckbox(page, useVanillaPetBarY, "Pet", ACAB.PET_BAR_ID, "useNativePetBar")
-		CreateCondenseEmptyPetSlotsCheckbox(page, condenseEmptyPetSlotsY)
+		ACAB:CreateUseVanillaBarCheckbox(page, useVanillaPetBarY, "Pet", ACAB.PET_BAR_ID, "useNativePetBar")
+		ACAB:CreateCondenseEmptyPetSlotsCheckbox(page, condenseEmptyPetSlotsY)
 		CreateAnimateAutoCastGlowCheckbox(page, animateAutoCastGlowY)
 	end
 
 	if isStanceBarPage then
-		CreateUseVanillaBarCheckbox(page, useVanillaStanceBarY, "Stance", ACAB.STANCE_BAR_ID, "useNativeStanceBar")
+		ACAB:CreateUseVanillaBarCheckbox(page, useVanillaStanceBarY, "Stance", ACAB.STANCE_BAR_ID, "useNativeStanceBar")
 	end
 
 	-------------------------------------------------------------------------
@@ -1391,7 +1391,7 @@ function ACAB:GetOrCreateBarPage(barId)
 		ACAB:ApplyLiveBarPosition(page)
 	end
 
-	local _, _, ySliderY = CreatePositionSection(page, "ACABBar" .. tostring(barId), positionStartY,
+	local _, _, ySliderY = ACAB:CreatePositionSection(page, "ACABBar" .. tostring(barId), positionStartY,
 		minX, maxX, minY, maxY, ApplyPosition, ApplyPosition)
 
 	-------------------------------------------------------------------------
@@ -1401,12 +1401,12 @@ function ACAB:GetOrCreateBarPage(barId)
 	local sizeLayoutTitleY = ySliderY - 36
 	local buttonSizeSliderY = sizeLayoutTitleY - 26
 
-	CreateReflowText(page, "GameFontNormal", ACAB.INDENT_SECTION, sizeLayoutTitleY,
+	ACAB:CreateReflowText(page, "GameFontNormal", ACAB.INDENT_SECTION, sizeLayoutTitleY,
 		"Button Size (" .. tostring(ACAB.BUTTON_SIZE_MIN) ..
 		" to " .. tostring(ACAB.BUTTON_SIZE_MAX) .. ")"
 	)
 
-	local buttonSizeSlider, buttonSizeValueText = CreateReflowSlider(
+	local buttonSizeSlider, buttonSizeValueText = ACAB:CreateReflowSlider(
 		page,
 		"ACABBar" .. tostring(barId) .. "ButtonSizeSlider",
 		buttonSizeSliderY,
@@ -1489,14 +1489,14 @@ function ACAB:GetOrCreateBarPage(barId)
 		local spacingTitleY = buttonSizeSliderY - 36
 		local spacingSliderY = spacingTitleY - 26
 
-		page.spacingTitle = CreateReflowText(page, "GameFontNormal", ACAB.INDENT_SECTION, spacingTitleY,
+		page.spacingTitle = ACAB:CreateReflowText(page, "GameFontNormal", ACAB.INDENT_SECTION, spacingTitleY,
 			"Spacing (" .. tostring(ACAB.SPACING_MIN) ..
 			" to " .. tostring(ACAB.SPACING_MAX) .. ")"
 		)
 
 		-- Displayed range is 0-based (real = displayed + GetSpacingDisplayOffset); RefreshBarSettingsPage
 		-- re-derives it and sets the real value, since the offset follows the border-style toggle.
-		local spacingSlider, spacingValueText, spacingSliderLow, spacingSliderHigh = CreateReflowSlider(
+		local spacingSlider, spacingValueText, spacingSliderLow, spacingSliderHigh = ACAB:CreateReflowSlider(
 			page,
 			"ACABBar" .. tostring(barId) .. "SpacingSlider",
 			spacingSliderY,
@@ -1585,7 +1585,7 @@ function ACAB:GetOrCreateBarPage(barId)
 			-- Vanilla reset: restores position/spacing/cols/rows/buttonSize to the native defaults.
 			local resetButtonY = spacingSliderY - 36
 
-			page.resetPositionButton = CreateReflowResetButton(page, resetButtonY, "Reset to Vanilla Layout", function()
+			page.resetPositionButton = ACAB:CreateReflowResetButton(page, resetButtonY, "Reset to Vanilla Layout", function()
 				ACAB:ResetDefaultBarLayout(page.barId)
 
 				-- Page Indicator anchors off Main Bar, so it resets alongside it.
@@ -1602,7 +1602,7 @@ function ACAB:GetOrCreateBarPage(barId)
 			if (barId >= 1 and barId <= 5) or barId == ACAB.PET_BAR_ID or barId == ACAB.STANCE_BAR_ID then
 				local resetModernY = resetButtonY - 30
 
-				page.resetModernButton = CreateReflowResetButton(page, resetModernY, "Reset to Modern Layout Default", function()
+				page.resetModernButton = ACAB:CreateReflowResetButton(page, resetModernY, "Reset to Modern Layout Default", function()
 					if page.barId == ACAB.PET_BAR_ID then
 						ACAB:ResetPetBarLayoutToModernBase()
 					elseif page.barId == ACAB.STANCE_BAR_ID then
@@ -1630,7 +1630,7 @@ function ACAB:GetOrCreateBarPage(barId)
 			-- Extra Bars have no native anchor: reset to the addon's own default (ResetExtraBarLayout).
 			local resetButtonY = spacingSliderY - 36
 
-			page.resetPositionButton = CreateReflowResetButton(page, resetButtonY, "Reset to Default", function()
+			page.resetPositionButton = ACAB:CreateReflowResetButton(page, resetButtonY, "Reset to Default", function()
 				ACAB:ResetExtraBarLayout(page.barId)
 				ACAB:RefreshBarSettingsPage(page.barId)
 			end)
@@ -1638,7 +1638,7 @@ function ACAB:GetOrCreateBarPage(barId)
 			-- Extra Bars 1-4 are part of Modern Layout's vertical bar clusters.
 			local resetModernY = resetButtonY - 30
 
-			page.resetModernButton = CreateReflowResetButton(page, resetModernY, "Reset to Modern Layout Default", function()
+			page.resetModernButton = ACAB:CreateReflowResetButton(page, resetModernY, "Reset to Modern Layout Default", function()
 				ACAB:ResetExtraBarLayoutToModernBase(page.barId)
 				ACAB:RefreshBarSettingsPage(page.barId)
 			end)
@@ -1655,7 +1655,7 @@ function ACAB:GetOrCreateBarPage(barId)
 	-- Grid Layout
 	-------------------------------------------------------------------------
 
-	CreateGridLayoutSection(page, barId, gridTitleY, swatchY)
+	ACAB:CreateGridLayoutSection(page, barId, gridTitleY, swatchY)
 	ApplyGridLayoutLock(page)
 
 	-------------------------------------------------------------------------
@@ -1667,7 +1667,7 @@ function ACAB:GetOrCreateBarPage(barId)
 		local buttonCountLabelY = swatchY - SWATCH_SIZE - 14 - 14
 		local buttonCountRowY = buttonCountLabelY - 28
 
-		CreateReflowText(page, "GameFontNormal", ACAB.INDENT_SECTION, buttonCountLabelY, "Buttons Shown")
+		ACAB:CreateReflowText(page, "GameFontNormal", ACAB.INDENT_SECTION, buttonCountLabelY, "Buttons Shown")
 
 		local buttonCountMinus = CreateFrame("Button", "ACABBar" .. tostring(barId) .. "ButtonCountMinus", page)
 
@@ -1758,9 +1758,9 @@ function ACAB:GetOrCreateBarPage(barId)
 			local pageIndicatorTitleY = assignmentAnchorY
 			local pageIndicatorSliderY = pageIndicatorTitleY - 28
 
-			local pageIndicatorTitle = CreateReflowText(page, "GameFontNormal", ACAB.INDENT_SECTION, pageIndicatorTitleY, "Page Indicator Scale")
+			local pageIndicatorTitle = ACAB:CreateReflowText(page, "GameFontNormal", ACAB.INDENT_SECTION, pageIndicatorTitleY, "Page Indicator Scale")
 
-			local pageIndicatorSlider, pageIndicatorValueText = CreateReflowSlider(
+			local pageIndicatorSlider, pageIndicatorValueText = ACAB:CreateReflowSlider(
 				page,
 				"ACABMainBarPageIndicatorScaleSlider",
 				pageIndicatorSliderY,
@@ -1798,7 +1798,7 @@ function ACAB:GetOrCreateBarPage(barId)
 			)
 
 			-- Beside the slider, since Page Indicator has no page of its own.
-			page.pageIndicatorGroupLockButton = CreateGroupLockButton(
+			page.pageIndicatorGroupLockButton = ACAB:CreateGroupLockButton(
 				page,
 				"ACABMainBarPageIndicatorGroupLockButton",
 				{ "LEFT", pageIndicatorSlider, "RIGHT", 4, 0 },
@@ -1854,1033 +1854,6 @@ function ACAB:ApplyLiveBarPosition(page)
 	end
 end
 
--------------------------------------------------------------------------
--- Experience Bar page helpers
--------------------------------------------------------------------------
-
--- "<label> [swatch]" row at (INDENT_CONTROL, y) opening the color picker beside the settings window.
--- Returns the swatch.
-local function CreateExpBarColorRow(page, y, labelText, swatchName, getter, setter)
-	local label = CreateReflowText(page, "GameFontNormalSmall", ACAB.INDENT_CONTROL, y, labelText)
-
-	local swatch = ACAB:CreateColorSwatch(page, swatchName)
-
-	swatch:SetPoint("LEFT", label, "RIGHT", 12, 0)
-	swatch.acabLabel = label
-
-	swatch:SetScript("OnClick", function()
-		ACAB:OpenColorPicker(swatch, getter, setter, ACAB.settingsFrame)
-	end)
-
-	return swatch
-end
-
--- One Better Experience Bar text-segment toggle writing ACABDB[dbKey].
-local function CreateExpBarTextToggleCheckbox(page, name, labelText, y, dbKey)
-	return ACAB:CreateLabeledCheckbox(page, "ACABSimplePageExpBar" .. name .. "Checkbox", {
-		anchor = { "TOPLEFT", page, "TOPLEFT", ACAB.INDENT_SECTION, y },
-		label = labelText,
-		onClick = function()
-			local checked = this:GetChecked() and true or false
-
-			ACABDB[dbKey] = checked
-
-			ACAB:ApplyBetterExpBarVisual()
-		end,
-	})
-end
-
--- The 5 text-segment toggles, in display order.
-local EXP_BAR_TEXT_TOGGLES = {
-	{ name = "ShowLevel", label = "Show Current Lvl", dbKey = "expBarShowLevel", field = "expBarShowLevelCheckbox" },
-	{ name = "ShowCurrentOverMax", label = "Show Current XP / Max", dbKey = "expBarShowCurrentOverMax", field = "expBarShowCurrentOverMaxCheckbox" },
-	{ name = "ShowPercent", label = "Show Current % / Max", dbKey = "expBarShowPercent", field = "expBarShowPercentCheckbox" },
-	{ name = "ShowRestedPercent", label = "Show Current Rested XP %", dbKey = "expBarShowRestedPercent", field = "expBarShowRestedPercentCheckbox" },
-	{ name = "ShowRestedTotal", label = "Show Current Total Rested XP", dbKey = "expBarShowRestedTotal", field = "expBarShowRestedTotalCheckbox" },
-}
-
--- Enables (or dims + disables mouse on) every Better Experience Bar sub-control per its checkbox.
-local function ApplyBetterExpBarGating(page)
-	if not page or not page.betterExpBarCheckbox then
-		return
-	end
-
-	local interactive = page.betterExpBarCheckbox:GetChecked() and true or false
-	local alpha = interactive and 1 or 0.5
-
-	local controls = {
-		page.expBarShowLevelCheckbox,
-		page.expBarShowCurrentOverMaxCheckbox,
-		page.expBarShowPercentCheckbox,
-		page.expBarShowRestedPercentCheckbox,
-		page.expBarShowRestedTotalCheckbox,
-		page.expBarFontSizeSlider,
-		page.earnedColorSwatch,
-		page.restedColorSwatch,
-		page.expBarTextColorSwatch,
-		page.resetColorsButton,
-		page.expBarGlowPulseIntervalSlider,
-	}
-
-	local i
-
-	for i = 1, table.getn(controls) do
-		local control = controls[i]
-
-		if control then
-			control:EnableMouse(interactive)
-			control:SetAlpha(alpha)
-
-			if control.acabLabel then
-				control.acabLabel:SetAlpha(alpha)
-			end
-		end
-	end
-end
-
--------------------------------------------------------------------------
--- Simple bar pages
--- One builder for every native-element page (and native-mode Pet/Stance Bar), driven by
--- ACAB.simpleBarPageConfigs: Position + optional Enabled/hover-only/Spacing/Scale/Grid + Reset buttons.
--------------------------------------------------------------------------
-
-local function CreateSimpleBarPage(key)
-	local config = ACAB.simpleBarPageConfigs[key]
-
-	if not config then
-		return nil
-	end
-
-	local page = CreateFrame("Frame", nil, ACAB.settingsFrame.contentPanel)
-
-	-- Same banner-reserve handling as GetOrCreateBarPage.
-	ACAB:ApplyPageBannerReserve(page, false)
-
-	page.barId = key
-	page.isDefault = true
-
-	page.profileLockWarning = ACAB:CreateProfileLockWarning(page)
-
-	-- Anchored to contentPanel so it stays put while the page slides down.
-	local title = page:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-
-	title:SetPoint("TOPLEFT", ACAB.settingsFrame.contentPanel, "TOPLEFT", ACAB.INDENT_SECTION, -14)
-	title:SetText(config.title .. " Settings (Default)")
-
-	-- Group lock icon, top right.
-	if GROUPABLE_SIMPLE_PAGES[key] then
-		page.groupLockButton = CreateGroupLockButton(
-			page,
-			"ACABSimplePage" .. key .. "GroupLockButton",
-			{ "TOPRIGHT", ACAB.settingsFrame.contentPanel, "TOPRIGHT", -20, -14 },
-			config.title .. " Grouped with Main Bar",
-			key
-		)
-	end
-
-	local enableCheckboxY = -44
-
-	local topY = -46
-
-	if config.hasEnable then
-		local enableCheckbox = ACAB:CreateLabeledCheckbox(page, "ACABSimplePage" .. key .. "EnableCheckbox", {
-			anchor = { "TOPLEFT", page, "TOPLEFT", ACAB.INDENT_SECTION, enableCheckboxY },
-			label = "Enabled",
-			onClick = function()
-				local checked = this:GetChecked() and true or false
-
-				config.setEnabled(checked)
-
-				ACAB:RefreshBarList()
-			end,
-		})
-
-		page.enableCheckbox = enableCheckbox
-
-		topY = enableCheckboxY - 24 - 14
-	end
-
-	if config.hasHoverOnly then
-		topY = topY - ACAB:CreateHoverOnlyControls(
-			page,
-			topY,
-			config.getHoverOnly,
-			config.setHoverOnly,
-			config.getHoverDuration,
-			config.setHoverDuration,
-			key
-		)
-	end
-
-	-- Native-mode Pet Bar: switch back to the styled grid from here too.
-	if key == ACAB.PET_BAR_ID then
-		CreateUseVanillaBarCheckbox(page, topY, "Pet", ACAB.PET_BAR_ID, "useNativePetBar")
-
-		topY = topY - 24 - 14
-
-		CreateCondenseEmptyPetSlotsCheckbox(page, topY)
-
-		topY = topY - 24 - 14
-	end
-
-	-- Native-mode Stance Bar: same.
-	if key == ACAB.STANCE_BAR_ID then
-		CreateUseVanillaBarCheckbox(page, topY, "Stance", ACAB.STANCE_BAR_ID, "useNativeStanceBar")
-
-		topY = topY - 24 - 14
-	end
-
-	-- Tooltip Grows From: which GameTooltip corner anchors to the box's matching corner.
-	if key == "tooltip" then
-		local row, dropdown = CreateDropdownRow(page, topY, "Tooltip Grows From", 180, "ACABTooltipAnchorCornerDropdown", {
-			{ text = "Bottom Right (Default)", value = "BOTTOMRIGHT" },
-			{ text = "Bottom Left", value = "BOTTOMLEFT" },
-			{ text = "Top Right", value = "TOPRIGHT" },
-			{ text = "Top Left", value = "TOPLEFT" },
-		})
-
-		local function RefreshTooltipAnchorCorner()
-			dropdown:SetSelected(ACABDB.tooltipAnchorCorner or "BOTTOMRIGHT")
-		end
-
-		dropdown.onSelect = function(value)
-			ACAB:SetTooltipAnchorCorner(value)
-			RefreshTooltipAnchorCorner()
-		end
-
-		RefreshTooltipAnchorCorner()
-
-		-- Listed in assignmentRows so ApplyProfileLockGating's dropdown sweep locks it too.
-		page.tooltipAnchorCornerRow = row
-		page.assignmentRows = { row }
-
-		topY = topY - 32 - 14
-	end
-
-	-- Clamp range from the element's real frame size, or the generic screen range without one.
-	local minX, maxX, minY, maxY
-
-	if config.getElementFrame then
-		minX, maxX, minY, maxY = ACAB:GetSimplePageCoordinateRange(config, config.getElementFrame())
-	else
-		minX, maxX, minY, maxY = ACAB:GetScreenCoordinateRange()
-	end
-
-	-------------------------------------------------------------------------
-	-- Position. onApply fires every drag tick, so it only refuses the value while grouped;
-	-- InstallGroupLockGuard runs the highlight once per click.
-	-------------------------------------------------------------------------
-
-	local xLabel, yLabel, ySliderY = CreatePositionSection(page, "ACABSimplePage" .. key, topY, minX, maxX, minY, maxY,
-		function(applied)
-			if RevertIfGroupLocked(key) then
-				return
-			end
-
-			local y = page.yAppliedValue or page.ySlider:GetValue()
-
-			config.setPosition(applied, y)
-		end,
-		function(applied)
-			if RevertIfGroupLocked(key) then
-				return
-			end
-
-			local x = page.xAppliedValue or page.xSlider:GetValue()
-
-			config.setPosition(x, applied)
-		end
-	)
-
-	page.xLabel = xLabel
-	page.yLabel = yLabel
-
-	-- Cursor through the optional sections below.
-	local cursorY = ySliderY - 36
-
-	-------------------------------------------------------------------------
-	-- Spacing (config.hasSpacing)
-	-------------------------------------------------------------------------
-
-	if config.hasSpacing then
-		-- config.spacingMin overrides the shared floor (Micro Menu: -10).
-		local spacingMin = config.spacingMin or ACAB.SPACING_MIN
-
-		local spacingTitleY = cursorY
-		local spacingSliderY = spacingTitleY - 26
-
-		page.spacingTitle = CreateReflowText(page, "GameFontNormal", ACAB.INDENT_SECTION, spacingTitleY,
-			"Spacing (" .. tostring(spacingMin) .. " to " .. tostring(ACAB.SPACING_MAX) .. ")"
-		)
-
-		local spacingSlider, spacingValueText = CreateReflowSlider(
-			page,
-			"ACABSimplePage" .. key .. "SpacingSlider",
-			spacingSliderY,
-			{
-				min = spacingMin,
-				max = ACAB.SPACING_MAX,
-				step = ACAB.SPACING_STEP,
-				lowText = tostring(spacingMin),
-				highText = tostring(ACAB.SPACING_MAX),
-				initialText = "0",
-				round = function(value) return math.floor(value + 0.5) end,
-				format = tostring,
-				onChange = function(value, suppressApply)
-					if not suppressApply then
-						if RevertIfGroupLocked(key) then
-							return
-						end
-
-						-- Stored spacing = displayed value - spacingUiOffset (Micro Menu only).
-						local uiOffset = config.spacingUiOffset or 0
-
-						config.setSpacing(value - uiOffset)
-					end
-
-					-- Spacing feeds the element's footprint, so the X/Y clamp range.
-					ACAB:RefreshSimplePositionSliderRange(page, key)
-				end,
-			}
-		)
-
-		page.spacingValueText = spacingValueText
-		page.spacingSlider = spacingSlider
-
-		cursorY = spacingSliderY - 36
-	end
-
-	-------------------------------------------------------------------------
-	-- Scale (config.hasScale): 0.5 to 2.0, step 0.1
-	-------------------------------------------------------------------------
-
-	if config.hasScale then
-		local scaleTitleY = cursorY
-		local scaleSliderY = scaleTitleY - 26
-
-		page.scaleTitle = CreateReflowText(page, "GameFontNormal", ACAB.INDENT_SECTION, scaleTitleY, "Scale (0.5 to 2.0)")
-
-		local scaleSlider, scaleValueText = CreateReflowSlider(
-			page,
-			"ACABSimplePage" .. key .. "ScaleSlider",
-			scaleSliderY,
-			{
-				min = 0.5,
-				max = 2.0,
-				step = 0.1,
-				lowText = "0.5",
-				highText = "2.0",
-				initialText = "1.0",
-				round = function(value) return math.floor((value * 10) + 0.5) / 10 end,
-				format = function(value) return string.format("%.1f", value) end,
-				onChange = function(value, suppressApply)
-					if not suppressApply then
-						if RevertIfGroupLocked(key) then
-							return
-						end
-
-						config.setScale(value)
-
-						-- Scale also compensates stored x/y. Must be a full page refresh (re-syncs X/Y before
-						-- re-clamping), not RefreshSimplePositionSliderRange, or the position jumps.
-						ACAB:RefreshSimpleBarPage(key)
-					else
-						ACAB:RefreshSimplePositionSliderRange(page, key)
-					end
-				end,
-			}
-		)
-
-		page.scaleValueText = scaleValueText
-		page.scaleSlider = scaleSlider
-
-		cursorY = scaleSliderY - 36
-	end
-
-	-------------------------------------------------------------------------
-	-- Grid Layout (config.hasGrid)
-	-------------------------------------------------------------------------
-
-	if config.hasGrid then
-		local swatchY = cursorY - 26
-
-		CreateGridLayoutSection(page, key, cursorY, swatchY)
-
-		-- Swatch + caption line + gap.
-		cursorY = swatchY - SWATCH_SIZE - 14 - 14
-	end
-
-	-------------------------------------------------------------------------
-	-- Better Experience Bar (Experience Bar page only) - text overlay options, independent of Enabled.
-	-------------------------------------------------------------------------
-
-	if key == "expbar" then
-		local betterExpBarCheckbox = ACAB:CreateLabeledCheckbox(page, "ACABSimplePageExpBarBetterCheckbox", {
-			anchor = { "TOPLEFT", page, "TOPLEFT", ACAB.INDENT_SECTION, cursorY },
-			label = "Enable Better Experience Bar",
-			tooltip = {
-				title = "Enable Better Experience Bar",
-				lines = {
-					"Replaces the native percent label with a customizable text " ..
-					"line, and lets you recolor the bar's own fill and rested-" ..
-					"bonus fill below.",
-				},
-			},
-			onClick = function()
-				local checked = this:GetChecked() and true or false
-
-				ACABDB.betterExpBarEnabled = checked
-
-				ACAB:ApplyBetterExpBarVisual()
-
-				-- Applies the saved colors when turning on (no-op when off).
-				ACAB:ApplyExpBarColors()
-
-				ApplyBetterExpBarGating(page)
-			end,
-		})
-
-		page.betterExpBarCheckbox = betterExpBarCheckbox
-
-		ACAB:AddHoverOnlyReflowRow(page, betterExpBarCheckbox, ACAB.INDENT_SECTION, cursorY)
-
-		cursorY = cursorY - 24 - 14
-
-		-- Overlay Text Size: same range/step as the General tab's Hotkey/Count Text Size sliders.
-		local fontSizeTitleY = cursorY
-		local fontSizeSliderY = fontSizeTitleY - 26
-
-		CreateReflowText(page, "GameFontNormal", ACAB.INDENT_SECTION, fontSizeTitleY,
-			"Overlay Text Size (" .. tostring(ACAB.FONT_SIZE_MIN) ..
-			" to " .. tostring(ACAB.FONT_SIZE_MAX) .. ")"
-		)
-
-		local fontSizeSlider, fontSizeValueText = CreateReflowSlider(
-			page,
-			"ACABSimplePageExpBarFontSizeSlider",
-			fontSizeSliderY,
-			{
-				min = ACAB.FONT_SIZE_MIN,
-				max = ACAB.FONT_SIZE_MAX,
-				step = ACAB.FONT_SIZE_STEP,
-				lowText = tostring(ACAB.FONT_SIZE_MIN),
-				highText = tostring(ACAB.FONT_SIZE_MAX),
-				initialText = tostring(ACAB.FONT_SIZE_MIN),
-				round = function(value) return math.floor(value + 0.5) end,
-				format = tostring,
-				onChange = function(value, suppressApply)
-					if not suppressApply then
-						ACAB:SetExpBarFontSize(value)
-					end
-				end,
-			}
-		)
-
-		page.expBarFontSizeValueText = fontSizeValueText
-		page.expBarFontSizeSlider = fontSizeSlider
-
-		cursorY = fontSizeSliderY - 36
-
-		local ti
-
-		for ti = 1, table.getn(EXP_BAR_TEXT_TOGGLES) do
-			local toggle = EXP_BAR_TEXT_TOGGLES[ti]
-			local checkbox = CreateExpBarTextToggleCheckbox(page, toggle.name, toggle.label, cursorY, toggle.dbKey)
-
-			page[toggle.field] = checkbox
-
-			ACAB:AddHoverOnlyReflowRow(page, checkbox, ACAB.INDENT_SECTION, cursorY)
-
-			cursorY = cursorY - 24 - 6
-		end
-
-		-- Extra gap before the color rows.
-		cursorY = cursorY - 12
-
-		page.earnedColorSwatch = CreateExpBarColorRow(page, cursorY, "Earned XP Bar Color", "ACABSimplePageExpBarEarnedColorSwatch",
-			function() return ACABDB.expBarColorEarned end,
-			function(r, g, b) ACAB:SetExpBarColorEarned(r, g, b) end
-		)
-
-		cursorY = cursorY - 24 - 14
-
-		page.restedColorSwatch = CreateExpBarColorRow(page, cursorY, "Rested XP Bar Color", "ACABSimplePageExpBarRestedColorSwatch",
-			function() return ACABDB.expBarColorRested end,
-			function(r, g, b) ACAB:SetExpBarColorRested(r, g, b) end
-		)
-
-		cursorY = cursorY - 24 - 14
-
-		page.expBarTextColorSwatch = CreateExpBarColorRow(page, cursorY, "Overlay Text Color", "ACABSimplePageExpBarTextColorSwatch",
-			function() return ACABDB.expBarTextColor end,
-			function(r, g, b) ACAB:SetExpBarTextColor(r, g, b) end
-		)
-
-		cursorY = cursorY - 24 - 14
-
-		page.resetColorsButton = CreateReflowResetButton(page, cursorY, "Reset Colors to Default", function()
-			ACAB:ResetExpBarColors()
-
-			ACAB:RefreshBarSettingsPage("expbar")
-		end)
-
-		cursorY = cursorY - 22 - 26
-
-		-- Rested Glow Pulse Interval: 0.5 to 5.0 seconds, step 0.1.
-		local pulseIntervalTitleY = cursorY
-		local pulseIntervalSliderY = pulseIntervalTitleY - 26
-
-		CreateReflowText(page, "GameFontNormal", ACAB.INDENT_SECTION, pulseIntervalTitleY, "Rested Glow Pulse Interval (0.5 to 5.0 sec)")
-
-		local pulseIntervalSlider, pulseIntervalValueText = CreateReflowSlider(
-			page,
-			"ACABSimplePageExpBarPulseIntervalSlider",
-			pulseIntervalSliderY,
-			{
-				min = 0.5,
-				max = 5.0,
-				step = 0.1,
-				lowText = "0.5",
-				highText = "5.0",
-				initialText = "1.5",
-				round = function(value) return math.floor((value * 10) + 0.5) / 10 end,
-				format = function(value) return string.format("%.1f", value) end,
-				onChange = function(value, suppressApply)
-					if not suppressApply then
-						ACAB:SetExpBarGlowPulseInterval(value)
-					end
-				end,
-			}
-		)
-
-		page.expBarGlowPulseIntervalValueText = pulseIntervalValueText
-		page.expBarGlowPulseIntervalSlider = pulseIntervalSlider
-
-		cursorY = pulseIntervalSliderY - 36
-	end
-
-	-------------------------------------------------------------------------
-	-- Reset buttons. The page refresh is deferred one frame: the reset's SetWidth/SetHeight hasn't
-	-- resolved yet, and the clamp range reads the element's real size.
-	-------------------------------------------------------------------------
-
-	local resetY = cursorY
-
-	page.resetPositionButton = CreateReflowResetButton(page, resetY, "Reset to Vanilla Layout", function()
-		config.reset()
-
-		ACAB:DeferFit(function() ACAB:RefreshBarSettingsPage(key) end)
-	end)
-
-	if config.resetModern then
-		page.resetModernButton = CreateReflowResetButton(page, resetY - 30, "Reset to Modern Layout Default", function()
-			config.resetModern()
-
-			ACAB:DeferFit(function() ACAB:RefreshBarSettingsPage(key) end)
-		end)
-	end
-
-	-- Grouped-with-Main-Bar guard on every GROUP_LOCK_CONTROL_NAMES control - must run last, once the
-	-- Reset buttons exist.
-	if GROUPABLE_SIMPLE_PAGES[key] then
-		local controlNames = config.hasSpacing and "Position/Spacing/Scale" or "Position/Scale"
-		local lockedText = config.title .. " is grouped with Main Bar while Gryphons / Background Art is enabled - its own " .. controlNames .. " controls are locked."
-
-		local function IsElementLocked()
-			return ACAB:IsElementGrouped(key)
-		end
-
-		local function OnLockedClick()
-			ACAB:HighlightMainBarArtModeDropdownFromElsewhere()
-		end
-
-		local i
-
-		for i = 1, table.getn(GROUP_LOCK_CONTROL_NAMES) do
-			local control = page[GROUP_LOCK_CONTROL_NAMES[i]]
-
-			if control then
-				ACAB:InstallGroupLockGuard(control, IsElementLocked, lockedText, OnLockedClick)
-			end
-		end
-
-		ACAB:ApplySimpleElementGroupedLock(page)
-	end
-
-	page:Hide()
-
-	page.acabSimplePage = true
-	ACAB.settingsFrame.pages[key] = page
-
-	return page
-end
-
-function ACAB:GetOrCreateSimpleBarPage(key)
-	if not ACAB.settingsFrame then
-		ACAB:CreateSettingsFrame()
-	end
-
-	DropMismatchedBarPage(key)
-
-	if ACAB.settingsFrame.pages[key] then
-		return ACAB.settingsFrame.pages[key]
-	end
-
-	return CreateSimpleBarPage(key)
-end
-
-function ACAB:RefreshSimpleBarPage(key)
-	if not ACAB.settingsFrame then
-		return
-	end
-
-	DropMismatchedBarPage(key)
-
-	local page = ACAB.settingsFrame.pages[key]
-	local config = ACAB.simpleBarPageConfigs[key]
-
-	if not page or not config then
-		return
-	end
-
-	-- Suppress apply/snap before touching the sliders: SetMinMaxValues re-clamps the current value and fires
-	-- OnValueChanged like a real drag, which would write a stray value into the saved config.
-	page.xSlider.suppressApply = true
-	page.ySlider.suppressApply = true
-	page.xSlider.suppressSnap = true
-	page.ySlider.suppressSnap = true
-
-	-- Re-clamp against the element's current footprint (scale/spacing/grid changes and resets route here).
-	if config.getElementFrame then
-		local frame = config.getElementFrame()
-
-		if frame then
-			local rawPos = config.getPosition()
-			local minX, maxX, minY, maxY = ACAB:GetSimplePageCoordinateRange(config, frame)
-
-			page.xSlider:SetMinMaxValues(minX, maxX)
-			page.ySlider:SetMinMaxValues(minY, maxY)
-
-			-- A bigger footprint can push an edge off-screen: clamp and persist (canonical positions only).
-			if rawPos and config.setPosition and ACAB:IsCanonicalPosition(rawPos) then
-				local clampedX = Clamp(rawPos.x or 0, minX, maxX)
-				local clampedY = Clamp(rawPos.y or 0, minY, maxY)
-
-				if clampedX ~= rawPos.x or clampedY ~= rawPos.y then
-					config.setPosition(clampedX, clampedY)
-				end
-			end
-		end
-	end
-
-	local pos = config.getPosition() or { x = 0, y = 0 }
-
-	page.xSlider:SetValue(pos.x or 0)
-	page.ySlider:SetValue(pos.y or 0)
-
-	-- Set explicitly: SetValue doesn't fire OnValueChanged when the value is unchanged.
-	page.xAppliedValue = pos.x or 0
-	page.yAppliedValue = pos.y or 0
-
-	page.xValueText:SetText(string.format("%.2f", pos.x or 0))
-	page.yValueText:SetText(string.format("%.2f", pos.y or 0))
-
-	page.xSlider.suppressApply = nil
-	page.ySlider.suppressApply = nil
-	page.xSlider.suppressSnap = nil
-	page.ySlider.suppressSnap = nil
-
-	if page.enableCheckbox and config.getEnabled then
-		page.enableCheckbox:SetChecked(config.getEnabled() ~= false)
-	end
-
-	-- While forced, the mode checkboxes show the vanilla-forced value instead of the stored preference.
-	if page.useVanillaPetBarCheckbox or page.condenseEmptyPetSlotsCheckbox then
-		local petLocked = IsVanillaModeForced()
-		local petCfg = ACABDB.defaultBars and ACABDB.defaultBars[ACAB.PET_BAR_ID]
-
-		if page.useVanillaPetBarCheckbox then
-			page.useVanillaPetBarCheckbox:SetChecked(petLocked or IsPetBarNativeMode())
-		end
-
-		if page.condenseEmptyPetSlotsCheckbox then
-			page.condenseEmptyPetSlotsCheckbox:SetChecked(
-				(not petLocked) and petCfg and petCfg.condenseEmptyPetSlots == true
-			)
-		end
-	end
-
-	if page.useVanillaStanceBarCheckbox then
-		page.useVanillaStanceBarCheckbox:SetChecked(IsVanillaModeForced() or IsStanceBarNativeMode())
-	end
-
-	if page.spacingSlider and config.getSpacing then
-		-- Displayed value = stored spacing + spacingUiOffset (Micro Menu only).
-		local uiOffset = config.spacingUiOffset or 0
-		local spacing = Clamp((config.getSpacing() or 0) + uiOffset, config.spacingMin or ACAB.SPACING_MIN, ACAB.SPACING_MAX)
-
-		ACAB:SetSliderValueSilently(page.spacingSlider, spacing, page.spacingValueText)
-	end
-
-	if page.scaleSlider and config.getScale then
-		local scale = Clamp(config.getScale() or 1, 0.5, 2.0)
-
-		ACAB:SetSliderValueSilently(page.scaleSlider, scale, page.scaleValueText, string.format("%.1f", scale))
-	end
-
-	if page.gridSwatches and config.getGridLayout then
-		local cols, rows = config.getGridLayout()
-
-		RefreshGridSwatchSelection(page, cols, rows)
-	end
-
-	if config.hasHoverOnly then
-		self:RefreshHoverOnlyControls(page, config.getHoverOnly(), config.getHoverDuration())
-	end
-
-	if page.tooltipAnchorCornerRow and page.tooltipAnchorCornerRow.dropdown then
-		page.tooltipAnchorCornerRow.dropdown:SetSelected(ACABDB.tooltipAnchorCorner or "BOTTOMRIGHT")
-	end
-
-	-- Better Experience Bar controls read their ACABDB fields directly.
-	if page.betterExpBarCheckbox then
-		page.betterExpBarCheckbox:SetChecked(ACABDB.betterExpBarEnabled == true)
-
-		local ti
-
-		for ti = 1, table.getn(EXP_BAR_TEXT_TOGGLES) do
-			local toggle = EXP_BAR_TEXT_TOGGLES[ti]
-
-			if page[toggle.field] then
-				page[toggle.field]:SetChecked(ACABDB[toggle.dbKey] == true)
-			end
-		end
-
-		-- ACABDB.expBarFontSize stays nil until the slider is first moved; defaults to EXP_BAR_DEFAULT_FONT_SIZE.
-		if page.expBarFontSizeSlider then
-			ACAB:CaptureNativeExpBarFontIfNeeded()
-
-			local fontSize = ACAB:ClampFontSize(ACABDB.expBarFontSize or ACAB.EXP_BAR_DEFAULT_FONT_SIZE)
-
-			ACAB:SetSliderValueSilently(page.expBarFontSizeSlider, fontSize, page.expBarFontSizeValueText)
-		end
-
-		if page.earnedColorSwatch then
-			ACAB:SetColorSwatchColor(page.earnedColorSwatch, ACABDB.expBarColorEarned)
-		end
-
-		if page.restedColorSwatch then
-			ACAB:SetColorSwatchColor(page.restedColorSwatch, ACABDB.expBarColorRested)
-		end
-
-		if page.expBarTextColorSwatch then
-			ACAB:SetColorSwatchColor(page.expBarTextColorSwatch, ACABDB.expBarTextColor)
-		end
-
-		if page.expBarGlowPulseIntervalSlider then
-			local interval = ACABDB.expBarGlowPulseInterval or 1.5
-
-			ACAB:SetSliderValueSilently(page.expBarGlowPulseIntervalSlider, interval,
-				page.expBarGlowPulseIntervalValueText, string.format("%.1f", interval))
-		end
-	end
-
-	-- Pet Bar/Stance Bar/Cast Bar/Tooltip stay editable under Force Vanilla Layout Mode (they stack
-	-- dynamically and stay draggable in edit mode).
-	local skipLayoutLock = key == ACAB.PET_BAR_ID or key == ACAB.STANCE_BAR_ID or key == "castbar" or key == "tooltip"
-
-	ACAB:ApplyDefaultLayoutGating(page, skipLayoutLock or ACABDB.useDefaultLayout ~= true)
-
-	self:ApplyProfileLockGating(page, not skipLayoutLock)
-
-	-- Must run after ApplyProfileLockGating, which re-enables the Better Experience Bar sub-controls.
-	if page.betterExpBarCheckbox and not self:IsDefaultProfileActive() and
-		(skipLayoutLock or ACABDB.useDefaultLayout ~= true) then
-		ApplyBetterExpBarGating(page)
-	end
-
-	-- The mode checkboxes stay locked by Default Layout/Default Profile even on an unlocked page. Must run
-	-- after ApplyProfileLockGating so it has the final say; keeps the locked-reason tooltip.
-	local vanillaModeLocked = IsVanillaModeLocked()
-
-	if page.useVanillaPetBarCheckbox then
-		ACAB:LockControlKeepingTooltip(page.useVanillaPetBarCheckbox, vanillaModeLocked)
-	end
-
-	if page.condenseEmptyPetSlotsCheckbox then
-		ACAB:LockControlKeepingTooltip(page.condenseEmptyPetSlotsCheckbox, vanillaModeLocked)
-	end
-
-	if page.useVanillaStanceBarCheckbox then
-		ACAB:LockControlKeepingTooltip(page.useVanillaStanceBarCheckbox, vanillaModeLocked)
-	end
-
-	-- Only ever dims - must run after both gating calls above.
-	ACAB:ApplySimpleElementGroupedLock(page)
-end
-
--------------------------------------------------------------------------
--- Simple page configs: map each page's controls onto the element's ACAB:Set*/Reset*/Get* API.
--- Top-level on purpose: filled at file load into Settings.lua's ACAB.simpleBarPageConfigs.
--------------------------------------------------------------------------
-
--- Stance Bar native mode (numeric STANCE_BAR_ID, reached only via IsStanceBarNativeMode). Drives the
--- native-mode ACABDB.stanceBar* fields, separate from the styled mode's defaultBars[STANCE_BAR_ID].
-ACAB.simpleBarPageConfigs[ACAB.STANCE_BAR_ID] = {
-	title = "Stance Bar",
-	hasEnable = true,
-	getPosition = function() return ACABDB.stanceBarPosition end,
-	setPosition = function(x, y) ACAB:SetStanceBarPosition(x, y) end,
-	getElementFrame = function() return ACAB.stanceBarContainer end,
-	-- Layout before position (both resets): layout writes scale without reapplying position.
-	reset = function()
-		ACAB:ResetStanceBarLayout()
-		ACAB:ResetStanceBarPosition()
-	end,
-	resetModern = function()
-		ACAB:ResetStanceBarLayout()
-		ACAB:ResetStanceBarPositionToModernBase()
-	end,
-	getEnabled = function() return ACABDB.stanceBarEnabled end,
-	setEnabled = function(v) ACAB:SetStanceBarEnabled(v) end,
-	hasSpacing = true,
-	getSpacing = function() return ACABDB.stanceBarSpacing end,
-	setSpacing = function(v) ACAB:SetStanceBarSpacing(v) end,
-	hasScale = true,
-	getScale = function() return ACABDB.stanceBarScale end,
-	setScale = function(v) ACAB:SetStanceBarScale(v) end,
-	-- Hover-only is shared with the styled Stance Bar: defaultBars[STANCE_BAR_ID].hoverOnly/hoverDuration.
-	hasHoverOnly = true,
-	getHoverOnly = function()
-		local cfg = ACABDB.defaultBars[ACAB.STANCE_BAR_ID]
-		return cfg and cfg.hoverOnly
-	end,
-	setHoverOnly = function(v) ACAB:SetStanceBarNativeHoverOnly(v) end,
-	getHoverDuration = function()
-		local cfg = ACABDB.defaultBars[ACAB.STANCE_BAR_ID]
-		return (cfg and cfg.hoverDuration) or 3
-	end,
-	setHoverDuration = function(v) ACAB:SetStanceBarNativeHoverDuration(v) end,
-}
-
--- Bag Bar: ACAB-owned chain-anchored container, so it also gets Spacing/Scale/Grid.
-ACAB.simpleBarPageConfigs["bagbar"] = {
-	title = "Bag Bar",
-	hasEnable = true,
-	getPosition = function() return ACABDB.bagBarPosition end,
-	setPosition = function(x, y) ACAB:SetBagBarPosition(x, y) end,
-	getElementFrame = function() return ACAB.bagBarContainer end,
-	-- Layout before position: layout writes scale without reapplying position.
-	reset = function()
-		ACAB:ResetBagBarLayout()
-		ACAB:ResetBagBarPosition()
-	end,
-	resetModern = function() ACAB:ResetBagBarLayoutToModernBase() end,
-	getEnabled = function() return ACABDB.bagBarEnabled end,
-	setEnabled = function(v) ACAB:SetBagBarEnabled(v) end,
-	hasSpacing = true,
-	getSpacing = function() return ACABDB.bagBarSpacing end,
-	setSpacing = function(v) ACAB:SetBagBarSpacing(v) end,
-	hasScale = true,
-	getScale = function() return ACABDB.bagBarScale end,
-	setScale = function(v) ACAB:SetBagBarScale(v) end,
-	hasGrid = true,
-	-- Swatch clicks call ACAB:SetBagBarOrientation directly (GridSwatch_OnClick); this only syncs the selection.
-	getGridLayout = function() return ACAB:GetBagBarEffectiveGrid() end,
-	hasHoverOnly = true,
-	getHoverOnly = function() return ACABDB.bagBarHoverOnly end,
-	setHoverOnly = function(v) ACAB:SetBagBarHoverOnly(v) end,
-	getHoverDuration = function() return ACABDB.bagBarHoverDuration or 3 end,
-	setHoverDuration = function(v) ACAB:SetBagBarHoverDuration(v) end,
-}
-
--- Key Ring: the single real KeyRingButton frame, independent of Bag Bar.
-ACAB.simpleBarPageConfigs["keyring"] = {
-	title = "Key Ring",
-	hasEnable = true,
-	getPosition = function() return ACABDB.keyRingPosition end,
-	setPosition = function(x, y) ACAB:SetKeyRingPosition(x, y) end,
-	getElementFrame = function() return getglobal(ACAB.KEYRING_BUTTON_NAME) end,
-	reset = function() ACAB:ResetKeyRingPosition() end,
-	resetModern = function() ACAB:ResetKeyRingLayoutToModernBase() end,
-	getEnabled = function() return ACABDB.keyRingEnabled end,
-	setEnabled = function(v) ACAB:SetKeyRingEnabled(v) end,
-	hasScale = true,
-	getScale = function() return ACABDB.keyRingScale end,
-	setScale = function(v) ACAB:SetKeyRingScale(v) end,
-	hasHoverOnly = true,
-	getHoverOnly = function() return ACABDB.keyRingHoverOnly end,
-	setHoverOnly = function(v) ACAB:SetKeyRingHoverOnly(v) end,
-	getHoverDuration = function() return ACABDB.keyRingHoverDuration or 3 end,
-	setHoverDuration = function(v) ACAB:SetKeyRingHoverDuration(v) end,
-}
-
--- Pet Bar native mode (numeric PET_BAR_ID, reached only via IsPetBarNativeMode). Shares
--- defaultBars[PET_BAR_ID] with the styled mode, so x/y/spacing never drift between modes.
-ACAB.simpleBarPageConfigs[ACAB.PET_BAR_ID] = {
-	title = "Pet Bar",
-	hasEnable = true,
-	getPosition = function() return ACABDB.defaultBars[ACAB.PET_BAR_ID] end,
-	setPosition = function(x, y) ACAB:SetPetBarNativePosition(x, y) end,
-	getElementFrame = function() return ACAB.petBarNativeContainer end,
-	reset = function() ACAB:ResetPetBarNativeLayout() end,
-	resetModern = function() ACAB:ResetPetBarLayoutToModernBase() end,
-	getEnabled = function()
-		local cfg = ACABDB.defaultBars[ACAB.PET_BAR_ID]
-		return cfg and cfg.enabled
-	end,
-	setEnabled = function(v) ACAB:SetDefaultBarEnabled(ACAB.PET_BAR_ID, v) end,
-	hasSpacing = true,
-	getSpacing = function()
-		local cfg = ACABDB.defaultBars[ACAB.PET_BAR_ID]
-		return cfg and cfg.spacing
-	end,
-	setSpacing = function(v) ACAB:SetPetBarNativeSpacing(v) end,
-	hasScale = true,
-	getScale = function()
-		local cfg = ACABDB.defaultBars[ACAB.PET_BAR_ID]
-		return cfg and cfg.scale
-	end,
-	setScale = function(v) ACAB:SetPetBarNativeScale(v) end,
-	-- Hover-only shared with the styled Pet Bar, like the Stance Bar's.
-	hasHoverOnly = true,
-	getHoverOnly = function()
-		local cfg = ACABDB.defaultBars[ACAB.PET_BAR_ID]
-		return cfg and cfg.hoverOnly
-	end,
-	setHoverOnly = function(v) ACAB:SetPetBarNativeHoverOnly(v) end,
-	getHoverDuration = function()
-		local cfg = ACABDB.defaultBars[ACAB.PET_BAR_ID]
-		return (cfg and cfg.hoverDuration) or 3
-	end,
-	setHoverDuration = function(v) ACAB:SetPetBarNativeHoverDuration(v) end,
-}
-
--- Latency Bar: Scale only - Blizzard owns MainMenuBarPerformanceBarFrame's internal layout.
-ACAB.simpleBarPageConfigs["latencybar"] = {
-	title = "Latency Bar",
-	hasEnable = true,
-	getPosition = function() return ACABDB.latencyBarPosition end,
-	setPosition = function(x, y) ACAB:SetLatencyBarPosition(x, y) end,
-	getElementFrame = function() return getglobal(ACAB.LATENCY_BAR_FRAME_NAME) end,
-	reset = function()
-		ACAB:ResetLatencyBarLayout()
-	end,
-	resetModern = function() ACAB:ResetLatencyBarLayoutToModernBase() end,
-	getEnabled = function() return ACABDB.latencyBarEnabled end,
-	setEnabled = function(v) ACAB:SetLatencyBarEnabled(v) end,
-	hasScale = true,
-	getScale = function() return ACABDB.latencyBarScale end,
-	setScale = function(v) ACAB:SetLatencyBarScale(v) end,
-	hasHoverOnly = true,
-	getHoverOnly = function() return ACABDB.latencyBarHoverOnly end,
-	setHoverOnly = function(v) ACAB:SetLatencyBarHoverOnly(v) end,
-	getHoverDuration = function() return ACABDB.latencyBarHoverDuration or 3 end,
-	setHoverDuration = function(v) ACAB:SetLatencyBarHoverDuration(v) end,
-}
-
--- Experience Bar: the container's Position/Scale/Enable/Reset (Better Experience Bar controls are separate).
-ACAB.simpleBarPageConfigs["expbar"] = {
-	title = "Experience Bar",
-	hasEnable = true,
-	getPosition = function() return ACABDB.expBarPosition end,
-	setPosition = function(x, y) ACAB:SetExpBarPosition(x, y) end,
-	getElementFrame = function() return getglobal(ACAB.EXP_BAR_FRAME_NAME) end,
-	-- Extra Y-max headroom in real screen pixels (lets the top sliver go off-screen).
-	extraMaxYPixels = 2,
-	reset = function()
-		ACAB:ResetExpBarLayout()
-	end,
-	-- No Modern Layout position of its own - same as the vanilla reset.
-	resetModern = function()
-		ACAB:ResetExpBarLayout()
-	end,
-	getEnabled = function() return ACABDB.expBarEnabled end,
-	setEnabled = function(v) ACAB:SetExpBarEnabled(v) end,
-	hasScale = true,
-	getScale = function() return ACABDB.expBarScale end,
-	setScale = function(v) ACAB:SetExpBarScale(v) end,
-	hasHoverOnly = true,
-	getHoverOnly = function() return ACABDB.expBarHoverOnly end,
-	setHoverOnly = function(v) ACAB:SetExpBarHoverOnly(v) end,
-	getHoverDuration = function() return ACABDB.expBarHoverDuration or 3 end,
-	setHoverDuration = function(v) ACAB:SetExpBarHoverDuration(v) end,
-}
-
--- Cast Bar: Position + Scale only, no Enable checkbox.
-ACAB.simpleBarPageConfigs["castbar"] = {
-	title = "Cast Bar",
-	getPosition = function() return ACABDB.castBarPosition end,
-	setPosition = function(x, y) ACAB:SetCastBarPosition(x, y) end,
-	getElementFrame = function() return getglobal(ACAB.CAST_BAR_FRAME_NAME) end,
-	reset = function()
-		ACAB:ResetCastBarLayout()
-	end,
-	-- No Modern Layout position of its own (it stacks off the default bars) - same as the vanilla reset.
-	resetModern = function()
-		ACAB:ResetCastBarLayout()
-	end,
-	hasScale = true,
-	getScale = function() return ACABDB.castBarScale end,
-	setScale = function(v) ACAB:SetCastBarScale(v) end,
-}
-
--- Tooltip: repositions only the fixed-position GameTooltip; widget-relative tooltips are untouched.
-ACAB.simpleBarPageConfigs["tooltip"] = {
-	title = "Tooltip",
-	hasEnable = true,
-	getPosition = function() return ACABDB.tooltipPosition end,
-	setPosition = function(x, y) ACAB:SetTooltipPosition(x, y) end,
-	getElementFrame = function() return ACAB.tooltipFrame end,
-	reset = function()
-		ACAB:ResetTooltipLayout()
-	end,
-	-- No Modern Layout position of its own - same as the vanilla reset.
-	resetModern = function()
-		ACAB:ResetTooltipLayout()
-	end,
-	getEnabled = function() return ACABDB.tooltipEnabled end,
-	setEnabled = function(v) ACAB:SetTooltipEnabled(v) end,
-	hasScale = true,
-	getScale = function() return ACABDB.tooltipScale end,
-	setScale = function(v) ACAB:SetTooltipScale(v) end,
-}
-
-ACAB.simpleBarPageConfigs["micromenu"] = {
-	title = "Micro Menu",
-	hasEnable = true,
-	getPosition = function() return ACABDB.microMenuPosition end,
-	setPosition = function(x, y) ACAB:SetMicroMenuPosition(x, y) end,
-	getElementFrame = function() return ACAB.microMenuContainer end,
-	extraMaxYPixels = 4,
-	-- Layout before position: layout writes scale without reapplying position.
-	reset = function()
-		ACAB:ResetMicroMenuLayout()
-		ACAB:ResetMicroMenuPosition()
-	end,
-	resetModern = function() ACAB:ResetMicroMenuLayoutToModernBase() end,
-	getEnabled = function() return ACABDB.microMenuEnabled end,
-	setEnabled = function(v) ACAB:SetMicroMenuEnabled(v) end,
-	hasSpacing = true,
-	-- -10 floor instead of ACAB.SPACING_MIN, so the native buttons can overlap slightly.
-	spacingMin = -10,
-	-- Displayed = stored spacing + 4 (the native button art's padding makes 0 look like a gap).
-	spacingUiOffset = 4,
-	getSpacing = function() return ACABDB.microMenuSpacing end,
-	setSpacing = function(v) ACAB:SetMicroMenuSpacing(v) end,
-	hasScale = true,
-	getScale = function() return ACABDB.microMenuScale end,
-	setScale = function(v) ACAB:SetMicroMenuScale(v) end,
-	hasGrid = true,
-	-- Swatch clicks call ACAB:SetMicroMenuLayout directly (GridSwatch_OnClick); this only syncs the selection.
-	getGridLayout = function() return ACAB:GetMicroMenuEffectiveGrid() end,
-	hasHoverOnly = true,
-	getHoverOnly = function() return ACABDB.microMenuHoverOnly end,
-	setHoverOnly = function(v) ACAB:SetMicroMenuHoverOnly(v) end,
-	getHoverDuration = function() return ACABDB.microMenuHoverDuration or 3 end,
-	setHoverDuration = function(v) ACAB:SetMicroMenuHoverDuration(v) end,
-}
-
 -- Right-click-to-settings entry point for any page key (used by DefaultBars.lua's overlays).
 function ACAB:OpenBarSettingsByKey(key)
 	self:ShowSettingsFrame()
@@ -2902,7 +1875,7 @@ function ACAB:RefreshBarSettingsPage(barId)
 		return
 	end
 
-	DropMismatchedBarPage(barId)
+	ACAB:DropMismatchedBarPage(barId)
 
 	if UsesSimpleBarPage(barId) then
 		self:RefreshSimpleBarPage(barId)
@@ -2956,7 +1929,7 @@ function ACAB:RefreshBarSettingsPage(barId)
 	page.xValueText:SetText(string.format("%.2f", x))
 	page.yValueText:SetText(string.format("%.2f", y))
 
-	page.buttonSizeSlider:SetValue(Clamp(cfg.buttonSize or ACAB.BUTTON_SIZE, ACAB.BUTTON_SIZE_MIN, ACAB.BUTTON_SIZE_MAX))
+	page.buttonSizeSlider:SetValue(ACAB:Clamp(cfg.buttonSize or ACAB.BUTTON_SIZE, ACAB.BUTTON_SIZE_MIN, ACAB.BUTTON_SIZE_MAX))
 
 	if page.spacingSlider then
 		local offset = ACAB:GetSpacingDisplayOffset()
@@ -2972,7 +1945,7 @@ function ACAB:RefreshBarSettingsPage(barId)
 			page.spacingSliderHigh:SetText(tostring(ACAB.SPACING_MAX))
 		end
 
-		local displayed = Clamp(cfg.spacing or 0, ACAB.SPACING_MIN, ACAB:GetSpacingMax()) - offset
+		local displayed = ACAB:Clamp(cfg.spacing or 0, ACAB.SPACING_MIN, ACAB:GetSpacingMax()) - offset
 
 		if displayed < 0 then
 			displayed = 0
@@ -3002,7 +1975,7 @@ function ACAB:RefreshBarSettingsPage(barId)
 
 	local selectedCols, selectedRows = ACAB:GetEffectiveBarGrid(cfg)
 
-	RefreshGridSwatchSelection(page, selectedCols or 12, selectedRows or 1)
+	ACAB:RefreshGridSwatchSelection(page, selectedCols or 12, selectedRows or 1)
 
 	if page.RefreshMainBarArtModeDropdown then
 		page.RefreshMainBarArtModeDropdown()
@@ -3019,15 +1992,15 @@ function ACAB:RefreshBarSettingsPage(barId)
 
 	-- While forced, the mode checkboxes show the vanilla-forced value instead of the stored preference.
 	if page.useVanillaPetBarCheckbox then
-		page.useVanillaPetBarCheckbox:SetChecked(IsVanillaModeForced() or cfg.useNativePetBar == true)
+		page.useVanillaPetBarCheckbox:SetChecked(ACAB:IsVanillaModeForced() or cfg.useNativePetBar == true)
 	end
 
 	if page.condenseEmptyPetSlotsCheckbox then
-		page.condenseEmptyPetSlotsCheckbox:SetChecked((not IsVanillaModeForced()) and cfg.condenseEmptyPetSlots == true)
+		page.condenseEmptyPetSlotsCheckbox:SetChecked((not ACAB:IsVanillaModeForced()) and cfg.condenseEmptyPetSlots == true)
 	end
 
 	if page.useVanillaStanceBarCheckbox then
-		page.useVanillaStanceBarCheckbox:SetChecked(IsVanillaModeForced() or cfg.useNativeStanceBar == true)
+		page.useVanillaStanceBarCheckbox:SetChecked(ACAB:IsVanillaModeForced() or cfg.useNativeStanceBar == true)
 	end
 
 	if page.animateAutoCastGlowCheckbox then
@@ -3257,7 +2230,7 @@ local EXTRA_BAR_ASSIGNMENT_DROPDOWN_OPTIONS = BuildExtraBarAssignmentDropdownOpt
 -- One assignment row (unanchored). getFn/setFn use the raw ACABDB value (6-9, -1 or nil), never the
 -- 0 sentinel. dropdownName must be unique per pool slot, and each pool slot is created once (see RebuildDefaultBarAssignmentRows).
 local function CreateExtraBarAssignmentRow(parent, labelText, getFn, setFn, dropdownName)
-	local row, dropdown = CreateDropdownRow(parent, nil, labelText, 140, dropdownName, EXTRA_BAR_ASSIGNMENT_DROPDOWN_OPTIONS)
+	local row, dropdown = ACAB:CreateDropdownRow(parent, nil, labelText, 140, dropdownName, EXTRA_BAR_ASSIGNMENT_DROPDOWN_OPTIONS)
 
 	local function RefreshValue()
 		local current = getFn() or 0
@@ -3709,7 +2682,7 @@ local function CreateBarListRow(barId, isDefault, cfg)
 
 	-- Native Stance Bar first: ACABDB.stanceBarEnabled (native) and defaultBars[STANCE_BAR_ID].enabled
 	-- (styled) are separate flags, and the row must drive whichever is active.
-	if barId == ACAB.STANCE_BAR_ID and IsStanceBarNativeMode() then
+	if barId == ACAB.STANCE_BAR_ID and ACAB:IsStanceBarNativeMode() then
 		local stanceConfig = ACAB.simpleBarPageConfigs[ACAB.STANCE_BAR_ID]
 
 		wantsCheckbox = true
