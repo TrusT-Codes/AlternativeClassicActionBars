@@ -177,6 +177,11 @@ local POOL_BUTTON_EVENT_ROUTES = {
 	CRAFT_CLOSE = { list = allPoolButtons, method = "UpdateState" },
 	TRADE_SKILL_SHOW = { list = allPoolButtons, method = "UpdateState" },
 	TRADE_SKILL_CLOSE = { list = allPoolButtons, method = "UpdateState" },
+	-- Auto Shot / Auto Attack start and stop (target cleared or dead).
+	START_AUTOREPEAT_SPELL = { list = actionPoolButtons, method = "UpdateState" },
+	STOP_AUTOREPEAT_SPELL = { list = actionPoolButtons, method = "UpdateState" },
+	PLAYER_ENTER_COMBAT = { list = actionPoolButtons, method = "UpdateState" },
+	PLAYER_LEAVE_COMBAT = { list = actionPoolButtons, method = "UpdateState" },
 	UNIT_INVENTORY_CHANGED = { list = actionPoolButtons, method = "UpdateEquipRing", playerOnly = true },
 	UNIT_PET = { list = petPoolButtons, method = "Refresh", playerOnly = true },
 	PET_BAR_UPDATE = { list = petPoolButtons, method = "Refresh" },
@@ -827,7 +832,20 @@ function ACABButtonMixin:UpdateState()
 	end
 
 	-- Vanilla ActionButton_UpdateState, driving self.glow instead of SetChecked.
-	if (IsCurrentAction and IsCurrentAction(self.actionSlot)) or (IsAutoRepeatAction and IsAutoRepeatAction(self.actionSlot)) then
+	local slot = self.actionSlot
+	local isCurrent = IsCurrentAction and IsCurrentAction(slot)
+	local isAutoRepeat = IsAutoRepeatAction and IsAutoRepeatAction(slot)
+
+	-- Macros (slots with action text) never glow for Auto Shot / Auto Attack, only for their own current cast.
+	if GetActionText and GetActionText(slot) then
+		if isAutoRepeat or (IsAttackAction and IsAttackAction(slot)) then
+			isCurrent = nil
+		end
+
+		isAutoRepeat = nil
+	end
+
+	if isCurrent or isAutoRepeat then
 		self.glow:Show()
 	else
 		self.glow:Hide()
@@ -1246,8 +1264,12 @@ function ACABButtonMixin.OnClick()
 		this:UpdateState()
 	elseif this:IsSlotFilled() and UseAction then
 		UseAction(this.actionSlot, 0, 0)
+
 		-- Like ActionButtonUp: update the glow now instead of waiting on ACTIONBAR_UPDATE_STATE.
-		this:UpdateState()
+		-- Not for macros, or a "/cast Auto Shot" toggle leaves the glow stuck on.
+		if not (GetActionText and GetActionText(this.actionSlot)) then
+			this:UpdateState()
+		end
 	end
 end
 
