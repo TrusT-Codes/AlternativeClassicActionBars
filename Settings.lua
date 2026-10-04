@@ -1038,6 +1038,53 @@ local function AppendCandidate(list, n, frame)
 	return n
 end
 
+-- Appends owner[name] for each of names, in order; returns the new count.
+local function AppendNamedCandidates(list, n, owner, names)
+	local i
+
+	for i = 1, table.getn(names) do
+		n = AppendCandidate(list, n, owner[names[i]])
+	end
+
+	return n
+end
+
+-- Height-fit candidate field names, in measuring order.
+local BAR_PAGE_CANDIDATE_NAMES = {
+	"hoverOnlyCheckbox", "hoverDurationSlider", "hoverDurationValueText", "mainBarArtModeRow",
+	"xValueText", "yValueText", "spacingValueText", "buttonSizeValueText",
+	"resetPositionButton", "resetModernButton", "buttonCountMinus", "buttonCountPlus", "buttonCountValueText",
+	"enableCheckbox", "pageIndicatorValueText", "useVanillaPetBarCheckbox",
+	-- Simple pages.
+	"scaleValueText",
+	-- Experience Bar page.
+	"betterExpBarCheckbox", "expBarFontSizeSlider", "expBarFontSizeValueText",
+	"expBarShowLevelCheckbox", "expBarShowCurrentOverMaxCheckbox", "expBarShowPercentCheckbox",
+	"expBarShowRestedPercentCheckbox", "expBarShowRestedTotalCheckbox",
+	"earnedColorSwatch", "restedColorSwatch", "expBarTextColorSwatch", "resetColorsButton",
+	"expBarGlowPulseIntervalSlider", "expBarGlowPulseIntervalValueText",
+}
+
+-- After the assignment rows and grid swatches.
+local BAR_PAGE_TAIL_CANDIDATE_NAMES = { "noStancesText", "useVanillaStanceBarCheckbox" }
+
+local GENERAL_CANDIDATE_NAMES = {
+	"useDefaultLayoutCheckbox", "tintWholeButtonCheckbox", "mainBarPaginationCheckbox", "mainBarStanceSwapCheckbox",
+	"macroTextCheckbox", "macroValueText", "macroResetButton",
+	"hotkeyValueText", "hotkeyResetButton", "countValueText", "countResetButton",
+	"modernBorderStyleCheckbox", "globalSpacingCheckbox", "globalSpacingSlider", "globalSpacingValueText",
+	"globalButtonSizeCheckbox", "globalButtonSizeSlider", "globalButtonSizeValueText", "bypassBar2DepCheckbox",
+}
+
+local PROFILES_CANDIDATE_NAMES = {
+	"profileDropdown", "wizardButton", "exportButton", "copyButton", "importButton", "deleteButton",
+}
+
+local EDIT_MODE_CANDIDATE_NAMES = {
+	"snapToAdjacentCheckbox", "showLayoutGridCheckbox", "snapToGridCheckbox",
+	"useCustomGridSizeCheckbox", "customGridSizeSlider", "customGridSizeValueText",
+}
+
 -- Largest distance from referenceTop down to a shown candidate's bottom edge.
 -- must stay a delta of two live positions: the window is movable, so position estimates break once dragged.
 local function MeasureDeepestExtent(candidateList, referenceTop)
@@ -1204,43 +1251,7 @@ function ACAB:FitSettingsWindowToBarPage(barId)
 	if not page then return end
 
 	local candidates = {}
-	local n = 0
-
-	n = AppendCandidate(candidates, n, page.hoverOnlyCheckbox)
-	n = AppendCandidate(candidates, n, page.hoverDurationSlider)
-	n = AppendCandidate(candidates, n, page.hoverDurationValueText)
-	n = AppendCandidate(candidates, n, page.mainBarArtModeRow)
-	n = AppendCandidate(candidates, n, page.xValueText)
-	n = AppendCandidate(candidates, n, page.yValueText)
-	n = AppendCandidate(candidates, n, page.spacingValueText)
-	n = AppendCandidate(candidates, n, page.buttonSizeValueText)
-	n = AppendCandidate(candidates, n, page.resetPositionButton)
-	n = AppendCandidate(candidates, n, page.resetModernButton)
-	n = AppendCandidate(candidates, n, page.buttonCountMinus)
-	n = AppendCandidate(candidates, n, page.buttonCountPlus)
-	n = AppendCandidate(candidates, n, page.buttonCountValueText)
-	n = AppendCandidate(candidates, n, page.enableCheckbox)
-	n = AppendCandidate(candidates, n, page.pageIndicatorValueText)
-	n = AppendCandidate(candidates, n, page.useVanillaPetBarCheckbox)
-
-	-- Simple-page controls.
-	n = AppendCandidate(candidates, n, page.scaleValueText)
-
-	-- Experience Bar page controls.
-	n = AppendCandidate(candidates, n, page.betterExpBarCheckbox)
-	n = AppendCandidate(candidates, n, page.expBarFontSizeSlider)
-	n = AppendCandidate(candidates, n, page.expBarFontSizeValueText)
-	n = AppendCandidate(candidates, n, page.expBarShowLevelCheckbox)
-	n = AppendCandidate(candidates, n, page.expBarShowCurrentOverMaxCheckbox)
-	n = AppendCandidate(candidates, n, page.expBarShowPercentCheckbox)
-	n = AppendCandidate(candidates, n, page.expBarShowRestedPercentCheckbox)
-	n = AppendCandidate(candidates, n, page.expBarShowRestedTotalCheckbox)
-	n = AppendCandidate(candidates, n, page.earnedColorSwatch)
-	n = AppendCandidate(candidates, n, page.restedColorSwatch)
-	n = AppendCandidate(candidates, n, page.expBarTextColorSwatch)
-	n = AppendCandidate(candidates, n, page.resetColorsButton)
-	n = AppendCandidate(candidates, n, page.expBarGlowPulseIntervalSlider)
-	n = AppendCandidate(candidates, n, page.expBarGlowPulseIntervalValueText)
+	local n = AppendNamedCandidates(candidates, 0, page, BAR_PAGE_CANDIDATE_NAMES)
 
 	-- Stance/Page assignment rows (default bars 1-5).
 	if page.assignmentRows then
@@ -1262,10 +1273,7 @@ function ACAB:FitSettingsWindowToBarPage(barId)
 		end
 	end
 
-	-- Stance Bar's "no stances" message, shown instead of the grid swatches.
-	n = AppendCandidate(candidates, n, page.noStancesText)
-
-	n = AppendCandidate(candidates, n, page.useVanillaStanceBarCheckbox)
+	AppendNamedCandidates(candidates, n, page, BAR_PAGE_TAIL_CANDIDATE_NAMES)
 
 	-- Bar-list rows, measured separately since the sidebar scrolls independently (hidden in the Setup Wizard).
 	local listCandidates = nil
@@ -1298,38 +1306,20 @@ function ACAB:FitSettingsWindowToBarPage(barId)
 	end
 end
 
+-- Fits the window to a wide-view panel's named controls; no-op until the panel exists.
+local function FitWideViewToNamedCandidates(panelKey, scrollFrameKey, names, noMinFloor)
+	if not ACAB.settingsFrame or not ACAB.settingsFrame[panelKey] then return end
+
+	local panel = ACAB.settingsFrame[panelKey]
+	local candidates = {}
+
+	AppendNamedCandidates(candidates, 0, panel, names)
+	ApplySettingsHeightFromCandidates(candidates, ACAB.settingsFrame[scrollFrameKey], panel, nil, nil, noMinFloor)
+end
+
 -- General view: fits the window to the General panel's controls.
 function ACAB:FitSettingsWindowToGeneralView()
-	if not ACAB.settingsFrame or not ACAB.settingsFrame.generalPanel then return end
-
-	local panel = ACAB.settingsFrame.generalPanel
-
-	local candidates = {}
-	local n = 0
-
-	n = AppendCandidate(candidates, n, panel.useDefaultLayoutCheckbox)
-	n = AppendCandidate(candidates, n, panel.tintWholeButtonCheckbox)
-	n = AppendCandidate(candidates, n, panel.mainBarPaginationCheckbox)
-	n = AppendCandidate(candidates, n, panel.mainBarStanceSwapCheckbox)
-
-	n = AppendCandidate(candidates, n, panel.macroTextCheckbox)
-	n = AppendCandidate(candidates, n, panel.macroValueText)
-	n = AppendCandidate(candidates, n, panel.macroResetButton)
-
-	n = AppendCandidate(candidates, n, panel.hotkeyValueText)
-	n = AppendCandidate(candidates, n, panel.hotkeyResetButton)
-	n = AppendCandidate(candidates, n, panel.countValueText)
-	n = AppendCandidate(candidates, n, panel.countResetButton)
-	n = AppendCandidate(candidates, n, panel.modernBorderStyleCheckbox)
-	n = AppendCandidate(candidates, n, panel.globalSpacingCheckbox)
-	n = AppendCandidate(candidates, n, panel.globalSpacingSlider)
-	n = AppendCandidate(candidates, n, panel.globalSpacingValueText)
-	n = AppendCandidate(candidates, n, panel.globalButtonSizeCheckbox)
-	n = AppendCandidate(candidates, n, panel.globalButtonSizeSlider)
-	n = AppendCandidate(candidates, n, panel.globalButtonSizeValueText)
-	n = AppendCandidate(candidates, n, panel.bypassBar2DepCheckbox)
-
-	ApplySettingsHeightFromCandidates(candidates, ACAB.settingsFrame.generalScrollFrame, panel)
+	FitWideViewToNamedCandidates("generalPanel", "generalScrollFrame", GENERAL_CANDIDATE_NAMES)
 end
 
 -- Setup Wizard decision steps: shrink-to-fit the shown step's direct children and regions.
@@ -1359,40 +1349,12 @@ end
 
 -- Profiles view: shrink-to-fit (no minimum height floor).
 function ACAB:FitSettingsWindowToProfilesView()
-	if not ACAB.settingsFrame or not ACAB.settingsFrame.profilesPanel then return end
-
-	local panel = ACAB.settingsFrame.profilesPanel
-
-	local candidates = {}
-	local n = 0
-
-	n = AppendCandidate(candidates, n, panel.profileDropdown)
-	n = AppendCandidate(candidates, n, panel.wizardButton)
-	n = AppendCandidate(candidates, n, panel.exportButton)
-	n = AppendCandidate(candidates, n, panel.copyButton)
-	n = AppendCandidate(candidates, n, panel.importButton)
-	n = AppendCandidate(candidates, n, panel.deleteButton)
-
-	ApplySettingsHeightFromCandidates(candidates, ACAB.settingsFrame.profilesScrollFrame, panel, nil, nil, true)
+	FitWideViewToNamedCandidates("profilesPanel", "profilesScrollFrame", PROFILES_CANDIDATE_NAMES, true)
 end
 
 -- Edit Mode view: shrink-to-fit (no minimum height floor).
 function ACAB:FitSettingsWindowToEditModeView()
-	if not ACAB.settingsFrame or not ACAB.settingsFrame.editModePanel then return end
-
-	local panel = ACAB.settingsFrame.editModePanel
-
-	local candidates = {}
-	local n = 0
-
-	n = AppendCandidate(candidates, n, panel.snapToAdjacentCheckbox)
-	n = AppendCandidate(candidates, n, panel.showLayoutGridCheckbox)
-	n = AppendCandidate(candidates, n, panel.snapToGridCheckbox)
-	n = AppendCandidate(candidates, n, panel.useCustomGridSizeCheckbox)
-	n = AppendCandidate(candidates, n, panel.customGridSizeSlider)
-	n = AppendCandidate(candidates, n, panel.customGridSizeValueText)
-
-	ApplySettingsHeightFromCandidates(candidates, ACAB.settingsFrame.editModeScrollFrame, panel, nil, nil, true)
+	FitWideViewToNamedCandidates("editModePanel", "editModeScrollFrame", EDIT_MODE_CANDIDATE_NAMES, true)
 end
 
 -------------------------------------------------------------------------
