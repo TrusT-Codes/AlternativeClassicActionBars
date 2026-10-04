@@ -12,7 +12,7 @@ ACAB.BUTTON_TEXT_INSET_MODERN = 2
 local FIRST_EQUIP_SLOT = 0
 local LAST_EQUIP_SLOT = 19
 
--- Quality color of the equipped item an action slot holds, found by matching its texture against each equipment slot.
+-- Quality color of the equipped item an action slot holds (matched by texture against each equipment slot).
 function ACAB:GetActionItemQualityColor(actionSlot)
 	if not GetInventoryItemQuality or not GetInventoryItemTexture or not GetActionTexture or not GetItemQualityColor then
 		return nil
@@ -77,7 +77,6 @@ function ACAB:SweepCustomBarGridVisibility()
 				end
 			end
 
-			-- Pet Bar's condensed layout suspends itself while isShowingActionGrid is true.
 			ACAB:LayoutButtons(bar)
 		end
 	end
@@ -159,8 +158,7 @@ local function RefreshStanceButtonsOnAuraChange()
 	end
 end
 
--- Player's auto-repeat (Auto Shot / Shoot), auto-attack, current cast-time spell and last cast spell (lower case);
--- macro glows read it.
+-- Auto-repeat/auto-attack state, current cast-time spell and last cast spell (lower case), read by macro glows.
 local playerActionState = { autoRepeat = false, autoAttack = false, castName = nil, firedName = nil, firedToken = 0 }
 
 -- Seconds a macro glows after its own spell was cast (SPELL_CAST_EVENT), instant spells included.
@@ -344,7 +342,7 @@ local function PoolButtonDispatcher_OnEvent()
 	CallOnPoolButtons(route.list, route.method)
 end
 
--- Creates the dispatcher on the first pool button, so it registers after Events.lua's frames like the old per-button registration.
+-- Creates the dispatcher on the first pool button; must register after Events.lua's frames.
 local function EnsurePoolButtonDispatcher()
 	if poolButtonDispatcher then return end
 
@@ -450,7 +448,6 @@ function ACABButtonMixin:Init(parent, actionSlot, slotIndex)
 	-- Styled Stance Bar: actionSlot is a shapeshift form index (1-10), not a vanilla action slot.
 	self.isStanceSlot = parent.config and parent.config.isStanceBar and true or false
 
-	-- Set explicitly; strata inheritance from the parent bar isn't relied on.
 	self:SetFrameStrata("LOW")
 
 	-- Default bars (1-5): native binding action name (e.g. ACTIONBUTTON1) is the button's home binding identity.
@@ -521,7 +518,6 @@ function ACABButtonMixin:Init(parent, actionSlot, slotIndex)
 	self.autoCastGlow:Hide()
 
 	-- Animated autocast glow (Pet Bar): reparents the native PetActionButton<n>AutoCast Model onto this button.
-	-- A fresh Model with SetModel renders a flat white plane, so the native one is reused.
 	if self.isPetSlot then
 		local nativeModel = getglobal("PetActionButton" .. tostring(actionSlot) .. "AutoCast")
 		if nativeModel then
@@ -614,12 +610,10 @@ function ACABButtonMixin:Init(parent, actionSlot, slotIndex)
 	self:SetScript("OnLeave", ACABButtonMixin.OnLeave)
 	self:SetScript("OnMouseDown", ACABButtonMixin.OnMouseDown)
 
-	-- Events reach this button through the shared dispatcher.
 	RegisterPoolButton(self)
 
 	self:Refresh()
 
-	-- Covers range/usability changes with no event (e.g. moving relative to the target).
 	EnsureSharedRangeTicker()
 end
 
@@ -653,7 +647,7 @@ function ACABButtonMixin:ApplySize(size)
 	end
 end
 
--- Rescales the reparented autocast glow Model via SetModelScale, which doesn't reset the model like SetModel does.
+-- Rescales the reparented autocast glow Model via SetModelScale.
 function ACABButtonMixin:UpdateAutoCastGlowScale()
 	if not self.autoCastGlowModel or not self.autoCastGlowModelNativeSize
 		or self.autoCastGlowModelNativeSize == 0
@@ -703,7 +697,6 @@ function ACABButtonMixin:ApplyBorderStyle()
 		self.border:Hide()
 	end
 
-	-- Re-sizes the border too.
 	self:ApplySize(self.buttonSize or ACAB.BUTTON_SIZE)
 
 	self.icon:ClearAllPoints()
@@ -907,8 +900,8 @@ function ACABButtonMixin:UpdateState()
 	end
 end
 
--- True while a macro's spell target is running: Auto Shot / Shoot while auto-repeating, Attack while
--- auto-attacking, any other spell while it's being cast or for MACRO_CAST_FLASH_DURATION after it was cast.
+-- True while a macro's spell target runs: Auto Shot / Shoot auto-repeating, Attack auto-attacking, any other
+-- spell while cast or for MACRO_CAST_FLASH_DURATION after it was cast.
 function ACABButtonMixin:IsMacroTargetActive()
 	local spellName = self:GetMacroTargetKind() == "spell" and self.macroSpellName
 	if not spellName then return false end
@@ -957,10 +950,8 @@ local function CleanMacroTargetName(text)
 	return string.lower(name), skipForIcon
 end
 
--- Target name from a macro body: "#showtooltip <name>" / "#show <name>" / ShaguTweaks' "--showtooltip <name>" first
--- (second return true), else the first /cast, /use or CastSpellByName("...") that isn't skipped
--- (Auto Shot / Attack / Shoot, or a "?" prefix), else the first Auto Shot / Attack / Shoot (an Auto-Shot-only macro
--- shows Auto Shot); "?" lines never count.
+-- Target name from a macro body: a "#showtooltip"/"#show"/"--showtooltip" name (second return true), else the first
+-- non-skipped /cast, /use or CastSpellByName("..."), else the first Auto Shot / Attack / Shoot; "?" lines never count.
 local function GetMacroTargetName(body)
 	if not body then return nil end
 
@@ -1032,8 +1023,8 @@ local function GetMacroAlternatives(body)
 	return list
 end
 
--- Name of the first macro option whose [conditions] pass right now, by SuperCleveRoidMacros' own
--- CleveRoids.TestAction; nil without the addon or when none pass. Runs every range tick: allocates nothing itself.
+-- Name of the first macro option whose [conditions] pass now (CleveRoids.TestAction); nil without the addon or
+-- when none pass. Runs every range tick: must not allocate.
 local function GetConditionalPickName(alternatives)
 	if not (alternatives and CleveRoids and CleveRoids.TestAction) then return nil end
 
@@ -1110,8 +1101,7 @@ local function GetLinkMaxStack(link)
 	return maxStack
 end
 
--- Named item in the bags: first bag, slot, texture, then the total count over all stacks and the max stack size
--- (nil if none).
+-- Named item in the bags: first bag, slot, texture, total count over all stacks, max stack size (nil if none).
 local function FindBagItemByName(name)
 	local firstBag, firstSlot, firstTexture, firstLink
 	local total = 0
@@ -1161,12 +1151,9 @@ local function FindEquippedItemByName(name)
 	return nil
 end
 
--- Resolves this macro slot's target into macroTargetKind ("spell"/"bag"/"equip"/"missingItem"/nil) + macroTargetA/B.
--- Target: an explicit #showtooltip name, else (macros with [conditions], SuperCleveRoidMacros loaded) the first
--- option whose conditions pass now (GetConditionalPickName), else the parsed body (GetMacroTargetName).
--- Returns the icon to show instead of GetActionTexture: the target spell's or item's own icon, also over a custom
--- macro icon (an item's is remembered and greyed by UpdateRange once out of stock).
--- Parse results are cached per macro body and per conditional pick; Refresh clears them (macroBody = nil).
+-- Resolves macroTargetKind ("spell"/"bag"/"equip"/"missingItem"/nil) + macroTargetA/B from #showtooltip, the passing
+-- [conditions] option or the parsed body; returns the target's own icon. Parse results are cached per body and
+-- conditional pick; Refresh clears them (macroBody = nil).
 function ACABButtonMixin:ResolveMacroTarget()
 	self.macroTargetKind = nil
 
@@ -1733,7 +1720,7 @@ end
 
 -- Script handlers below use global `this`.
 
--- Uses/casts the slot, or places the cursor's action. Edit mode never reaches here (bar overlay covers the button).
+-- Uses/casts the slot, or places the cursor's action.
 function ACABButtonMixin.OnClick()
 	if ACAB:ButtonHasCursor() then
 		this:PlaceCursor()
@@ -1777,12 +1764,11 @@ function ACABButtonMixin.OnMouseDown()
 	ACAB:HandleHoverBindMouseButton(this, arg1)
 end
 
--- Drag handlers need no edit-mode guard: the bar overlay covers the buttons while editing.
 function ACABButtonMixin.OnReceiveDrag()
 	this:PlaceCursor()
 end
 
--- Picks up the slot's action (pet slots via PickupPetAction; never stance slots) unless Lock Action Bars (LOCK_ACTIONBAR) is on.
+-- Picks up the slot's action (pet slots via PickupPetAction; never stance slots) unless Lock Action Bars is on.
 function ACABButtonMixin.OnDragStart()
 	if this.isStanceSlot then return end
 
@@ -1813,7 +1799,7 @@ end
 function ACABButtonMixin.OnEnter()
 	GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
 	if this.isPetSlot then
-		-- Command slots (isToken) aren't real pet spells; SetPetAction can't show them, so the tooltip is built by hand.
+		-- Command slots (isToken): tooltip built by hand, SetPetAction can't show them.
 		local name, subtext, isToken
 		local _
 
@@ -1888,7 +1874,7 @@ function ACAB:ButtonHasCursor()
 	return false
 end
 
--- Creates one pool button; its frame name is fixed per bar/slot index since each pool slot is created once.
+-- Creates one pool button; frame name is fixed per bar/slot index (each pool slot is created once).
 function ACAB:CreateActionButton(parent, actionSlot, slotIndex)
 	local frameName =
 		"ACABButton" ..
@@ -1913,8 +1899,7 @@ end
 -- Global hotkey/count/macro font size and macro text toggle
 -------------------------------------------------------------------------
 
--- Saves a rounded font size, then re-applies it (and re-truncates) on every pool button's regionKey FontString.
--- Before the native font is captured, the saved value is picked up by the next button Init.
+-- Saves a rounded font size and re-applies it (and re-truncates) on every pool button's regionKey FontString.
 local function SetPoolButtonFontSize(dbKey, nativeFontKey, regionKey, refreshMethod, size)
 	ACAB:EnsureDB()
 
