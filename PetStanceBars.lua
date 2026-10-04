@@ -66,6 +66,21 @@ local function SetBarCfgHoverDuration(self, barId, duration, applyFn)
 	applyFn(self)
 end
 
+-- Puts each button's <name><suffix> child (e.g. "Cooldown") on the button's strata, one level above it.
+-- Must run after every reparent into a container: the button's level changes but its children keep theirs.
+local function LiftButtonChildrenAboveButtons(buttons, suffix)
+	local b
+
+	for b = 1, table.getn(buttons) do
+		local child = getglobal(buttons[b]:GetName() .. suffix)
+
+		if child then
+			child:SetFrameStrata(buttons[b]:GetFrameStrata())
+			child:SetFrameLevel(buttons[b]:GetFrameLevel() + 1)
+		end
+	end
+end
+
 -------------------------------------------------------------------------
 -- Pet Bar, native mode (the real PetActionButton1-10 in a synthetic container)
 -- Position/spacing live on ACABDB.defaultBars[PET_BAR_ID], shared with styled mode; only cfg.scale is native-only.
@@ -136,15 +151,9 @@ function ACAB:CreatePetBarNativeContainer()
 
 	local container = self:BuildChainAnchoredContainer("ACABPetBarNativeContainer", buttons)
 
-	-- The container raised the buttons' level; lift each autocast shine model above its button again.
-	for b = 1, table.getn(buttons) do
-		local model = getglobal(buttons[b]:GetName() .. "AutoCast")
-
-		if model then
-			model:SetFrameStrata(buttons[b]:GetFrameStrata())
-			model:SetFrameLevel(buttons[b]:GetFrameLevel() + 1)
-		end
-	end
+	-- The container raised the buttons' level; lift each autocast shine model and cooldown above its button again.
+	LiftButtonChildrenAboveButtons(buttons, "AutoCast")
+	LiftButtonChildrenAboveButtons(buttons, "Cooldown")
 
 	self.petBarNativeContainer = container
 	self.petBarNativeButtons = buttons
@@ -503,6 +512,9 @@ function ACAB:CreateStanceBarContainer()
 	self.stanceBarContainer = container
 	self.stanceBarButtons = buttons
 
+	-- Otherwise the GCD/cooldown spiral draws behind the icons.
+	LiftButtonChildrenAboveButtons(buttons, "Cooldown")
+
 	self:SeedNativePosition("stanceBarNativeAnchor", "stanceBarPosition", nativeLeft, nativeTop)
 
 	if not ACABDB.stanceBarNativeSpacing then
@@ -578,6 +590,8 @@ function ACAB:RebuildStanceBarContainer()
 	container.chainHeights = heights
 
 	self.stanceBarButtons = buttons
+
+	LiftButtonChildrenAboveButtons(buttons, "Cooldown")
 
 	self:ApplyStanceBarShape()
 	self:ApplyStanceBarBorderStyle()

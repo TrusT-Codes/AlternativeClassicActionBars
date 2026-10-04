@@ -4,6 +4,7 @@
 
 ### Bugfixes
 
+- Settings pages no longer pile up hidden frames each time you open them (Stance Bar grid choices, stance/page assignment dropdowns).
 - Fix Better Experience Bar colors turning blue after a while or on zone change - your earned/rested colors now stick.
 - Fix Better Experience Bar rested XP running too far: the rested fill, tick and "Rested" text now show your real remaining bonus XP, carrying into the next level correctly. The rested rate is measured on each character's first rested kill, so it fits any realm.
 - Fix rested XP tick drawing behind the experience bar fill.
@@ -11,6 +12,7 @@
 - Fix turning Better Experience Bar off leaving the bar blue while unrested - the native purple/blue now follows your rest state.
 - Fix Stance Bar not showing up after learning your first stance/form (e.g. Stealth) until a reload.
 - Fix Setup Wizard's Vanilla layout placing all action bars too far left on a fresh install. **Already set up a Vanilla-layout profile and your bars sit too far left?** Switch to that profile and run `/acab recapture` once.
+- Fix the cooldown/GCD spiral drawing behind the icons on the Vanilla Stance Bar and Vanilla Pet Bar.
 - Fix Setup Wizard's layout step sometimes misplacing Micro Menu / Latency Bar on slow logins - it now waits for the UI to settle.
 - First-login dialog only offers "use existing profile" once you have a custom profile.
 - Fix Auto Shot / Auto Attack buttons glowing on after the target is cleared or dead, and macros glowing just because they also start Auto Shot or Auto Attack.
