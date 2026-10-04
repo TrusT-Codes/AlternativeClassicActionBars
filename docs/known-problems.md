@@ -162,7 +162,7 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
   - `lastAppliedVanillaStyle` must be set together with `modernBorderStyle`, or the next login is treated as a live style switch.
   - `WriteTargetProfile` must repoint the live `ACABDB` and `activeProfileName` at the new data before `ReloadUI`, or the logout-time `SaveActiveProfileData` writes the old data over it. Create mode saves the old active profile first.
   - The resume state (`ACABCharDB.setupWizard`) is re-saved on every page `ShowStep` and cleared only by Finish, the X button, or a profile mismatch at login. Don't clear it from an `OnHide` (untested whether a reload fires `OnHide` before unloading).
-  - `ApplyPendingLayoutBaseline` places the Exp Bar before `ApplyModernLayoutGeometry` (see "Setup Wizard reads saved Exp Bar position").
+  - `DefaultBars.lua` `ApplyPendingLayoutBaseline` places the Exp Bar before `ApplyModernLayoutGeometry` (see "Setup Wizard reads saved Exp Bar position").
 
 ### Settings window wizard mode
 - **Where:** `Settings.lua` (`GetSettingsChromeBottom`, wide-view `applyScrollbarReserve`, `ApplyBarsViewScrollbarReserves`, `FitSettingsWindowToBarPage`), `SettingsBars.lua` `ShowBarPage`, `SetupWizard.lua` `SetChromeShown`
@@ -257,6 +257,5 @@ Done: range-ticker write cache (`rangeKey` in `UpdateRange`), Pet Bar layout coa
 ### Decomposition ideas (need `.toc` + CLAUDE.md updates)
 - **`SettingsBars.lua`**: the Force-Vanilla cascade isn't UI code.
 - **`Database.lua`**: the first-login/create-profile dialogs are UI.
-- **`SetupWizard.lua`**: the baseline geometry pass (`ApplyModernLayoutGeometry`, `ApplyPendingLayoutBaseline`) isn't wizard UI and could move next to the Modern layout code in `DefaultBars.lua`.
 - **`UIWidgets.lua`**: `ACABDialogMixin` is the largest self-contained unit.
 - **`Bar.lua`**: the layout-grid overlay and the Extra Bar policy are separable.
