@@ -26,8 +26,8 @@ loadFrame:SetScript("OnEvent", function()
 	end
 
 	-- WaitForNativeBarSettle calls its callback as a plain function; the wrapper keeps RunLoginSequence's self.
-	ACAB:WaitForNativeBarSettle(function(earlyLeft, earlyTop, settledLeft, settledTop, waited)
-		ACAB:RunLoginSequence(earlyLeft, earlyTop, settledLeft, settledTop, waited)
+	ACAB:WaitForNativeBarSettle(function()
+		ACAB:RunLoginSequence()
 	end)
 end)
 
