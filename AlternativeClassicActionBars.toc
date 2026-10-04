@@ -12,6 +12,7 @@ Database.lua
 ProfileIO.lua
 DefaultBars.lua
 NativeElements.lua
+Tooltip.lua
 PetStanceBars.lua
 ExperienceBar.lua
 Bar.lua

@@ -130,7 +130,8 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
 ### Scale reset writes scale directly, before resolving the native anchor
 - **Where:** every native-element reset:
   - `DefaultBars.lua`: `ACAB:ResetScaleAndResolveNative` (Latency/Cast/Exp Bar)
-  - `NativeElements.lua`: `ResetKeyRingPosition`, `ResetTooltipLayout`
+  - `NativeElements.lua`: `ResetKeyRingPosition`
+  - `Tooltip.lua`: `ResetTooltipLayout`
   - `PetStanceBars.lua`: `ResetPetBarNativeLayout`
 - **What:** They write `ACABDB.<x>Scale = 1` + `frame:SetScale(1)` directly. The public `Set<X>Scale(1)` would run `CompensateScaleKeepingCornerFixed` against the old scale and inflate the restored position. Key Ring must use `SetKeyRingOwnScaleForEffective(frame, 1)`, because it inherits the art frame's scale.
 
@@ -256,7 +257,7 @@ Done: range-ticker write cache (`rangeKey` in `UpdateRange`), Pet Bar layout coa
 ### Decomposition ideas (need `.toc` + CLAUDE.md updates)
 - **`DefaultBars.lua`** holds three subsystems: default-bar paging / Modern geometry, Main Bar art + grouped elements, and the shared drag / container / guard engine. Move the engine to its own file loaded before `DefaultBars.lua`, keeping the top-level `InstallReanchorGuard(MainMenuBarArtFrame, ...)` after it.
 - **`SettingsBars.lua`** (~3800 lines): the simple-page subsystem is ~1100 self-contained lines. The Force-Vanilla cascade isn't UI code. Shared `CreateReflow*` locals would need to become `ACAB:` methods first, which also helps the upvalue cap.
-- **`NativeElements.lua`**: Tooltip and Page Indicator could become their own files.
+- **`NativeElements.lua`**: Page Indicator could become its own file.
 - **`Database.lua`**: the first-login/create-profile dialogs are UI.
 - **`SetupWizard.lua`**: the baseline geometry pass (`ApplyModernLayoutGeometry`, `ApplyPendingLayoutBaseline`) isn't wizard UI and could move next to the Modern layout code in `DefaultBars.lua`.
 - **`UIWidgets.lua`**: `ACABDialogMixin` is the largest self-contained unit.
