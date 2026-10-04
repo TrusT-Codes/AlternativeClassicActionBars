@@ -253,13 +253,11 @@ end
 -- Sets an OptionsSliderTemplate slider's "$parentLow"/"$parentHigh" end labels.
 function ACAB:SetSliderEndLabels(slider, lowText, highText)
 	local low = getglobal(slider:GetName() .. "Low")
-
 	if low then
 		low:SetText(lowText)
 	end
 
 	local high = getglobal(slider:GetName() .. "High")
-
 	if high then
 		high:SetText(highText)
 	end
@@ -272,7 +270,6 @@ end
 -- Position units per one physical screen pixel (read live, tracks UI Scale).
 function ACAB:GetPixelStep()
 	local scale = UIParent:GetEffectiveScale()
-
 	if not scale or scale <= 0 then
 		scale = 1
 	end
@@ -408,7 +405,6 @@ function ACAB:MakePositionValueEditable(page, valueText, slider, namePrefix)
 
 	local function CommitEdit()
 		local parsed = tonumber(editBox:GetText())
-
 		if parsed then
 			ACAB:SetSliderValueUnsnapped(slider, ClampToSliderRange(slider, parsed))
 		end
@@ -468,10 +464,7 @@ function ACAB:CreatePositionAxisSlider(page, config)
 
 	slider:SetScript("OnValueChanged", function()
 		local value = this:GetValue()
-
-		if not value then
-			return
-		end
+		if not value then return end
 
 		-- Drag values snap to the pixel grid; stepper/edit commits set suppressSnap to keep theirs exact.
 		local applied = value
@@ -526,10 +519,7 @@ function ACAB:CreateLabeledSlider(parent, name, config)
 
 	slider:SetScript("OnValueChanged", function()
 		local value = this:GetValue()
-
-		if not value then
-			return
-		end
+		if not value then return end
 
 		if config.round then
 			value = config.round(value)
@@ -578,7 +568,6 @@ function ACAB:CreateLabeledCheckbox(parent, name, config)
 
 	if config.label then
 		local label = getglobal(checkbox:GetName() .. "Text")
-
 		if label then
 			label:SetText(config.label)
 		end
@@ -723,9 +712,7 @@ end
 
 -- Tints swatch to color ({ r, g, b }, missing channels = 1); no-op without a color.
 function ACAB:SetColorSwatchColor(swatch, color)
-	if not swatch or not swatch.colorTexture or not color then
-		return
-	end
+	if not swatch or not swatch.colorTexture or not color then return end
 
 	swatch.colorTexture:SetVertexColor(color.r or 1, color.g or 1, color.b or 1)
 end
@@ -973,19 +960,15 @@ function ACABDialogMixin:Init(config)
 		self.textArea.editBox:SetWidth(DIALOG_WIDTH - 80 - DIALOG_TEXTAREA_SCROLLBAR_RESERVE)
 
 		self.textArea.editBox:SetScript("OnTextChanged", function()
-			if not config.liveValidate then
-				return
-			end
+			if not config.liveValidate then return end
 
 			local text = this:GetText()
-
 			if not text or text == "" then
 				ACAB.activeDialog.errorBanner:Hide()
 				return
 			end
 
 			local ok, message, warning = config.liveValidate(text)
-
 			if ok and warning then
 				ACAB.activeDialog:ShowInlineError(warning, true)
 			elseif ok then
@@ -1020,7 +1003,6 @@ function ACABDialogMixin:Init(config)
 	for i = 1, 4 do
 		local button = self.buttons[i]
 		local buttonConfig = self.buttonConfigs[i]
-
 		if buttonConfig then
 			local variant = buttonConfig.variant
 
@@ -1053,7 +1035,6 @@ function ACABDialogMixin:Init(config)
 
 				if buttonConfig.validate then
 					local ok, message = buttonConfig.validate(value)
-
 					if not ok then
 						ACAB.activeDialog:ShowInlineError(message)
 						return
@@ -1178,9 +1159,7 @@ end
 
 -- Shows message in the reserved error banner (yellow when isWarning); no-op without config.reserveErrorBanner.
 function ACABDialogMixin:ShowInlineError(message, isWarning)
-	if not self.hasErrorBannerSlot then
-		return
-	end
+	if not self.hasErrorBannerSlot then return end
 
 	if isWarning then
 		self.errorBanner.text:SetTextColor(1, 0.82, 0)
@@ -1196,10 +1175,8 @@ end
 function ACABDialogMixin:ClickDefaultButton()
 	local index = self.defaultButtonIndex
 	local button = index and self.buttons[index]
-
 	if button and button:IsShown() then
 		local handler = button:GetScript("OnClick")
-
 		if handler then
 			handler()
 		end

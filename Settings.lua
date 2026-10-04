@@ -98,7 +98,6 @@ function ACAB:FindCustomBarConfig(barId)
 
 	for i = 1, table.getn(ACABDB.bars) do
 		local cfg = ACABDB.bars[i]
-
 		if cfg and cfg.id == barId then
 			return cfg
 		end
@@ -216,15 +215,10 @@ end
 
 -- Re-applies an action-bar page's X/Y slider range from the bar's current size and border style.
 function ACAB:RefreshPositionSliderRange(page)
-	if not page or not page.xSlider or not page.ySlider or not page.barId then
-		return
-	end
+	if not page or not page.xSlider or not page.ySlider or not page.barId then return end
 
 	local cfg = ACAB:GetBarConfig(page.barId)
-
-	if not cfg then
-		return
-	end
+	if not cfg then return end
 
 	local minX, maxX, minY, maxY = ACAB:GetActionBarCoordinateRange(cfg)
 
@@ -278,7 +272,6 @@ end
 -- Simple-page element range; the generic screen range while its saved position is still non-canonical.
 function ACAB:GetSimplePageCoordinateRange(config, frame)
 	local pos = config.getPosition and config.getPosition()
-
 	if pos and not self:IsCanonicalPosition(pos) then
 		return self:GetScreenCoordinateRange()
 	end
@@ -288,21 +281,13 @@ end
 
 -- Re-applies a simple page's X/Y slider range from its element's current size; no-op without getElementFrame.
 function ACAB:RefreshSimplePositionSliderRange(page, key)
-	if not page or not page.xSlider or not page.ySlider then
-		return
-	end
+	if not page or not page.xSlider or not page.ySlider then return end
 
 	local config = ACAB.simpleBarPageConfigs[key]
-
-	if not config or not config.getElementFrame then
-		return
-	end
+	if not config or not config.getElementFrame then return end
 
 	local frame = config.getElementFrame()
-
-	if not frame then
-		return
-	end
+	if not frame then return end
 
 	local minX, maxX, minY, maxY = ACAB:GetSimplePageCoordinateRange(config, frame)
 
@@ -345,9 +330,7 @@ function ACAB:CreateScrollFrame(parent, name, scrollbarOnLeft)
 	scrollFrame:EnableMouseWheel(true)
 
 	scrollFrame:SetScript("OnMouseWheel", function()
-		if not scrollBar then
-			return
-		end
+		if not scrollBar then return end
 
 		local minVal, maxVal = scrollBar:GetMinMaxValues()
 		local newValue = scrollBar:GetValue() - (arg1 * SETTINGS_SCROLL_WHEEL_STEP)
@@ -757,7 +740,6 @@ function ACAB:HandleLockReasonClick()
 				ACAB:ApplyUseDefaultLayoutChange(false)
 
 				local generalPanel = ACAB.settingsFrame and ACAB.settingsFrame.generalPanel
-
 				if generalPanel and generalPanel.useDefaultLayoutCheckbox then
 					generalPanel.useDefaultLayoutCheckbox:SetChecked(false)
 				end
@@ -825,9 +807,7 @@ end
 
 -- Slides page down by the lock banner's height while locked; title and banner stay on contentPanel.
 function ACAB:ApplyPageBannerReserve(page, locked)
-	if not page or not ACAB.settingsFrame or not ACAB.settingsFrame.contentPanel then
-		return
-	end
+	if not page or not ACAB.settingsFrame or not ACAB.settingsFrame.contentPanel then return end
 
 	local reserve = 0
 
@@ -851,7 +831,6 @@ local function SetProfileLockBannerMessage(banner, message)
 	-- must set explicit widths: a TOPLEFT+TOPRIGHT pair alone doesn't wrap text on this client.
 	local page = banner:GetParent()
 	local width = page:GetWidth()
-
 	if width and width > 0 then
 		banner:SetWidth(width)
 		banner.text:SetWidth(width - (2 * ACAB.INDENT_SECTION))
@@ -931,7 +910,6 @@ function ACAB:ApplyProfileLockGating(page, alsoCheckLayoutLock)
 	for i = 1, table.getn(PROFILE_LOCK_CONTROL_NAMES) do
 		local name = PROFILE_LOCK_CONTROL_NAMES[i]
 		local control = page[name]
-
 		if control then
 			local exempt = isNumberedDefaultBar and name == "enableCheckbox"
 
@@ -952,7 +930,6 @@ function ACAB:ApplyProfileLockGating(page, alsoCheckLayoutLock)
 			if row.dropdown then
 				-- UIDropDownMenuTemplate clicks go through its child Button, which needs Disable()/Enable().
 				local dropdownButton = getglobal(row.dropdown:GetName() .. "Button")
-
 				if dropdownButton then
 					ACAB:LockControl(dropdownButton, locked)
 				else
@@ -976,9 +953,7 @@ local POSITION_BUTTON_NAMES = {
 
 -- EnableMouse + alpha gate (works on template-less swatches); toggleEnabled also calls Enable()/Disable().
 local function GateControl(control, interactive, alpha, toggleEnabled)
-	if not control then
-		return
-	end
+	if not control then return end
 
 	control:EnableMouse(interactive)
 	control:SetAlpha(alpha)
@@ -1023,9 +998,7 @@ end
 
 -- Refreshes every already-built default-bar and simple page after a layout/style gating change.
 function ACAB:RefreshDefaultLayoutGatingOnAllPages()
-	if not ACAB.settingsFrame then
-		return
-	end
+	if not ACAB.settingsFrame then return end
 
 	local i
 
@@ -1083,19 +1056,15 @@ end
 -- Largest distance from referenceTop down to a shown candidate's bottom edge.
 -- must stay a delta of two live positions: the window is movable, so position estimates break once dragged.
 local function MeasureDeepestExtent(candidateList, referenceTop)
-	if not candidateList or not referenceTop then
-		return nil
-	end
+	if not candidateList or not referenceTop then return nil end
 
 	local deepest = nil
 	local i
 
 	for i = 1, table.getn(candidateList) do
 		local frame = candidateList[i]
-
 		if frame and frame.GetBottom and not (frame.IsShown and not frame:IsShown()) then
 			local bottom = frame:GetBottom()
-
 			if bottom then
 				local depth = referenceTop - bottom
 
@@ -1113,9 +1082,7 @@ end
 -- returns the raw measured content height. Optional: listCandidateList (bar-list rows, same viewport),
 -- minContentHeight (extra floor), noMinFloor (skip SETTINGS_CONTENT_MIN_HEIGHT).
 local function ApplySettingsHeightFromCandidates(candidateList, scrollFrame, scrollChildPanel, listCandidateList, minContentHeight, noMinFloor)
-	if not ACAB.settingsFrame or not scrollFrame or not scrollChildPanel then
-		return nil
-	end
+	if not ACAB.settingsFrame or not scrollFrame or not scrollChildPanel then return nil end
 
 	-- Saved so UpdateScrollFrame can restore the user's scroll position after the re-fit.
 	local previousContentScroll = scrollFrame:GetVerticalScroll()
@@ -1170,9 +1137,7 @@ local function ApplySettingsHeightFromCandidates(candidateList, scrollFrame, scr
 		listDepth = MeasureDeepestExtent(listCandidateList, ACAB.settingsFrame.listContent:GetTop())
 	end
 
-	if not contentDepth and not listDepth then
-		return nil
-	end
+	if not contentDepth and not listDepth then return nil end
 
 	local BOTTOM_MARGIN = 20
 	local measuredContentHeight = contentDepth and (contentDepth + BOTTOM_MARGIN) or 0
@@ -1191,7 +1156,6 @@ local function ApplySettingsHeightFromCandidates(candidateList, scrollFrame, scr
 
 	-- The Setup Wizard's step list shares the viewport height and must fit every row.
 	local stepList = ACAB.settingsFrame.wizardMode and ACAB.settingsFrame.wizardStepList
-
 	if stepList and stepList.requiredHeight and sharedRequirement < stepList.requiredHeight then
 		sharedRequirement = stepList.requiredHeight
 	end
@@ -1249,15 +1213,10 @@ end
 
 -- Bars view: fits the window to the bar page's controls and the bar-list rows beside it.
 function ACAB:FitSettingsWindowToBarPage(barId)
-	if not ACAB.settingsFrame then
-		return
-	end
+	if not ACAB.settingsFrame then return end
 
 	local page = ACAB.settingsFrame.pages[barId]
-
-	if not page then
-		return
-	end
+	if not page then return end
 
 	local candidates = {}
 	local n = 0
@@ -1356,9 +1315,7 @@ end
 
 -- General view: fits the window to the General panel's controls.
 function ACAB:FitSettingsWindowToGeneralView()
-	if not ACAB.settingsFrame or not ACAB.settingsFrame.generalPanel then
-		return
-	end
+	if not ACAB.settingsFrame or not ACAB.settingsFrame.generalPanel then return end
 
 	local panel = ACAB.settingsFrame.generalPanel
 
@@ -1392,16 +1349,11 @@ end
 
 -- Setup Wizard decision steps: shrink-to-fit the shown step's direct children and regions.
 function ACAB:FitSettingsWindowToWizardView()
-	if not ACAB.settingsFrame or not ACAB.settingsFrame.wizardPanel then
-		return
-	end
+	if not ACAB.settingsFrame or not ACAB.settingsFrame.wizardPanel then return end
 
 	local panel = ACAB.settingsFrame.wizardPanel
 	local step = panel.activeStep
-
-	if not step then
-		return
-	end
+	if not step then return end
 
 	local candidates = {}
 	local n = 0
@@ -1422,9 +1374,7 @@ end
 
 -- Profiles view: shrink-to-fit (no minimum height floor).
 function ACAB:FitSettingsWindowToProfilesView()
-	if not ACAB.settingsFrame or not ACAB.settingsFrame.profilesPanel then
-		return
-	end
+	if not ACAB.settingsFrame or not ACAB.settingsFrame.profilesPanel then return end
 
 	local panel = ACAB.settingsFrame.profilesPanel
 
@@ -1443,9 +1393,7 @@ end
 
 -- Edit Mode view: shrink-to-fit (no minimum height floor).
 function ACAB:FitSettingsWindowToEditModeView()
-	if not ACAB.settingsFrame or not ACAB.settingsFrame.editModePanel then
-		return
-	end
+	if not ACAB.settingsFrame or not ACAB.settingsFrame.editModePanel then return end
 
 	local panel = ACAB.settingsFrame.editModePanel
 
