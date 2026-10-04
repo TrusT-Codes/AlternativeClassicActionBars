@@ -58,10 +58,7 @@ local function CreateFontSizeSlider(panel, title, sliderName, nativeFontKey, app
 		onClick = function()
 			-- No-op until a native size has been captured.
 			local nativeFont = ACAB[nativeFontKey]
-
-			if not nativeFont then
-				return
-			end
+			if not nativeFont then return end
 
 			local size = ACAB:ClampFontSize(nativeFont.size)
 
@@ -549,7 +546,6 @@ function ACAB:ShowImportProfileDialog()
 				validate = ValidateImportText,
 				onClick = function(value)
 					local ok, data, warning = ACAB:ParseProfileImportString(value)
-
 					if ok then
 						if warning then
 							ACAB:Print(warning)
@@ -948,7 +944,6 @@ function ACAB:GetOrCreateEditModePanel()
 
 	useCustomGridSizeCheckbox:SetScript("OnClick", function()
 		local checked = this:GetChecked() and true or false
-
 		if checked and not ACABDB.useCustomGridSize then
 			-- Seeds the slider from the dynamic spacing; must read before the flag flips below.
 			ACABDB.customGridSize = math.floor(ACAB:GetLayoutGridSpacing() + 0.5)
@@ -1045,9 +1040,7 @@ end
 
 -- Deferred refit of the General view, only while it is the view on screen.
 local function RefitGeneralViewSoon()
-	if not ACAB.settingsFrame or ACAB.settingsFrame.currentView ~= "general" then
-		return
-	end
+	if not ACAB.settingsFrame or ACAB.settingsFrame.currentView ~= "general" then return end
 
 	ACAB:DeferFit(function() ACAB:FitSettingsWindowToGeneralView() end)
 end
@@ -1191,9 +1184,7 @@ end
 
 -- Shows the gold select strip only on the tab matching settingsFrame.currentView.
 function ACAB:RefreshActiveTabHighlight()
-	if not ACAB.settingsFrame or not ACAB.settingsFrame.tabButtonsByView then
-		return
-	end
+	if not ACAB.settingsFrame or not ACAB.settingsFrame.tabButtonsByView then return end
 
 	local view
 	local button
@@ -1317,10 +1308,7 @@ end
 function ACAB:HighlightGeneralLayoutCheckbox()
 	local panel = ACAB.settingsFrame and ACAB.settingsFrame.generalPanel
 	local checkbox = panel and panel.useDefaultLayoutCheckbox
-
-	if not checkbox then
-		return
-	end
+	if not checkbox then return end
 
 	if not checkbox.acabHighlightStrip then
 		local label = getglobal(checkbox:GetName() .. "Text")
