@@ -52,6 +52,31 @@ local function ApplyMainBarFollowers()
 	ACAB:ApplyMainBarGroupedElements()
 end
 
+-- Calls btn[method](btn, arg) on every pool button of bar.
+local function CallOnBarButtons(bar, method, arg)
+	local i
+
+	for i = 1, table.getn(bar.buttons) do
+		local btn = bar.buttons[i]
+		if btn then
+			btn[method](btn, arg)
+		end
+	end
+end
+
+-- Manual move: styled Pet/Stance Bar stop following the vanilla stack; an Extra Bar leaves its default spot.
+local function ClearDefaultPositionFlags(cfg)
+	if cfg.id == ACAB.PET_BAR_ID or cfg.id == ACAB.STANCE_BAR_ID then
+		cfg.styledDefaultPosition = false
+	end
+
+	if ACAB:IsExtraBarId(cfg.id) and cfg.usesDefaultPosition ~= false then
+		cfg.usesDefaultPosition = false
+
+		ACAB:ReflowExtraBarDependants(cfg.id)
+	end
+end
+
 -------------------------------------------------------------------------
 -- Position
 -------------------------------------------------------------------------
@@ -224,44 +249,40 @@ end
 
 function ACAB:ApplyEditModeVisual()
 	local editMode = self:IsEditMode()
+	local barId, bar
 
-	self:ForEachBar(function(barId, bar)
-		-- Default-bar-family bars (1-5, Pet Bar) are editable only while useDefaultLayout is off.
-		local canEdit = editMode
+	for barId, bar in pairs(self.bars) do
+		if bar then
+			-- Default-bar-family bars (1-5, Pet Bar) are editable only while useDefaultLayout is off.
+			local canEdit = editMode
 
-		if ACAB:IsDefaultBarFamilyId(barId) then
-			canEdit = editMode and ACABDB and ACABDB.useDefaultLayout == false
-		end
-
-		if bar.buttons then
-			local i
-
-			for i = 1, table.getn(bar.buttons) do
-				local btn = bar.buttons[i]
-				if btn then
-					btn:UpdateGridVisibility()
-				end
+			if self:IsDefaultBarFamilyId(barId) then
+				canEdit = editMode and ACABDB and ACABDB.useDefaultLayout == false
 			end
 
-			-- Re-flow: Pet Bar's condensed layout suspends itself during edit mode.
-			self:LayoutButtons(bar)
+			if bar.buttons then
+				CallOnBarButtons(bar, "UpdateGridVisibility")
+
+				-- Re-flow: Pet Bar's condensed layout suspends itself during edit mode.
+				self:LayoutButtons(bar)
+			end
+
+			local overlay = self:EnsureBarOverlay(bar)
+
+			overlay:EnableMouse(canEdit and true or false)
+
+			if canEdit then
+				overlay:SetFrameStrata("TOOLTIP")
+				overlay:Show()
+
+				-- Clears a hover border left on if OnLeave never fired.
+				overlay:SetBackdropBorderColor(0, 0, 0, 0)
+			else
+				overlay:SetFrameStrata("HIGH")
+				overlay:Hide()
+			end
 		end
-
-		local overlay = self:EnsureBarOverlay(bar)
-
-		overlay:EnableMouse(canEdit and true or false)
-
-		if canEdit then
-			overlay:SetFrameStrata("TOOLTIP")
-			overlay:Show()
-
-			-- Clears a hover border left on if OnLeave never fired.
-			overlay:SetBackdropBorderColor(0, 0, 0, 0)
-		else
-			overlay:SetFrameStrata("HIGH")
-			overlay:Hide()
-		end
-	end)
+	end
 
 	-- DefaultBars.lua's own overlays.
 	self:ApplyDefaultLayoutEditVisual()
@@ -455,14 +476,7 @@ function ACAB:SetBarButtonSize(bar, newSize)
 
 	bar.config.buttonSize = newSize
 
-	local i
-
-	for i = 1, table.getn(bar.buttons) do
-		local btn = bar.buttons[i]
-		if btn then
-			btn:ApplySize(newSize)
-		end
-	end
+	CallOnBarButtons(bar, "ApplySize", newSize)
 
 	local barW, barH = BarFrameSize(bar.config)
 
@@ -596,14 +610,7 @@ function ACAB:ApplyGlobalButtonStyle()
 
 	self:ForEachBar(function(barId, bar)
 		if bar.config then
-			local i
-
-			for i = 1, table.getn(bar.buttons) do
-				local btn = bar.buttons[i]
-				if btn and btn.ApplyBorderStyle then
-					btn:ApplyBorderStyle()
-				end
-			end
+			CallOnBarButtons(bar, "ApplyBorderStyle")
 		end
 	end)
 
@@ -620,30 +627,25 @@ end
 -- Global spacing/button-size overrides (bars without spacingUnlocked/buttonSizeUnlocked)
 -------------------------------------------------------------------------
 
-function ACAB:ApplyGlobalSpacing()
-	if not (self.bars and ACABDB.globalSpacingEnabled) or
-		ACABDB.useDefaultLayout ~= false then
-		return
-	end
+-- Calls ACAB[applyMethod](ACAB, bar) on every bar without cfg[unlockedKey], while ACABDB[enabledKey] is on.
+local function ApplyGlobalToLockedBars(enabledKey, unlockedKey, applyMethod)
+	if not (ACAB.bars and ACABDB[enabledKey]) or ACABDB.useDefaultLayout ~= false then return end
 
-	self:ForEachBar(function(barId, bar)
-		if bar.config and not bar.config.spacingUnlocked then
-			self:ApplyGlobalSpacingToBar(bar)
+	local barId, bar
+
+	for barId, bar in pairs(ACAB.bars) do
+		if bar and bar.config and not bar.config[unlockedKey] then
+			ACAB[applyMethod](ACAB, bar)
 		end
-	end)
+	end
+end
+
+function ACAB:ApplyGlobalSpacing()
+	ApplyGlobalToLockedBars("globalSpacingEnabled", "spacingUnlocked", "ApplyGlobalSpacingToBar")
 end
 
 function ACAB:ApplyGlobalButtonSize()
-	if not (self.bars and ACABDB.globalButtonSizeEnabled) or
-		ACABDB.useDefaultLayout ~= false then
-		return
-	end
-
-	self:ForEachBar(function(barId, bar)
-		if bar.config and not bar.config.buttonSizeUnlocked then
-			self:ApplyGlobalButtonSizeToBar(bar)
-		end
-	end)
+	ApplyGlobalToLockedBars("globalButtonSizeEnabled", "buttonSizeUnlocked", "ApplyGlobalButtonSizeToBar")
 end
 
 -- Applies the current global Spacing value to a single bar, ignoring its lock state.
@@ -702,17 +704,7 @@ function ACAB:SetBarPosition(bar, x, y, point, relativePoint)
 
 	self:ApplyBarPosition(bar)
 
-	-- Manual X/Y: styled Pet/Stance Bar stop following the vanilla stack.
-	if bar.config.id == self.PET_BAR_ID or bar.config.id == self.STANCE_BAR_ID then
-		bar.config.styledDefaultPosition = false
-	end
-
-	-- Manual X/Y: clears an Extra Bar's "at default position" flag and resettles its dependants.
-	if self:IsExtraBarId(bar.config.id) and bar.config.usesDefaultPosition ~= false then
-		bar.config.usesDefaultPosition = false
-
-		self:ReflowExtraBarDependants(bar.config.id)
-	end
+	ClearDefaultPositionFlags(bar.config)
 end
 
 -------------------------------------------------------------------------
@@ -1157,19 +1149,10 @@ function ACAB:StopBarDrag(bar)
 
 	self:StopSharedDrag()
 
-	-- Same "at default position" flag handling as SetBarPosition.
-	if bar.config and (bar.config.id == self.PET_BAR_ID or bar.config.id == self.STANCE_BAR_ID) then
-		bar.config.styledDefaultPosition = false
-	end
-
-	if bar.config and self:IsExtraBarId(bar.config.id) and bar.config.usesDefaultPosition ~= false then
-		bar.config.usesDefaultPosition = false
-
-		self:ReflowExtraBarDependants(bar.config.id)
-	end
-
-	-- Syncs the Settings X/Y sliders.
 	if bar.config then
+		ClearDefaultPositionFlags(bar.config)
+
+		-- Syncs the Settings X/Y sliders.
 		self:RefreshBarSettingsPage(bar.config.id)
 	end
 end
