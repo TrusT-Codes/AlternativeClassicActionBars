@@ -1,10 +1,30 @@
 # Changelog
 
-## Unreleased
+## 1.3.0 (Unreleased)
+
+### Features
+
+- **Smarter macros:** macros now show the tooltip, icon, cooldown, range/usable tint and item count of the ability or item they actually use (Auto Shot / Attack / Shoot and `?`-prefixed lines never take over).
+- Macros always show the ability's or item's own icon, even with a custom macro icon (items greyed once you run out), and equipped-item macros get the quality ring.
+- Macros glow while their own ability runs (Auto Shot, Attack, cast-time spells).
+- **SuperCleveRoidMacros support:** macros with `[conditions]` show the option whose conditions match right now (e.g. `[mod:shift]`), and a login note mentions it.
+- `CastSpellByName("...")` and ShaguTweaks' `--showtooltip` macros are understood too.
+
+### Stability
+
+- Missing client mods now get one clear chat message instead of a flood of errors: without ClassicAPI the addon stays disabled, and a missing SuperWoW, nampower or UnitXP_SP3 shows a warning at login.
+- An error while setting up one element at login no longer stops every element after it from loading; chat names the part that failed.
+- Imported or damaged profiles are now checked for every saved setting (colors, font sizes, spacing, grid size, per-bar options), so a bad value resets to its default instead of causing errors.
+
+### Performance
+
+- Lower CPU use in combat: action buttons share one event handler.
+- Lower CPU use in raids: Stance Bar buttons only update when your form actually changes, not on every buff.
+- Settings pages no longer pile up hidden frames each time you open them (Stance Bar grid choices, stance/page assignment dropdowns).
 
 ### Bugfixes
 
-- Settings pages no longer pile up hidden frames each time you open them (Stance Bar grid choices, stance/page assignment dropdowns).
+- Fix keys bound in Blizzard's Key Bindings menu not showing on ACAB buttons until a reload.
 - Fix Better Experience Bar colors turning blue after a while or on zone change - your earned/rested colors now stick.
 - Fix Better Experience Bar rested XP running too far: the rested fill, tick and "Rested" text now show your real remaining bonus XP, carrying into the next level correctly. The rested rate is measured on each character's first rested kill, so it fits any realm.
 - Fix rested XP tick drawing behind the experience bar fill.
@@ -16,13 +36,7 @@
 - Fix Setup Wizard's layout step sometimes misplacing Micro Menu / Latency Bar on slow logins - it now waits for the UI to settle.
 - First-login dialog only offers "use existing profile" once you have a custom profile.
 - Fix Auto Shot / Auto Attack buttons glowing on after the target is cleared or dead, and macros glowing just because they also start Auto Shot or Auto Attack.
-- Imported or damaged profiles are now checked for every saved setting (colors, font sizes, spacing, grid size, per-bar options), so a bad value resets to its default instead of causing errors.
-- Missing client mods now get one clear chat message instead of a flood of errors: without ClassicAPI the addon stays disabled, and a missing SuperWoW, nampower or UnitXP_SP3 shows a warning at login.
-- Macros now show the tooltip, icon, cooldown, range/usable tint and item count of the ability or item they actually use (Auto Shot / Attack / Shoot and `?`-prefixed lines never take over); macros always show the ability's or item's own icon, even with a custom macro icon (items greyed once you run out), and equipped-item macros get the quality ring. Macros glow while their own ability runs (Auto Shot, Attack, cast-time spells). With SuperCleveRoidMacros, macros with `[conditions]` show the option whose conditions match right now (e.g. `[mod:shift]`), and a login note mentions it. `CastSpellByName("...")` and ShaguTweaks' `--showtooltip` macros are understood too.
-- An error while setting up one element at login no longer stops every element after it from loading; chat names the part that failed.
 - Fix stance/page assignment dropdowns becoming clickable on a locked profile (Default Vanilla / Default Modern) after learning a form or toggling the General pagination / stance-swap options.
-- Lower CPU use in combat: action buttons share one event handler.
-- Lower CPU use in raids: Stance Bar buttons only update when your form actually changes, not on every buff.
 
 ## 1.2.1-beta
 
