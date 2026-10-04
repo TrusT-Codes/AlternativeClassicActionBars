@@ -221,6 +221,14 @@ function ACAB:CreateReflowSlider(page, name, y, config)
 	return slider, valueText, lowLabel, highLabel
 end
 
+-- ACAB:CreateLabeledCheckbox anchored at (INDENT_SECTION, y), registered for hover-only reflow.
+function ACAB:CreateReflowCheckbox(page, name, y, config)
+	config.anchor = { "TOPLEFT", page, "TOPLEFT", ACAB.INDENT_SECTION, y }
+	local checkbox = ACAB:CreateLabeledCheckbox(page, name, config)
+	ACAB:AddHoverOnlyReflowRow(page, checkbox, ACAB.INDENT_SECTION, y)
+	return checkbox
+end
+
 -- 200px ACAB:CreateResetButton at (INDENT_INPUT, y), registered for hover-only reflow.
 function ACAB:CreateReflowResetButton(page, y, text, onClick)
 	local button = ACAB:CreateResetButton(page, {
@@ -293,6 +301,25 @@ function ACAB:CreatePositionSection(page, namePrefix, labelY, minX, maxX, minY, 
 	return xLabel, yLabel, ySliderY
 end
 
+-- Sets (on = true) or clears (on = nil) suppressApply/suppressSnap on a page's X/Y sliders.
+function ACAB:SetPositionSlidersSuppressed(page, on)
+	page.xSlider.suppressApply = on
+	page.ySlider.suppressApply = on
+	page.xSlider.suppressSnap = on
+	page.ySlider.suppressSnap = on
+end
+
+-- Shows x/y on a page's X/Y sliders and value texts; xAppliedValue/yAppliedValue are set explicitly,
+-- since SetValue doesn't fire OnValueChanged when the value is unchanged.
+function ACAB:SyncPositionSliders(page, x, y)
+	page.xSlider:SetValue(x)
+	page.ySlider:SetValue(y)
+	page.xAppliedValue = x
+	page.yAppliedValue = y
+	page.xValueText:SetText(string.format("%.2f", x))
+	page.yValueText:SetText(string.format("%.2f", y))
+end
+
 -------------------------------------------------------------------------
 -- Pet/Stance Bar mode checkboxes
 -------------------------------------------------------------------------
@@ -322,8 +349,7 @@ function ACAB:CreateUseVanillaBarCheckbox(page, y, kind, barId, cfgKey)
 	local barName = kind .. " Bar"
 	local title = "Use Vanilla " .. barName
 
-	local checkbox = ACAB:CreateLabeledCheckbox(page, "ACAB" .. kind .. "BarUseVanillaCheckbox", {
-		anchor = { "TOPLEFT", page, "TOPLEFT", ACAB.INDENT_SECTION, y },
+	local checkbox = ACAB:CreateReflowCheckbox(page, "ACAB" .. kind .. "BarUseVanillaCheckbox", y, {
 		label = title,
 		tooltip = {
 			title = title,
@@ -373,14 +399,12 @@ function ACAB:CreateUseVanillaBarCheckbox(page, y, kind, barId, cfgKey)
 	})
 
 	page["useVanilla" .. kind .. "BarCheckbox"] = checkbox
-	ACAB:AddHoverOnlyReflowRow(page, checkbox, ACAB.INDENT_SECTION, y)
 	return checkbox
 end
 
 -- "Condense empty Button Space" (both Pet Bar pages): applies live, re-running whichever mode's shape is active.
 function ACAB:CreateCondenseEmptyPetSlotsCheckbox(page, y)
-	local checkbox = ACAB:CreateLabeledCheckbox(page, "ACABPetBarCondenseCheckbox", {
-		anchor = { "TOPLEFT", page, "TOPLEFT", ACAB.INDENT_SECTION, y },
+	local checkbox = ACAB:CreateReflowCheckbox(page, "ACABPetBarCondenseCheckbox", y, {
 		label = "Condense empty Button Space",
 		lockedText = GetVanillaModeLockedText,
 		onLockedClick = function() ACAB:HandleLockReasonClick() end,
@@ -403,7 +427,6 @@ function ACAB:CreateCondenseEmptyPetSlotsCheckbox(page, y)
 	})
 
 	page.condenseEmptyPetSlotsCheckbox = checkbox
-	ACAB:AddHoverOnlyReflowRow(page, checkbox, ACAB.INDENT_SECTION, y)
 	return checkbox
 end
 
@@ -423,8 +446,7 @@ end
 
 -- "Animate Auto-Cast Toggle" (styled Pet Bar page only).
 local function CreateAnimateAutoCastGlowCheckbox(page, y)
-	local checkbox = ACAB:CreateLabeledCheckbox(page, "ACABPetBarAnimateAutoCastCheckbox", {
-		anchor = { "TOPLEFT", page, "TOPLEFT", ACAB.INDENT_SECTION, y },
+	local checkbox = ACAB:CreateReflowCheckbox(page, "ACABPetBarAnimateAutoCastCheckbox", y, {
 		label = "Animate Auto-Cast Toggle",
 		onClick = function()
 			local checked = this:GetChecked() and true or false
@@ -438,7 +460,6 @@ local function CreateAnimateAutoCastGlowCheckbox(page, y)
 	})
 
 	page.animateAutoCastGlowCheckbox = checkbox
-	ACAB:AddHoverOnlyReflowRow(page, checkbox, ACAB.INDENT_SECTION, y)
 	return checkbox
 end
 
@@ -687,6 +708,36 @@ function ACAB:InstallGroupLockGuard(control, isLocked, lockedText, onLockedClick
 			end
 		end)
 	end
+end
+
+-- Hidden, locked "<title>" lock icon right of slider, toggling the bar's cfg[unlockedKey] opt-out of the General
+-- tab's global override; re-locking runs ACAB:<applyMethod>(bar). Shown/synced by RefreshBarPageGlobalOverrideGating.
+local function CreateGlobalOverrideLockButton(page, name, slider, title, unlockedKey, applyMethod)
+	local button = ACAB:CreateLockToggleButton(page, name, {
+		anchor = { "LEFT", slider, "RIGHT", 4, 0 },
+		tooltipTitle = title,
+		lockedLine = "Locked to the General tab's global " .. title .. ". Click to unlock and set an independent value for this bar.",
+		unlockedLine = "Unlocked - independent of the General tab's global " .. title .. ". Click to re-lock and sync it.",
+		onClick = function()
+			local cfg = ACAB:GetBarConfig(page.barId)
+			if not cfg then return end
+
+			cfg[unlockedKey] = not (cfg[unlockedKey] == true)
+
+			if not cfg[unlockedKey] then
+				local bar = ACAB.bars[page.barId]
+				if bar then
+					ACAB[applyMethod](ACAB, bar)
+				end
+			end
+
+			ACAB:RefreshBarSettingsPage(page.barId)
+		end,
+	})
+
+	button:SetLocked(true)
+	button:Hide()
+	return button
 end
 
 -- True on Main Bar's page while its art is enabled (controls that would move buttons off the art are pinned).
@@ -1272,36 +1323,8 @@ function ACAB:GetOrCreateBarPage(barId)
 	page.buttonSizeValueText = buttonSizeValueText
 	page.buttonSizeSlider = buttonSizeSlider
 
-	-- Global Button Size opt-out lock; shown/synced by RefreshBarPageGlobalOverrideGating.
-	local buttonSizeLockButton = ACAB:CreateLockToggleButton(
-		page,
-		"ACABBar" .. tostring(barId) .. "ButtonSizeLockButton",
-		{
-			anchor = { "LEFT", buttonSizeSlider, "RIGHT", 4, 0 },
-			tooltipTitle = "Button Size",
-			lockedLine = "Locked to the General tab's global Button Size. Click to unlock and set an independent value for this bar.",
-			unlockedLine = "Unlocked - independent of the General tab's global Button Size. Click to re-lock and sync it.",
-			onClick = function()
-				local cfg = ACAB:GetBarConfig(page.barId)
-				if not cfg then return end
-
-				cfg.buttonSizeUnlocked = not (cfg.buttonSizeUnlocked == true)
-
-				if not cfg.buttonSizeUnlocked then
-					local bar = ACAB.bars[page.barId]
-					if bar then
-						ACAB:ApplyGlobalButtonSizeToBar(bar)
-					end
-				end
-
-				ACAB:RefreshBarSettingsPage(page.barId)
-			end,
-		}
-	)
-
-	buttonSizeLockButton:SetLocked(true)
-	buttonSizeLockButton:Hide()
-	page.buttonSizeLockButton = buttonSizeLockButton
+	page.buttonSizeLockButton = CreateGlobalOverrideLockButton(page, "ACABBar" .. tostring(barId) .. "ButtonSizeLockButton",
+		buttonSizeSlider, "Button Size", "buttonSizeUnlocked", "ApplyGlobalButtonSizeToBar")
 
 	-- Spacing + Reset buttons
 	local gridTitleY
@@ -1363,36 +1386,8 @@ function ACAB:GetOrCreateBarPage(barId)
 			InstallMainBarArtGuard(page, spacingSlider, "Spacing cant be changed while Gryphons / Background Art is enabled.")
 		end
 
-		-- Global Spacing opt-out lock, same as Button Size's.
-		local spacingLockButton = ACAB:CreateLockToggleButton(
-			page,
-			"ACABBar" .. tostring(barId) .. "SpacingLockButton",
-			{
-				anchor = { "LEFT", spacingSlider, "RIGHT", 4, 0 },
-				tooltipTitle = "Spacing",
-				lockedLine = "Locked to the General tab's global Spacing. Click to unlock and set an independent value for this bar.",
-				unlockedLine = "Unlocked - independent of the General tab's global Spacing. Click to re-lock and sync it.",
-				onClick = function()
-					local cfg = ACAB:GetBarConfig(page.barId)
-					if not cfg then return end
-
-					cfg.spacingUnlocked = not (cfg.spacingUnlocked == true)
-
-					if not cfg.spacingUnlocked then
-						local bar = ACAB.bars[page.barId]
-						if bar then
-							ACAB:ApplyGlobalSpacingToBar(bar)
-						end
-					end
-
-					ACAB:RefreshBarSettingsPage(page.barId)
-				end,
-			}
-		)
-
-		spacingLockButton:SetLocked(true)
-		spacingLockButton:Hide()
-		page.spacingLockButton = spacingLockButton
+		page.spacingLockButton = CreateGlobalOverrideLockButton(page, "ACABBar" .. tostring(barId) .. "SpacingLockButton",
+			spacingSlider, "Spacing", "spacingUnlocked", "ApplyGlobalSpacingToBar")
 
 		if isDefault then
 			local resetButtonY = spacingSliderY - 36
@@ -1655,11 +1650,8 @@ function ACAB:RefreshBarSettingsPage(barId)
 	self:RefreshHoverOnlyControls(page, cfg.hoverOnly, cfg.hoverDuration)
 
 	-- Must suppress apply/snap first: SetMinMaxValues fires OnValueChanged like a real drag.
-	page.xSlider.suppressApply = true
-	page.ySlider.suppressApply = true
+	ACAB:SetPositionSlidersSuppressed(page, true)
 	page.buttonSizeSlider.suppressApply = true
-	page.xSlider.suppressSnap = true
-	page.ySlider.suppressSnap = true
 
 	-- X/Y clamp range from the current buttonSize/buttonCount/grid; SetValue below re-syncs from cfg.
 	do
@@ -1672,16 +1664,7 @@ function ACAB:RefreshBarSettingsPage(barId)
 		page.spacingSlider.suppressApply = true
 	end
 
-	local x = cfg.x or 0
-	local y = cfg.y or 0
-	page.xSlider:SetValue(x)
-	page.ySlider:SetValue(y)
-
-	-- Set explicitly: SetValue doesn't fire OnValueChanged when the value is unchanged.
-	page.xAppliedValue = x
-	page.yAppliedValue = y
-	page.xValueText:SetText(string.format("%.2f", x))
-	page.yValueText:SetText(string.format("%.2f", y))
+	ACAB:SyncPositionSliders(page, cfg.x or 0, cfg.y or 0)
 	page.buttonSizeSlider:SetValue(ACAB:Clamp(cfg.buttonSize or ACAB.BUTTON_SIZE, ACAB.BUTTON_SIZE_MIN, ACAB.BUTTON_SIZE_MAX))
 
 	if page.spacingSlider then
@@ -1708,11 +1691,8 @@ function ACAB:RefreshBarSettingsPage(barId)
 		end
 	end
 
-	page.xSlider.suppressApply = nil
-	page.ySlider.suppressApply = nil
+	ACAB:SetPositionSlidersSuppressed(page, nil)
 	page.buttonSizeSlider.suppressApply = nil
-	page.xSlider.suppressSnap = nil
-	page.ySlider.suppressSnap = nil
 
 	if page.spacingSlider then
 		page.spacingSlider.suppressApply = nil
@@ -1740,16 +1720,18 @@ function ACAB:RefreshBarSettingsPage(barId)
 	end
 
 	-- While forced, the mode checkboxes show the vanilla-forced value instead of the stored preference.
+	local vanillaForced = ACAB:IsVanillaModeForced()
+
 	if page.useVanillaPetBarCheckbox then
-		page.useVanillaPetBarCheckbox:SetChecked(ACAB:IsVanillaModeForced() or cfg.useNativePetBar == true)
+		page.useVanillaPetBarCheckbox:SetChecked(vanillaForced or cfg.useNativePetBar == true)
 	end
 
 	if page.condenseEmptyPetSlotsCheckbox then
-		page.condenseEmptyPetSlotsCheckbox:SetChecked((not ACAB:IsVanillaModeForced()) and cfg.condenseEmptyPetSlots == true)
+		page.condenseEmptyPetSlotsCheckbox:SetChecked((not vanillaForced) and cfg.condenseEmptyPetSlots == true)
 	end
 
 	if page.useVanillaStanceBarCheckbox then
-		page.useVanillaStanceBarCheckbox:SetChecked(ACAB:IsVanillaModeForced() or cfg.useNativeStanceBar == true)
+		page.useVanillaStanceBarCheckbox:SetChecked(vanillaForced or cfg.useNativeStanceBar == true)
 	end
 
 	if page.animateAutoCastGlowCheckbox then

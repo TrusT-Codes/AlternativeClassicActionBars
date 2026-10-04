@@ -8,6 +8,11 @@ local ACAB = AlternativeClassicActionBars
 -- Same value as SettingsBars.lua's SWATCH_SIZE.
 local SWATCH_SIZE = 46
 
+-- Slider round/format callbacks: whole numbers, and tenths shown as "%.1f".
+local function RoundWhole(value) return math.floor(value + 0.5) end
+local function RoundTenth(value) return math.floor((value * 10) + 0.5) / 10 end
+local function FormatTenth(value) return string.format("%.1f", value) end
+
 -------------------------------------------------------------------------
 -- Experience Bar page helpers
 -------------------------------------------------------------------------
@@ -26,10 +31,9 @@ local function CreateExpBarColorRow(page, y, labelText, swatchName, getter, sett
 	return swatch
 end
 
--- One Better Experience Bar text-segment toggle writing ACABDB[dbKey].
+-- One Better Experience Bar text-segment toggle writing ACABDB[dbKey], registered for hover-only reflow.
 local function CreateExpBarTextToggleCheckbox(page, name, labelText, y, dbKey)
-	return ACAB:CreateLabeledCheckbox(page, "ACABSimplePageExpBar" .. name .. "Checkbox", {
-		anchor = { "TOPLEFT", page, "TOPLEFT", ACAB.INDENT_SECTION, y },
+	return ACAB:CreateReflowCheckbox(page, "ACABSimplePageExpBar" .. name .. "Checkbox", y, {
 		label = labelText,
 		onClick = function()
 			local checked = this:GetChecked() and true or false
@@ -232,7 +236,7 @@ local function CreateSimpleBarPage(key)
 				lowText = tostring(spacingMin),
 				highText = tostring(ACAB.SPACING_MAX),
 				initialText = "0",
-				round = function(value) return math.floor(value + 0.5) end,
+				round = RoundWhole,
 				format = tostring,
 				onChange = function(value, suppressApply)
 					if not suppressApply then
@@ -270,8 +274,8 @@ local function CreateSimpleBarPage(key)
 				lowText = "0.5",
 				highText = "2.0",
 				initialText = "1.0",
-				round = function(value) return math.floor((value * 10) + 0.5) / 10 end,
-				format = function(value) return string.format("%.1f", value) end,
+				round = RoundTenth,
+				format = FormatTenth,
 				onChange = function(value, suppressApply)
 					if not suppressApply then
 						if ACAB:RevertIfGroupLocked(key) then return end
@@ -303,8 +307,7 @@ local function CreateSimpleBarPage(key)
 
 	-- Better Experience Bar (Experience Bar page only), independent of Enabled
 	if key == "expbar" then
-		local betterExpBarCheckbox = ACAB:CreateLabeledCheckbox(page, "ACABSimplePageExpBarBetterCheckbox", {
-			anchor = { "TOPLEFT", page, "TOPLEFT", ACAB.INDENT_SECTION, cursorY },
+		page.betterExpBarCheckbox = ACAB:CreateReflowCheckbox(page, "ACABSimplePageExpBarBetterCheckbox", cursorY, {
 			label = "Enable Better Experience Bar",
 			tooltip = {
 				title = "Enable Better Experience Bar",
@@ -325,8 +328,6 @@ local function CreateSimpleBarPage(key)
 			end,
 		})
 
-		page.betterExpBarCheckbox = betterExpBarCheckbox
-		ACAB:AddHoverOnlyReflowRow(page, betterExpBarCheckbox, ACAB.INDENT_SECTION, cursorY)
 		cursorY = cursorY - 24 - 14
 
 		-- Overlay Text Size: same range/step as the General tab's Hotkey/Count Text Size sliders.
@@ -348,7 +349,7 @@ local function CreateSimpleBarPage(key)
 				lowText = tostring(ACAB.FONT_SIZE_MIN),
 				highText = tostring(ACAB.FONT_SIZE_MAX),
 				initialText = tostring(ACAB.FONT_SIZE_MIN),
-				round = function(value) return math.floor(value + 0.5) end,
+				round = RoundWhole,
 				format = tostring,
 				onChange = function(value, suppressApply)
 					if not suppressApply then
@@ -364,9 +365,7 @@ local function CreateSimpleBarPage(key)
 		local ti
 		for ti = 1, table.getn(EXP_BAR_TEXT_TOGGLES) do
 			local toggle = EXP_BAR_TEXT_TOGGLES[ti]
-			local checkbox = CreateExpBarTextToggleCheckbox(page, toggle.name, toggle.label, cursorY, toggle.dbKey)
-			page[toggle.field] = checkbox
-			ACAB:AddHoverOnlyReflowRow(page, checkbox, ACAB.INDENT_SECTION, cursorY)
+			page[toggle.field] = CreateExpBarTextToggleCheckbox(page, toggle.name, toggle.label, cursorY, toggle.dbKey)
 			cursorY = cursorY - 24 - 6
 		end
 
@@ -410,8 +409,8 @@ local function CreateSimpleBarPage(key)
 				lowText = "0.5",
 				highText = "5.0",
 				initialText = "1.5",
-				round = function(value) return math.floor((value * 10) + 0.5) / 10 end,
-				format = function(value) return string.format("%.1f", value) end,
+				round = RoundTenth,
+				format = FormatTenth,
 				onChange = function(value, suppressApply)
 					if not suppressApply then
 						ACAB:SetExpBarGlowPulseInterval(value)
@@ -492,10 +491,7 @@ function ACAB:RefreshSimpleBarPage(key)
 	if not page or not config then return end
 
 	-- Must suppress apply/snap first: SetMinMaxValues fires OnValueChanged like a real drag.
-	page.xSlider.suppressApply = true
-	page.ySlider.suppressApply = true
-	page.xSlider.suppressSnap = true
-	page.ySlider.suppressSnap = true
+	ACAB:SetPositionSlidersSuppressed(page, true)
 
 	-- Re-clamp against the element's current footprint (scale/spacing/grid changes and resets route here).
 	if config.getElementFrame then
@@ -518,41 +514,32 @@ function ACAB:RefreshSimpleBarPage(key)
 	end
 
 	local pos = config.getPosition() or { x = 0, y = 0 }
-	page.xSlider:SetValue(pos.x or 0)
-	page.ySlider:SetValue(pos.y or 0)
-
-	-- Set explicitly: SetValue doesn't fire OnValueChanged when the value is unchanged.
-	page.xAppliedValue = pos.x or 0
-	page.yAppliedValue = pos.y or 0
-	page.xValueText:SetText(string.format("%.2f", pos.x or 0))
-	page.yValueText:SetText(string.format("%.2f", pos.y or 0))
-	page.xSlider.suppressApply = nil
-	page.ySlider.suppressApply = nil
-	page.xSlider.suppressSnap = nil
-	page.ySlider.suppressSnap = nil
+	ACAB:SyncPositionSliders(page, pos.x or 0, pos.y or 0)
+	ACAB:SetPositionSlidersSuppressed(page, nil)
 
 	if page.enableCheckbox and config.getEnabled then
 		page.enableCheckbox:SetChecked(config.getEnabled() ~= false)
 	end
 
 	-- While forced, the mode checkboxes show the vanilla-forced value instead of the stored preference.
+	local vanillaForced = ACAB:IsVanillaModeForced()
+
 	if page.useVanillaPetBarCheckbox or page.condenseEmptyPetSlotsCheckbox then
-		local petLocked = ACAB:IsVanillaModeForced()
 		local petCfg = ACABDB.defaultBars and ACABDB.defaultBars[ACAB.PET_BAR_ID]
 
 		if page.useVanillaPetBarCheckbox then
-			page.useVanillaPetBarCheckbox:SetChecked(petLocked or ACAB:IsPetBarNativeMode())
+			page.useVanillaPetBarCheckbox:SetChecked(vanillaForced or ACAB:IsPetBarNativeMode())
 		end
 
 		if page.condenseEmptyPetSlotsCheckbox then
 			page.condenseEmptyPetSlotsCheckbox:SetChecked(
-				(not petLocked) and petCfg and petCfg.condenseEmptyPetSlots == true
+				(not vanillaForced) and petCfg and petCfg.condenseEmptyPetSlots == true
 			)
 		end
 	end
 
 	if page.useVanillaStanceBarCheckbox then
-		page.useVanillaStanceBarCheckbox:SetChecked(ACAB:IsVanillaModeForced() or ACAB:IsStanceBarNativeMode())
+		page.useVanillaStanceBarCheckbox:SetChecked(vanillaForced or ACAB:IsStanceBarNativeMode())
 	end
 
 	if page.spacingSlider and config.getSpacing then
