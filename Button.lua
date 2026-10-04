@@ -196,6 +196,7 @@ end
 local POOL_BUTTON_EVENT_ROUTES = {
 	BAG_UPDATE = { list = actionPoolButtons, method = "UpdateBagDependents" },
 	UPDATE_MACROS = { list = actionPoolButtons, method = "Refresh" },
+	UPDATE_BINDINGS = { list = allPoolButtons, method = "UpdateHotkeyText" },
 	-- New spells shift spellbook indexes cached by ResolveMacroTarget.
 	LEARNED_SPELL_IN_TAB = { list = actionPoolButtons, method = "Refresh" },
 	BAG_UPDATE_COOLDOWN = { list = allPoolButtons, method = "UpdateCooldown" },
