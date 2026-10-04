@@ -1247,11 +1247,9 @@ function ACAB:ApplyPageIndicatorShape()
 			return
 		end
 
-		if C_Timer and C_Timer.After then
-			C_Timer.After(PAGE_INDICATOR_SHAPE_RETRY_INTERVAL, function()
-				ACAB:ApplyPageIndicatorShape()
-			end)
-		end
+		C_Timer.After(PAGE_INDICATOR_SHAPE_RETRY_INTERVAL, function()
+			ACAB:ApplyPageIndicatorShape()
+		end)
 
 		return
 	end

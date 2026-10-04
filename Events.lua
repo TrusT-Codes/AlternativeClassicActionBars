@@ -118,15 +118,11 @@ stanceFormEventFrame:SetScript("OnEvent", function()
 			ACAB:ApplyBarShape(styledBar)
 		end
 
-		if ACAB.RefreshBarSettingsPage then
-			ACAB:RefreshBarSettingsPage(ACAB.STANCE_BAR_ID)
-		end
+		ACAB:RefreshBarSettingsPage(ACAB.STANCE_BAR_ID)
 	end
 
 	-- Re-syncs bars 1-5's per-stance assignment rows on any already-built settings page.
-	if ACAB.RebuildAllDefaultBarAssignmentRows then
-		ACAB:RebuildAllDefaultBarAssignmentRows()
-	end
+	ACAB:RebuildAllDefaultBarAssignmentRows()
 end)
 
 -------------------------------------------------------------------------

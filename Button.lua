@@ -125,7 +125,7 @@ local function RefreshButtonRangeAndGrid(btn)
 end
 
 local function EnsureSharedRangeTicker()
-	if sharedRangeTicker or not (C_Timer and C_Timer.NewTicker) then
+	if sharedRangeTicker then
 		return
 	end
 
