@@ -95,6 +95,22 @@ local function GlobalOverrideOnClick(panel, enabledKey, slider, valueText, apply
 	end
 end
 
+-- Builds a hidden wide-view scrollframe (stored as settingsFrame[scrollFrameKey]) and its panel's large title.
+-- Returns panel, title.
+local function CreateWideViewPanel(scrollFrameName, scrollFrameKey, titleText)
+	local scrollFrame, panel = ACAB:CreateWideContentScrollFrame(scrollFrameName)
+
+	ACAB.settingsFrame[scrollFrameKey] = scrollFrame
+	scrollFrame:Hide()
+
+	local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+
+	title:SetPoint("TOPLEFT", panel, "TOPLEFT", ACAB.INDENT_SECTION, -14)
+	title:SetText(titleText)
+
+	return panel, title
+end
+
 -------------------------------------------------------------------------
 -- General tab panel
 -------------------------------------------------------------------------
@@ -108,15 +124,7 @@ function ACAB:GetOrCreateGeneralPanel()
 		return ACAB.settingsFrame.generalPanel
 	end
 
-	local scrollFrame, panel = ACAB:CreateWideContentScrollFrame("ACABSettingsGeneralScrollFrame")
-
-	ACAB.settingsFrame.generalScrollFrame = scrollFrame
-	scrollFrame:Hide()
-
-	local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-
-	title:SetPoint("TOPLEFT", panel, "TOPLEFT", ACAB.INDENT_SECTION, -14)
-	title:SetText("General Settings")
+	local panel = CreateWideViewPanel("ACABSettingsGeneralScrollFrame", "generalScrollFrame", "General Settings")
 
 	-------------------------------------------------------------------------
 	-- Force Vanilla Layout Mode
@@ -639,14 +647,8 @@ function ACAB:GetOrCreateProfilesPanel()
 		return ACAB.settingsFrame.profilesPanel
 	end
 
-	local scrollFrame, panel = ACAB:CreateWideContentScrollFrame("ACABSettingsProfilesScrollFrame")
+	local panel, title = CreateWideViewPanel("ACABSettingsProfilesScrollFrame", "profilesScrollFrame", "Profiles")
 
-	ACAB.settingsFrame.profilesScrollFrame = scrollFrame
-	scrollFrame:Hide()
-
-	local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-	title:SetPoint("TOPLEFT", panel, "TOPLEFT", ACAB.INDENT_SECTION, -14)
-	title:SetText("Profiles")
 	panel.title = title
 
 	local label = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -797,17 +799,12 @@ function ACAB:RefreshProfilesPanel()
 
 	panel.wizardButton:Show()
 
-	if not self:IsBuiltInProfileName(ACABCharDB.activeProfile) then
-		panel.exportButton:Show()
-		panel.copyButton:Show()
-		panel.importButton:Show()
-		panel.deleteButton:Show()
-	else
-		panel.exportButton:Hide()
-		panel.copyButton:Hide()
-		panel.importButton:Hide()
-		panel.deleteButton:Hide()
-	end
+	local isCustomProfile = not self:IsBuiltInProfileName(ACABCharDB.activeProfile)
+
+	panel.exportButton:SetShown(isCustomProfile)
+	panel.copyButton:SetShown(isCustomProfile)
+	panel.importButton:SetShown(isCustomProfile)
+	panel.deleteButton:SetShown(isCustomProfile)
 end
 
 -------------------------------------------------------------------------
@@ -823,14 +820,8 @@ function ACAB:GetOrCreateEditModePanel()
 		return ACAB.settingsFrame.editModePanel
 	end
 
-	local scrollFrame, panel = ACAB:CreateWideContentScrollFrame("ACABSettingsEditModeScrollFrame")
+	local panel, title = CreateWideViewPanel("ACABSettingsEditModeScrollFrame", "editModeScrollFrame", "Edit Mode Settings")
 
-	ACAB.settingsFrame.editModeScrollFrame = scrollFrame
-	scrollFrame:Hide()
-
-	local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-	title:SetPoint("TOPLEFT", panel, "TOPLEFT", ACAB.INDENT_SECTION, -14)
-	title:SetText("Edit Mode Settings")
 	panel.title = title
 
 	-- Snap to Adjacent Elements: read on the next drag, no apply needed.
