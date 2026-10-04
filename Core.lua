@@ -1867,17 +1867,36 @@ function ACAB:OpenSettingsPageByName(name)
 	end
 end
 
+-- Prints a usage list: { command, description } pairs as "<command> - <description>", plain strings as is.
+local function PrintUsageLines(lines)
+	local i
+
+	for i = 1, table.getn(lines) do
+		local line = lines[i]
+
+		if type(line) == "table" then
+			ACAB:Print(ColorKeyName(line[1]) .. " - " .. line[2])
+		else
+			ACAB:Print(line)
+		end
+	end
+end
+
+local PROFILE_USAGE_LINES = {
+	{ "/acab profile list", "list all profiles in chat" },
+	{ "/acab profile select <name>", "switch to another profile" },
+	{ "/acab profile add <name>", "create a new profile" },
+	{ "/acab profile delete <name>", "delete a profile" },
+	{ "/acab profile copy [name]", "copy settings into the current profile from [name], or pick from a dropdown if omitted" },
+	{ "/acab profile export", "show the current profile's export string" },
+	{ "/acab profile import", "paste an export string into the current profile" },
+}
+
 -- /acab profile with no subcommand: current profile plus usage list.
 local function PrintProfileStatus()
 	ACAB:Print("Current profile: \"" .. tostring(ACABCharDB and ACABCharDB.activeProfile or ACAB.DEFAULT_PROFILE_NAME) .. "\"")
 	ACAB:Print("Available " .. ColorKeyName("/acab profile") .. " parameters:")
-	ACAB:Print(ColorKeyName("/acab profile list") .. " - list all profiles in chat")
-	ACAB:Print(ColorKeyName("/acab profile select <name>") .. " - switch to another profile")
-	ACAB:Print(ColorKeyName("/acab profile add <name>") .. " - create a new profile")
-	ACAB:Print(ColorKeyName("/acab profile delete <name>") .. " - delete a profile")
-	ACAB:Print(ColorKeyName("/acab profile copy [name]") .. " - copy settings into the current profile from [name], or pick from a dropdown if omitted")
-	ACAB:Print(ColorKeyName("/acab profile export") .. " - show the current profile's export string")
-	ACAB:Print(ColorKeyName("/acab profile import") .. " - paste an export string into the current profile")
+	PrintUsageLines(PROFILE_USAGE_LINES)
 end
 
 local function PrintProfileList()
@@ -1893,6 +1912,9 @@ local function PrintProfileList()
 	end
 end
 
+-- Subcommands that print a usage line when <name> is missing.
+local PROFILE_NAME_REQUIRED = { select = true, add = true, delete = true }
+
 -- Dispatches /acab profile <subcommand> [name], reusing the Profiles tab's dialogs.
 function ACAB:HandleProfileCommand(rest)
 	local subcommand, arg = string.match(rest or "", "^(%S*)%s*(.-)$")
@@ -1906,26 +1928,21 @@ function ACAB:HandleProfileCommand(rest)
 		return
 	end
 
+	if PROFILE_NAME_REQUIRED[subcommand] and arg == "" then
+		self:Print("Usage: /acab profile " .. subcommand .. " <name>")
+		return
+	end
+
 	if subcommand == "" then
 		PrintProfileStatus()
 	elseif subcommand == "list" then
 		PrintProfileList()
 	elseif subcommand == "select" then
-		if arg == "" then
-			self:Print("Usage: /acab profile select <name>")
-			return
-		end
-
 		local ok, reason = self:SwitchProfile(arg)
 		if not ok and reason then
 			self:Print(reason)
 		end
 	elseif subcommand == "add" then
-		if arg == "" then
-			self:Print("Usage: /acab profile add <name>")
-			return
-		end
-
 		local ok, reason = self:CreateProfile(arg)
 
 		if ok then
@@ -1934,11 +1951,6 @@ function ACAB:HandleProfileCommand(rest)
 			self:Print(reason)
 		end
 	elseif subcommand == "delete" then
-		if arg == "" then
-			self:Print("Usage: /acab profile delete <name>")
-			return
-		end
-
 		if self:IsBuiltInProfileName(arg) then
 			self:Print("The built-in \"" .. arg .. "\" profile cannot be deleted.")
 			return
@@ -2002,18 +2014,22 @@ function ACAB:HandleProfileCommand(rest)
 	end
 end
 
+local COMMAND_HELP_LINES = {
+	{ "/acab", "toggle the Settings window" },
+	{ "/acab menu", "open the minimap right-click menu" },
+	{ "/acab edit", "toggle Configure Layout mode" },
+	{ "/acab bind", "toggle Hoverbind keybind mode" },
+	{ "/acab settings <page>", "jump straight to a settings page" },
+	"  pages: general, bars, profiles, editmode, main, 1-9/extra1-4, pet, stance, bags, keyring, micro, latency, exp, cast, tooltip",
+	{ "/acab profile", "show current profile and profile commands" },
+	{ "/acab recapture", "force a fresh capture of default bar native anchors" },
+	{ "/acab version", "show the installed addon version" },
+	{ "/acab help", "show this list" },
+}
+
 local function PrintCommandHelp()
 	ACAB:Print("Available " .. ColorKeyName("/acab") .. " commands:")
-	ACAB:Print(ColorKeyName("/acab") .. " - toggle the Settings window")
-	ACAB:Print(ColorKeyName("/acab menu") .. " - open the minimap right-click menu")
-	ACAB:Print(ColorKeyName("/acab edit") .. " - toggle Configure Layout mode")
-	ACAB:Print(ColorKeyName("/acab bind") .. " - toggle Hoverbind keybind mode")
-	ACAB:Print(ColorKeyName("/acab settings <page>") .. " - jump straight to a settings page")
-	ACAB:Print("  pages: general, bars, profiles, editmode, main, 1-9/extra1-4, pet, stance, bags, keyring, micro, latency, exp, cast, tooltip")
-	ACAB:Print(ColorKeyName("/acab profile") .. " - show current profile and profile commands")
-	ACAB:Print(ColorKeyName("/acab recapture") .. " - force a fresh capture of default bar native anchors")
-	ACAB:Print(ColorKeyName("/acab version") .. " - show the installed addon version")
-	ACAB:Print(ColorKeyName("/acab help") .. " - show this list")
+	PrintUsageLines(COMMAND_HELP_LINES)
 end
 
 -- /acab dispatcher; PrintCommandHelp lists every command.
