@@ -171,6 +171,15 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
   - Button and cooldown set LOW strata explicitly (below bags).
   - `ApplyBorderStyle` shares the `Init` helpers, so new border pieces go there.
 
+### Pool-button event dispatcher
+- **Where:** `Button.lua` — `RegisterPoolButton`, `MovePoolButtonActionSlot`, `PoolButtonDispatcher_OnEvent`, `POOL_BUTTON_EVENT_ROUTES`
+- **What:**
+  - Buttons register no events themselves. One dispatcher frame routes each event to the action/pet/stance list in `POOL_BUTTON_EVENT_ROUTES`; `ACTIONBAR_SLOT_CHANGED` looks up `actionSlotButtons[arg1]` (0/nil refreshes all).
+  - Every `btn.actionSlot` change must go through `ACABButtonMixin:Rebind`, or the slot map goes stale and that button stops refreshing on slot changes.
+  - The dispatcher copies `event`/`arg1` into locals before looping, since per-button code can clobber the globals.
+  - It's created on the first `Init`, not at file load, so it registers after `Events.lua`'s frames (same order as the old per-button registration). Pool buttons are never destroyed, so the lists only grow.
+  - Pet/stance buttons get no `ACTIONBAR_SLOT_CHANGED` for their own small slot index anymore (was an accidental match against action slots 1-10).
+
 ### Removed intra-addon existence guards
 - **Where:** `Bar.lua`, `Button.lua`, `HoverBind.lua` (removed in the refactor); `Core.lua`/`Events.lua` still have some
 - **What:** Guards like `if ACAB.RefreshBarSettingsPage then` were dropped because every guarded member is defined at the top level of a file that always loads, and every call runs after login. So:
@@ -226,10 +235,9 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
 ### Performance (measured as fine so far; look here first if something stutters)
 - **Settings frame leak.** `SettingsBars.lua` `RebuildGridSwatches`, `RefreshBarList` and `RebuildDefaultBarAssignmentRows` make new frames on every rebuild and only hide the old ones. Check `gcinfo()` before/after opening the Stance page ~50 times. Pooling with names unique per pool slot would bound it without reintroducing env §4.7.
 - **Hover-bind ticker allocation.** `HoverBind.lua`'s ticker builds a ref table per visible button every 0.25 s while hoverbind mode is on.
-- **Range ticker writes.** `Button.lua`'s shared range ticker calls `IsSlotFilled` three times per button and does unconditional `Show`/`Hide`/color writes every 0.2 s. It's the hottest path in the addon; caching the last state per button would cut it.
-- **Pet Bar re-layout.** `Button.lua` `Refresh` on a pet slot re-lays out the whole Pet Bar, so one `PET_BAR_UPDATE` means 10 full layouts.
 - **Main Bar drag.** Every tick re-applies the art frame (texture Hide/Show redraw, which is load-bearing) plus all grouped elements, each with a fresh hover closure.
-- **Rested-glow pulse.** `ExperienceBar.lua`'s 20 Hz pulse ticker keeps running while the Exp Bar is disabled.
+
+Done: range-ticker write cache (`rangeKey` in `UpdateRange`), Pet Bar layout coalescing (`petLayoutPending` in `Refresh`), rested-glow pulse stops with the Exp Bar, pooled bar-list rows (`RefreshBarList`), one shared event dispatcher for all pool buttons (`Button.lua` `POOL_BUTTON_EVENT_ROUTES`).
 
 ### Remaining duplication
 - **`AppendCandidate`** is file-local in both `Core.lua` (grid-snap candidates) and `Settings.lua` (height-fit). It was left alone because the Settings copy sits inside the resolve-pass machinery. If shared, define it in Core.lua and keep the candidate order.
