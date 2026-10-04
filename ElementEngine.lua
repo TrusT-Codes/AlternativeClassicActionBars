@@ -66,17 +66,12 @@ end
 -- adjacent elements, else the grid; no-op while nothing snaps or the frame has no size/scale yet.
 -- centerSnap (Cast Bar) uses ComputeCenterGridSnapAdjustment instead of ComputeGridSnapAdjustment.
 function ACAB:ApplyDragSnap(frame, pos, centerSnap)
-	if not frame or not pos then
-		return
-	end
+	if not frame or not pos then return end
 
 	local scale = frame:GetEffectiveScale()
 	local width = frame:GetWidth()
 	local height = frame:GetHeight()
-
-	if not scale or not width or not height then
-		return
-	end
+	if not scale or not width or not height then return end
 
 	local topLeftPos = self:GetPositionInAnchor(frame, pos, "TOPLEFT", "BOTTOMLEFT")
 
@@ -122,10 +117,7 @@ function ACAB:ApplyDragSnap(frame, pos, centerSnap)
 
 	local adjustedLeft = adjLeft or gridLeft
 	local adjustedTop = adjTop or gridTop
-
-	if not adjustedLeft and not adjustedTop then
-		return
-	end
+	if not adjustedLeft and not adjustedTop then return end
 
 	if adjustedLeft then
 		topLeftPos.x = (adjustedLeft + ilPx) / scale
@@ -274,9 +266,7 @@ function ACAB:StartSharedDrag(dragKind, dragId, startX, startY)
 end
 
 function ACAB:StopSharedDrag()
-	if not dragFrame then
-		return
-	end
+	if not dragFrame then return end
 
 	dragFrame:SetScript("OnUpdate", nil)
 	dragFrame:Hide()
@@ -329,9 +319,7 @@ function ACAB:GetButtonsByName(names)
 		end
 	end
 
-	if n == 0 then
-		return nil
-	end
+	if n == 0 then return nil end
 
 	return buttons
 end
@@ -497,13 +485,9 @@ end
 -- BOTTOMRIGHT) stays exactly where it was on screen (a SetPoint offset scales with the frame's own scale).
 -- `localWidth`/`localHeight` are the frame's design size. "CENTER" keeps a canonical position unchanged.
 function ACAB:CompensateScaleKeepingCornerFixed(pos, oldScale, newScale, corner, localWidth, localHeight)
-	if not pos or not oldScale or not newScale then
-		return
-	end
+	if not pos or not oldScale or not newScale then return end
 
-	if oldScale == newScale or oldScale <= 0 or newScale <= 0 then
-		return
-	end
+	if oldScale == newScale or oldScale <= 0 or newScale <= 0 then return end
 
 	local ratio = oldScale / newScale
 	localWidth = localWidth or 0
@@ -532,9 +516,7 @@ end
 -- horizontally or (orientation truthy) vertically, then sizes/scales the container and re-anchors its overlay.
 -- forceAllShown (native Pet Bar, condense off) chains all 10 slots regardless of IsShown().
 function ACAB:ApplyChainAnchoredShape(container, spacing, orientation, scale, forceAllShown)
-	if not container or not container.chainButtons then
-		return
-	end
+	if not container or not container.chainButtons then return end
 
 	local buttons = container.chainButtons
 	local widths = container.chainWidths
@@ -687,9 +669,7 @@ end
 -- Micro Menu's fixed cols x rows grid: shown buttons fill cells in order (a hidden one, e.g. TalentMicroButton
 -- below level 10, reserves no cell). Re-run by the UpdateMicroButtons hook.
 function ACAB:ApplyGridAnchoredShape(container, cols, rows, spacing, scale)
-	if not container or not container.chainButtons then
-		return
-	end
+	if not container or not container.chainButtons then return end
 
 	local buttons = container.chainButtons
 	local widths = container.chainWidths
@@ -864,13 +844,9 @@ function ACAB:EnsureContainerOverlay(container, startDragFn, stopDragFn, setting
 	-- Scroll-to-scale, only while the overlay is mouse-enabled (same gate as dragging).
 	overlay:EnableMouseWheel(true)
 	overlay:SetScript("OnMouseWheel", function()
-		if not scaleSetFn then
-			return
-		end
+		if not scaleSetFn then return end
 
-		if not overlay:IsMouseEnabled() then
-			return
-		end
+		if not overlay:IsMouseEnabled() then return end
 
 		local delta = arg1 or 0
 		local step = 0.1
@@ -889,9 +865,7 @@ end
 
 -- Shows + mouse-enables container's overlay while `show` and its element's enabledFlag ~= false, else hides it.
 function ACAB:ApplyContainerOverlayVisual(container, enabledFlag, show)
-	if not container or not container.ACABOverlay then
-		return
-	end
+	if not container or not container.ACABOverlay then return end
 
 	local overlay = container.ACABOverlay
 	local interactive = show and (enabledFlag ~= false)
@@ -912,9 +886,7 @@ end
 -- Must stay - native code re-anchors these frames without clearing old points, corrupting their position.
 -- Each swallowed SetPoint is recorded in frame.ACABSwallowedAnchor (polled by Core.lua's WaitForWrappedFrameAnchorSettle).
 function ACAB:InstallReanchorGuard(frame, flagName)
-	if not frame or frame.ACABReanchorGuarded then
-		return
-	end
+	if not frame or frame.ACABReanchorGuarded then return end
 
 	local nativeSetPoint = frame.SetPoint
 	local nativeClearAllPoints = frame.ClearAllPoints
@@ -956,16 +928,12 @@ end
 -- UIParent-relative TOPLEFT/BOTTOMLEFT position table, or nil.
 -- guardFlagName must be passed for frames with an InstallReanchorGuard, or this SetPoint is swallowed.
 function ACAB:ResolveNativeAnchorToAbsolute(frame, native, guardFlagName)
-	if not frame then
-		return nil
-	end
+	if not frame then return nil end
 
 	-- The anchor native code last tried to set (InstallReanchorGuard) wins over the passed snapshot.
 	native = frame.ACABSwallowedAnchor or native
 
-	if not native then
-		return nil
-	end
+	if not native then return nil end
 
 	if guardFlagName then
 		frame[guardFlagName] = true
@@ -986,10 +954,7 @@ function ACAB:ResolveNativeAnchorToAbsolute(frame, native, guardFlagName)
 	end
 
 	local left, top = frame:GetLeft(), frame:GetTop()
-
-	if not left or not top then
-		return nil
-	end
+	if not left or not top then return nil end
 
 	return {
 		point = "TOPLEFT",
@@ -1001,9 +966,7 @@ end
 
 -- Swallows Show() on `frame` unless isEnabledFn() returns true.
 function ACAB:InstallShowGuard(frame, isEnabledFn)
-	if not frame or frame.ACABShowGuarded then
-		return
-	end
+	if not frame or frame.ACABShowGuarded then return end
 
 	local nativeShow = frame.Show
 
@@ -1022,9 +985,7 @@ end
 
 -- Shows or hides an element; its edit-mode overlay is parented to UIParent, so it's hidden explicitly.
 function ACAB:SetElementShown(frame, shown)
-	if not frame then
-		return
-	end
+	if not frame then return end
 
 	if shown then
 		frame:Show()
@@ -1043,9 +1004,7 @@ function ACAB:WriteSavedPositionXY(field, x, y)
 	x = tonumber(x)
 	y = tonumber(y)
 
-	if not x or not y or not ACABDB[field] then
-		return false
-	end
+	if not x or not y or not ACABDB[field] then return false end
 
 	ACABDB[field].x = x
 	ACABDB[field].y = y
@@ -1059,9 +1018,7 @@ function ACAB:StoreCompensatedScale(scaleField, posField, frame, scale)
 
 	scale = self:ClampScaleSetting(scale)
 
-	if not scale then
-		return nil
-	end
+	if not scale then return nil end
 
 	local oldScale = ACABDB[scaleField] or 1
 	local pos = ACABDB[posField]
@@ -1089,10 +1046,7 @@ end
 -- frame's GetPoint(1) anchor as a saved table (relativeTo by name, UIParent if unnamed), or nil if incomplete.
 function ACAB:ReadNativeAnchor(frame)
 	local point, relativeTo, relativePoint, x, y = frame:GetPoint(1)
-
-	if not (point and relativePoint and x and y) then
-		return nil
-	end
+	if not (point and relativePoint and x and y) then return nil end
 
 	local relativeToName = "UIParent"
 
