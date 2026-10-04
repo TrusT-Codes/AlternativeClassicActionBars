@@ -949,9 +949,12 @@ function ACAB:GetCastBarBaselineY()
 
 	local petPitch = 0
 	local petContainer = self.petBarNativeContainer
+	local petBar = self.bars and self.bars[self.PET_BAR_ID]
 
 	if petContainer and petContainer:IsShown() then
 		petPitch = petContainer:GetHeight() or 0
+	elseif petBar and petBar:IsShown() then
+		petPitch = petBar:GetHeight() or 0
 	end
 
 	return baseY + actionBarPitch + extraBarPitch + petPitch

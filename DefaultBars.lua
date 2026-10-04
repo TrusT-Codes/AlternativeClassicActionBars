@@ -1225,6 +1225,19 @@ function ACAB:ResetDefaultBarLayout(id)
 	RestoreNativeAnchor(cfg, shift)
 
 	self:ApplyBarPosition(bar)
+
+	-- Styled Pet/Stance Bar: back on the vanilla stack (above Action Bar 2/1 and a default-positioned Extra Bar 2/1).
+	if id == self.PET_BAR_ID then
+		cfg.styledDefaultPosition = true
+
+		local bar3Cfg = ACABDB.defaultBars[3]
+		self:ReflowPetBarForBar3Toggle(bar3Cfg and bar3Cfg.enabled)
+	elseif id == self.STANCE_BAR_ID then
+		cfg.styledDefaultPosition = true
+
+		local bar2Cfg = ACABDB.defaultBars[2]
+		self:ReflowStanceBarForBar2Toggle(bar2Cfg and bar2Cfg.enabled)
+	end
 end
 
 -------------------------------------------------------------------------
