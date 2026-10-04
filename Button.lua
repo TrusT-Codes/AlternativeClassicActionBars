@@ -904,10 +904,8 @@ end
 -- True while a macro's spell target runs: Auto Shot / Shoot auto-repeating, Attack auto-attacking, any other
 -- spell while cast or for MACRO_CAST_FLASH_DURATION after it was cast.
 function ACABButtonMixin:IsMacroTargetActive()
-	local spellName = self:GetMacroTargetKind() == "spell" and self.macroSpellName
+	local spellName = self:GetMacroTargetKind() == "spell" and self.macroSpellNameLower
 	if not spellName then return false end
-
-	spellName = string.lower(spellName)
 
 	if spellName == "auto shot" or spellName == "shoot" then
 		return playerActionState.autoRepeat
@@ -1201,6 +1199,7 @@ function ACABButtonMixin:ResolveMacroTarget()
 
 		-- Spellbook spelling, for nampower's name-based IsSpellUsable/IsSpellInRange.
 		self.macroSpellName = GetSpellName(spellId, "spell")
+		self.macroSpellNameLower = self.macroSpellName and string.lower(self.macroSpellName)
 
 		return GetSpellTexture(spellId, "spell")
 	end
