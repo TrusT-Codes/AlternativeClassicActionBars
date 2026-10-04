@@ -93,6 +93,14 @@ ACAB.SHOW_MULTI_ACTIONBAR_GLOBAL = {
 	[5] = "SHOW_MULTI_ACTIONBAR_4",
 }
 
+-- Native FrameXML global holding the action page each default bar shows; Main Bar paging skips it while the bar is on.
+ACAB.DEFAULT_BAR_PAGE_GLOBAL = {
+	[2] = "BOTTOMLEFT_ACTIONBAR_PAGE",
+	[3] = "BOTTOMRIGHT_ACTIONBAR_PAGE",
+	[4] = "RIGHT_ACTIONBAR_PAGE",
+	[5] = "LEFT_ACTIONBAR_PAGE",
+}
+
 -- Friendly display names for the default-bar family.
 ACAB.DEFAULT_BAR_NAMES = {
 	[1] = "Main Bar",
@@ -1714,6 +1722,11 @@ function ACAB:RunLoginSequence()
 		return
 	end
 
+	-- Must run before "anchor recapture": a UI scale change can request one.
+	RunLoginStage(failures, "ui scale", function()
+		ACAB:HandleUIScaleChange()
+	end)
+
 	-- Must run before anything moves Main Bar's art (ActionButton1's parent) - native anchors are only measurable until then.
 	local recapturedAtLogin = false
 
@@ -1772,10 +1785,9 @@ function ACAB:RunLoginSequence()
 	RunLoginStage(failures, "stance bar", function()
 		ACAB:CreateStanceBarContainer()
 
-		if ACABDB.useDefaultLayout ~= false then
-			local bar2Cfg = ACABDB.defaultBars[2]
-			ACAB:ReflowStanceBarForBar2Toggle(bar2Cfg and bar2Cfg.enabled)
-		end
+		-- Only moves the bar while it sits at its default spot (stanceBarUsesDefaultPosition / styledDefaultPosition).
+		local bar2Cfg = ACABDB.defaultBars[2]
+		ACAB:ReflowStanceBarForBar2Toggle(bar2Cfg and bar2Cfg.enabled)
 	end)
 
 	RunLoginStage(failures, "bag bar and micro menu", function()

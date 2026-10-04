@@ -945,9 +945,8 @@ ACAB.simpleBarPageConfigs["expbar"] = {
 	reset = function()
 		ACAB:ResetExpBarLayout()
 	end,
-	-- No Modern Layout position of its own - same as the vanilla reset.
 	resetModern = function()
-		ACAB:ResetExpBarLayout()
+		ACAB:ResetExpBarLayoutToModernBase()
 	end,
 	getEnabled = function() return ACABDB.expBarEnabled end,
 	setEnabled = function(v) ACAB:SetExpBarEnabled(v) end,
