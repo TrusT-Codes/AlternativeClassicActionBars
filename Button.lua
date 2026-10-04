@@ -115,7 +115,8 @@ local hasCapturedFontDefaults = false
 local sharedRangeTicker
 
 local function RefreshButtonRangeAndGrid(btn)
-	if btn.macroHasConditions then
+	-- Hidden buttons are re-tested on the first tick after they show.
+	if btn.macroHasConditions and btn:IsVisible() then
 		btn:UpdateConditionalMacroPick()
 	end
 
@@ -994,7 +995,8 @@ local function GetMacroTargetName(body)
 	return firstCast or firstSkipped, false
 end
 
--- Every /cast and /use option of a macro body, split at ";": { cmd = "/cast", text = "[mod:alt] Name" }, ...
+-- Every /cast and /use option of a macro body that can be shown, split at ";", with its cleaned name:
+-- { cmd = "/cast", text = "[mod:alt] Name", name = "name" }, ...; Auto Shot / Attack / Shoot and "?" options are left out.
 local function GetMacroAlternatives(body)
 	local list = {}
 	local line
@@ -1010,7 +1012,11 @@ local function GetMacroAlternatives(body)
 			local option
 
 			for option in string.gfind(rest, "[^;]+") do
-				table.insert(list, { cmd = command, text = option })
+				local name, skipForIcon = CleanMacroTargetName(option)
+
+				if name and not skipForIcon and not MACRO_SKIPPED_TARGETS[name] then
+					table.insert(list, { cmd = command, text = option, name = name })
+				end
 			end
 		end
 	end
@@ -1018,8 +1024,8 @@ local function GetMacroAlternatives(body)
 	return list
 end
 
--- First macro option whose [conditions] pass right now, by SuperCleveRoidMacros' own CleveRoids.TestAction (cleaned,
--- lower case); skips Auto Shot / Attack / Shoot and "?" options; nil without the addon or when none pass.
+-- Name of the first macro option whose [conditions] pass right now, by SuperCleveRoidMacros' own
+-- CleveRoids.TestAction; nil without the addon or when none pass. Runs every range tick: allocates nothing itself.
 local function GetConditionalPickName(alternatives)
 	if not (alternatives and CleveRoids and CleveRoids.TestAction) then
 		return nil
@@ -1031,11 +1037,7 @@ local function GetConditionalPickName(alternatives)
 		local option = alternatives[i]
 
 		if CleveRoids.TestAction(option.cmd, option.text) then
-			local name, skipForIcon = CleanMacroTargetName(option.text)
-
-			if name and not skipForIcon and not MACRO_SKIPPED_TARGETS[name] then
-				return name
-			end
+			return option.name
 		end
 	end
 
