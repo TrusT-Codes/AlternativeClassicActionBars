@@ -1253,27 +1253,10 @@ function ACAB:ApplyModernMainActionBarsLayout()
 	local bar3 = self.bars and self.bars[3]
 	if not bar1 or not bar2 or not bar3 then return end
 
-	local buttonSize, spacing = self:GetModernLayoutSizing()
-
-	SetModernRowShape(bar1.config, buttonSize, spacing)
-	ApplyModernRowBar(bar1, 4 + self:GetModernBaseExpBarClearance(), buttonSize)
-
-	local _, _, bar1RealTop = self:GetElementRealEdges(bar1)
-
-	SetModernRowShape(bar2.config, buttonSize, spacing)
-
-	local _, _, _, bar2InsetBottom = self:GetElementVisualInset(bar2)
-
-	ApplyModernRowBar(bar2, (bar1RealTop or 0) + bar2InsetBottom, buttonSize)
+	self:ApplyModernSingleMainBar()
+	self:ApplyModernSingleStackedActionBar(bar2, bar1)
 	self:SetDefaultBarEnabled(2, true)
-
-	local _, _, bar2RealTop = self:GetElementRealEdges(bar2)
-
-	SetModernRowShape(bar3.config, buttonSize, spacing)
-
-	local _, _, _, bar3InsetBottom = self:GetElementVisualInset(bar3)
-
-	ApplyModernRowBar(bar3, (bar2RealTop or 0) + bar3InsetBottom, buttonSize)
+	self:ApplyModernSingleStackedActionBar(bar3, bar2)
 	self:SetDefaultBarEnabled(3, true)
 end
 
@@ -1437,41 +1420,34 @@ function ACAB:ApplyModernSingleVerticalBar(id)
 	self:EnsureDB()
 
 	local bar = self.bars and self.bars[id]
-	if not bar then return end
+	local bar4 = self.bars and self.bars[4]
+	if not bar or not bar4 then return end
 
 	local buttonSize, spacing = self:GetModernLayoutSizing()
 	local cfg = bar.config
 	local rowY = self:GetModernVerticalBarCenteredY(buttonSize, spacing)
 
+	cfg.buttonSize = buttonSize
+	cfg.spacing = spacing
+	self:SetBarLayout(bar, 1, 12)
+
+	local _, insetRight = self:GetElementVisualInset(bar)
+
 	if id == 4 then
-		cfg.buttonSize = buttonSize
-		cfg.spacing = spacing
-		self:SetBarLayout(bar, 1, 12)
-
 		-- Flush against the screen's right edge.
-		local _, insetRight = self:GetElementVisualInset(bar)
-
 		cfg.point = "BOTTOMRIGHT"
 		cfg.relativePoint = "BOTTOMRIGHT"
 		cfg.x = -insetRight
-		cfg.y = rowY
 	else
-		local bar4 = self.bars[4]
-		if not bar4 then return end
-
-		cfg.buttonSize = buttonSize
-		cfg.spacing = spacing
-		self:SetBarLayout(bar, 1, 12)
-
 		-- Falls back to bar 4's saved x when it has no rect, same as the cluster layout.
 		local bar4Left = self:GetElementRealEdges(bar4)
-		local _, insetRight = self:GetElementVisualInset(bar)
 
 		cfg.point = "BOTTOMLEFT"
 		cfg.relativePoint = "BOTTOMLEFT"
 		cfg.x = (bar4Left or bar4.config.x) - insetRight - buttonSize
-		cfg.y = rowY
 	end
+
+	cfg.y = rowY
 
 	self:ApplyBarPosition(bar)
 	self:SetBarButtonSize(bar, buttonSize)
@@ -1487,25 +1463,14 @@ function ACAB:ResetBarLayoutToModernBase(id)
 		return
 	end
 
-	if id == 2 then
-		local bar1 = self.bars and self.bars[1]
-		local bar2 = self.bars and self.bars[2]
+	-- Action Bar 1/2 stack on the bar below them (id - 1).
+	if id == 2 or id == 3 then
+		local below = self.bars and self.bars[id - 1]
+		local bar = self.bars and self.bars[id]
 
-		if bar1 and bar2 then
-			self:ApplyModernSingleStackedActionBar(bar2, bar1)
-			self:SetDefaultBarEnabled(2, true)
-		end
-
-		return
-	end
-
-	if id == 3 then
-		local bar2 = self.bars and self.bars[2]
-		local bar3 = self.bars and self.bars[3]
-
-		if bar2 and bar3 then
-			self:ApplyModernSingleStackedActionBar(bar3, bar2)
-			self:SetDefaultBarEnabled(3, true)
+		if below and bar then
+			self:ApplyModernSingleStackedActionBar(bar, below)
+			self:SetDefaultBarEnabled(id, true)
 		end
 
 		return
