@@ -265,14 +265,22 @@ local function CreateWizardButton(parent, config)
 	return button
 end
 
--- New hidden decision step frame on panel with its centered intro message at the top. Returns step, message.
-local function CreateStepFrame(panel, text)
+-- New hidden full-width step frame on panel, offsetY below its top.
+local function CreateSizedStepFrame(panel, offsetY)
 	local step = CreateFrame("Frame", nil, panel)
 
 	-- must be sized: a frame with only anchors has no rect for its children to resolve against
-	step:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, -24)
-	step:SetPoint("TOPRIGHT", panel, "TOPRIGHT", 0, -24)
+	step:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, offsetY)
+	step:SetPoint("TOPRIGHT", panel, "TOPRIGHT", 0, offsetY)
 	step:SetHeight(1)
+	step:Hide()
+
+	return step
+end
+
+-- New hidden decision step frame on panel with its centered intro message at the top. Returns step, message.
+local function CreateStepFrame(panel, text)
+	local step = CreateSizedStepFrame(panel, -24)
 
 	local message = step:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	message:SetPoint("TOP", step, "TOP", 0, 0)
@@ -280,9 +288,30 @@ local function CreateStepFrame(panel, text)
 	message:SetJustifyH("CENTER")
 	message:SetText(text)
 
-	step:Hide()
-
 	return step, message
+end
+
+-- Danger (left) / prominent (right) choice buttons under message, offsetX either side of center.
+local function CreateChoiceButtons(step, message, offsetX, minWidth, maxWidth, leftText, onLeft, rightText, onRight)
+	CreateWizardButton(step, {
+		text = leftText,
+		height = 34,
+		minWidth = minWidth,
+		maxWidth = maxWidth,
+		anchor = { "TOP", message, "BOTTOM", -offsetX, -20 },
+		variant = "danger",
+		onClick = onLeft,
+	})
+
+	CreateWizardButton(step, {
+		text = rightText,
+		height = 34,
+		minWidth = minWidth,
+		maxWidth = maxWidth,
+		anchor = { "TOP", message, "BOTTOM", offsetX, -20 },
+		variant = "prominent",
+		onClick = onRight,
+	})
 end
 
 -------------------------------------------------------------------------
@@ -334,29 +363,9 @@ function ACABSetupWizardMixin:BuildLockStep(panel)
 		"up in the next steps.|r"
 	)
 
-	CreateWizardButton(step, {
-		text = "Lock down default Elements!",
-		height = 34,
-		minWidth = 200,
-		maxWidth = 210,
-		anchor = { "TOP", message, "BOTTOM", -115, -20 },
-		variant = "danger",
-		onClick = function()
-			ACAB.setupWizard:ApplyBaselineAndReload("locked")
-		end,
-	})
-
-	CreateWizardButton(step, {
-		text = "Let me move everything!",
-		height = 34,
-		minWidth = 200,
-		maxWidth = 210,
-		anchor = { "TOP", message, "BOTTOM", 115, -20 },
-		variant = "prominent",
-		onClick = function()
-			ACAB.setupWizard:ShowStep("style")
-		end,
-	})
+	CreateChoiceButtons(step, message, 115, 200, 210,
+		"Lock down default Elements!", function() ACAB.setupWizard:ApplyBaselineAndReload("locked") end,
+		"Let me move everything!", function() ACAB.setupWizard:ShowStep("style") end)
 
 	return step
 end
@@ -407,42 +416,16 @@ function ACABSetupWizardMixin:BuildLayoutStep(panel)
 		"your real settings pages, and every change shows up live on your bars."
 	)
 
-	CreateWizardButton(step, {
-		text = "Keep Vanilla Layout + ArtBar enabled",
-		height = 34,
-		minWidth = 210,
-		maxWidth = 220,
-		anchor = { "TOP", message, "BOTTOM", -120, -20 },
-		variant = "danger",
-		onClick = function()
-			ACAB.setupWizard:ApplyBaselineAndReload("vanilla")
-		end,
-	})
-
-	CreateWizardButton(step, {
-		text = "Modern Layout + ArtBar disabled",
-		height = 34,
-		minWidth = 210,
-		maxWidth = 220,
-		anchor = { "TOP", message, "BOTTOM", 120, -20 },
-		variant = "prominent",
-		onClick = function()
-			ACAB.setupWizard:ApplyBaselineAndReload("modern")
-		end,
-	})
+	CreateChoiceButtons(step, message, 120, 210, 220,
+		"Keep Vanilla Layout + ArtBar enabled", function() ACAB.setupWizard:ApplyBaselineAndReload("vanilla") end,
+		"Modern Layout + ArtBar disabled", function() ACAB.setupWizard:ApplyBaselineAndReload("modern") end)
 
 	return step
 end
 
 -- Step "extrabars": enable, Only show on hover and Grid Layout for each Extra Bar, all applied live.
 function ACABSetupWizardMixin:BuildExtraBarsStep(panel)
-	local step = CreateFrame("Frame", nil, panel)
-
-	-- must be sized: a frame with only anchors has no rect for its children to resolve against
-	step:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, -14)
-	step:SetPoint("TOPRIGHT", panel, "TOPRIGHT", 0, -14)
-	step:SetHeight(1)
-	step:Hide()
+	local step = CreateSizedStepFrame(panel, -14)
 
 	step.sections = {}
 
@@ -841,21 +824,24 @@ function ACABSetupWizardMixin:GoBack()
 	end
 end
 
+-- Shows text under the name step's edit box and refits the window.
+local function ShowNameError(step, text)
+	step.errorText:SetText(text)
+	step.errorText:Show()
+	ACAB:DeferFit(function() ACAB:FitSettingsWindowToWizardView() end)
+end
+
 -- Validates the name step and advances to the lock step.
 function ACABSetupWizardMixin:AdvanceFromName()
 	local step = self.steps.name
 	local name = step.editBox:GetText()
 	if not name or name == "" then
-		step.errorText:SetText("Profile name cannot be empty.")
-		step.errorText:Show()
-		ACAB:DeferFit(function() ACAB:FitSettingsWindowToWizardView() end)
+		ShowNameError(step, "Profile name cannot be empty.")
 		return
 	end
 
 	if ACAB:ProfileNameTaken(name) then
-		step.errorText:SetText("A profile named \"" .. name .. "\" already exists.")
-		step.errorText:Show()
-		ACAB:DeferFit(function() ACAB:FitSettingsWindowToWizardView() end)
+		ShowNameError(step, "A profile named \"" .. name .. "\" already exists.")
 		return
 	end
 
