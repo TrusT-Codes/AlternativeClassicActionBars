@@ -57,9 +57,7 @@ end
 -------------------------------------------------------------------------
 
 function ACAB:ApplyBarPosition(bar)
-	if not bar or not bar.config then
-		return
-	end
+	if not bar or not bar.config then return end
 
 	local cfg = bar.config
 	local barW, barH = BarFrameSize(cfg)
@@ -76,9 +74,7 @@ end
 -------------------------------------------------------------------------
 
 function ACAB:LayoutButtons(bar)
-	if not bar or not bar.buttons or not bar.config then
-		return
-	end
+	if not bar or not bar.buttons or not bar.config then return end
 
 	local cfg = bar.config
 	local spacing = self:GetBarEffectiveSpacing(cfg)
@@ -93,7 +89,6 @@ function ACAB:LayoutButtons(bar)
 
 	for i = 1, table.getn(bar.buttons) do
 		local btn = bar.buttons[i]
-
 		if btn then
 			local layoutIndex = i
 
@@ -129,9 +124,7 @@ local barOverlays = {}
 
 -- Resizes a bar by mouse-wheel delta in edit mode; default-family bars are locked while useDefaultLayout is on.
 function ACAB:ResizeBarFromWheel(bar, delta)
-	if not self:IsEditMode() or not bar or not bar.config then
-		return
-	end
+	if not self:IsEditMode() or not bar or not bar.config then return end
 
 	if self:IsDefaultBarFamilyId(bar.config.id) and
 		ACABDB and ACABDB.useDefaultLayout ~= false then
@@ -158,7 +151,6 @@ end
 -- Creates (once) and re-anchors a bar's edit-mode overlay; also used to measure a bar's inset-expanded footprint.
 function ACAB:EnsureBarOverlay(bar)
 	local overlay = barOverlays[bar]
-
 	if overlay then
 		ApplyBarOverlayInsetAnchor(bar, overlay)
 		return overlay
@@ -247,7 +239,6 @@ function ACAB:ApplyEditModeVisual()
 
 			for i = 1, table.getn(bar.buttons) do
 				local btn = bar.buttons[i]
-
 				if btn then
 					btn:UpdateGridVisibility()
 				end
@@ -330,7 +321,6 @@ end
 
 local function GetOrCreatePoolLine(pool, index, frame)
 	local line = pool[index]
-
 	if not line then
 		line = frame:CreateTexture(nil, "BACKGROUND")
 		line:SetTexture("Interface\\Buttons\\WHITE8X8")
@@ -378,7 +368,6 @@ function ACAB:RebuildLayoutGrid()
 
 	-- Already in this frame's local units; do not divide by GetEffectiveScale (double-converts, shrinks the grid).
 	local spacing = self:GetLayoutGridSpacing()
-
 	if not spacing or spacing <= 0 then
 		HideLinesFrom(layoutGridVLines, 0)
 		HideLinesFrom(layoutGridHLines, 0)
@@ -389,9 +378,7 @@ function ACAB:RebuildLayoutGrid()
 	local width = UIParent:GetWidth()
 	local height = UIParent:GetHeight()
 
-	if not width or not height or width <= 0 or height <= 0 then
-		return
-	end
+	if not width or not height or width <= 0 or height <= 0 then return end
 
 	local halfCountX = math.ceil((width / 2) / spacing) + LAYOUT_GRID_EDGE_OVERSHOOT_LINES
 	local halfCountY = math.ceil((height / 2) / spacing) + LAYOUT_GRID_EDGE_OVERSHOOT_LINES
@@ -402,13 +389,10 @@ end
 
 -- True in Edit Layout mode when showLayoutGrid XOR Ctrl held.
 local function ComputeLayoutGridShouldShow()
-	if not ACAB:IsEditMode() then
-		return false
-	end
+	if not ACAB:IsEditMode() then return false end
 
 	local base = ACABDB and ACABDB.showLayoutGrid or false
 	local ctrlHeld = IsControlKeyDown and IsControlKeyDown()
-
 	if ctrlHeld then
 		return not base
 	end
@@ -454,15 +438,11 @@ end
 -------------------------------------------------------------------------
 
 function ACAB:SetBarButtonSize(bar, newSize)
-	if not bar or not bar.config then
-		return
-	end
+	if not bar or not bar.config then return end
 
 	newSize = tonumber(newSize)
 
-	if not newSize then
-		return
-	end
+	if not newSize then return end
 
 	-- Even values only, matching the 2px wheel/slider step.
 	newSize = math.floor(newSize / 2) * 2
@@ -481,7 +461,6 @@ function ACAB:SetBarButtonSize(bar, newSize)
 
 	for i = 1, table.getn(bar.buttons) do
 		local btn = bar.buttons[i]
-
 		if btn then
 			btn:ApplySize(newSize)
 		end
@@ -508,15 +487,11 @@ end
 -------------------------------------------------------------------------
 
 function ACAB:SetBarSpacing(bar, spacing)
-	if not bar or not bar.config then
-		return
-	end
+	if not bar or not bar.config then return end
 
 	spacing = tonumber(spacing)
 
-	if not spacing then
-		return
-	end
+	if not spacing then return end
 
 	spacing = math.floor(spacing + 0.5)
 
@@ -546,9 +521,7 @@ end
 -------------------------------------------------------------------------
 
 function ACAB:SetBarHoverOnly(bar, enabled)
-	if not bar or not bar.config then
-		return
-	end
+	if not bar or not bar.config then return end
 
 	bar.config.hoverOnly = enabled and true or false
 
@@ -556,15 +529,11 @@ function ACAB:SetBarHoverOnly(bar, enabled)
 end
 
 function ACAB:SetBarHoverDuration(bar, duration)
-	if not bar or not bar.config then
-		return
-	end
+	if not bar or not bar.config then return end
 
 	duration = self:ClampHoverDuration(duration)
 
-	if not duration then
-		return
-	end
+	if not duration then return end
 
 	bar.config.hoverDuration = duration
 
@@ -578,9 +547,7 @@ end
 -------------------------------------------------------------------------
 
 function ACAB:ApplyGlobalButtonStyle()
-	if not self.bars then
-		return
-	end
+	if not self.bars then return end
 
 	local vanilla = self:IsVanillaBorderStyle()
 
@@ -637,7 +604,6 @@ function ACAB:ApplyGlobalButtonStyle()
 
 			for i = 1, table.getn(bar.buttons) do
 				local btn = bar.buttons[i]
-
 				if btn and btn.ApplyBorderStyle then
 					btn:ApplyBorderStyle()
 				end
@@ -724,16 +690,12 @@ end
 
 -- point/relativePoint (optional): legacy anchor x/y are given in; ApplyBarPosition converts to canonical.
 function ACAB:SetBarPosition(bar, x, y, point, relativePoint)
-	if not bar or not bar.config then
-		return
-	end
+	if not bar or not bar.config then return end
 
 	x = tonumber(x)
 	y = tonumber(y)
 
-	if not x or not y then
-		return
-	end
+	if not x or not y then return end
 
 	if point then
 		bar.config.point = point
@@ -764,23 +726,17 @@ end
 -------------------------------------------------------------------------
 
 function ACAB:SetBarLayout(bar, cols, rows)
-	if not bar or not bar.config then
-		return false
-	end
+	if not bar or not bar.config then return false end
 
 	cols = tonumber(cols)
 	rows = tonumber(rows)
 
-	if not cols or not rows then
-		return false
-	end
+	if not cols or not rows then return false end
 
 	cols = math.floor(cols)
 	rows = math.floor(rows)
 
-	if cols < 1 or rows < 1 then
-		return false
-	end
+	if cols < 1 or rows < 1 then return false end
 
 	if cols * rows > self.MAX_BAR_BUTTONS then
 		self:Print("Bar " .. tostring(bar.config.id) ..
@@ -795,7 +751,6 @@ function ACAB:SetBarLayout(bar, cols, rows)
 	-- Clamps buttonCount down to the new cell count; growing the grid doesn't restore it.
 	local maxButtons = cols * rows
 	local currentCount = bar.config.buttonCount or maxButtons
-
 	if currentCount > maxButtons then
 		bar.config.buttonCount = maxButtons
 	end
@@ -810,15 +765,11 @@ end
 -------------------------------------------------------------------------
 
 function ACAB:SetBarButtonCount(bar, count)
-	if not bar or not bar.config then
-		return false
-	end
+	if not bar or not bar.config then return false end
 
 	count = tonumber(count)
 
-	if not count then
-		return false
-	end
+	if not count then return false end
 
 	count = math.floor(count)
 
@@ -849,10 +800,8 @@ function ACAB:IsActionSlotUsed(slot, ignoredBarId)
 
 	for i = 1, table.getn(ACABDB.bars) do
 		local cfg = ACABDB.bars[i]
-
 		if cfg and cfg.id ~= ignoredBarId and not cfg.dynamicDefaultBar and not cfg.fixedActionSlots then
 			local first = cfg.slotStart
-
 			if first and slot >= first and slot <= first + self.MAX_BAR_BUTTONS - 1 and slot <= self.ACTION_SLOT_END then
 				return true
 			end
@@ -864,24 +813,16 @@ end
 
 -- True when every slot of a contiguous range is inside the pool and unused.
 function ACAB:IsActionSlotRangeFree(startSlot, count, ignoredBarId)
-	if not startSlot or not count then
-		return false
-	end
+	if not startSlot or not count then return false end
 
-	if startSlot < self.ACTION_SLOT_START then
-		return false
-	end
+	if startSlot < self.ACTION_SLOT_START then return false end
 
-	if startSlot + count - 1 > self.ACTION_SLOT_END then
-		return false
-	end
+	if startSlot + count - 1 > self.ACTION_SLOT_END then return false end
 
 	local slot
 
 	for slot = startSlot, startSlot + count - 1 do
-		if self:IsActionSlotUsed(slot, ignoredBarId) then
-			return false
-		end
+		if self:IsActionSlotUsed(slot, ignoredBarId) then return false end
 	end
 
 	return true
@@ -892,9 +833,7 @@ local PREFERRED_SLOT_START = 109
 
 -- First free contiguous range for a new pool-backed bar (always MAX_BAR_BUTTONS slots), or nil.
 function ACAB:GetNextFreeSlotStart(neededCount)
-	if not neededCount or neededCount < 1 then
-		return nil
-	end
+	if not neededCount or neededCount < 1 then return nil end
 
 	if neededCount < self.MAX_BAR_BUTTONS then
 		neededCount = self.MAX_BAR_BUTTONS
@@ -932,7 +871,6 @@ local function ResolvePoolSlot(cfg, i)
 	end
 
 	local slot = cfg.slotStart + (i - 1)
-
 	if slot <= ACAB.ACTION_SLOT_END then
 		return slot
 	end
@@ -941,9 +879,7 @@ local function ResolvePoolSlot(cfg, i)
 end
 
 function ACAB:ApplyBarShape(bar)
-	if not bar or not bar.config or not bar.buttons then
-		return
-	end
+	if not bar or not bar.config or not bar.buttons then return end
 
 	local cfg = bar.config
 
@@ -954,10 +890,8 @@ function ACAB:ApplyBarShape(bar)
 
 	for i = 1, table.getn(bar.buttons) do
 		local btn = bar.buttons[i]
-
 		if btn then
 			local slot = ResolvePoolSlot(cfg, i)
-
 			if slot then
 				btn:Rebind(slot)
 				btn:SetSlotVisible(i <= buttonCount)
@@ -982,7 +916,6 @@ function ACAB:ApplyBarShape(bar)
 	self:EnsureBarOverlay(bar)
 
 	self:ApplyHoverOnlyState(bar, cfg.hoverOnly, function() return cfg.hoverDuration or 3 end)
-
 	self:ApplyEditModeVisual()
 
 	-- Main Bar footprint changed: art and grouped elements follow. Size-gated so page/stance swaps skip it.
@@ -1034,9 +967,7 @@ function ACAB:CreateBarFromConfig(cfg)
 	bar:RegisterForDrag("LeftButton")
 
 	bar:SetScript("OnDragStart", function()
-		if not ACAB:IsEditMode() then
-			return
-		end
+		if not ACAB:IsEditMode() then return end
 
 		ACAB:StartBarDrag(this)
 	end)
@@ -1056,7 +987,6 @@ function ACAB:CreateBarFromConfig(cfg)
 
 	for i = 1, self.MAX_BAR_BUTTONS do
 		local slot = ResolvePoolSlot(cfg, i)
-
 		if not slot then
 			if not cfg.dynamicDefaultBar and not cfg.fixedActionSlots then
 				self:Print(
@@ -1095,7 +1025,6 @@ function ACAB:CreateAllBars()
 
 	for i = 1, table.getn(ACABDB.bars) do
 		local cfg = ACABDB.bars[i]
-
 		if cfg and cfg.id then
 			local bar = self:CreateBarFromConfig(cfg)
 
@@ -1128,10 +1057,7 @@ end
 -- Restores an Extra Bar's position/buttonSize/spacing/grid to its fresh-created default.
 function ACAB:ResetExtraBarLayout(barId)
 	local bar = self.bars and self.bars[barId]
-
-	if not bar or not bar.config then
-		return
-	end
+	if not bar or not bar.config then return end
 
 	local index = barId - self.EXTRA_BAR_ID_START
 	local x, y, cols, rows, buttonSize, spacing = self:GetDefaultExtraBarLayout(index)
@@ -1152,17 +1078,12 @@ end
 
 -- Resets one Extra Bar to its Modern Layout slot, anchored to its live neighbor, without moving other bars.
 function ACAB:ResetExtraBarLayoutToModernBase(barId)
-	if not self:IsExtraBarId(barId) then
-		return
-	end
+	if not self:IsExtraBarId(barId) then return end
 
 	self:EnsureDB()
 
 	local bar = self.bars and self.bars[barId]
-
-	if not bar then
-		return
-	end
+	if not bar then return end
 
 	local buttonSize, spacing = self:GetModernLayoutSizing()
 	local rowY = self:GetModernVerticalBarCenteredY(buttonSize, spacing)
@@ -1171,10 +1092,7 @@ function ACAB:ResetExtraBarLayoutToModernBase(barId)
 	if barId == extraStart then
 		-- Extra Bar 1: just left of bar 5's current real edge.
 		local bar5 = self.bars[5]
-
-		if not bar5 then
-			return
-		end
+		if not bar5 then return end
 
 		local bar5Left = self:GetElementRealEdges(bar5)
 
@@ -1185,10 +1103,7 @@ function ACAB:ResetExtraBarLayoutToModernBase(barId)
 	else
 		-- Extra Bar 3/4: just right of the previous Extra Bar's current real edge.
 		local prevBar = self.bars[barId - 1]
-
-		if not prevBar then
-			return
-		end
+		if not prevBar then return end
 
 		local _, prevRealRight = self:GetElementRealEdges(prevBar)
 
@@ -1198,10 +1113,7 @@ end
 
 function ACAB:SetExtraBarEnabled(barId, enabled)
 	local bar = self.bars and self.bars[barId]
-
-	if not bar or not bar.config then
-		return
-	end
+	if not bar or not bar.config then return end
 
 	enabled = enabled and true or false
 
@@ -1224,16 +1136,10 @@ end
 -- Action slot of an Extra Bar's pool button; ignores enabled/IsShown so a hidden bar still supplies stance/page content.
 function ACAB:GetExtraBarSlotForIndex(barId, slotIndex)
 	local bar = self.bars and self.bars[barId]
-
-	if not bar or not bar.config or not bar.config.slotStart then
-		return nil
-	end
+	if not bar or not bar.config or not bar.config.slotStart then return nil end
 
 	local slot = bar.config.slotStart + (slotIndex - 1)
-
-	if slot > self.ACTION_SLOT_END then
-		return nil
-	end
+	if slot > self.ACTION_SLOT_END then return nil end
 
 	return slot
 end
@@ -1243,9 +1149,7 @@ end
 -------------------------------------------------------------------------
 
 function ACAB:StartBarDrag(bar)
-	if not bar or not bar.config then
-		return
-	end
+	if not bar or not bar.config then return end
 
 	local cfg = bar.config
 
@@ -1256,9 +1160,7 @@ function ACAB:StartBarDrag(bar)
 end
 
 function ACAB:StopBarDrag(bar)
-	if not bar then
-		return
-	end
+	if not bar then return end
 
 	self:StopSharedDrag()
 

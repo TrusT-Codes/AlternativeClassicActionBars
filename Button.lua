@@ -18,9 +18,7 @@ function ACAB:GetActionItemQualityColor(actionSlot)
 		return nil
 	end
 	local actionTexture = GetActionTexture(actionSlot)
-	if not actionTexture then
-		return nil
-	end
+	if not actionTexture then return nil end
 	-- Case-insensitive: texture path casing varies by source.
 	local actionTexLower = string.lower(actionTexture)
 	for invSlot = FIRST_EQUIP_SLOT, LAST_EQUIP_SLOT do
@@ -56,7 +54,6 @@ function ACAB:ForEachPoolButton(fn)
 
 			for i = 1, table.getn(bar.buttons) do
 				local btn = bar.buttons[i]
-
 				if btn then
 					fn(btn)
 				end
@@ -75,7 +72,6 @@ function ACAB:SweepCustomBarGridVisibility()
 
 			for i = 1, table.getn(bar.buttons) do
 				local btn = bar.buttons[i]
-
 				if btn then
 					btn:UpdateGridVisibility()
 				end
@@ -125,9 +121,7 @@ local function RefreshButtonRangeAndGrid(btn)
 end
 
 local function EnsureSharedRangeTicker()
-	if sharedRangeTicker then
-		return
-	end
+	if sharedRangeTicker then return end
 
 	sharedRangeTicker = C_Timer.NewTicker(0.2, function()
 		ACAB:ForEachPoolButton(RefreshButtonRangeAndGrid)
@@ -184,16 +178,11 @@ end
 -- nampower SPELL_CAST_EVENT (arg2 = spell id): flashes macros targeting that spell; Auto Shot / Shoot / Attack never flash.
 local function FlashCastSpell(spellId)
 	local name = SpellInfo and spellId and SpellInfo(spellId)
-
-	if not name then
-		return
-	end
+	if not name then return end
 
 	name = string.lower(name)
 
-	if name == "auto shot" or name == "shoot" or name == "attack" then
-		return
-	end
+	if name == "auto shot" or name == "shoot" or name == "attack" then return end
 
 	local token = playerActionState.firedToken + 1
 
@@ -292,7 +281,6 @@ end
 
 local function AddToActionSlotMap(btn, slot)
 	local list = actionSlotButtons[slot]
-
 	if not list then
 		list = {}
 		actionSlotButtons[slot] = list
@@ -303,10 +291,7 @@ end
 
 local function RemoveFromActionSlotMap(btn, slot)
 	local list = actionSlotButtons[slot]
-
-	if not list then
-		return
-	end
+	if not list then return end
 
 	local i
 
@@ -320,16 +305,12 @@ end
 -- Refreshes the action pool buttons showing slot.
 local function RefreshActionSlotButtons(slot)
 	local list = actionSlotButtons[slot]
-
-	if not list then
-		return
-	end
+	if not list then return end
 
 	local i
 
 	for i = 1, table.getn(list) do
 		local btn = list[i]
-
 		if btn and btn.actionSlot == slot then
 			btn:Refresh()
 		end
@@ -353,10 +334,7 @@ local function PoolButtonDispatcher_OnEvent()
 	end
 
 	local route = POOL_BUTTON_EVENT_ROUTES[ev]
-
-	if not route or (route.playerOnly and changedArg ~= "player") then
-		return
-	end
+	if not route or (route.playerOnly and changedArg ~= "player") then return end
 
 	if route.handler then
 		route.handler(changedArg, ev)
@@ -368,9 +346,7 @@ end
 
 -- Creates the dispatcher on the first pool button, so it registers after Events.lua's frames like the old per-button registration.
 local function EnsurePoolButtonDispatcher()
-	if poolButtonDispatcher then
-		return
-	end
+	if poolButtonDispatcher then return end
 
 	poolButtonDispatcher = CreateFrame("Frame")
 	poolButtonDispatcher:RegisterEvent("ACTIONBAR_SLOT_CHANGED")
@@ -402,9 +378,7 @@ end
 
 -- Moves an action pool button's slot-map entry after Rebind changed its slot.
 local function MovePoolButtonActionSlot(btn, oldSlot, newSlot)
-	if btn.isPetSlot or btn.isStanceSlot or oldSlot == newSlot then
-		return
-	end
+	if btn.isPetSlot or btn.isStanceSlot or oldSlot == newSlot then return end
 
 	if oldSlot then
 		RemoveFromActionSlotMap(btn, oldSlot)
@@ -482,7 +456,6 @@ function ACABButtonMixin:Init(parent, actionSlot, slotIndex)
 	-- Default bars (1-5): native binding action name (e.g. ACTIONBUTTON1) is the button's home binding identity.
 	if parent.config and (parent.config.fixedActionSlots or parent.config.dynamicDefaultBar) and slotIndex then
 		local prefix = ACAB.DEFAULT_BAR_BINDING_PREFIXES[parent.config.id]
-
 		if prefix then
 			self.nativeBindingId = prefix .. tostring(slotIndex)
 		end
@@ -551,7 +524,6 @@ function ACABButtonMixin:Init(parent, actionSlot, slotIndex)
 	-- A fresh Model with SetModel renders a flat white plane, so the native one is reused.
 	if self.isPetSlot then
 		local nativeModel = getglobal("PetActionButton" .. tostring(actionSlot) .. "AutoCast")
-
 		if nativeModel then
 			-- Native size, the base for UpdateAutoCastGlowScale.
 			self.autoCastGlowModelNativeSize = nativeModel:GetWidth() or 27
@@ -595,7 +567,6 @@ function ACABButtonMixin:Init(parent, actionSlot, slotIndex)
 
 		-- Macro-name font from a native action button's Name region; falls back to the hotkey font.
 		local macroFontFrame = getglobal("ActionButton1Name")
-
 		if macroFontFrame and macroFontFrame.GetFont then
 			local mPath, mSize, mFlags = macroFontFrame:GetFont()
 			ACAB.NATIVE_MACRO_FONT = { path = mPath, size = mSize, flags = mFlags }
@@ -791,9 +762,7 @@ function ACABButtonMixin:UpdateBackdropVisibility(hasContent, isMainBar)
 	local shown = self.slotVisible and (isMainBar or hasContent or IsAlwaysShowMultibars() or ACAB.isShowingActionGrid or ACAB:IsHoverBindMode()) and true or false
 
 	-- Skip the writes when neither the state nor the border style changed.
-	if self.backdropShown == shown and self.backdropNativeBorder == self.hasNativeBorder then
-		return
-	end
+	if self.backdropShown == shown and self.backdropNativeBorder == self.hasNativeBorder then return end
 
 	self.backdropShown = shown
 	self.backdropNativeBorder = self.hasNativeBorder
@@ -942,10 +911,7 @@ end
 -- auto-attacking, any other spell while it's being cast or for MACRO_CAST_FLASH_DURATION after it was cast.
 function ACABButtonMixin:IsMacroTargetActive()
 	local spellName = self:GetMacroTargetKind() == "spell" and self.macroSpellName
-
-	if not spellName then
-		return false
-	end
+	if not spellName then return false end
 
 	spellName = string.lower(spellName)
 
@@ -986,9 +952,7 @@ local function CleanMacroTargetName(text)
 	name = string.gsub(name, '^"(.*)"$', "%1")
 	name = string.gsub(name, "_", " ")
 
-	if name == "" or string.find(name, "^%d") then
-		return nil
-	end
+	if name == "" or string.find(name, "^%d") then return nil end
 
 	return string.lower(name), skipForIcon
 end
@@ -998,9 +962,7 @@ end
 -- (Auto Shot / Attack / Shoot, or a "?" prefix), else the first Auto Shot / Attack / Shoot (an Auto-Shot-only macro
 -- shows Auto Shot); "?" lines never count.
 local function GetMacroTargetName(body)
-	if not body then
-		return nil
-	end
+	if not body then return nil end
 
 	local firstCast
 	local firstSkipped
@@ -1018,7 +980,6 @@ local function GetMacroTargetName(body)
 
 		if command == "#showtooltip" or command == "#show" or runShowName then
 			local showName = CleanMacroTargetName(runShowName or rest)
-
 			if showName then
 				return showName, true
 			end
@@ -1074,9 +1035,7 @@ end
 -- Name of the first macro option whose [conditions] pass right now, by SuperCleveRoidMacros' own
 -- CleveRoids.TestAction; nil without the addon or when none pass. Runs every range tick: allocates nothing itself.
 local function GetConditionalPickName(alternatives)
-	if not (alternatives and CleveRoids and CleveRoids.TestAction) then
-		return nil
-	end
+	if not (alternatives and CleveRoids and CleveRoids.TestAction) then return nil end
 
 	local i
 
@@ -1133,9 +1092,7 @@ end
 
 -- Lower-case item name from an item link, or nil.
 local function GetLinkItemName(link)
-	if not link then
-		return nil
-	end
+	if not link then return nil end
 
 	local found, foundEnd, itemName = string.find(link, "%[(.-)%]")
 
@@ -1146,9 +1103,7 @@ end
 local function GetLinkMaxStack(link)
 	local found, foundEnd, itemId = string.find(link, "item:(%d+)")
 
-	if not itemId then
-		return nil
-	end
+	if not itemId then return nil end
 
 	local itemName, itemLink, quality, minLevel, itemType, subType, maxStack = GetItemInfo(tonumber(itemId))
 
@@ -1180,9 +1135,7 @@ local function FindBagItemByName(name)
 		end
 	end
 
-	if not firstBag then
-		return nil
-	end
+	if not firstBag then return nil end
 
 	RememberMacroItem(name, firstTexture, firstLink)
 
@@ -1218,10 +1171,7 @@ function ACABButtonMixin:ResolveMacroTarget()
 	self.macroTargetKind = nil
 
 	local index = GetMacroIndexByName(self.macroName)
-
-	if not index or index == 0 then
-		return nil
-	end
+	if not index or index == 0 then return nil end
 
 	local macroName, macroTexture, body = GetMacroInfo(index)
 
@@ -1244,7 +1194,6 @@ function ACABButtonMixin:ResolveMacroTarget()
 
 	if self.macroHasConditions then
 		local pickName = GetConditionalPickName(self.macroAlternatives)
-
 		if pickName ~= self.macroPickName then
 			self.macroPickName = pickName
 			self.macroPickSpellId = pickName and FindSpellIdByName(pickName)
@@ -1256,9 +1205,7 @@ function ACABButtonMixin:ResolveMacroTarget()
 		end
 	end
 
-	if not targetName then
-		return nil
-	end
+	if not targetName then return nil end
 
 	if spellId then
 		self.macroTargetKind = "spell"
@@ -1311,9 +1258,7 @@ end
 
 -- Login chat note when SuperCleveRoidMacros is loaded.
 function ACAB:PrintMacroAddonNote()
-	if not (CleveRoids and CleveRoids.TestAction) then
-		return
-	end
+	if not (CleveRoids and CleveRoids.TestAction) then return end
 
 	self:Print("SuperCleveRoidMacros found: some macro tooltips/icons might differ, but what a click casts stays the same. Please report any macro errors you encounter.")
 end
@@ -1330,7 +1275,6 @@ function ACABButtonMixin:SetMacroTargetTooltip()
 	self:ResolveMacroTarget()
 
 	local kind = self.macroTargetKind
-
 	if kind == "spell" then
 		GameTooltip:SetSpell(self.macroTargetA, "spell")
 	elseif kind == "bag" then
@@ -1385,7 +1329,6 @@ function ACABButtonMixin:UpdateEquipRing()
 	-- Macro naming an equipped item: that item's quality.
 	if self:GetMacroTargetKind() == "equip" then
 		local quality = GetInventoryItemQuality("player", self.macroTargetA)
-
 		if quality then
 			local r, g, b = GetItemQualityColor(quality)
 
@@ -1420,13 +1363,10 @@ end
 
 -- Stack-count text, only for consumable/stackable actions; equippable items (rings, trinkets) stay blank.
 function ACABButtonMixin:UpdateCount()
-	if not self.count then
-		return
-	end
+	if not self.count then return end
 
 	local text = ""
 	local macroKind = self:GetMacroTargetKind()
-
 	if macroKind == "bag" then
 		-- Macro naming a bag item: total over all stacks, only for items that stack.
 		if self.macroItemMaxStack and self.macroItemMaxStack > 1 then
@@ -1439,7 +1379,6 @@ function ACABButtonMixin:UpdateCount()
 		and ((IsConsumableAction and IsConsumableAction(self.actionSlot))
 			or (IsStackableAction and IsStackableAction(self.actionSlot))) then
 		local count = GetActionCount(self.actionSlot)
-
 		if count and count > 0 then
 			text = tostring(count)
 		end
@@ -1498,9 +1437,7 @@ end
 
 -- Hotkey text for the button's live binding action (activeBindingId or GetHoverBindingId).
 function ACABButtonMixin:UpdateHotkeyText()
-	if not self.hotkey then
-		return
-	end
+	if not self.hotkey then return end
 
 	local key = self.actionSlot and GetBindingKey(self.activeBindingId or ACAB:GetHoverBindingId(self))
 
@@ -1511,9 +1448,7 @@ end
 local function SetTruncatedText(fontString, text, maxWidth)
 	fontString:SetText(text)
 
-	if maxWidth <= 0 or fontString:GetStringWidth() <= maxWidth then
-		return
-	end
+	if maxWidth <= 0 or fontString:GetStringWidth() <= maxWidth then return end
 
 	local truncated = text
 
@@ -1539,9 +1474,7 @@ end
 
 -- Macro name text for action slots, while ACABDB.showMacroText is on.
 function ACABButtonMixin:UpdateMacroText()
-	if not self.macroText then
-		return
-	end
+	if not self.macroText then return end
 
 	if self.isPetSlot or self.isStanceSlot or not (ACABDB and ACABDB.showMacroText) then
 		self.macroText:Hide()
@@ -1632,9 +1565,7 @@ end
 
 -- Stance slot: re-reads the form and updates icon + glow only if texture/isActive/isCastable changed; true on change.
 function ACABButtonMixin:UpdateStanceFormChange()
-	if not GetShapeshiftFormInfo then
-		return false
-	end
+	if not GetShapeshiftFormInfo then return false end
 
 	-- Texture re-read too: some forms swap their icon on activation.
 	local texture, nameVal, isActive, isCastable = GetShapeshiftFormInfo(self.actionSlot)
@@ -1655,22 +1586,16 @@ end
 
 -- Cooldown spiral from the pet, shapeshift or action cooldown (all plain start, duration, enable).
 function ACABButtonMixin:UpdateCooldown()
-	if not self.actionSlot or not CooldownFrame_SetTimer then
-		return
-	end
+	if not self.actionSlot or not CooldownFrame_SetTimer then return end
 
 	local start, duration, enable
 
 	if self.isPetSlot then
-		if not GetPetActionCooldown then
-			return
-		end
+		if not GetPetActionCooldown then return end
 
 		start, duration, enable = GetPetActionCooldown(self.actionSlot)
 	elseif self.isStanceSlot then
-		if not GetShapeshiftFormCooldown then
-			return
-		end
+		if not GetShapeshiftFormCooldown then return end
 
 		start, duration, enable = GetShapeshiftFormCooldown(self.actionSlot)
 	elseif self:GetMacroTargetKind() == "spell" then
@@ -1682,9 +1607,7 @@ function ACABButtonMixin:UpdateCooldown()
 	elseif self:GetMacroTargetKind() == "missingItem" then
 		start, duration, enable = 0, 0, 0
 	else
-		if not GetActionCooldown then
-			return
-		end
+		if not GetActionCooldown then return end
 
 		start, duration, enable = GetActionCooldown(self.actionSlot)
 	end
@@ -1715,7 +1638,6 @@ function ACABButtonMixin:UpdateRange()
 	local usable, noMana = 1, nil
 
 	local macroKind = self:GetMacroTargetKind()
-
 	if macroKind == "spell" then
 		-- Macro naming a spell: nampower's checks for that spell, by spellbook name.
 		if IsSpellInRange and UnitExists("target") then
@@ -1758,9 +1680,7 @@ function ACABButtonMixin:UpdateRange()
 	local key = redHotkey and (state + 10) or state
 
 	-- Skip every write while the tint state is unchanged.
-	if self.rangeKey == key then
-		return
-	end
+	if self.rangeKey == key then return end
 
 	self.rangeKey = key
 
@@ -1785,7 +1705,6 @@ end
 -- Restores the hotkey's native color (white if not captured yet).
 function ACABButtonMixin:ResetHotkeyRangeColor()
 	local c = ACAB.NATIVE_HOTKEY_TEXT_COLOR
-
 	if c then
 		self.hotkey:SetTextColor(c.r, c.g, c.b)
 	else
@@ -1804,9 +1723,7 @@ function ACABButtonMixin:PlaceCursor()
 		return
 	end
 
-	if self.isStanceSlot then
-		return
-	end
+	if self.isStanceSlot then return end
 
 	if PlaceAction then
 		PlaceAction(self.actionSlot)
@@ -1855,12 +1772,8 @@ end
 
 -- Hoverbind capture for Middle/Button4/Button5, which never reach OnClick.
 function ACABButtonMixin.OnMouseDown()
-	if not ACAB:IsHoverBindMode() then
-		return
-	end
-	if arg1 == "LeftButton" or arg1 == "RightButton" then
-		return
-	end
+	if not ACAB:IsHoverBindMode() then return end
+	if arg1 == "LeftButton" or arg1 == "RightButton" then return end
 	ACAB:HandleHoverBindMouseButton(this, arg1)
 end
 
@@ -1871,13 +1784,9 @@ end
 
 -- Picks up the slot's action (pet slots via PickupPetAction; never stance slots) unless Lock Action Bars (LOCK_ACTIONBAR) is on.
 function ACABButtonMixin.OnDragStart()
-	if this.isStanceSlot then
-		return
-	end
+	if this.isStanceSlot then return end
 
-	if ACAB:IsLockActionBars() then
-		return
-	end
+	if ACAB:IsLockActionBars() then return end
 
 	if this.isPetSlot then
 		if this:IsSlotFilled() and PickupPetAction then
@@ -2015,17 +1924,13 @@ local function SetPoolButtonFontSize(dbKey, nativeFontKey, regionKey, refreshMet
 	ACABDB[dbKey] = size
 
 	local nativeFont = ACAB[nativeFontKey]
-
-	if not nativeFont then
-		return
-	end
+	if not nativeFont then return end
 
 	local path = nativeFont.path
 	local flags = nativeFont.flags
 
 	ACAB:ForEachPoolButton(function(btn)
 		local fontString = btn[regionKey]
-
 		if fontString then
 			fontString:SetFont(path, size, flags)
 			btn[refreshMethod](btn)
