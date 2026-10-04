@@ -1510,6 +1510,7 @@ function ACABButtonMixin:Refresh()
 	if self.isPetSlot then
 		-- Must not use "X and X(...)", and must keep the subtext (2nd) position or texture shifts.
 		local name, texture, isToken
+		local _
 
 		if GetPetActionInfo then
 			name, _, texture, isToken = GetPetActionInfo(self.actionSlot)
@@ -1858,6 +1859,7 @@ function ACABButtonMixin.OnEnter()
 	if this.isPetSlot then
 		-- Command slots (isToken) aren't real pet spells; SetPetAction can't show them, so the tooltip is built by hand.
 		local name, subtext, isToken
+		local _
 
 		if GetPetActionInfo then
 			name, subtext, _, isToken = GetPetActionInfo(this.actionSlot)
