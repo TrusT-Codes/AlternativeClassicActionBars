@@ -1702,7 +1702,7 @@ local function RunLoginStage(failures, name, fn)
 end
 
 -- Full login sequence, run once WaitForNativeBarSettle reports the native bars settled. Step order is load-bearing.
-function ACAB:RunLoginSequence(earlyLeft, earlyTop, settledLeft, settledTop, waited)
+function ACAB:RunLoginSequence()
 	local failures = {}
 
 	-- Everything below reads ACABDB, so a failure here stops the sequence.
