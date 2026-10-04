@@ -115,6 +115,10 @@ local hasCapturedFontDefaults = false
 local sharedRangeTicker
 
 local function RefreshButtonRangeAndGrid(btn)
+	if btn.macroHasConditions then
+		btn:UpdateConditionalMacroPick()
+	end
+
 	btn:UpdateRange()
 	btn:UpdateGridVisibility()
 end
@@ -314,13 +318,6 @@ local function PoolButtonDispatcher_OnEvent()
 	CallOnPoolButtons(route.list, route.method)
 end
 
--- SuperCleveRoidMacros action-changed callback: its pick for a conditional macro changed, so that slot repaints.
-local function OnCleveRoidActionChanged(slot, ev)
-	if ev == "ACTIONBAR_SLOT_CHANGED" and slot then
-		RefreshActionSlotButtons(slot)
-	end
-end
-
 -- Creates the dispatcher on the first pool button, so it registers after Events.lua's frames like the old per-button registration.
 local function EnsurePoolButtonDispatcher()
 	if poolButtonDispatcher then
@@ -337,26 +334,6 @@ local function EnsurePoolButtonDispatcher()
 	end
 
 	poolButtonDispatcher:SetScript("OnEvent", PoolButtonDispatcher_OnEvent)
-
-	-- Optional addon (SuperCleveRoidMacros).
-	if CleveRoids and CleveRoids.RegisterActionEventHandler then
-		CleveRoids.RegisterActionEventHandler(OnCleveRoidActionChanged)
-	end
-
-	-- With nampower key events, CleveRoid neither polls Shift/Ctrl/Alt nor handles their KEY_DOWN/KEY_UP, so its
-	-- [mod] picks only update on other events; this requeues its re-test on those keys (codes 0/1/2).
-	if CleveRoids and CleveRoids.QueueActionUpdate and CleveRoids.NampowerAPI and CleveRoids.NampowerAPI.features
-		and CleveRoids.NampowerAPI.features.hasKeyEvents then
-		local modifierKeyFrame = CreateFrame("Frame")
-
-		modifierKeyFrame:RegisterEvent("KEY_DOWN")
-		modifierKeyFrame:RegisterEvent("KEY_UP")
-		modifierKeyFrame:SetScript("OnEvent", function()
-			if arg1 == 0 or arg1 == 1 or arg1 == 2 then
-				CleveRoids.QueueActionUpdate()
-			end
-		end)
-	end
 end
 
 -- Adds a new pool button to the dispatcher's lists and slot map.
@@ -1017,27 +994,52 @@ local function GetMacroTargetName(body)
 	return firstCast or firstSkipped, false
 end
 
--- SuperCleveRoidMacros' current pick for a macro slot (cleaned, lower case), or nil without the addon, without a
--- pick, or when the pick is Auto Shot / Attack / Shoot or "?"-prefixed.
-local function GetCleveRoidActiveName(slot)
-	if not (CleveRoids and CleveRoids.GetAction) then
+-- Every /cast and /use option of a macro body, split at ";": { cmd = "/cast", text = "[mod:alt] Name" }, ...
+local function GetMacroAlternatives(body)
+	local list = {}
+	local line
+
+	for line in string.gfind(body, "[^\r\n]+") do
+		local found, foundEnd, command, rest = string.find(line, "^%s*(/%a+)%s*(.*)$")
+
+		if command then
+			command = string.lower(command)
+		end
+
+		if command == "/cast" or command == "/use" then
+			local option
+
+			for option in string.gfind(rest, "[^;]+") do
+				table.insert(list, { cmd = command, text = option })
+			end
+		end
+	end
+
+	return list
+end
+
+-- First macro option whose [conditions] pass right now, by SuperCleveRoidMacros' own CleveRoids.TestAction (cleaned,
+-- lower case); skips Auto Shot / Attack / Shoot and "?" options; nil without the addon or when none pass.
+local function GetConditionalPickName(alternatives)
+	if not (alternatives and CleveRoids and CleveRoids.TestAction) then
 		return nil
 	end
 
-	local actions = CleveRoids.GetAction(slot)
-	local active = actions and actions.active
+	local i
 
-	if not active or type(active.action) ~= "string" then
-		return nil
+	for i = 1, table.getn(alternatives) do
+		local option = alternatives[i]
+
+		if CleveRoids.TestAction(option.cmd, option.text) then
+			local name, skipForIcon = CleanMacroTargetName(option.text)
+
+			if name and not skipForIcon and not MACRO_SKIPPED_TARGETS[name] then
+				return name
+			end
+		end
 	end
 
-	local name, skipForIcon = CleanMacroTargetName(active.action)
-
-	if not name or skipForIcon or MACRO_SKIPPED_TARGETS[name] then
-		return nil
-	end
-
-	return name
+	return nil
 end
 
 -- Texture and "item:..." hyperlink of every macro item seen this session, by lower-case name (out-of-stock icon/tooltip).
@@ -1158,11 +1160,11 @@ local function FindEquippedItemByName(name)
 end
 
 -- Resolves this macro slot's target into macroTargetKind ("spell"/"bag"/"equip"/"missingItem"/nil) + macroTargetA/B.
--- Target: an explicit #showtooltip name, else SuperCleveRoidMacros' current pick for macros with [conditions],
--- else the parsed body (GetMacroTargetName).
+-- Target: an explicit #showtooltip name, else (macros with [conditions], SuperCleveRoidMacros loaded) the first
+-- option whose conditions pass now (GetConditionalPickName), else the parsed body (GetMacroTargetName).
 -- Returns the icon to show instead of GetActionTexture: the target spell's or item's own icon, also over a custom
 -- macro icon (an item's is remembered and greyed by UpdateRange once out of stock).
--- Parse results are cached per macro body and per CleveRoid pick; Refresh clears them (macroBody = nil).
+-- Parse results are cached per macro body and per conditional pick; Refresh clears them (macroBody = nil).
 function ACABButtonMixin:ResolveMacroTarget()
 	self.macroTargetKind = nil
 
@@ -1180,7 +1182,10 @@ function ACABButtonMixin:ResolveMacroTarget()
 		self.macroBody = body
 		self.macroTargetName = parsedName
 		self.macroParsedSpellId = parsedName and FindSpellIdByName(parsedName)
-		self.macroHasConditions = not isShowTooltip and string.find(body, "[", 1, true) and true or false
+		-- Conditions are only tested with SuperCleveRoidMacros loaded.
+		self.macroHasConditions = (not isShowTooltip and string.find(body, "[", 1, true)
+			and CleveRoids and CleveRoids.TestAction) and true or false
+		self.macroAlternatives = self.macroHasConditions and GetMacroAlternatives(body) or nil
 		self.macroPickName = nil
 		self.macroPickSpellId = nil
 	end
@@ -1189,14 +1194,14 @@ function ACABButtonMixin:ResolveMacroTarget()
 	local spellId = self.macroParsedSpellId
 
 	if self.macroHasConditions then
-		local pickName = GetCleveRoidActiveName(self.actionSlot)
+		local pickName = GetConditionalPickName(self.macroAlternatives)
+
+		if pickName ~= self.macroPickName then
+			self.macroPickName = pickName
+			self.macroPickSpellId = pickName and FindSpellIdByName(pickName)
+		end
 
 		if pickName then
-			if pickName ~= self.macroPickName then
-				self.macroPickName = pickName
-				self.macroPickSpellId = FindSpellIdByName(pickName)
-			end
-
 			targetName = pickName
 			spellId = self.macroPickSpellId
 		end
@@ -1248,9 +1253,16 @@ function ACABButtonMixin:ResolveMacroTarget()
 	return nil
 end
 
+-- Range ticker: re-tests a conditional macro's options and repaints the button when the pick changed.
+function ACABButtonMixin:UpdateConditionalMacroPick()
+	if self.macroName and GetConditionalPickName(self.macroAlternatives) ~= self.macroPickName then
+		self:Refresh()
+	end
+end
+
 -- Login chat note when SuperCleveRoidMacros is loaded.
 function ACAB:PrintMacroAddonNote()
-	if not (CleveRoids and CleveRoids.GetAction) then
+	if not (CleveRoids and CleveRoids.TestAction) then
 		return
 	end
 
