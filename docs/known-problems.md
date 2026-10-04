@@ -41,7 +41,6 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
 - **`string.match` is available despite being Lua 5.1.** `Core.lua`'s slash dispatcher / `HandleProfileCommand` rely on it, and it works live. Presumably one of the client mods supplies it. Don't "fix" it to `string.find` captures. Check: `/run print(string.match, string.gmatch)`.
 - **`X and X(...)` truncates a multi-return call to one value** (stock Lua, env §2). Capture multi-return APIs (`GetPetActionInfo`: 7 values incl. `subtext` in position 2) inside a real `if X then ... end` block.
 - **Lua 5.0 caps each function at 32 upvalues.** The local `luac` (5.1) allows 60 and won't catch it. Watch big settings builders when adding file-level locals; `SettingsBars.lua` peaks around 18.
-- **Global `_` is written by pet-slot captures** in `Button.lua` `ACABButtonMixin:Refresh` / `OnEnter` (`name, _, texture, ...` with no `local _`). Harmless so far. Declaring `local _` there is a behavior-scoped change.
 
 ### Frames, rects and layout
 - **Lazy, top-down rect resolution (env §4.6).** A child read before its ancestor caches a stale rect. Discarded ancestor reads before child reads are load-bearing in:
