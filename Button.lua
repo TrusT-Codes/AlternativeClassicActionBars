@@ -1606,7 +1606,11 @@ function ACABButtonMixin:Refresh()
 	end
 
 	self:UpdateCount()
+
+	-- Full refresh always rewrites the spiral.
+	self.cooldownStart = nil
 	self:UpdateCooldown()
+
 	self:UpdateRange()
 	self:UpdateState()
 	self:UpdateEquipRing()
@@ -1681,7 +1685,18 @@ function ACABButtonMixin:UpdateCooldown()
 		start, duration, enable = GetActionCooldown(self.actionSlot)
 	end
 
-	CooldownFrame_SetTimer(self.cooldown, start or 0, duration or 0, enable or 0)
+	start = start or 0
+	duration = duration or 0
+	enable = enable or 0
+
+	-- Skips the write while the spiral already runs these values (only this method sets self.cooldown's timer).
+	if start == self.cooldownStart and duration == self.cooldownDuration and enable == self.cooldownEnable then return end
+
+	self.cooldownStart = start
+	self.cooldownDuration = duration
+	self.cooldownEnable = enable
+
+	CooldownFrame_SetTimer(self.cooldown, start, duration, enable)
 end
 
 -- Range/usability icon tint (or hotkey-only red tint); untinted for pet/stance/empty slots.
