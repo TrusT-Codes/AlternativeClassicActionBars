@@ -189,10 +189,9 @@ end)
 -- Position reassert after combat / looting (DefaultBars.lua)
 -------------------------------------------------------------------------
 
--- Native FrameXML may re-anchor wrapped native frames on its own; re-apply ours after combat and looting.
+-- Native FrameXML may re-anchor wrapped native frames on its own; re-apply ours after combat.
 local positionReassertFrame = CreateFrame("Frame", "ACABPositionReassertFrame")
 positionReassertFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-positionReassertFrame:RegisterEvent("LOOT_CLOSED")
 positionReassertFrame:SetScript("OnEvent", function()
 	-- must skip before login: moving native frames before the "native capture" stage stores wrong anchors
 	if not ACAB.loginSequenceDone then return end
