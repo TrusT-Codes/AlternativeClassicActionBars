@@ -356,7 +356,7 @@ function ACAB:ParseProfileImportString(str)
 end
 
 -- Session-state keys an import never takes from the exporter; the importer's own live values are kept.
-local IMPORT_LOCAL_KEYS = { "latestSeenVersion", "editMode", "hoverBindMode" }
+local IMPORT_LOCAL_KEYS = { "latestSeenVersion", "latestSeenVersionMisses", "editMode", "hoverBindMode" }
 
 -- Overwrites the active profile's live data and saved entry with parsed import data.
 -- Must write both, or the logout-time SaveActiveProfileData before ReloadUI clobbers the import.

@@ -1087,6 +1087,11 @@ function ACAB:SanitizeProfileData(data, issues)
 		data.latestSeenVersion = nil
 	end
 
+	if data.latestSeenVersionMisses ~= nil
+		and not (IsFiniteNumber(data.latestSeenVersionMisses) and data.latestSeenVersionMisses >= 0) then
+		Drop("latestSeenVersionMisses", "must be a number of 0 or more")
+	end
+
 	local artMode = data.mainBarArtMode
 
 	if artMode ~= nil and artMode ~= self.MAIN_BAR_ART_MODE_FULL and artMode ~= self.MAIN_BAR_ART_MODE_NO_GRYPHONS
