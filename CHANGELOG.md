@@ -37,6 +37,9 @@
 - Cooldown spirals are only rewritten when the cooldown actually changes.
 - Range/usability updates skip bars that are turned off or hidden.
 - Macro cast flashes no longer re-check every action button on each cast (Auto Shot included).
+- Dragging elements in Edit Layout mode does no work while the mouse and Shift/Alt/Ctrl stay still, and reuses the snap targets for the whole drag.
+- Less per-frame work and garbage while dragging the Main Bar.
+- The hover-only poll stops entirely while no bar or element uses "Only show on hover".
 
 ### Maintenance
 
