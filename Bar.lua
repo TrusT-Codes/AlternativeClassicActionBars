@@ -863,7 +863,8 @@ local function ResolvePoolSlot(cfg, i)
 	return nil
 end
 
-function ACAB:ApplyBarShape(bar)
+-- skipEditVisual: caller runs ApplyEditModeVisual once itself after shaping several bars.
+function ACAB:ApplyBarShape(bar, skipEditVisual)
 	if not bar or not bar.config or not bar.buttons then return end
 
 	local cfg = bar.config
@@ -906,7 +907,10 @@ function ACAB:ApplyBarShape(bar)
 	end
 
 	self:ApplyHoverOnlyState(bar, cfg.hoverOnly, bar.ACABHoverDurationGetter)
-	self:ApplyEditModeVisual()
+
+	if not skipEditVisual then
+		self:ApplyEditModeVisual()
+	end
 
 	-- Main Bar footprint changed: art and grouped elements follow. Size-gated so page/stance swaps skip it.
 	if cfg.id == 1 and (bar.ACABFollowerWidth ~= barW or bar.ACABFollowerHeight ~= barH) then
