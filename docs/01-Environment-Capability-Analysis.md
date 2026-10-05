@@ -75,13 +75,14 @@ Other mod features, noted but not used: SuperWoW `UnitPosition`, `TrackUnit`, `S
 
 ### 4.3 Casting and cooldown data
 - **`C_Spell.UnitCastingInfo(unit)`** returns `name, text, texture, startTimeMS, endTimeMS, isTradeSkill, castID, notInterruptible, spellID`. It works for `"target"`. **For `"player"` it returns all `nil`, even mid-cast.**
+- **`C_Spell.UnitChannelInfo(unit)`** returns `name, text, texture, startTimeMS, endTimeMS, isTradeSkill, notInterruptible, spellID` and, unlike `UnitCastingInfo`, works for `"player"` (live: First Aid, `UNIT_SPELLCAST_CHANNEL_START` with `arg1 = "player"`).
 - **nampower event arguments** (from real captures; "?" means the meaning is not confirmed):
 
 | Event | Args |
 |---|---|
-| `SPELL_START_SELF/OTHER` | 1=0?, 2=spellId, 3=caster GUID, 4=target GUID (`0x0…0` if none), 5=cast type? (2 magic, 34 ranged), **6=cast duration ms** (matches `C_Spell`), 7=0?, 8=0 or 2? |
+| `SPELL_START_SELF/OTHER` | 1=item id when cast from an item (Small Bronze Bomb: 4374), else 0, 2=spellId, 3=caster GUID, 4=target GUID (`0x0…0` if none), 5=cast type? (2 magic, 34 ranged), **6=cast duration ms** (matches `C_Spell`), 7=0?, 8=0 or 2? |
 | `SPELL_GO_SELF/OTHER` | 1=0?, 2=spellId, 3=caster GUID, 4=target GUID, 5=hit flags? (256/288), 6=success? (1; 0 with 7=1 on a likely miss), 7 |
-| `SPELL_FAILED_SELF` | 1=spellId, 2=reason code? (35, 77), 3=0/1 flag |
+| `SPELL_FAILED_SELF` | 1=spellId, 2=reason code (35 = interrupted, live; 77?), 3=0/1 flag? |
 | `SPELL_FAILED_OTHER` | 1=caster GUID, 2=spellId |
 | `SPELL_CAST_EVENT` | 1=0/1 (queued?), 2=spellId, 3=2, 4=short hex id (not a GUID), 5=0 |
 - **`SPELL_CAST_EVENT` fires for instant spells** (Arcane Shot, Serpent Sting) as well as Auto Shot, with `arg2` = spell id; SuperWoW `SpellInfo(arg2)` returns the spell name. `IsCurrentAction(slot)` on a macro slot returns `true` or `1` (both seen) and stays true while a `/cast Auto Shot` in the same macro is active.
@@ -154,5 +155,4 @@ Other mod features, noted but not used: SuperWoW `UnitPosition`, `TrackUnit`, `S
 
 ## 5. Open questions (unconfirmed)
 
-- `C_Spell.UnitChannelInfo` return order (expected `name, text, texture, startTimeMS, endTimeMS, isTradeSkill, notInterruptible, spellID`). No channel has been captured yet.
-- Unknown nampower event fields (the "?" entries in §4.3). Check nampower's `EVENTS.md` before relying on them.
+- Remaining nampower "?" fields in §4.3 (`SPELL_START` 7/8 were 0 in every capture, `SPELL_GO` flags). Check nampower's `EVENTS.md` before relying on them.

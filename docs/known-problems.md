@@ -22,7 +22,7 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
 - **Verify:** fresh install, then `/run print(ACABProfilesDB["Default Vanilla"].defaultBars[1].nativeAnchor.x)` right after the first `/reload`.
 
 ### Key Ring / Exp Bar edit-mode overlay may not match the visible art
-- **Status:** unchecked; Latency Bar already trims its overlay (`ACAB.LATENCY_BAR_OVERLAY_INSET`).
+- **Status:** `KeyRingButton` is 18x39, its NormalTexture `UI-Button-KeyRing` 32x64 (live). Unknown how much of that texture is transparent padding; eyeball check pending. Latency Bar already trims its overlay (`ACAB.LATENCY_BAR_OVERLAY_INSET`).
 - **Where:** `ElementEngine.lua` `EnsureContainerOverlay` (`container.overlayInset`), `DefaultBars.lua` `GROUPABLE_ELEMENTS` (`overlayInset` field), `Core.lua` `GetVisualInsets`
 - **What:** Key Ring and Exp Bar overlays cover their bare frame rect. If `KeyRingButton`'s NormalTexture is larger than the frame, the overlay and snap boxes undershoot the visible art.
 - **Verify:** in edit mode, check whether art bleeds past the blue tint. `/run local f=KeyRingButton local t=f:GetNormalTexture() print(f:GetWidth(),f:GetHeight(),t and t:GetWidth(),t and t:GetHeight(),t and t:GetTexture())`. Texture larger than frame → add a Key Ring `overlayInset` from the measured numbers.
