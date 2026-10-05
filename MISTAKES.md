@@ -52,6 +52,11 @@ Solved mistakes, so they don't happen twice. Each entry has three parts: **what 
 - **Root cause:** native handlers read the global `event`/`this`; `ACAB` is only a file-local alias.
 - **Prevention:** set and restore `this`/`event` around native handler calls, and use the full global name in `/run`. Ask which run a result came from before drawing conclusions.
 
+### Staging a whole folder swept in the user's uncommitted files
+- **What happened:** `git add docs` on a feature branch committed the user's untracked `docs/plan/*-agent-prompt.md` files and their uncommitted `docs/release-checklist.md` edit; switching back to `release/1.3.x` then deleted the untracked files from the working tree. They were restored from the commit and the commit rewritten.
+- **Root cause:** a directory pathspec in a checkout with the user's own pending changes.
+- **Prevention:** stage files by exact path, and check `git show --stat` before switching branches.
+
 ---
 
 ## Saved data and login
