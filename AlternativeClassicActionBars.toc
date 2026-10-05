@@ -19,6 +19,7 @@ Tooltip.lua
 PetStanceBars.lua
 ExperienceBar.lua
 Bar.lua
+LayoutGrid.lua
 ExtraBars.lua
 Button.lua
 HoverBind.lua
