@@ -1083,6 +1083,8 @@ function ACAB:SanitizeProfileData(data, issues)
 
 	if data.latestSeenVersion ~= nil and type(data.latestSeenVersion) ~= "string" then
 		Drop("latestSeenVersion", "must be text")
+	elseif data.latestSeenVersion ~= nil and not self:IsValidVersionString(data.latestSeenVersion) then
+		data.latestSeenVersion = nil
 	end
 
 	local artMode = data.mainBarArtMode

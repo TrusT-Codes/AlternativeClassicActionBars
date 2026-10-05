@@ -61,6 +61,15 @@ function ACAB:CompareVersions(a, b)
 	return 0
 end
 
+local VERSION_MAX_LENGTH = 24
+
+-- True for "major.minor.patch" with an optional "-suffix" of letters, digits and dots, at most 24 characters.
+function ACAB:IsValidVersionString(v)
+	if type(v) ~= "string" or string.len(v) > VERSION_MAX_LENGTH then return false end
+
+	return string.find(v, "^%d+%.%d+%.%d+$") ~= nil or string.find(v, "^%d+%.%d+%.%d+%-[%w%.]+$") ~= nil
+end
+
 ACAB.currentVersion = GetAddOnMetadata("AlternativeClassicActionBars", "Version") or "0.0.0"
 
 local VERSION_CHANNEL = "ACABVersion"
@@ -110,6 +119,10 @@ end
 -- Nags on login if a previously seen version is newer than this one; clears it once caught up.
 local function CheckSavedLatestVersion()
 	if not ACABDB or not ACABDB.latestSeenVersion then return end
+	if not ACAB:IsValidVersionString(ACABDB.latestSeenVersion) then
+		ACABDB.latestSeenVersion = nil
+		return
+	end
 	if ACAB:CompareVersions(ACABDB.latestSeenVersion, ACAB.currentVersion) > 0 then
 		NotifyNewerVersion(ACABDB.latestSeenVersion)
 	else
@@ -167,7 +180,10 @@ function ACAB:CheckForUpdates()
 end
 
 -- Handles a peer's version: nags if newer, replies if older, cancels our reply if a peer already answered.
+-- Malformed versions are ignored.
 function ACAB:HandleVersionAnnouncement(remoteVersion, distribution)
+	if not ACAB:IsValidVersionString(remoteVersion) then return end
+
 	local cmp = ACAB:CompareVersions(remoteVersion, ACAB.currentVersion)
 	if cmp < 0 then
 		ScheduleReply(distribution)
