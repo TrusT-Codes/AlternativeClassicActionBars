@@ -1917,12 +1917,12 @@ function ACAB:HandleProfileCommand(rest)
 			self:Print(reason)
 		end
 	elseif subcommand == "add" then
-		local ok, reason = self:CreateProfile(arg)
+		local ok, result = self:CreateProfile(arg)
 
 		if ok then
-			self:SwitchProfile(arg)
-		elseif reason then
-			self:Print(reason)
+			self:SwitchProfile(result)
+		elseif result then
+			self:Print(result)
 		end
 	elseif subcommand == "delete" then
 		if self:IsBuiltInProfileName(arg) then

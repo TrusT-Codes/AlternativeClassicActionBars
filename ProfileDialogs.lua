@@ -9,21 +9,26 @@ function ACAB:ShowCreateProfileDialog(onCreated)
 		title = "New Profile",
 		message = "Enter the name for the new profile",
 		mode = "textinput",
+		reserveErrorBanner = true,
 		buttons = {
 			{
 				text = "Accept",
 				isDefault = true,
+				validate = function(value)
+					local name, reason = ACAB:ValidateNewProfileName(value)
+					return name ~= nil, reason
+				end,
 				onClick = function(value)
-					local ok, reason = ACAB:CreateProfile(value)
+					local ok, result = ACAB:CreateProfile(value)
 
 					if ok then
-						ACAB:SwitchProfile(value)
-					elseif reason then
-						ACAB:Print(reason)
+						ACAB:SwitchProfile(result)
+					elseif result then
+						ACAB:Print(result)
 					end
 
 					if onCreated then
-						onCreated(ok, value)
+						onCreated(ok, ok and result or value)
 					end
 				end,
 			},
