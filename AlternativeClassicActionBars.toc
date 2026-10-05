@@ -10,6 +10,7 @@ Core.lua
 UpdateCheck.lua
 Database.lua
 ProfileIO.lua
+ProfileDialogs.lua
 ElementEngine.lua
 DefaultBars.lua
 NativeElements.lua
@@ -18,14 +19,18 @@ Tooltip.lua
 PetStanceBars.lua
 ExperienceBar.lua
 Bar.lua
+LayoutGrid.lua
+ExtraBars.lua
 Button.lua
 HoverBind.lua
 Minimap.lua
 Menu.lua
 UIWidgets.lua
+Dialog.lua
 SetupWizard.lua
 Settings.lua
 SettingsBars.lua
+ForceVanillaLayout.lua
 SettingsSimplePages.lua
 SettingsGeneral.lua
 Events.lua

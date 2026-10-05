@@ -121,7 +121,7 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
 - **What:** Scale compensates stored x/y, so the handler must call `RefreshSimpleBarPage(key)`, which re-syncs X/Y before re-clamping. `RefreshSimplePositionSliderRange` alone makes the element jump.
 
 ### ResetAllElementsToVanillaLayout ordering
-- **Where:** `SettingsBars.lua` — `ACAB:ResetAllElementsToVanillaLayout`
+- **Where:** `ForceVanillaLayout.lua` — `ACAB:ResetAllElementsToVanillaLayout`
 - **What:**
   - Each element resets layout before position, so position converts at the final size/scale.
   - Pet/Stance `useNative*` flags are forced before `CreatePetBarNativeContainer`/`CreateStanceBarContainer`. The "effective" checks only force native while `useDefaultLayout` is on, which isn't the wizard path.
@@ -196,7 +196,7 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
   - `PLAYER_AURAS_CHANGED` doesn't `Refresh` stance buttons: `UpdateStanceFormChange` compares `GetShapeshiftFormInfo`'s texture/isActive/isCastable against the cache `Refresh` writes, and only on a change updates icon + glow (plus every stance cooldown). `UPDATE_SHAPESHIFT_FORMS` (fires on learning a form), `PLAYER_ENTERING_WORLD` and `Rebind` still do a full `Refresh`.
 
 ### Removed intra-addon existence guards
-- **Where:** `Bar.lua`, `Button.lua`, `HoverBind.lua`, `Core.lua`, `Events.lua`, `Database.lua`, `ElementEngine.lua`, `DefaultBars.lua`, `NativeElements.lua`, `PetStanceBars.lua`, `ExperienceBar.lua`, `PageIndicator.lua`, `Tooltip.lua`, `SettingsBars.lua` (except `ResetAllElementsToVanillaLayout`, which keeps its guards)
+- **Where:** `Bar.lua`, `Button.lua`, `HoverBind.lua`, `Core.lua`, `Events.lua`, `Database.lua`, `ElementEngine.lua`, `DefaultBars.lua`, `NativeElements.lua`, `PetStanceBars.lua`, `ExperienceBar.lua`, `PageIndicator.lua`, `Tooltip.lua`, `SettingsBars.lua`, `LayoutGrid.lua`, `ExtraBars.lua`, `ForceVanillaLayout.lua` (except `ResetAllElementsToVanillaLayout`, which keeps its guards)
 - **What:** Same for `C_Timer` hedges: ClassicAPI is enforced at login (`CheckRequiredMods`, the only place that still checks `type(C_Timer)`), so tickers/`C_Timer.After` calls are unguarded. Guards like `if ACAB.RefreshBarSettingsPage then` were dropped because every guarded member is defined at the top level of a file that always loads, and every call runs after login. So:
   - Nothing may call `CreateActionButton` / `ApplyEditModeVisual` / `ApplyGlobalButtonStyle` / `ApplyHoverOnlyState` at file-load time.
   - `HoverBind.lua`'s top-level `customBindTargets = {}` must run before any button is created.
@@ -249,8 +249,5 @@ Done: range-ticker write cache (`rangeKey` in `UpdateRange`), Pet Bar layout coa
 ### Remaining duplication
 - **Pet Bar native helpers.** Pet Bar native-mode position/scale/reset would need the single-frame helpers to take a table instead of a field name.
 
-### Decomposition ideas (need `.toc` + CLAUDE.md updates)
-- **`SettingsBars.lua`**: the Force-Vanilla cascade isn't UI code.
-- **`Database.lua`**: the first-login/create-profile dialogs are UI.
-- **`UIWidgets.lua`**: `ACABDialogMixin` is the largest self-contained unit.
-- **`Bar.lua`**: the layout-grid overlay and the Extra Bar policy are separable.
+### Decomposition
+Done (pure moves): `ForceVanillaLayout.lua` (from SettingsBars.lua), `ProfileDialogs.lua` (from Database.lua), `Dialog.lua` (from UIWidgets.lua), `LayoutGrid.lua` and `ExtraBars.lua` (from Bar.lua).
