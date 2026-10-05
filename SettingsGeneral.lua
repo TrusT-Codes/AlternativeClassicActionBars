@@ -626,16 +626,9 @@ function ACAB:ShowCopyProfileDialog(targetName, sourceName)
 	})
 end
 
--- Creates a 22px StyleModernButton-styled button sized to its label.
+-- Creates a 22px modern button sized to its label.
 local function CreateProfileButton(panel, text, point, relativeTo, relativePoint, x, y)
-	local button = CreateFrame("Button", nil, panel)
-
-	button:SetHeight(22)
-	button:SetPoint(point, relativeTo, relativePoint, x, y)
-	ACAB:StyleModernButton(button, 0, 0)
-	button:SetText(text)
-
-	return button
+	return ACAB:CreateModernButton(panel, { height = 22, text = text, anchor = { point, relativeTo, relativePoint, x, y } })
 end
 
 function ACAB:GetOrCreateProfilesPanel()
