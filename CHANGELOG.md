@@ -28,6 +28,7 @@
 - Developer docs refreshed: stale plan files removed, newly confirmed client behavior recorded.
 - Duplicated code merged into shared helpers (login settle poll, settings height-fit, flat backdrop).
 - Old settings that are no longer used are removed from saved profiles after being carried over, and all modern-style settings buttons are built by one shared function.
+- The largest files are split up (new ForceVanillaLayout.lua, ProfileDialogs.lua, Dialog.lua, LayoutGrid.lua and ExtraBars.lua). When updating, replace the whole addon folder and restart the game - a /reload doesn't load new files.
 
 ## 1.3.0-rc1
 
