@@ -147,16 +147,22 @@ function ACAB:GetDefaultBarSlotForIndex(id, slotIndex)
 	return StaticSlot()
 end
 
--- Re-resolves every default bar's pool button slots from current page/bonus-bar state.
+-- Re-resolves every default bar's pool button slots from current page/bonus-bar state; one edit-visual pass at the end.
 function ACAB:RefreshDefaultBarSlots()
 	local id
+	local shaped = false
 
 	for id = 1, 5 do
 		local bar = self.bars and self.bars[id]
 
 		if bar then
-			self:ApplyBarShape(bar)
+			self:ApplyBarShape(bar, true)
+			shaped = true
 		end
+	end
+
+	if shaped then
+		self:ApplyEditModeVisual()
 	end
 end
 
