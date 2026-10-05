@@ -683,7 +683,7 @@ ACAB.MODERN_PROFILE_NAME = "Default Modern"
 -- Default Vanilla's pre-rename name; migrated in ResolveActiveProfile and reserved afterwards.
 ACAB.LEGACY_DEFAULT_PROFILE_NAME = "Default"
 
--- Reserved name: hidden from GetProfileNames and rejected by ProfileNameTaken.
+-- Legacy reserved name: rejected by ProfileNameTaken; its old entry is dropped by MigrateBuiltInProfileNames.
 ACAB.MODERN_BASE_PROFILE_NAME = "ModernBase"
 
 -- True for the two built-in locked profiles.
@@ -788,6 +788,9 @@ local function MigrateBuiltInProfileNames(self)
 	if ACABCharDB.activeProfile == legacy then
 		ACABCharDB.activeProfile = self.DEFAULT_PROFILE_NAME
 	end
+
+	-- Drops the obsolete hidden ModernBase profile (the name stays reserved).
+	ACABProfilesDB[self.MODERN_BASE_PROFILE_NAME] = nil
 end
 
 -- Writes the Modern Layout baseline flags onto profile data; the geometry itself is applied live on the next
@@ -1599,7 +1602,7 @@ function ACAB:EnsureDB()
 
 	if ACABDB.tintWholeButtonOnRange == nil then ACABDB.tintWholeButtonOnRange = true end
 
-	-- One-time migration from the old boolean ACABDB.disableBlizzardArt (left in place, no longer read).
+	-- One-time migration from the old boolean ACABDB.disableBlizzardArt (cleared below).
 	if ACABDB.mainBarArtMode == nil then
 		if ACABDB.disableBlizzardArt == true then
 			ACABDB.mainBarArtMode = ACAB.MAIN_BAR_ART_MODE_DISABLED
@@ -1608,8 +1611,13 @@ function ACAB:EnsureDB()
 		end
 	end
 
-	-- Clears an obsolete saved field.
+	-- Clears obsolete saved fields; must run after the migrations above read them.
 	ACABDB.groupedElementOffsets = nil
+	ACABDB.disableBlizzardArt = nil
+	ACABDB.mainBarPaginationEnabled = nil
+	ACABDB.mainBarStanceSwapEnabled = nil
+	ACABDB.mainBarPageBarAssignment = nil
+	ACABDB.mainBarStanceBarAssignment = nil
 
 	-- Key Ring's hover-only settings are seeded once from Bag Bar's.
 	if ACABDB.keyRingHoverOnly == nil then
