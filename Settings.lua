@@ -1064,6 +1064,7 @@ local GENERAL_CANDIDATE_NAMES = {
 	"hotkeyValueText", "hotkeyResetButton", "countValueText", "countResetButton",
 	"modernBorderStyleCheckbox", "globalSpacingCheckbox", "globalSpacingSlider", "globalSpacingValueText",
 	"globalButtonSizeCheckbox", "globalButtonSizeSlider", "globalButtonSizeValueText", "bypassBar2DepCheckbox",
+	"updateChannelCheckbox",
 }
 
 local PROFILES_CANDIDATE_NAMES = {

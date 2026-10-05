@@ -488,6 +488,30 @@ function ACAB:GetOrCreateGeneralPanel()
 
 	panel.bypassBar2DepCheckbox = bypassBar2DepCheckbox
 
+	-------------------------------------------------------------------------
+	-- Update-check channel opt-out
+	-------------------------------------------------------------------------
+
+	local updateChannelCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABGeneralUpdateChannelCheckbox", {
+		anchor = { "TOPLEFT", bypassBar2DepCheckbox, "BOTTOMLEFT", 0, -14 },
+		label = "Join update-check channel",
+		tooltip = {
+			title = "Join update-check channel",
+			lines = {
+				"When enabled, ACAB joins a hidden chat channel to compare " ..
+				"versions with other ACAB users on your realm. It uses one " ..
+				"of your custom chat channel slots.",
+				"When disabled, ACAB leaves that channel. The update check " ..
+				"with your party, raid, guild and battleground still runs.",
+			},
+		},
+		onClick = function()
+			ACAB:SetUpdateChannelEnabled(this:GetChecked() and true or false)
+		end,
+	})
+
+	panel.updateChannelCheckbox = updateChannelCheckbox
+
 	panel:Hide()
 
 	ACAB.settingsFrame.generalPanel = panel
@@ -1123,6 +1147,7 @@ function ACAB:RefreshGeneralPanel()
 	ACAB:ReflowGeneralOverrideSliders(panel)
 
 	panel.bypassBar2DepCheckbox:SetChecked(ACABDB.bypassRightActionBar2Dependency == true)
+	panel.updateChannelCheckbox:SetChecked(ACAB:IsUpdateChannelEnabled())
 	panel.tintWholeButtonCheckbox:SetChecked(ACABDB.tintWholeButtonOnRange ~= false)
 	panel.mainBarPaginationCheckbox:SetChecked(ACABDB.defaultBarPaginationEnabled ~= false)
 	panel.mainBarStanceSwapCheckbox:SetChecked(ACABDB.defaultBarStanceSwapEnabled ~= false)
