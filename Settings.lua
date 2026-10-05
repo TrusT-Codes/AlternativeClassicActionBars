@@ -1028,22 +1028,12 @@ local SETTINGS_CONTENT_MIN_HEIGHT = 260
 -- Maximum window height as a fraction of screen height.
 local SETTINGS_MAX_HEIGHT_RATIO = 0.9
 
--- Appends frame at n+1 if non-nil and returns the new count (keeps candidate lists free of nil holes).
-local function AppendCandidate(list, n, frame)
-	if frame then
-		list[n + 1] = frame
-		return n + 1
-	end
-
-	return n
-end
-
 -- Appends owner[name] for each of names, in order; returns the new count.
 local function AppendNamedCandidates(list, n, owner, names)
 	local i
 
 	for i = 1, table.getn(names) do
-		n = AppendCandidate(list, n, owner[names[i]])
+		n = ACAB:AppendCandidate(list, n, owner[names[i]])
 	end
 
 	return n
@@ -1258,7 +1248,7 @@ function ACAB:FitSettingsWindowToBarPage(barId)
 		local i
 
 		for i = 1, table.getn(page.assignmentRows) do
-			n = AppendCandidate(candidates, n, page.assignmentRows[i])
+			n = ACAB:AppendCandidate(candidates, n, page.assignmentRows[i])
 		end
 	end
 
@@ -1268,8 +1258,8 @@ function ACAB:FitSettingsWindowToBarPage(barId)
 		for i = 1, table.getn(page.gridSwatches) do
 			local swatch = page.gridSwatches[i]
 
-			n = AppendCandidate(candidates, n, swatch)
-			n = AppendCandidate(candidates, n, swatch.caption)
+			n = ACAB:AppendCandidate(candidates, n, swatch)
+			n = ACAB:AppendCandidate(candidates, n, swatch.caption)
 		end
 	end
 
@@ -1285,7 +1275,7 @@ function ACAB:FitSettingsWindowToBarPage(barId)
 		local i
 
 		for i = 1, table.getn(ACAB.settingsFrame.barButtons) do
-			listN = AppendCandidate(listCandidates, listN, ACAB.settingsFrame.barButtons[i])
+			listN = ACAB:AppendCandidate(listCandidates, listN, ACAB.settingsFrame.barButtons[i])
 		end
 	end
 
@@ -1337,11 +1327,11 @@ function ACAB:FitSettingsWindowToWizardView()
 	local i
 
 	for i = 1, table.getn(widgets) do
-		n = AppendCandidate(candidates, n, widgets[i])
+		n = ACAB:AppendCandidate(candidates, n, widgets[i])
 	end
 
 	for i = 1, table.getn(regions) do
-		n = AppendCandidate(candidates, n, regions[i])
+		n = ACAB:AppendCandidate(candidates, n, regions[i])
 	end
 
 	ApplySettingsHeightFromCandidates(candidates, ACAB.settingsFrame.wizardScrollFrame, panel, nil, nil, true)
