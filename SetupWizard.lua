@@ -814,14 +814,9 @@ end
 -- Validates the name step and advances to the lock step.
 function ACABSetupWizardMixin:AdvanceFromName()
 	local step = self.steps.name
-	local name = step.editBox:GetText()
-	if not name or name == "" then
-		ShowNameError(step, "Profile name cannot be empty.")
-		return
-	end
-
-	if ACAB:ProfileNameTaken(name) then
-		ShowNameError(step, "A profile named \"" .. name .. "\" already exists.")
+	local name, reason = ACAB:ValidateNewProfileName(step.editBox:GetText())
+	if not name then
+		ShowNameError(step, reason)
 		return
 	end
 
