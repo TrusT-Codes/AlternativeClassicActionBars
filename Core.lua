@@ -1762,6 +1762,9 @@ function ACAB:RunLoginSequence()
 	end)
 
 	RunLoginStage(failures, "post-login verify", WaitForPostLoginSettleThenVerify)
+
+	-- Gates event handlers and slash commands; stays nil when the "profile" stage fails.
+	ACAB.loginSequenceDone = true
 end
 
 -------------------------------------------------------------------------

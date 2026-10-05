@@ -42,6 +42,9 @@ gridVisibilityFrame:SetScript("OnEvent", function()
 	-- Pet spell drags fire the PET_BAR_* pair instead of the ACTIONBAR_* pair.
 	ACAB.isShowingActionGrid = (event == "ACTIONBAR_SHOWGRID" or event == "PET_BAR_SHOWGRID")
 
+	-- must skip before login: bars aren't built yet
+	if not ACAB.loginSequenceDone then return end
+
 	ACAB:SweepCustomBarGridVisibility()
 end)
 
@@ -59,8 +62,14 @@ local lastDefaultBarStanceIndex = false
 
 mainBarBonusEventFrame:SetScript("OnEvent", function()
 	if event == "UPDATE_BONUS_ACTIONBAR" then
+		-- must also run before login: the login sequence never hides BonusActionBarFrame itself
 		ACAB:HideBonusActionBarFrame()
-		ACAB:RefreshDefaultBarSlots()
+
+		-- must skip before login: ACABDB may still be another character's profile
+		if ACAB.loginSequenceDone then
+			ACAB:RefreshDefaultBarSlots()
+		end
+
 		lastDefaultBarStanceIndex = ACAB:GetActiveStanceIndex()
 		return
 	end
@@ -70,7 +79,11 @@ mainBarBonusEventFrame:SetScript("OnEvent", function()
 
 	if stanceIndex ~= lastDefaultBarStanceIndex then
 		lastDefaultBarStanceIndex = stanceIndex
-		ACAB:RefreshDefaultBarSlots()
+
+		-- must skip before login: ACABDB may still be another character's profile
+		if ACAB.loginSequenceDone then
+			ACAB:RefreshDefaultBarSlots()
+		end
 	end
 end)
 
@@ -86,6 +99,9 @@ petBarVisibilityFrame:RegisterEvent("PLAYER_CONTROL_GAINED")
 petBarVisibilityFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 petBarVisibilityFrame:SetScript("OnEvent", function()
 	if event == "UNIT_PET" and arg1 ~= "player" then return end
+
+	-- must skip before login: ACABDB may still be another character's profile
+	if not ACAB.loginSequenceDone then return end
 
 	ACAB:RefreshPetBarVisibility()
 end)
@@ -133,6 +149,9 @@ local castBarEventFrame = CreateFrame("Frame", "ACABCastBarEventFrame")
 castBarEventFrame:RegisterEvent("UNIT_SPELLCAST_START")
 castBarEventFrame:RegisterEvent("UNIT_SPELLCAST_CHANNEL_START")
 castBarEventFrame:SetScript("OnEvent", function()
+	-- must skip before login: a capture here would land in the wrong profile
+	if not ACAB.loginSequenceDone then return end
+
 	if not ACABDB or not ACABDB.castBarPosition then
 		ACAB:ApplyCastBarPosition()
 	end
@@ -175,5 +194,8 @@ local positionReassertFrame = CreateFrame("Frame", "ACABPositionReassertFrame")
 positionReassertFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 positionReassertFrame:RegisterEvent("LOOT_CLOSED")
 positionReassertFrame:SetScript("OnEvent", function()
+	-- must skip before login: moving native frames before the "native capture" stage stores wrong anchors
+	if not ACAB.loginSequenceDone then return end
+
 	ACAB:ReassertNativeElementPositions()
 end)
