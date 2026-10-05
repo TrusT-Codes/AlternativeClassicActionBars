@@ -807,14 +807,7 @@ function ACAB:ApplyStanceBarBorderStyle()
 					backdrop:SetFrameLevel(math.max((btn:GetFrameLevel() or 1) - 1, 0))
 					backdrop:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, 0)
 					backdrop:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 0, 0)
-					backdrop:SetBackdrop({
-						bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-						edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-						tile = true,
-						tileSize = 8,
-						edgeSize = 8,
-						insets = { left = 1, right = 1, top = 1, bottom = 1 },
-					})
+					backdrop:SetBackdrop(ACAB.SMALL_BACKDROP)
 					backdrop:SetBackdropColor(0, 0, 0, 0.75)
 					backdrop:SetBackdropBorderColor(1, 1, 1, 1)
 

@@ -581,19 +581,7 @@ local function CreateGridSwatch(parent, preset)
 	local swatch = CreateFrame("Button", nil, parent)
 	swatch:SetWidth(SWATCH_SIZE)
 	swatch:SetHeight(SWATCH_SIZE)
-	swatch:SetBackdrop({
-		bgFile   = "Interface\\Tooltips\\UI-Tooltip-Background",
-		edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-		tile = true,
-		tileSize = 8,
-		edgeSize = 8,
-		insets = {
-			left = 2,
-			right = 2,
-			top = 2,
-			bottom = 2
-		},
-	})
+	swatch:SetBackdrop(ACAB.PANEL_BACKDROP)
 
 	swatch:SetBackdropColor(0, 0, 0, 0.35)
 	swatch:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
