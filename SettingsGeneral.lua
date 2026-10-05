@@ -115,21 +115,8 @@ end
 -- General tab panel
 -------------------------------------------------------------------------
 
-function ACAB:GetOrCreateGeneralPanel()
-	if not ACAB.settingsFrame then
-		ACAB:CreateSettingsFrame()
-	end
-
-	if ACAB.settingsFrame.generalPanel then
-		return ACAB.settingsFrame.generalPanel
-	end
-
-	local panel = CreateWideViewPanel("ACABSettingsGeneralScrollFrame", "generalScrollFrame", "General Settings")
-
-	-------------------------------------------------------------------------
-	-- Force Vanilla Layout Mode
-	-------------------------------------------------------------------------
-
+-- General panel: Force Vanilla Layout Mode checkbox. Returns the checkbox.
+local function BuildGeneralLayoutModeSection(panel)
 	-- OnClick is set below: its confirm dialog's OK button closes over this `checkbox` local.
 	local checkbox = ACAB:CreateLabeledCheckbox(panel, "ACABGeneralUseDefaultLayoutCheckbox", {
 		anchor = { "TOPLEFT", panel, "TOPLEFT", ACAB.INDENT_SECTION, -52 },
@@ -185,6 +172,11 @@ function ACAB:GetOrCreateGeneralPanel()
 
 	panel.useDefaultLayoutCheckbox = checkbox
 
+	return checkbox
+end
+
+-- General panel: range tint and default-bar pagination / stance-swap checkboxes below anchor. Returns the last checkbox.
+local function BuildGeneralBarToggleSection(panel, checkbox)
 	-------------------------------------------------------------------------
 	-- Tint whole button on out of range (off: tint only the hotkey text, like native buttons)
 	-------------------------------------------------------------------------
@@ -262,6 +254,11 @@ function ACAB:GetOrCreateGeneralPanel()
 
 	panel.mainBarStanceSwapCheckbox = mainBarStanceSwapCheckbox
 
+	return mainBarStanceSwapCheckbox
+end
+
+-- General panel: macro text toggle and the Macro/Hotkey/Item Count text size sliders. Returns countTitle, countSlider, countValueText.
+local function BuildGeneralFontSizeSection(panel, mainBarStanceSwapCheckbox)
 	-------------------------------------------------------------------------
 	-- Macro text toggle + font size
 	-------------------------------------------------------------------------
@@ -337,10 +334,11 @@ function ACAB:GetOrCreateGeneralPanel()
 	panel.countSlider = countSlider
 	panel.countResetButton = countResetButton
 
-	-------------------------------------------------------------------------
-	-- Global button border style (modern / vanilla); locked to vanilla under Force Vanilla Layout Mode
-	-------------------------------------------------------------------------
+	return countTitle, countSlider, countValueText
+end
 
+-- General panel: global button border style checkbox (locked to vanilla under Force Vanilla Layout Mode). Returns it.
+local function BuildGeneralBorderStyleSection(panel, countTitle, countSlider, countValueText)
 	-- Anchored off countTitle (fixed X), not countValueText.
 	local modernBorderStyleCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABGeneralModernBorderStyleCheckbox", {
 		anchor = { "TOPLEFT", countTitle, "BOTTOMLEFT", 0, -12 - countSlider:GetHeight() - 2 - countValueText:GetHeight() - 18 },
@@ -379,10 +377,11 @@ function ACAB:GetOrCreateGeneralPanel()
 
 	panel.modernBorderStyleCheckbox = modernBorderStyleCheckbox
 
-	-------------------------------------------------------------------------
-	-- Global Spacing / Button size overrides (slider shown only while its checkbox is on)
-	-------------------------------------------------------------------------
+	return modernBorderStyleCheckbox
+end
 
+-- General panel: global Spacing / Button size override checkboxes + sliders. Returns the Button size slider.
+local function BuildGeneralGlobalOverrideSection(panel, modernBorderStyleCheckbox)
 	-- OnClick is set below, once its slider exists.
 	local globalSpacingCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABGeneralGlobalSpacingCheckbox", {
 		anchor = { "TOPLEFT", modernBorderStyleCheckbox, "BOTTOMLEFT", 0, -14 },
@@ -474,6 +473,11 @@ function ACAB:GetOrCreateGeneralPanel()
 	panel.globalButtonSizeSlider = globalButtonSizeSlider
 	panel.globalButtonSizeValueText = globalButtonSizeValueText
 
+	return globalButtonSizeSlider
+end
+
+-- General panel: Right ActionBar 2 dependency bypass and update-check channel opt-out checkboxes.
+local function BuildGeneralMiscSection(panel, globalButtonSizeSlider)
 	-- Lets bar 5 (Right ActionBar 2) toggle independently of bar 4.
 	-- must anchor off a slider/checkbox edge, never a *ValueText FontString (centered under its slider).
 	local bypassBar2DepCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABGeneralBypassBar2DepCheckbox", {
@@ -511,6 +515,26 @@ function ACAB:GetOrCreateGeneralPanel()
 	})
 
 	panel.updateChannelCheckbox = updateChannelCheckbox
+end
+
+function ACAB:GetOrCreateGeneralPanel()
+	if not ACAB.settingsFrame then
+		ACAB:CreateSettingsFrame()
+	end
+
+	if ACAB.settingsFrame.generalPanel then
+		return ACAB.settingsFrame.generalPanel
+	end
+
+	local panel = CreateWideViewPanel("ACABSettingsGeneralScrollFrame", "generalScrollFrame", "General Settings")
+
+	-- Each section anchors off the last control of the one above.
+	local checkbox = BuildGeneralLayoutModeSection(panel)
+	local mainBarStanceSwapCheckbox = BuildGeneralBarToggleSection(panel, checkbox)
+	local countTitle, countSlider, countValueText = BuildGeneralFontSizeSection(panel, mainBarStanceSwapCheckbox)
+	local modernBorderStyleCheckbox = BuildGeneralBorderStyleSection(panel, countTitle, countSlider, countValueText)
+	local globalButtonSizeSlider = BuildGeneralGlobalOverrideSection(panel, modernBorderStyleCheckbox)
+	BuildGeneralMiscSection(panel, globalButtonSizeSlider)
 
 	panel:Hide()
 
