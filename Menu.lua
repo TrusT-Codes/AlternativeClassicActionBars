@@ -24,12 +24,12 @@ local function InitializeMenu()
 	info.func = function() ACAB:ToggleSettingsFrame() end
 	UIDropDownMenu_AddButton(info)
 
-	info = NewToggleInfo("Configure Layout", ACAB:IsEditMode(), function() ACAB:ToggleEditMode() end)
+	info = NewToggleInfo("Edit Layout", ACAB:IsEditMode(), function() ACAB:ToggleEditMode() end)
 	if ACAB:IsDefaultProfileActive() then
 		info.disabled = 1
 		info.tooltipWhileDisabled = 1
 		info.tooltipOnButton = 1
-		info.tooltipTitle = "Configure Layout"
+		info.tooltipTitle = "Edit Layout"
 		info.tooltipText = "A profile other than the built-in Default profiles needs to be active to use Edit Layout mode."
 	end
 

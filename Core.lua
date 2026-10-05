@@ -973,7 +973,7 @@ function ACAB:GetLayoutGridSpacing()
 end
 
 -------------------------------------------------------------------------
--- Edit mode ("Configure Layout")
+-- Edit mode ("Edit Layout")
 -------------------------------------------------------------------------
 
 -- ESCAPE exits edit mode via bindings.xml's ACABEDITMODEESCAPE, swapped onto ESCAPE unsaved (never SaveBindings).
@@ -1026,14 +1026,14 @@ end
 -- Prints the edit-mode controls summary on enable, or the OFF notice.
 local function PrintEditModeState(enabled)
 	if enabled then
-		ACAB:Print("Configure Layout |cff20ff20ON|r \r")
+		ACAB:Print("Edit Layout |cff20ff20ON|r \r")
 		ACAB:Print(ColorKeyName("drag").." to move, " .. ColorKeyName("scroll") .. " to scale, " .. ColorKeyName("right-click") .. " to open settings for any Element")
 		ACAB:Print("Hold " .. ColorKeyName("Shift") .. " while dragging to temporarily invert 'Snap to Adjacent Elements' Setting")
 		ACAB:Print("Hold " .. ColorKeyName("Alt") .. " while dragging to temporarily invert 'Snap to Grid' Setting")
 		ACAB:Print("Hold " .. ColorKeyName("Ctrl") .. " to temporarily show/hide the layout grid")
-		ACAB:Print("Press " .. ColorKeyName("Escape") .. " to |cffff2020exit|r the Configure Layout mode")
+		ACAB:Print("Press " .. ColorKeyName("Escape") .. " to |cffff2020exit|r Edit Layout mode")
 	else
-		ACAB:Print("Configure Layout |cffff2020OFF|r.")
+		ACAB:Print("Edit Layout |cffff2020OFF|r.")
 	end
 end
 
@@ -1089,7 +1089,7 @@ function ACAB:SetHoverBindMode(enabled)
 	enabled = enabled and true or false
 
 	if enabled and self:IsEditMode() then
-		self:Print("Cannot enable Hoverbind while Configure Layout is on.")
+		self:Print("Cannot enable Hoverbind while Edit Layout is on.")
 		return
 	end
 
@@ -1106,7 +1106,7 @@ end
 
 function ACAB:ToggleHoverBindMode()
 	if not self:IsHoverBindMode() and self:IsEditMode() then
-		self:Print("Cannot enable Hoverbind while Configure Layout is on.")
+		self:Print("Cannot enable Hoverbind while Edit Layout is on.")
 		return
 	end
 
@@ -1991,7 +1991,7 @@ end
 local COMMAND_HELP_LINES = {
 	{ "/acab", "toggle the Settings window" },
 	{ "/acab menu", "open the minimap right-click menu" },
-	{ "/acab edit", "toggle Configure Layout mode" },
+	{ "/acab edit", "toggle Edit Layout mode" },
 	{ "/acab bind", "toggle Hoverbind keybind mode" },
 	{ "/acab settings <page>", "jump straight to a settings page" },
 	"  pages: general, bars, profiles, editmode, main, 1-9/extra1-4, pet, stance, bags, keyring, micro, latency, exp, cast, tooltip",
