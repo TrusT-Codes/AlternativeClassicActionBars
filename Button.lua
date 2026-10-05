@@ -106,6 +106,12 @@ ACABButtonMixin = {}
 -- Native hotkey/count/macro fonts are captured once, on the first button created.
 local hasCapturedFontDefaults = false
 
+-- Every pool button, and the same buttons split by slot type (filled by RegisterPoolButton).
+local allPoolButtons = {}
+local actionPoolButtons = {}
+local petPoolButtons = {}
+local stancePoolButtons = {}
+
 -- One shared ticker refreshes every button's range/usability and grid visibility; started lazily, never cancelled.
 local sharedRangeTicker
 
@@ -119,23 +125,36 @@ local function RefreshButtonRangeAndGrid(btn)
 	btn:UpdateGridVisibility()
 end
 
+-- Skips buttons whose bar isn't visible (disabled bar, no pet); they catch up on the first tick after it shows.
+local function SharedRangeTick()
+	local lastBar
+	local lastBarVisible
+	local i
+
+	for i = 1, table.getn(allPoolButtons) do
+		local btn = allPoolButtons[i]
+		local bar = btn.parentBar
+
+		if bar ~= lastBar then
+			lastBar = bar
+			lastBarVisible = bar:IsVisible()
+		end
+
+		if lastBarVisible then
+			RefreshButtonRangeAndGrid(btn)
+		end
+	end
+end
+
 local function EnsureSharedRangeTicker()
 	if sharedRangeTicker then return end
 
-	sharedRangeTicker = C_Timer.NewTicker(0.2, function()
-		ACAB:ForEachPoolButton(RefreshButtonRangeAndGrid)
-	end)
+	sharedRangeTicker = C_Timer.NewTicker(0.2, SharedRangeTick)
 end
 
 -------------------------------------------------------------------------
 -- Shared event dispatcher: one frame routes each event to the pool buttons that need it
 -------------------------------------------------------------------------
-
--- Every pool button, and the same buttons split by slot type (filled by RegisterPoolButton).
-local allPoolButtons = {}
-local actionPoolButtons = {}
-local petPoolButtons = {}
-local stancePoolButtons = {}
 
 -- Action slot -> action pool buttons currently showing it (paging can put two buttons on one slot).
 local actionSlotButtons = {}
