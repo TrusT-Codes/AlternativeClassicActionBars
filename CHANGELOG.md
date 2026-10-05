@@ -33,6 +33,10 @@
 
 - Less work and fewer temporary allocations in action button updates, hoverbind mode and while dragging elements; smaller addon files.
 - Page and stance swaps do about half the work: the edit-mode refresh runs once per swap instead of five times.
+- Item macros (potions, bandages, ammo) share one bag scan per bag update instead of one per button.
+- Cooldown spirals are only rewritten when the cooldown actually changes.
+- Range/usability updates skip bars that are turned off or hidden.
+- Macro cast flashes no longer re-check every action button on each cast (Auto Shot included).
 
 ### Maintenance
 
