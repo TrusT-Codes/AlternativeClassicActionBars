@@ -300,6 +300,22 @@ local function RemoveFromActionSlotMap(btn, slot)
 	end
 end
 
+-- First action pool button currently showing slot, or nil.
+local function FirstButtonShowingSlot(slot)
+	local list = actionSlotButtons[slot]
+	if not list then return nil end
+
+	local i
+
+	for i = 1, table.getn(list) do
+		if list[i].actionSlot == slot then
+			return list[i]
+		end
+	end
+
+	return nil
+end
+
 -- Refreshes the action pool buttons showing slot.
 local function RefreshActionSlotButtons(slot)
 	local list = actionSlotButtons[slot]
@@ -779,13 +795,19 @@ function ACABButtonMixin:Rebind(newActionSlot)
 	local oldActionSlot = self.actionSlot
 
 	-- Must clear the old entry before setting the new one (both can be the same slot).
-	if oldActionSlot and oldActionSlot >= ACAB.ACTION_SLOT_START then
+	if oldActionSlot and oldActionSlot >= ACAB.ACTION_SLOT_START
+		and ACAB.customBindTargets[oldActionSlot - 72] == self then
 		ACAB.customBindTargets[oldActionSlot - 72] = nil
 	end
 
 	self.actionSlot = newActionSlot
 
 	MovePoolButtonActionSlot(self, oldActionSlot, newActionSlot)
+
+	-- Hands the old slot's key to a button still showing it (e.g. the Extra Bar after a Main Bar swap back).
+	if oldActionSlot and oldActionSlot >= ACAB.ACTION_SLOT_START and not ACAB.customBindTargets[oldActionSlot - 72] then
+		ACAB.customBindTargets[oldActionSlot - 72] = FirstButtonShowingSlot(oldActionSlot)
+	end
 
 	if newActionSlot >= ACAB.ACTION_SLOT_START then
 		ACAB.customBindTargets[newActionSlot - 72] = self
@@ -1413,11 +1435,18 @@ local function CompactBindingKeyText(key)
 	return table.concat(hotkeyParts, "-", 1, n)
 end
 
--- Hotkey text for the button's live binding action (activeBindingId or GetHoverBindingId).
+-- Hotkey text: a redirected default-bar button shows its own moved key, others their action's first key that
+-- isn't another button's redirected key.
 function ACABButtonMixin:UpdateHotkeyText()
 	if not self.hotkey then return end
 
-	local key = self.actionSlot and GetBindingKey(self.activeBindingId or ACAB:GetHoverBindingId(self))
+	local key
+
+	if self.activeBindingId and self.activeBindingId ~= self.nativeBindingId and self.redirectedKeys then
+		key = self.redirectedKeys[1] or self.redirectedKeys[2]
+	elseif self.actionSlot then
+		key = ACAB:GetOwnBindingKey(self.activeBindingId or ACAB:GetHoverBindingId(self))
+	end
 
 	self:SetTruncatedButtonText(self.hotkey, key and CompactBindingKeyText(key) or "")
 end

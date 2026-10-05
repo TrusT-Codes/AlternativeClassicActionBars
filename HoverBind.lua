@@ -100,12 +100,60 @@ end
 -- Default-bar swap redirect: session-only key move onto ACABBIND<n> (btn.activeBindingId) while a swap shows a pool slot
 -------------------------------------------------------------------------
 
--- Rebinds every key of fromId onto toId.
-local function MoveBindingKeys(fromId, toId)
-	local k1, k2 = GetBindingKey(fromId)
+-- Keys a default-bar swap redirect moved off their native action (key -> true).
+local redirectedBindingKeys = {}
 
-	if k1 then SetBinding(k1); SetBinding(k1, toId) end
-	if k2 then SetBinding(k2); SetBinding(k2, toId) end
+-- First key bound to bindingId that isn't a default-bar button's redirected key, or nil.
+function ACAB:GetOwnBindingKey(bindingId)
+	local k1, k2, k3, k4 = GetBindingKey(bindingId)
+
+	if k1 and not redirectedBindingKeys[k1] then return k1 end
+	if k2 and not redirectedBindingKeys[k2] then return k2 end
+	if k3 and not redirectedBindingKeys[k3] then return k3 end
+	if k4 and not redirectedBindingKeys[k4] then return k4 end
+
+	return nil
+end
+
+-- Moves btn's own native keys onto targetId and remembers them in btn.redirectedKeys.
+local function RedirectOwnKeys(btn, targetId)
+	local keys = btn.redirectedKeys or {}
+	local i
+
+	keys[1], keys[2] = GetBindingKey(btn.nativeBindingId)
+	btn.redirectedKeys = keys
+
+	for i = 1, 2 do
+		local key = keys[i]
+
+		if key then
+			redirectedBindingKeys[key] = true
+			SetBinding(key)
+			SetBinding(key, targetId)
+		end
+	end
+end
+
+-- Moves only the keys RedirectOwnKeys moved back onto btn.nativeBindingId (other keys of the target stay).
+local function RestoreOwnKeys(btn)
+	local keys = btn.redirectedKeys
+	if not keys then return end
+
+	local i
+
+	for i = 1, 2 do
+		local key = keys[i]
+
+		if key then
+			redirectedBindingKeys[key] = nil
+			keys[i] = nil
+
+			if GetBindingAction(key) == btn.activeBindingId then
+				SetBinding(key)
+				SetBinding(key, btn.nativeBindingId)
+			end
+		end
+	end
 end
 
 -- Moves the key back onto btn.nativeBindingId; called before a hoverbind edit/clear reads or writes it.
@@ -114,7 +162,7 @@ function ACAB:RehomeDefaultBarBinding(btn)
 
 	local liveId = btn.activeBindingId or btn.nativeBindingId
 	if liveId ~= btn.nativeBindingId then
-		MoveBindingKeys(liveId, btn.nativeBindingId)
+		RestoreOwnKeys(btn)
 	end
 
 	btn.activeBindingId = btn.nativeBindingId
@@ -138,11 +186,11 @@ function ACAB:SyncDefaultBarBindingRedirect(btn)
 
 	-- Always funnels through nativeBindingId, so chained swaps read the key from one stable source.
 	if liveId ~= btn.nativeBindingId then
-		MoveBindingKeys(liveId, btn.nativeBindingId)
+		RestoreOwnKeys(btn)
 	end
 
 	if targetId ~= btn.nativeBindingId then
-		MoveBindingKeys(btn.nativeBindingId, targetId)
+		RedirectOwnKeys(btn, targetId)
 	end
 
 	btn.activeBindingId = targetId
