@@ -29,6 +29,16 @@ ACAB.SMALL_BACKDROP = {
 	insets = { left = 1, right = 1, top = 1, bottom = 1 },
 }
 
+-- Flat tooltip skin (no inset) for bar frames and vanilla-style button backdrops.
+ACAB.FLAT_BACKDROP = {
+	bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+	edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+	tile = true,
+	tileSize = 8,
+	edgeSize = 8,
+	insets = { left = 0, right = 0, top = 0, bottom = 0 },
+}
+
 -- Red banner skin for the dialog error banner and the settings profile-lock banner.
 ACAB.BANNER_BACKDROP = {
 	bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",

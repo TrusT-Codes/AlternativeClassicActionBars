@@ -411,19 +411,10 @@ local function AnchorAutoCastModel(btn, model)
 	model:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -modelInset, modelInset + modelYShift)
 end
 
--- Vanilla-style button backdrop (no inset); modern style uses ACAB.SMALL_BACKDROP (1px inset).
-local VANILLA_BUTTON_BACKDROP = {
-	bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-	edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-	tile = true,
-	tileSize = 8,
-	edgeSize = 8,
-	insets = { left = 0, right = 0, top = 0, bottom = 0 },
-}
-
--- Sets the backdrop template for the current border style, fully transparent; UpdateBackdropVisibility colors it.
+-- Sets the backdrop for the current border style (vanilla: ACAB.FLAT_BACKDROP, modern: ACAB.SMALL_BACKDROP),
+-- fully transparent; UpdateBackdropVisibility colors it.
 local function ApplyButtonBackdrop(btn)
-	btn:SetBackdrop(btn.hasNativeBorder and VANILLA_BUTTON_BACKDROP or ACAB.SMALL_BACKDROP)
+	btn:SetBackdrop(btn.hasNativeBorder and ACAB.FLAT_BACKDROP or ACAB.SMALL_BACKDROP)
 	btn:SetBackdropColor(0, 0, 0, 0)
 	btn:SetBackdropBorderColor(0, 0, 0, 0)
 
