@@ -28,6 +28,7 @@
 - The update check ignores malformed version strings from other players and drops a malformed saved one, so a bogus announcement can't cause a permanent update nag.
 - A remembered "newer version available" message now stops after 5 logins in a row without any other player announcing that version again.
 - Importing a profile no longer takes over the exporter's update-nag state, Edit Layout mode or Hoverbind mode.
+- Fix "Only show on hover" staying on (and locked) for action bars and elements after turning on Force Vanilla Layout Mode; it now turns off for all of them.
 
 ### Performance
 
@@ -40,6 +41,7 @@
 - Dragging elements in Edit Layout mode does no work while the mouse and Shift/Alt/Ctrl stay still, and reuses the snap targets for the whole drag.
 - Less per-frame work and garbage while dragging the Main Bar.
 - The hover-only poll stops entirely while no bar or element uses "Only show on hover".
+- Closing a loot window no longer re-applies every element's position.
 
 ### Maintenance
 
