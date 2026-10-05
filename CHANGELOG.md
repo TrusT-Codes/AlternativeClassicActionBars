@@ -19,6 +19,7 @@
 ### Performance
 
 - Less work and fewer temporary allocations in action button updates, hoverbind mode and while dragging elements; smaller addon files.
+- Page and stance swaps do about half the work: the edit-mode refresh runs once per swap instead of five times.
 
 ### Maintenance
 
