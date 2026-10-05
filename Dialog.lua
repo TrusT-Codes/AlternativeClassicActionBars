@@ -144,67 +144,62 @@ function ACABDialogMixin:OnLoad()
 	self:Hide()
 end
 
--- config = { title, message, mode = "confirm"|"textinput"|"dropdown"|"textarea", defaultText, options, warningText,
---   reserveErrorBanner, liveValidate(text) (textarea only), buttons = { { text, isDefault, danger, keepOpen,
---   variant = "prominent" (larger, blue)|"minor" (smaller, red), validate(value), onClick(value) }, ... } }
-function ACABDialogMixin:Init(config)
-	config = config or {}
+-- Button row packing and dialog padding used by ACABDialogMixin:Init.
+local BUTTON_GAP_X = 12
+local BUTTON_ROW_GAP_Y = 8
+local TOP_OFFSET = 18
+local BOTTOM_PADDING = 20
 
-	self.mode = config.mode or "confirm"
-	self.buttonConfigs = config.buttons or {}
-	self.hasErrorBannerSlot = config.reserveErrorBanner and true or false
+-- Hides every input, then anchors the warning line, the mode's input and the error banner slot.
+local function LayoutDialogInputs(dialog, config)
+	dialog.editBox:Hide()
+	dialog.dropdown:Hide()
+	dialog.textArea:Hide()
+	dialog.errorBanner:Hide()
 
-	self.titleText:SetText(config.title or "")
-	self.messageText:SetText(config.message or "")
-
-	self.editBox:Hide()
-	self.dropdown:Hide()
-	self.textArea:Hide()
-	self.errorBanner:Hide()
-
-	local anchorAbove = self.messageText
+	local anchorAbove = dialog.messageText
 
 	if config.warningText then
-		self.warningText:ClearAllPoints()
-		self.warningText:SetPoint("TOP", self.messageText, "BOTTOM", 0, -8)
-		self.warningText:SetText(config.warningText)
-		self.warningText:Show()
-		anchorAbove = self.warningText
+		dialog.warningText:ClearAllPoints()
+		dialog.warningText:SetPoint("TOP", dialog.messageText, "BOTTOM", 0, -8)
+		dialog.warningText:SetText(config.warningText)
+		dialog.warningText:Show()
+		anchorAbove = dialog.warningText
 	else
-		self.warningText:Hide()
+		dialog.warningText:Hide()
 	end
 
-	if self.mode == "textinput" then
-		self.editBox:ClearAllPoints()
-		self.editBox:SetPoint("TOP", anchorAbove, "BOTTOM", 0, -14)
-		self.editBox:SetText(config.defaultText or "")
-		self.editBox:HighlightText()
-		self.editBox:Show()
-		anchorAbove = self.editBox
-	elseif self.mode == "dropdown" then
-		self.dropdown:ClearAllPoints()
-		self.dropdown:SetPoint("TOP", anchorAbove, "BOTTOM", 0, -10)
-		self.dropdown:SetOptions(config.options or {})
-		self.dropdown:SetSelected((config.options or {})[1])
-		self.dropdown:Show()
-		anchorAbove = self.dropdown
-	elseif self.mode == "textarea" then
-		self.textArea:ClearAllPoints()
-		self.textArea:SetPoint("TOP", anchorAbove, "BOTTOM", 0, -10)
-		self.textArea:SetWidth(DIALOG_WIDTH - 80)
-		self.textArea.editBox:SetText(config.defaultText or "")
-		self.textArea.editBox:HighlightText()
+	if dialog.mode == "textinput" then
+		dialog.editBox:ClearAllPoints()
+		dialog.editBox:SetPoint("TOP", anchorAbove, "BOTTOM", 0, -14)
+		dialog.editBox:SetText(config.defaultText or "")
+		dialog.editBox:HighlightText()
+		dialog.editBox:Show()
+		anchorAbove = dialog.editBox
+	elseif dialog.mode == "dropdown" then
+		dialog.dropdown:ClearAllPoints()
+		dialog.dropdown:SetPoint("TOP", anchorAbove, "BOTTOM", 0, -10)
+		dialog.dropdown:SetOptions(config.options or {})
+		dialog.dropdown:SetSelected((config.options or {})[1])
+		dialog.dropdown:Show()
+		anchorAbove = dialog.dropdown
+	elseif dialog.mode == "textarea" then
+		dialog.textArea:ClearAllPoints()
+		dialog.textArea:SetPoint("TOP", anchorAbove, "BOTTOM", 0, -10)
+		dialog.textArea:SetWidth(DIALOG_WIDTH - 80)
+		dialog.textArea.editBox:SetText(config.defaultText or "")
+		dialog.textArea.editBox:HighlightText()
 
 		-- UpdateScrollFrame resets the EditBox to the scrollFrame's width; narrowed again right after.
 		ACAB:UpdateScrollFrame(
-			self.textArea,
-			self.textArea.editBox,
+			dialog.textArea,
+			dialog.textArea.editBox,
 			DIALOG_TEXTAREA_CONTENT_HEIGHT,
 			DIALOG_TEXTAREA_HEIGHT
 		)
-		self.textArea.editBox:SetWidth(DIALOG_WIDTH - 80 - DIALOG_TEXTAREA_SCROLLBAR_RESERVE)
+		dialog.textArea.editBox:SetWidth(DIALOG_WIDTH - 80 - DIALOG_TEXTAREA_SCROLLBAR_RESERVE)
 
-		self.textArea.editBox:SetScript("OnTextChanged", function()
+		dialog.textArea.editBox:SetScript("OnTextChanged", function()
 			if not config.liveValidate then return end
 
 			local text = this:GetText()
@@ -223,31 +218,27 @@ function ACABDialogMixin:Init(config)
 			end
 		end)
 
-		self.textArea:Show()
-		anchorAbove = self.textArea
+		dialog.textArea:Show()
+		anchorAbove = dialog.textArea
 	end
 
-	if self.hasErrorBannerSlot then
-		self.errorBanner:ClearAllPoints()
-		self.errorBanner:SetPoint("TOP", anchorAbove, "BOTTOM", 0, -8)
-		self.errorBanner:SetWidth(DIALOG_WIDTH - 40)
-		self.errorBanner:SetHeight(DIALOG_ERROR_BANNER_HEIGHT)
-		self.errorBanner.text:SetWidth(DIALOG_WIDTH - 56)
+	if dialog.hasErrorBannerSlot then
+		dialog.errorBanner:ClearAllPoints()
+		dialog.errorBanner:SetPoint("TOP", anchorAbove, "BOTTOM", 0, -8)
+		dialog.errorBanner:SetWidth(DIALOG_WIDTH - 40)
+		dialog.errorBanner:SetHeight(DIALOG_ERROR_BANNER_HEIGHT)
+		dialog.errorBanner.text:SetWidth(DIALOG_WIDTH - 56)
 	end
+end
 
-	-- Buttons wrap into rows, each row centered on the dialog.
-	local BUTTON_GAP_X = 12
-	local BUTTON_ROW_GAP_Y = 8
-	local availableWidth = DIALOG_WIDTH - 40
-
+-- Sizes, colors and wires each pooled button from dialog.buttonConfigs; sets dialog.defaultButtonIndex.
+local function ConfigureDialogButtons(dialog, count)
 	local i
-	local count = table.getn(self.buttonConfigs)
-	self.defaultButtonIndex = nil
 
 	-- Pass 1: configure each button so its label-fit width is known before row packing.
 	for i = 1, 4 do
-		local button = self.buttons[i]
-		local buttonConfig = self.buttonConfigs[i]
+		local button = dialog.buttons[i]
+		local buttonConfig = dialog.buttonConfigs[i]
 		if buttonConfig then
 			local variant = buttonConfig.variant
 
@@ -296,7 +287,7 @@ function ACABDialogMixin:Init(config)
 			end)
 
 			if buttonConfig.isDefault then
-				self.defaultButtonIndex = i
+				dialog.defaultButtonIndex = i
 			end
 
 			button:Show()
@@ -305,18 +296,22 @@ function ACABDialogMixin:Init(config)
 		end
 	end
 
-	if not self.defaultButtonIndex and count > 0 then
-		self.defaultButtonIndex = 1
+	if not dialog.defaultButtonIndex and count > 0 then
+		dialog.defaultButtonIndex = 1
 	end
+end
 
-	-- Pass 2: greedily pack buttons into rows (button indices, total width, tallest height per row).
+-- Pass 2: greedily packs the first count buttons into rows. Returns rows (button indices), rowWidths, rowHeights, rowCount.
+local function PackDialogButtonRows(dialog, count)
+	local availableWidth = DIALOG_WIDTH - 40
 	local rows = {}
 	local rowWidths = {}
 	local rowHeights = {}
 	local rowCount = 0
+	local i
 
 	for i = 1, count do
-		local button = self.buttons[i]
+		local button = dialog.buttons[i]
 		local width = button:GetWidth()
 		local height = button:GetHeight()
 		local addWidth = BUTTON_GAP_X + width
@@ -337,30 +332,36 @@ function ACABDialogMixin:Init(config)
 		end
 	end
 
-	-- Rows anchor off the dialog's TOP at offsets summed from the content above.
-	local TOP_OFFSET = 18
-	local BOTTOM_PADDING = 20
+	return rows, rowWidths, rowHeights, rowCount
+end
 
+-- Offset from the dialog's TOP to the bottom of the content above the button rows.
+local function GetDialogContentBottom(dialog, config)
 	local contentBottomY = TOP_OFFSET
-	contentBottomY = contentBottomY + (self.titleText:GetHeight() or 0)
-	contentBottomY = contentBottomY + 10 + (self.messageText:GetHeight() or 0)
+	contentBottomY = contentBottomY + (dialog.titleText:GetHeight() or 0)
+	contentBottomY = contentBottomY + 10 + (dialog.messageText:GetHeight() or 0)
 
 	if config.warningText then
-		contentBottomY = contentBottomY + 8 + (self.warningText:GetHeight() or 0)
+		contentBottomY = contentBottomY + 8 + (dialog.warningText:GetHeight() or 0)
 	end
 
-	if self.mode == "textinput" then
-		contentBottomY = contentBottomY + 14 + (self.editBox:GetHeight() or 0)
-	elseif self.mode == "dropdown" then
-		contentBottomY = contentBottomY + 10 + (self.dropdown:GetHeight() or 0)
-	elseif self.mode == "textarea" then
+	if dialog.mode == "textinput" then
+		contentBottomY = contentBottomY + 14 + (dialog.editBox:GetHeight() or 0)
+	elseif dialog.mode == "dropdown" then
+		contentBottomY = contentBottomY + 10 + (dialog.dropdown:GetHeight() or 0)
+	elseif dialog.mode == "textarea" then
 		contentBottomY = contentBottomY + 10 + DIALOG_TEXTAREA_HEIGHT
 	end
 
-	if self.hasErrorBannerSlot then
+	if dialog.hasErrorBannerSlot then
 		contentBottomY = contentBottomY + 8 + DIALOG_ERROR_BANNER_HEIGHT
 	end
 
+	return contentBottomY
+end
+
+-- Anchors each row centered on the dialog below contentBottomY. Returns the last row's bottom offset.
+local function PlaceDialogButtonRows(dialog, rows, rowWidths, rowHeights, rowCount, contentBottomY)
 	local rowY = contentBottomY
 	local r
 
@@ -374,18 +375,46 @@ function ACABDialogMixin:Init(config)
 		local j
 
 		for j = 1, table.getn(row) do
-			local button = self.buttons[row[j]]
+			local button = dialog.buttons[row[j]]
 			local width = button:GetWidth()
 			local centerX = cursorX + (width / 2)
 
 			button:ClearAllPoints()
-			button:SetPoint("TOP", self, "TOP", centerX, -rowY)
+			button:SetPoint("TOP", dialog, "TOP", centerX, -rowY)
 
 			cursorX = cursorX + width + BUTTON_GAP_X
 		end
 
 		rowY = rowY + rowHeights[r]
 	end
+
+	return rowY
+end
+
+-- config = { title, message, mode = "confirm"|"textinput"|"dropdown"|"textarea", defaultText, options, warningText,
+--   reserveErrorBanner, liveValidate(text) (textarea only), buttons = { { text, isDefault, danger, keepOpen,
+--   variant = "prominent" (larger, blue)|"minor" (smaller, red), validate(value), onClick(value) }, ... } }
+function ACABDialogMixin:Init(config)
+	config = config or {}
+
+	self.mode = config.mode or "confirm"
+	self.buttonConfigs = config.buttons or {}
+	self.hasErrorBannerSlot = config.reserveErrorBanner and true or false
+
+	self.titleText:SetText(config.title or "")
+	self.messageText:SetText(config.message or "")
+
+	LayoutDialogInputs(self, config)
+
+	-- Buttons wrap into rows, each row centered on the dialog.
+	local count = table.getn(self.buttonConfigs)
+	self.defaultButtonIndex = nil
+
+	ConfigureDialogButtons(self, count)
+
+	-- Row anchors are offsets summed from the content above.
+	local rows, rowWidths, rowHeights, rowCount = PackDialogButtonRows(self, count)
+	local rowY = PlaceDialogButtonRows(self, rows, rowWidths, rowHeights, rowCount, GetDialogContentBottom(self, config))
 
 	self:SetHeight(rowY + BOTTOM_PADDING)
 end
