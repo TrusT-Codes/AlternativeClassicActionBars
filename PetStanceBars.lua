@@ -409,50 +409,6 @@ end
 -- Button count follows GetNumShapeshiftForms(); RebuildStanceBarContainer updates the chain in place.
 -------------------------------------------------------------------------
 
--- Captures once the topmost default bar (1 or 2) to ShapeshiftBarFrame gap.
--- Must run before CreateFixedSlotDefaultBars, which hides bar 2's buttons and collapses that native anchor.
-function ACAB:CaptureStanceBarNativeGap()
-	if ACABDB.stanceBarNativeGap then return end
-
-	local frame = ShapeshiftBarFrame
-	if not frame then return end
-
-	local bottom = frame:GetBottom()
-	if not bottom then return end
-
-	local frameScale = frame:GetEffectiveScale()
-	local targetScale = UIParent:GetEffectiveScale()
-	if not frameScale or not targetScale or targetScale == 0 then return end
-
-	local screenBottom = (bottom * frameScale) / targetScale
-
-	local defaults = ACABDB.defaultBars
-	local cfg1 = defaults and defaults[1]
-	local cfg2 = defaults and defaults[2]
-
-	local referenceY = cfg1 and cfg1.nativeAnchor and cfg1.nativeAnchor.y
-
-	if cfg2 and cfg2.enabled and cfg2.nativeAnchor then
-		referenceY = cfg2.nativeAnchor.y
-	end
-
-	if not referenceY then return end
-
-	local gap = screenBottom - referenceY
-
-	-- Discards implausible reads (real gap is ~5) from a corrupted/unreflowed frame.
-	if gap <= 0 or gap >= self.BUTTON_SIZE then
-		self:Print(
-			"WARNING: Stance Bar native gap capture produced an implausible " ..
-			"value (" .. tostring(gap) .. ") and was discarded - falling back " ..
-			"to a default clearance until a later capture succeeds."
-		)
-		return
-	end
-
-	ACABDB.stanceBarNativeGap = gap
-end
-
 -- Hides ShapeshiftBarFrame's leftover background art for good (vanilla's ShapeshiftBar_Update re-Shows it).
 local function HideShapeshiftBarFrame()
 	ACAB:NeuterFrameShow(ShapeshiftBarFrame)
@@ -469,9 +425,6 @@ function ACAB:CreateStanceBarContainer()
 
 	local buttons = self:GetStanceBarButtons()
 	if not buttons then return end
-
-	-- Safety net; the real capture runs earlier in the login sequence.
-	self:CaptureStanceBarNativeGap()
 
 	self:SortButtonsByNativeLeft(buttons)
 
