@@ -294,6 +294,32 @@ function ACAB:GetAllSnapTargetBoxes(excludeElement)
 	return boxes
 end
 
+-- Snap-target boxes reused for the whole shared drag (ElementEngine.lua's StartSharedDrag/StopSharedDrag).
+local snapBoxCacheActive = false
+local snapBoxCache = nil
+local snapBoxCacheExclude = nil
+
+-- Turns per-drag snap-box caching on/off; either way drops the cached boxes.
+function ACAB:SetSnapTargetCacheActive(active)
+	snapBoxCacheActive = active and true or false
+	snapBoxCache = nil
+	snapBoxCacheExclude = nil
+end
+
+-- GetAllSnapTargetBoxes(excludeElement), built once per drag while caching is active.
+local function GetSnapTargetBoxes(self, excludeElement)
+	if not snapBoxCacheActive then
+		return self:GetAllSnapTargetBoxes(excludeElement)
+	end
+
+	if not snapBoxCache or snapBoxCacheExclude ~= excludeElement then
+		snapBoxCache = self:GetAllSnapTargetBoxes(excludeElement)
+		snapBoxCacheExclude = excludeElement
+	end
+
+	return snapBoxCache
+end
+
 -- Visible edges of `frame` (visual-inset-adjusted) in UIParent units: left, right, top, bottom.
 function ACAB:GetElementRealEdges(frame)
 	if not frame then return nil end
@@ -656,7 +682,7 @@ function ACAB:ComputeSnapAdjustment(proposedLeft, proposedTop, width, height, ex
 		ConsiderY(screenBottom, proposedBottom)
 	end
 
-	local boxes = self:GetAllSnapTargetBoxes(excludeElement)
+	local boxes = GetSnapTargetBoxes(self, excludeElement)
 	local i
 
 	for i = 1, table.getn(boxes) do
