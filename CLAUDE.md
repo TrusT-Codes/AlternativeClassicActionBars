@@ -105,7 +105,7 @@ Single global table `AlternativeClassicActionBars` (locally aliased `local ACAB 
 
 ## Research doc
 
-`docs/01-Environment-Capability-Analysis.md` is the authoritative, empirically-verified record of what SuperWoW/nampower/ClassicAPI/UnitXP_SP3 can and cannot do, built up over many live-testing rounds. Its §3 reuse table and §4 live-confirmed sections are ground truth (§5 lists what is still unconfirmed; references to it are written `env §N`) — prefer them over general/retail WoW addon knowledge, which frequently does not apply to this client. `docs/plan/` holds smaller scoped design docs for specific features/bugs (custom-bar keybinding, bonus action bar, visual-inset regressions).
+`docs/01-Environment-Capability-Analysis.md` is the authoritative, empirically-verified record of what SuperWoW/nampower/ClassicAPI/UnitXP_SP3 can and cannot do, built up over many live-testing rounds. Its §3 reuse table and §4 live-confirmed sections are ground truth (§5 lists what is still unconfirmed; references to it are written `env §N`) — prefer them over general/retail WoW addon knowledge, which frequently does not apply to this client. `docs/plan/CustomBarKeybinding_DLL.md` is a parked plan for a native input-hook DLL (custom-bar keys already work via `bindings.xml`).
 
 **`docs/known-problems.md`** — read it when something doesn't behave as the code suggests: unconfirmed suspected bugs (with `/run` checks), client quirks mapped to the code they affect, must-stay orderings, and leftover tech debt/duplication. Code comments point to its entries as `see known-problems.md: "<title>"`. Put new findings there instead of long WHY comments in code.
 
