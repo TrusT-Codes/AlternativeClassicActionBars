@@ -15,6 +15,8 @@
 - Fix Extra Bars' "Reset to Vanilla Layout" copying the shape of the bar they sit next to: Extra Bar 1/2 now reset to 12x1, Extra Bar 3/4 to 1x12.
 - Fix macros that also start Auto Shot never glowing: macros now flash briefly whenever their own ability fires (instant ones too), never for Auto Shot.
 - Fix `/acab recapture` leaving a moved Stance Bar in place and not putting the Pet Bar back above Extra Bar 2: both now return to their default spot on the vanilla stack.
+- Remove the Stance Bar "native gap ... implausible value" warning at login; the value it measured was never used.
+- Fix fallback-placed Extra Bars overlapping in the Modern button style (only when their reference bar had no saved position).
 
 ### Performance
 
