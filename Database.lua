@@ -487,7 +487,7 @@ end
 
 -- Fallback Extra Bar position (stacked vertically by index) when the reference bar's native anchor is missing.
 local function GetFallbackExtraBarPosition(self, index)
-	return 20, 150 + (index * ((self.BUTTON_ROWS * self.BUTTON_SIZE) + 40))
+	return 20, 150 + (index * ((self.BUTTON_ROWS * self:GetCurrentButtonSizeBaseline()) + 40))
 end
 
 -- Extra Bar default positions: pitchCount button pitches to `side` of a reference default bar's native
