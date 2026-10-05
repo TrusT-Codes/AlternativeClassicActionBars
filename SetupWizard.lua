@@ -1,8 +1,6 @@
 -- SetupWizard.lua
--- Setup Wizard (ACAB:ShowSetupWizard), hosted inside the settings window. Decision steps (name, Force Vanilla
--- lock, button style, layout) only collect choices; the lock/layout choice writes the chosen built-in baseline
--- onto the target profile and reloads. Every later step shows a real settings page that edits the active
--- profile live. The current step is saved in ACABCharDB.setupWizard, so any reload resumes the wizard there.
+-- Setup Wizard (ACAB:ShowSetupWizard) inside the settings window: decision steps write a built-in baseline and reload,
+-- later steps show real settings pages; ACABCharDB.setupWizard resumes the current step after any reload.
 
 local ACAB = AlternativeClassicActionBars
 
@@ -32,7 +30,7 @@ local function PreviewIconForSlot(n)
 end
 
 -------------------------------------------------------------------------
--- Cosmetic (non-interactive) preview bars for the button style step, same skin recipe as Button.lua's Init
+-- Cosmetic preview bars for the button style step (same skin as Button.lua's Init)
 -------------------------------------------------------------------------
 
 local function ComputePreviewBarWidth(buttonSize, spacing, count)
@@ -112,9 +110,8 @@ local EXTRA_BARS_HINTS = {
 		"from the left screen edge.",
 }
 
--- kind "decision": a frame on the wizard view; kind "page": a live settings page - a real one (page = ShowBarPage
--- id, or show()) or a wizard view frame (frame = true). short = sidebar label; hint = string or function(state);
--- onFirstVisit(state)/onShow() optional.
+-- kind "decision": a wizard view frame; kind "page": a real settings page (page = ShowBarPage id, or show()) or a
+-- wizard view frame (frame = true). short = sidebar label; hint = string or function(state); onFirstVisit/onShow optional.
 local STEPS = {
 	name = { kind = "decision", title = "Name Your Profile", short = "Profile Name" },
 	lock = { kind = "decision", title = "Force Vanilla Layout Mode", short = "Vanilla Lock" },
@@ -205,7 +202,7 @@ local STEPS = {
 -- Longest possible path, for the sidebar row pool.
 local MAX_STEP_COUNT = 16
 
--- Ordered step keys for state; Stance/Pet/Bag Bar/Key Ring steps only follow the Modern layout (the default while undecided).
+-- Ordered step keys for state; Stance/Pet/Bag Bar/Key Ring steps only on the Modern layout (default while undecided).
 local function BuildStepPath(state)
 	local path = {}
 
@@ -268,14 +265,22 @@ local function CreateWizardButton(parent, config)
 	return button
 end
 
--- New hidden decision step frame on panel with its centered intro message at the top. Returns step, message.
-local function CreateStepFrame(panel, text)
+-- New hidden full-width step frame on panel, offsetY below its top.
+local function CreateSizedStepFrame(panel, offsetY)
 	local step = CreateFrame("Frame", nil, panel)
 
 	-- must be sized: a frame with only anchors has no rect for its children to resolve against
-	step:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, -24)
-	step:SetPoint("TOPRIGHT", panel, "TOPRIGHT", 0, -24)
+	step:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, offsetY)
+	step:SetPoint("TOPRIGHT", panel, "TOPRIGHT", 0, offsetY)
 	step:SetHeight(1)
+	step:Hide()
+
+	return step
+end
+
+-- New hidden decision step frame on panel with its centered intro message at the top. Returns step, message.
+local function CreateStepFrame(panel, text)
+	local step = CreateSizedStepFrame(panel, -24)
 
 	local message = step:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	message:SetPoint("TOP", step, "TOP", 0, 0)
@@ -283,9 +288,30 @@ local function CreateStepFrame(panel, text)
 	message:SetJustifyH("CENTER")
 	message:SetText(text)
 
-	step:Hide()
-
 	return step, message
+end
+
+-- Danger (left) / prominent (right) choice buttons under message, offsetX either side of center.
+local function CreateChoiceButtons(step, message, offsetX, minWidth, maxWidth, leftText, onLeft, rightText, onRight)
+	CreateWizardButton(step, {
+		text = leftText,
+		height = 34,
+		minWidth = minWidth,
+		maxWidth = maxWidth,
+		anchor = { "TOP", message, "BOTTOM", -offsetX, -20 },
+		variant = "danger",
+		onClick = onLeft,
+	})
+
+	CreateWizardButton(step, {
+		text = rightText,
+		height = 34,
+		minWidth = minWidth,
+		maxWidth = maxWidth,
+		anchor = { "TOP", message, "BOTTOM", offsetX, -20 },
+		variant = "prominent",
+		onClick = onRight,
+	})
 end
 
 -------------------------------------------------------------------------
@@ -337,29 +363,9 @@ function ACABSetupWizardMixin:BuildLockStep(panel)
 		"up in the next steps.|r"
 	)
 
-	CreateWizardButton(step, {
-		text = "Lock down default Elements!",
-		height = 34,
-		minWidth = 200,
-		maxWidth = 210,
-		anchor = { "TOP", message, "BOTTOM", -115, -20 },
-		variant = "danger",
-		onClick = function()
-			ACAB.setupWizard:ApplyBaselineAndReload("locked")
-		end,
-	})
-
-	CreateWizardButton(step, {
-		text = "Let me move everything!",
-		height = 34,
-		minWidth = 200,
-		maxWidth = 210,
-		anchor = { "TOP", message, "BOTTOM", 115, -20 },
-		variant = "prominent",
-		onClick = function()
-			ACAB.setupWizard:ShowStep("style")
-		end,
-	})
+	CreateChoiceButtons(step, message, 115, 200, 210,
+		"Lock down default Elements!", function() ACAB.setupWizard:ApplyBaselineAndReload("locked") end,
+		"Let me move everything!", function() ACAB.setupWizard:ShowStep("style") end)
 
 	return step
 end
@@ -410,42 +416,16 @@ function ACABSetupWizardMixin:BuildLayoutStep(panel)
 		"your real settings pages, and every change shows up live on your bars."
 	)
 
-	CreateWizardButton(step, {
-		text = "Keep Vanilla Layout + ArtBar enabled",
-		height = 34,
-		minWidth = 210,
-		maxWidth = 220,
-		anchor = { "TOP", message, "BOTTOM", -120, -20 },
-		variant = "danger",
-		onClick = function()
-			ACAB.setupWizard:ApplyBaselineAndReload("vanilla")
-		end,
-	})
-
-	CreateWizardButton(step, {
-		text = "Modern Layout + ArtBar disabled",
-		height = 34,
-		minWidth = 210,
-		maxWidth = 220,
-		anchor = { "TOP", message, "BOTTOM", 120, -20 },
-		variant = "prominent",
-		onClick = function()
-			ACAB.setupWizard:ApplyBaselineAndReload("modern")
-		end,
-	})
+	CreateChoiceButtons(step, message, 120, 210, 220,
+		"Keep Vanilla Layout + ArtBar enabled", function() ACAB.setupWizard:ApplyBaselineAndReload("vanilla") end,
+		"Modern Layout + ArtBar disabled", function() ACAB.setupWizard:ApplyBaselineAndReload("modern") end)
 
 	return step
 end
 
 -- Step "extrabars": enable, Only show on hover and Grid Layout for each Extra Bar, all applied live.
 function ACABSetupWizardMixin:BuildExtraBarsStep(panel)
-	local step = CreateFrame("Frame", nil, panel)
-
-	-- must be sized: a frame with only anchors has no rect for its children to resolve against
-	step:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, -14)
-	step:SetPoint("TOPRIGHT", panel, "TOPRIGHT", 0, -14)
-	step:SetHeight(1)
-	step:Hide()
+	local step = CreateSizedStepFrame(panel, -14)
 
 	step.sections = {}
 
@@ -474,7 +454,6 @@ function ACABSetupWizardMixin:BuildExtraBarsStep(panel)
 			label = "Only show on hover",
 			onClick = function()
 				local bar = ACAB.bars and ACAB.bars[barId]
-
 				if bar then
 					ACAB:SetBarHoverOnly(bar, this:GetChecked() and true or false)
 				end
@@ -483,7 +462,6 @@ function ACABSetupWizardMixin:BuildExtraBarsStep(panel)
 
 		section.swatches = ACAB:CreateGridSwatchRow(step, barId, ACAB.INDENT_CONTROL, y - 52, function(cols, rows)
 			local bar = ACAB.bars and ACAB.bars[barId]
-
 			if bar then
 				ACAB:SetBarLayout(bar, cols, rows)
 			end
@@ -506,7 +484,6 @@ function ACABSetupWizardMixin:RefreshExtraBarsStep()
 	for i = 1, table.getn(step.sections) do
 		local section = step.sections[i]
 		local cfg = ACAB:GetBarConfig(section.barId)
-
 		if cfg then
 			section.enableCheckbox:SetChecked(cfg.enabled == true)
 			section.hoverCheckbox:SetChecked(cfg.hoverOnly == true)
@@ -518,10 +495,7 @@ end
 -- Builds the wizard's chrome on the settings window once: step header, step list sidebar, Back/Next row.
 function ACABSetupWizardMixin:EnsureChrome()
 	local f = ACAB.settingsFrame
-
-	if f.wizardStepList then
-		return
-	end
+	if f.wizardStepList then return end
 
 	local stepText = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	stepText:SetPoint("TOPLEFT", f, "TOPLEFT", 18, -40)
@@ -703,10 +677,7 @@ end
 -- True if key is reachable from the sidebar: an earlier decision step before the reload, a visited page after it.
 function ACABSetupWizardMixin:CanJumpToStep(key)
 	local def = STEPS[key]
-
-	if not def or key == self.currentStep then
-		return false
-	end
+	if not def or key == self.currentStep then return false end
 
 	if self.wizardState.live then
 		return def.kind == "page" and self.wizardState.visited[key] == true
@@ -745,7 +716,6 @@ function ACABSetupWizardMixin:RefreshChrome()
 	for i = 1, table.getn(rows) do
 		local row = rows[i]
 		local rowKey = path[i]
-
 		if rowKey then
 			row.stepKey = rowKey
 			row:SetLabel(tostring(i) .. ". " .. STEPS[rowKey].short)
@@ -782,10 +752,7 @@ end
 -- Shows step key: a decision frame on the wizard view, or the real settings page.
 function ACABSetupWizardMixin:ShowStep(key)
 	local def = STEPS[key]
-
-	if not def then
-		return
-	end
+	if not def then return end
 
 	-- DropDownList1 is one shared popout; close it before switching pages.
 	if CloseDropDownMenus then
@@ -828,9 +795,7 @@ end
 function ACABSetupWizardMixin:StartDragMode()
 	ACAB:SetEditMode(true)
 
-	if not ACAB:IsEditMode() then
-		return
-	end
+	if not ACAB:IsEditMode() then return end
 
 	ACAB.reopenSetupWizardAfterEditMode = true
 	ACAB.settingsFrame:Hide()
@@ -844,7 +809,6 @@ function ACABSetupWizardMixin:GoNext()
 
 	local index = IndexOfStep(self.path, self.currentStep)
 	local nextKey = index and self.path[index + 1]
-
 	if nextKey then
 		self:ShowStep(nextKey)
 	else
@@ -855,28 +819,29 @@ end
 function ACABSetupWizardMixin:GoBack()
 	local index = IndexOfStep(self.path, self.currentStep)
 	local previousKey = index and self.path[index - 1]
-
 	if previousKey and STEPS[previousKey].kind == STEPS[self.currentStep].kind then
 		self:ShowStep(previousKey)
 	end
+end
+
+-- Shows text under the name step's edit box and refits the window.
+local function ShowNameError(step, text)
+	step.errorText:SetText(text)
+	step.errorText:Show()
+	ACAB:DeferFit(function() ACAB:FitSettingsWindowToWizardView() end)
 end
 
 -- Validates the name step and advances to the lock step.
 function ACABSetupWizardMixin:AdvanceFromName()
 	local step = self.steps.name
 	local name = step.editBox:GetText()
-
 	if not name or name == "" then
-		step.errorText:SetText("Profile name cannot be empty.")
-		step.errorText:Show()
-		ACAB:DeferFit(function() ACAB:FitSettingsWindowToWizardView() end)
+		ShowNameError(step, "Profile name cannot be empty.")
 		return
 	end
 
 	if ACAB:ProfileNameTaken(name) then
-		step.errorText:SetText("A profile named \"" .. name .. "\" already exists.")
-		step.errorText:Show()
-		ACAB:DeferFit(function() ACAB:FitSettingsWindowToWizardView() end)
+		ShowNameError(step, "A profile named \"" .. name .. "\" already exists.")
 		return
 	end
 
@@ -973,9 +938,7 @@ end
 function ACABSetupWizardMixin:ApplyBaselineAndReload(kind)
 	local state = self.wizardState
 
-	if not self:WriteTargetProfile(BuildBaselineData(state, kind)) then
-		return
-	end
+	if not self:WriteTargetProfile(BuildBaselineData(state, kind)) then return end
 
 	if kind == "locked" then
 		ACABCharDB.setupWizard = nil
@@ -1137,10 +1100,7 @@ end
 -- Login: reopens a wizard run saved before a reload, if it belongs to the active profile. Returns true if resumed.
 function ACAB:ResumeSetupWizardIfPending()
 	local saved = ACABCharDB and ACABCharDB.setupWizard
-
-	if not saved then
-		return false
-	end
+	if not saved then return false end
 
 	if saved.profileName ~= ACABCharDB.activeProfile or not STEPS[saved.step] or STEPS[saved.step].kind ~= "page" then
 		ACABCharDB.setupWizard = nil

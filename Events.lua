@@ -21,9 +21,7 @@ loadFrame:SetScript("OnEvent", function()
 
 	loadFrame:UnregisterEvent("PLAYER_ENTERING_WORLD")
 
-	if not ACAB:CheckRequiredMods() then
-		return
-	end
+	if not ACAB:CheckRequiredMods() then return end
 
 	-- WaitForNativeBarSettle calls its callback as a plain function; the wrapper keeps RunLoginSequence's self.
 	ACAB:WaitForNativeBarSettle(function()
@@ -87,9 +85,7 @@ petBarVisibilityFrame:RegisterEvent("PLAYER_CONTROL_LOST")
 petBarVisibilityFrame:RegisterEvent("PLAYER_CONTROL_GAINED")
 petBarVisibilityFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 petBarVisibilityFrame:SetScript("OnEvent", function()
-	if event == "UNIT_PET" and arg1 ~= "player" then
-		return
-	end
+	if event == "UNIT_PET" and arg1 ~= "player" then return end
 
 	ACAB:RefreshPetBarVisibility()
 end)
@@ -153,9 +149,7 @@ betterExpBarEventFrame:RegisterEvent("PLAYER_LEVEL_UP")
 betterExpBarEventFrame:RegisterEvent("PLAYER_UPDATE_RESTING")
 
 betterExpBarEventFrame:SetScript("OnEvent", function()
-	if not ACAB.activeProfileName then
-		return
-	end
+	if not ACAB.activeProfileName then return end
 
 	ACAB:BetterExpBarOnEvent()
 end)
@@ -164,9 +158,7 @@ end)
 local restCalibrationFrame = CreateFrame("Frame", "ACABRestCalibrationFrame")
 restCalibrationFrame:RegisterEvent("CHAT_MSG_COMBAT_XP_GAIN")
 restCalibrationFrame:SetScript("OnEvent", function()
-	if not ACAB.activeProfileName then
-		return
-	end
+	if not ACAB.activeProfileName then return end
 
 	ACAB:CalibrateRestPoolFromXPMessage(arg1)
 end)

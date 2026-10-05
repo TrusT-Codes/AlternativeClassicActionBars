@@ -325,7 +325,6 @@ function ACAB:ParseProfileImportString(str)
 
 	local body = string.sub(str, prefixLen + 1)
 	local ok, result, err, pos = pcall(ParseImportBody, body)
-
 	if not ok then
 		return false, self:BuildImportErrorMessage("the text could not be read")
 	end
@@ -359,9 +358,7 @@ end
 -- Overwrites the active profile's live data and saved entry with parsed import data.
 -- Must write both, or the logout-time SaveActiveProfileData before ReloadUI clobbers the import.
 function ACAB:ApplyImportedProfileData(data)
-	if not self.activeProfileName or self:IsBuiltInProfileName(self.activeProfileName) then
-		return false
-	end
+	if not self.activeProfileName or self:IsBuiltInProfileName(self.activeProfileName) then return false end
 
 	ACABDB = self:DeepCopyTable(data)
 
