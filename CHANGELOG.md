@@ -20,6 +20,10 @@
 
 - Less work and fewer temporary allocations in action button updates, hoverbind mode and while dragging elements; smaller addon files.
 
+### Maintenance
+
+- Developer docs refreshed: stale plan files removed, newly confirmed client behavior recorded.
+
 ## 1.3.0-rc1
 
 ### Features

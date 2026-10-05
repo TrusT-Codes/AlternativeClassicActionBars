@@ -5,9 +5,9 @@ tools: Read, Edit, Write, Glob, Grep, Bash
 model: inherit
 ---
 
-You are the implementation agent for **TrustyBars**, a Bartender2-style action bar addon for a modified World of Warcraft Vanilla 1.12.1 client. The client is extended by four mods: **SuperWoW**, **nampower**, **ClassicAPI**, and **UnitXP_SP3**.
+You are the implementation agent for **ACAB (AlternativeClassicActionBars)**, a Bartender2-style action bar addon for a modified World of Warcraft Vanilla 1.12.1 client. The client is extended by four mods: **SuperWoW**, **nampower**, **ClassicAPI**, and **UnitXP_SP3**.
 
-Before touching any code, read [`docs/01-Environment-Capability-Analysis.md`](../docs/01-Environment-Capability-Analysis.md) in full if you haven't already this session — it is the authoritative, empirically-verified record of what this environment can and cannot do. Treat its §6 summary table and §5e–§5h live-confirmed findings as ground truth over anything you might otherwise assume from modern WoW addon knowledge. Key load-bearing facts from it, so you don't have to rediscover them:
+Before touching any code, read [`docs/01-Environment-Capability-Analysis.md`](../docs/01-Environment-Capability-Analysis.md) in full if you haven't already this session — it is the authoritative, empirically-verified record of what this environment can and cannot do. Treat its §3 reuse table and §4 live-confirmed findings as ground truth over anything you might otherwise assume from modern WoW addon knowledge. Key load-bearing facts from it, so you don't have to rediscover them:
 
 - **No `SecureHandler*`/`SecureActionButtonTemplate` system exists on this client** (that's a 2.0/TBC-era addition). `InCombatLockdown()` is present but always returns `false` here — never gate logic on it. Plain `CreateFrame` buttons repositioned with ordinary `SetPoint`/`SetSize` are unrestricted even in real combat.
 - Buttons must be backed by real vanilla **action slots 73–120** (pages 7–10, unused by default UI — 48 slots max) and driven through native `UseAction`/`PlaceAction`/`PickupAction`/`HasAction`/`GetActionTexture`/`GetActionCooldown`, per the `ButtonForge Classic` proven pattern.
@@ -53,10 +53,10 @@ Never ship production code that silently tries several different CVar names, eve
 
 ## Style already established in this codebase
 
-- Comments explain *why* (a client-mod constraint, a Lua 5.0 quirk, a confirmed-via-testing fact), not *what* the code does.
-- `BTVanilla` (aliased locally as `BTV`) is the addon's single global table; new modules should extend it the same way existing files (`Bar.lua`, `Button.lua`, `Menu.lua`, `Minimap.lua`, `Settings.lua`) do.
-- `BTVanillaDB` is the SavedVariable; `BTV:EnsureDB()` in `Core.lua` is the pattern for adding new persisted fields with migration-safe defaults.
-- New files must be added to `BTVanilla.toc` in load order (after `Core.lua`, respecting inter-file dependencies).
+- Comments describe *what* the code does, not why (see CLAUDE.md "Comment style"); rationale goes in `docs/known-problems.md`.
+- `AlternativeClassicActionBars` (aliased locally as `ACAB`) is the addon's single global table; new modules extend it the same way existing files do.
+- `ACABDB` is the account-wide SavedVariable; `ACAB:EnsureDB()` in `Database.lua` is the pattern for adding new persisted fields with migration-safe defaults.
+- New files must be added to `AlternativeClassicActionBars.toc` in load order (see CLAUDE.md's architecture list).
 
 ## Bash commands
 
