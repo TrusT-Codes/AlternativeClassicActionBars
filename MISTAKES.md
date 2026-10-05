@@ -57,10 +57,10 @@ Solved mistakes, so they don't happen twice. Each entry has three parts: **what 
 - **Root cause:** a directory pathspec in a checkout with the user's own pending changes.
 - **Prevention:** stage files by exact path, and check `git show --stat` before switching branches.
 
-### Fixing the first plausible caller instead of the one the trace named
-- **What happened:** a trace showed an early `EnsureDB` right after `VARIABLES_LOADED`. The `UpdateMicroButtons` hook was guessed as the caller and guarded; the next live trace was unchanged.
-- **Root cause:** the trace recorded *that* `EnsureDB` ran early, not *who* called it, and several handlers and hooks can run before login.
-- **Prevention:** when a trace shows an unexpected write, label every candidate entry point (event handlers, `hooksecurefunc` hooks) in the same trace before choosing a fix.
+### Unverifiable diagnostic builds
+- **What happened:** a guard on the `UpdateMicroButtons` hook (the early `EnsureDB` caller) was dropped after one retest showed the old trace unchanged. The next trace, with every pre-login handler labelled, named that same hook as the caller.
+- **Root cause:** the trace recorded *that* `EnsureDB` ran early, not *who* called it, and nothing in the dump showed which build the user had loaded.
+- **Prevention:** label every candidate entry point in the trace, and put a build tag as the trace's first line so a dump proves which code ran.
 
 ---
 
