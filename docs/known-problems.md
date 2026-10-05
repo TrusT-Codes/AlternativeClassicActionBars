@@ -40,7 +40,7 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
 - **Edit-mode overlays are parented to UIParent** (`ElementEngine.lua` `EnsureContainerOverlay`) so all overlays compare FrameLevel in one tree. Hiding an element never hides its overlay: every disable path must `overlay:Hide()` + `EnableMouse(false)` itself. Overlapping overlays need distinct explicit levels (Key Ring 150 vs default 100).
 - **Page Indicator is laid out from `GetPoint` data, not rect deltas** (`PageIndicator.lua` `CreatePageIndicatorContainer` / `ApplyPageIndicatorShape`). Right after login, sibling rects can still be cached from before the art moved. `MainMenuBarPageNumber` (FontString) has no `GetEffectiveScale`, so `ACAB:PixelSetPoint` falls back to plain `SetPoint`.
 - **Latency Bar Modern reset measures one frame late** (`NativeElements.lua` `ResetLatencyBarLayoutToModernBase`). Overlay rects don't reflect `SetScale(1)` until the next frame. `ApplyModernCornerClusterLayout` takes every measurement before any `Apply*Position`.
-- **Simple-page reset refresh is deferred one frame** (`SettingsSimplePages.lua` `CreateSimpleBarPage`), because the element's new size resolves next frame. It uses `ACAB:DeferFit`. If `DeferFit` ever starts coalescing, these need their own next-frame helper.
+- **Simple-page reset refresh is deferred one frame** (`SettingsSimplePages.lua` `BuildSimplePageResetButtons`), because the element's new size resolves next frame. It uses `ACAB:DeferFit`. If `DeferFit` ever starts coalescing, these need their own next-frame helper.
 
 ### Native frames and FrameXML
 - **Native code re-anchors wrapped frames without `ClearAllPoints`**: Key Ring, Latency Bar, Micro Menu and Bag Bar buttons (`MainMenuBarBackpackButton`, `QuestLogMicroButton` seen), the art frame. `ElementEngine.lua` `InstallReanchorGuard` swallows every unflagged `SetPoint`/`ClearAllPoints` and records the last swallowed anchor in `frame.ACABSwallowedAnchor`, which `Core.lua` `WaitForWrappedFrameAnchorSettle` polls. Every own re-anchor must set the element's guard flag around it. `relativeTo` can arrive as a name string, and indexing a string errors, so check for the string first. `ApplyGridAnchoredShape` hard-codes `ACABApplyingMicroMenuPosition`: fine while Micro Menu is the only grid container.
@@ -114,7 +114,7 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
 - **What:** It captures the control's current OnEnter/OnLeave/OnClick (OnMouseDown for sliders), so it must be installed after the control's own scripts exist. Setting OnClick after guarding bypasses the lock.
 
 ### Simple-page scale change needs a full page refresh
-- **Where:** `SettingsSimplePages.lua` — `CreateSimpleBarPage` Scale slider `onChange`
+- **Where:** `SettingsSimplePages.lua` — `BuildSimplePageScaleSection` Scale slider `onChange`
 - **What:** Scale compensates stored x/y, so the handler must call `RefreshSimpleBarPage(key)`, which re-syncs X/Y before re-clamping. `RefreshSimplePositionSliderRange` alone makes the element jump.
 
 ### ResetAllElementsToVanillaLayout ordering
@@ -259,4 +259,4 @@ Done: range-ticker write cache (`rangeKey` in `UpdateRange`), Pet Bar layout coa
 - **Pet Bar native helpers.** Pet Bar native-mode position/scale/reset would need the single-frame helpers to take a table instead of a field name.
 
 ### Decomposition
-Done (pure moves): `ForceVanillaLayout.lua` (from SettingsBars.lua), `ProfileDialogs.lua` (from Database.lua), `Dialog.lua` (from UIWidgets.lua), `LayoutGrid.lua` and `ExtraBars.lua` (from Bar.lua).
+Done (pure moves): `ForceVanillaLayout.lua` (from SettingsBars.lua), `ProfileDialogs.lua` (from Database.lua), `Dialog.lua` (from UIWidgets.lua), `LayoutGrid.lua` and `ExtraBars.lua` (from Bar.lua). Settings builders split into local per-section builders: `GetOrCreateBarPage` (`BuildBarPage*`/`BuildMainBarArtModeRow`), `GetOrCreateGeneralPanel` (`BuildGeneral*Section`), `CreateSimpleBarPage` (`BuildSimplePage*`/`BuildTooltipCornerRow`/`BuildExpBarPageSection`), `ACABDialogMixin:Init` (`LayoutDialogInputs`/`ConfigureDialogButtons`/`PackDialogButtonRows`/`GetDialogContentBottom`/`PlaceDialogButtonRows`).
