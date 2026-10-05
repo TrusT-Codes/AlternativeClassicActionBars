@@ -121,8 +121,7 @@ end
 
 -- Generic X/Y range: twice UIParent's size per axis, covering every anchor corner plus off-screen drags.
 function ACAB:GetScreenCoordinateRange()
-	local width = UIParent:GetWidth()
-	local height = UIParent:GetHeight()
+	local width, height = self:GetUIParentAnchorSize()
 
 	if not width or width <= 0 then
 		width = 1024
