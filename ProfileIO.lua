@@ -355,10 +355,20 @@ function ACAB:ParseProfileImportString(str)
 	return true, result, warning
 end
 
+-- Session-state keys an import never takes from the exporter; the importer's own live values are kept.
+local IMPORT_LOCAL_KEYS = { "latestSeenVersion", "editMode", "hoverBindMode" }
+
 -- Overwrites the active profile's live data and saved entry with parsed import data.
 -- Must write both, or the logout-time SaveActiveProfileData before ReloadUI clobbers the import.
 function ACAB:ApplyImportedProfileData(data)
 	if not self.activeProfileName or self:IsBuiltInProfileName(self.activeProfileName) then return false end
+
+	local i, key
+
+	for i = 1, table.getn(IMPORT_LOCAL_KEYS) do
+		key = IMPORT_LOCAL_KEYS[i]
+		data[key] = ACABDB and ACABDB[key]
+	end
 
 	ACABDB = self:DeepCopyTable(data)
 
