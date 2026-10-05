@@ -487,7 +487,7 @@ end
 
 -- Fallback Extra Bar position (stacked vertically by index) when the reference bar's native anchor is missing.
 local function GetFallbackExtraBarPosition(self, index)
-	return 20, 150 + (index * ((self.BUTTON_ROWS * self.BUTTON_SIZE) + 40))
+	return 20, 150 + (index * ((self.BUTTON_ROWS * self:GetCurrentButtonSizeBaseline()) + 40))
 end
 
 -- Extra Bar default positions: pitchCount button pitches to `side` of a reference default bar's native
@@ -683,7 +683,7 @@ ACAB.MODERN_PROFILE_NAME = "Default Modern"
 -- Default Vanilla's pre-rename name; migrated in ResolveActiveProfile and reserved afterwards.
 ACAB.LEGACY_DEFAULT_PROFILE_NAME = "Default"
 
--- Reserved name: hidden from GetProfileNames and rejected by ProfileNameTaken.
+-- Legacy reserved name: rejected by ProfileNameTaken; its old entry is dropped by MigrateBuiltInProfileNames.
 ACAB.MODERN_BASE_PROFILE_NAME = "ModernBase"
 
 -- True for the two built-in locked profiles.
@@ -788,6 +788,9 @@ local function MigrateBuiltInProfileNames(self)
 	if ACABCharDB.activeProfile == legacy then
 		ACABCharDB.activeProfile = self.DEFAULT_PROFILE_NAME
 	end
+
+	-- Drops the obsolete hidden ModernBase profile (the name stays reserved).
+	ACABProfilesDB[self.MODERN_BASE_PROFILE_NAME] = nil
 end
 
 -- Writes the Modern Layout baseline flags onto profile data; the geometry itself is applied live on the next
@@ -903,7 +906,7 @@ local SANITIZE_BOOLEAN_KEYS = {
 local SANITIZE_NUMBER_KEYS = {
 	"minimapAngle", "globalSpacingValue", "globalButtonSizeValue", "keyRingHoverDuration",
 	"bagBarHoverDuration", "microMenuHoverDuration", "latencyBarHoverDuration", "expBarHoverDuration",
-	"expBarGlowPulseInterval", "microMenuCols", "microMenuRows", "stanceBarNativeGap",
+	"expBarGlowPulseInterval", "microMenuCols", "microMenuRows",
 	"bagBarSpacing", "bagBarNativeSpacing", "microMenuSpacing", "microMenuNativeSpacing", "stanceBarSpacing",
 	"stanceBarNativeSpacing", "castBarStackBaseY", "layoutUIScale",
 }
@@ -1594,15 +1597,12 @@ function ACAB:EnsureDB()
 	if ACABDB.mainBarPageIndicatorFollowsMainBar == nil then ACABDB.mainBarPageIndicatorFollowsMainBar = true end
 
 	-- stanceBarPosition/stanceBarNativeAnchor are captured lazily on first build, not seeded here.
-	-- Nils a corrupted stanceBarNativeGap so the next login recaptures it.
-	if ACABDB.stanceBarNativeGap
-		and (ACABDB.stanceBarNativeGap <= 0 or ACABDB.stanceBarNativeGap >= self.BUTTON_SIZE) then
-		ACABDB.stanceBarNativeGap = nil
-	end
+	-- Clears the obsolete stanceBarNativeGap.
+	ACABDB.stanceBarNativeGap = nil
 
 	if ACABDB.tintWholeButtonOnRange == nil then ACABDB.tintWholeButtonOnRange = true end
 
-	-- One-time migration from the old boolean ACABDB.disableBlizzardArt (left in place, no longer read).
+	-- One-time migration from the old boolean ACABDB.disableBlizzardArt (cleared below).
 	if ACABDB.mainBarArtMode == nil then
 		if ACABDB.disableBlizzardArt == true then
 			ACABDB.mainBarArtMode = ACAB.MAIN_BAR_ART_MODE_DISABLED
@@ -1611,8 +1611,13 @@ function ACAB:EnsureDB()
 		end
 	end
 
-	-- Clears an obsolete saved field.
+	-- Clears obsolete saved fields; must run after the migrations above read them.
 	ACABDB.groupedElementOffsets = nil
+	ACABDB.disableBlizzardArt = nil
+	ACABDB.mainBarPaginationEnabled = nil
+	ACABDB.mainBarStanceSwapEnabled = nil
+	ACABDB.mainBarPageBarAssignment = nil
+	ACABDB.mainBarStanceBarAssignment = nil
 
 	-- Key Ring's hover-only settings are seeded once from Bag Bar's.
 	if ACABDB.keyRingHoverOnly == nil then

@@ -394,8 +394,7 @@ function ACAB:RebuildLayoutGrid()
 	end
 
 	-- UIParent's size, not this frame's: this frame's rect may not be resolved yet.
-	local width = UIParent:GetWidth()
-	local height = UIParent:GetHeight()
+	local width, height = self:GetUIParentAnchorSize()
 
 	if not width or not height or width <= 0 or height <= 0 then return end
 

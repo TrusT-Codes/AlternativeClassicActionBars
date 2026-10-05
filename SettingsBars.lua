@@ -1451,11 +1451,14 @@ function ACAB:GetOrCreateBarPage(barId)
 		local buttonCountRowY = buttonCountLabelY - 28
 		ACAB:CreateReflowText(page, "GameFontNormal", ACAB.INDENT_SECTION, buttonCountLabelY, "Buttons Shown")
 
-		local buttonCountMinus = CreateFrame("Button", "ACABBar" .. tostring(barId) .. "ButtonCountMinus", page)
-		buttonCountMinus:SetHeight(22)
-		buttonCountMinus:SetPoint("TOPLEFT", page, "TOPLEFT", ACAB.INDENT_INPUT, buttonCountRowY)
-		ACAB:StyleModernButton(buttonCountMinus, 24, 24)
-		buttonCountMinus:SetText("-")
+		local buttonCountMinus = ACAB:CreateModernButton(page, {
+			name = "ACABBar" .. tostring(barId) .. "ButtonCountMinus",
+			height = 22,
+			minWidth = 24,
+			maxWidth = 24,
+			text = "-",
+			anchor = { "TOPLEFT", page, "TOPLEFT", ACAB.INDENT_INPUT, buttonCountRowY },
+		})
 		self:AddHoverOnlyReflowRow(page, buttonCountMinus, ACAB.INDENT_INPUT, buttonCountRowY)
 
 		local buttonCountValueText = page:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -1464,11 +1467,14 @@ function ACAB:GetOrCreateBarPage(barId)
 		buttonCountValueText:SetJustifyH("CENTER")
 		buttonCountValueText:SetText("12")
 
-		local buttonCountPlus = CreateFrame("Button", "ACABBar" .. tostring(barId) .. "ButtonCountPlus", page)
-		buttonCountPlus:SetHeight(22)
-		buttonCountPlus:SetPoint("LEFT", buttonCountValueText, "RIGHT", 8, 0)
-		ACAB:StyleModernButton(buttonCountPlus, 24, 24)
-		buttonCountPlus:SetText("+")
+		local buttonCountPlus = ACAB:CreateModernButton(page, {
+			name = "ACABBar" .. tostring(barId) .. "ButtonCountPlus",
+			height = 22,
+			minWidth = 24,
+			maxWidth = 24,
+			text = "+",
+			anchor = { "LEFT", buttonCountValueText, "RIGHT", 8, 0 },
+		})
 
 		-- Shows cfg.buttonCount and disables -/+ at 1 and at cols*rows.
 		local function RefreshButtonCountStepperVisual()
