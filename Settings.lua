@@ -121,8 +121,7 @@ end
 
 -- Generic X/Y range: twice UIParent's size per axis, covering every anchor corner plus off-screen drags.
 function ACAB:GetScreenCoordinateRange()
-	local width = UIParent:GetWidth()
-	local height = UIParent:GetHeight()
+	local width, height = self:GetUIParentAnchorSize()
 
 	if not width or width <= 0 then
 		width = 1024
@@ -532,13 +531,14 @@ function ACAB:CreateSettingsFrame()
 	end
 
 	local function CreateTabButton(text, onClick, point, relativeTo, relativePoint, x, y)
-		local button = CreateFrame("Button", nil, f)
+		local button = ACAB:CreateModernButton(f, {
+			height = 20,
+			minWidth = 90,
+			maxWidth = 90,
+			text = text,
+			anchor = { point, relativeTo, relativePoint, x, y },
+		})
 
-		button:SetHeight(20)
-		button:SetPoint(point, relativeTo, relativePoint, x, y)
-
-		ACAB:StyleModernButton(button, 90, 90)
-		button:SetText(text)
 		ApplyTabFadeHighlight(button)
 
 		button:SetScript("OnClick", onClick)

@@ -260,6 +260,38 @@ function ACAB:ApplyProminentButtonHighlight(button)
 	button:SetBackdropColor(PROMINENT_COLOR[1], PROMINENT_COLOR[2], PROMINENT_COLOR[3], 0.9)
 end
 
+-- New modern-styled button; config = { name, height, minWidth, maxWidth, text, anchor, variant ("danger"/"prominent"),
+-- onClick }. Styles before anchoring.
+function ACAB:CreateModernButton(parent, config)
+	local button = CreateFrame("Button", config.name, parent)
+
+	if config.height then
+		button:SetHeight(config.height)
+	end
+
+	ACAB:StyleModernButton(button, config.minWidth, config.maxWidth)
+
+	if config.text then
+		button:SetText(config.text)
+	end
+
+	if config.anchor then
+		button:SetPoint(unpack(config.anchor))
+	end
+
+	if config.variant == "danger" then
+		ACAB:ApplyDangerButtonHighlight(button)
+	elseif config.variant == "prominent" then
+		ACAB:ApplyProminentButtonHighlight(button)
+	end
+
+	if config.onClick then
+		button:SetScript("OnClick", config.onClick)
+	end
+
+	return button
+end
+
 -------------------------------------------------------------------------
 -- Sliders
 -------------------------------------------------------------------------
@@ -355,19 +387,18 @@ function ACAB:CreatePositionStepperButtons(page, slider, namePrefix)
 
 	-- pixels: screen pixels per click; width: fixed button width.
 	local function MakeStepButton(name, label, pixels, width)
-		local button = CreateFrame("Button", namePrefix .. name .. suffix, page)
+		return ACAB:CreateModernButton(page, {
+			name = namePrefix .. name .. suffix,
+			height = 20,
+			minWidth = width,
+			maxWidth = width,
+			text = label,
+			onClick = function()
+				local target = slider:GetValue() + (pixels * ACAB:GetPixelStep())
 
-		button:SetHeight(20)
-		ACAB:StyleModernButton(button, width, width)
-		button:SetText(label)
-
-		button:SetScript("OnClick", function()
-			local target = slider:GetValue() + (pixels * ACAB:GetPixelStep())
-
-			ACAB:SetSliderValueUnsnapped(slider, ClampToSliderRange(slider, target))
-		end)
-
-		return button
+				ACAB:SetSliderValueUnsnapped(slider, ClampToSliderRange(slider, target))
+			end,
+		})
 	end
 
 	local minus = MakeStepButton("StepperMinus", "-", -1, 20)
@@ -644,22 +675,15 @@ end
 function ACAB:CreateResetButton(parent, config)
 	config = config or {}
 
-	local button = CreateFrame("Button", config.name, parent)
-
-	button:SetHeight(config.height or 22)
-
-	if config.anchor then
-		button:SetPoint(unpack(config.anchor))
-	end
-
-	ACAB:StyleModernButton(button, config.minWidth or 90, config.maxWidth or 90)
-	button:SetText(config.text or "Reset")
-
-	if config.onClick then
-		button:SetScript("OnClick", config.onClick)
-	end
-
-	return button
+	return ACAB:CreateModernButton(parent, {
+		name = config.name,
+		height = config.height or 22,
+		minWidth = config.minWidth or 90,
+		maxWidth = config.maxWidth or 90,
+		text = config.text or "Reset",
+		anchor = config.anchor,
+		onClick = config.onClick,
+	})
 end
 
 -- 16x16 padlock button driven via button:SetLocked(bool).
@@ -911,9 +935,8 @@ function ACABDialogMixin:OnLoad()
 	local i
 
 	for i = 1, 4 do
-		local button = CreateFrame("Button", nil, self)
+		local button = ACAB:CreateModernButton(self, { minWidth = DIALOG_BUTTON_MIN_WIDTH, maxWidth = DIALOG_WIDTH - 40 })
 
-		ACAB:StyleModernButton(button, DIALOG_BUTTON_MIN_WIDTH, DIALOG_WIDTH - 40)
 		button:Hide()
 
 		self.buttons[i] = button

@@ -245,26 +245,6 @@ end
 -- Shared widget helpers
 -------------------------------------------------------------------------
 
--- Modern-styled button; config = { text, height, minWidth, maxWidth, anchor, variant ("danger"|"prominent"), onClick }.
-local function CreateWizardButton(parent, config)
-	local button = CreateFrame("Button", nil, parent)
-
-	button:SetHeight(config.height)
-	ACAB:StyleModernButton(button, config.minWidth, config.maxWidth)
-	button:SetText(config.text)
-	button:SetPoint(unpack(config.anchor))
-
-	if config.variant == "danger" then
-		ACAB:ApplyDangerButtonHighlight(button)
-	elseif config.variant == "prominent" then
-		ACAB:ApplyProminentButtonHighlight(button)
-	end
-
-	button:SetScript("OnClick", config.onClick)
-
-	return button
-end
-
 -- New hidden full-width step frame on panel, offsetY below its top.
 local function CreateSizedStepFrame(panel, offsetY)
 	local step = CreateFrame("Frame", nil, panel)
@@ -293,7 +273,7 @@ end
 
 -- Danger (left) / prominent (right) choice buttons under message, offsetX either side of center.
 local function CreateChoiceButtons(step, message, offsetX, minWidth, maxWidth, leftText, onLeft, rightText, onRight)
-	CreateWizardButton(step, {
+	ACAB:CreateModernButton(step, {
 		text = leftText,
 		height = 34,
 		minWidth = minWidth,
@@ -303,7 +283,7 @@ local function CreateChoiceButtons(step, message, offsetX, minWidth, maxWidth, l
 		onClick = onLeft,
 	})
 
-	CreateWizardButton(step, {
+	ACAB:CreateModernButton(step, {
 		text = rightText,
 		height = 34,
 		minWidth = minWidth,
@@ -385,7 +365,7 @@ function ACABSetupWizardMixin:BuildStyleStep(panel)
 		local bar = CreateWizardPreviewBar(step, isModern, PREVIEW_SLOT_COUNT, buttonSize, spacing)
 		bar:SetPoint("TOP", label, "BOTTOM", 0, -10)
 
-		CreateWizardButton(step, {
+		ACAB:CreateModernButton(step, {
 			text = "Select",
 			height = 24,
 			minWidth = 120,
@@ -548,7 +528,7 @@ function ACABSetupWizardMixin:EnsureChrome()
 		stepList.rows[i] = row
 	end
 
-	f.wizardBackButton = CreateWizardButton(f, {
+	f.wizardBackButton = ACAB:CreateModernButton(f, {
 		text = "Back",
 		height = 24,
 		minWidth = 100,
@@ -561,7 +541,7 @@ function ACABSetupWizardMixin:EnsureChrome()
 	})
 	f.wizardBackButton:Hide()
 
-	f.wizardNextButton = CreateWizardButton(f, {
+	f.wizardNextButton = ACAB:CreateModernButton(f, {
 		text = "Next",
 		height = 24,
 		minWidth = 120,
@@ -574,7 +554,7 @@ function ACABSetupWizardMixin:EnsureChrome()
 	})
 	f.wizardNextButton:Hide()
 
-	f.wizardDragButton = CreateWizardButton(f, {
+	f.wizardDragButton = ACAB:CreateModernButton(f, {
 		text = "Drag Elements with Mouse",
 		height = 24,
 		minWidth = 260,
