@@ -110,7 +110,10 @@ All commands start with `/acab`.
 | `/acab profile export` | Show the current profile's export string |
 | `/acab profile import` | Paste an export string into the current profile |
 | `/acab recapture` | Force a fresh capture of default bar native anchors |
+| `/acab version` | Print the installed ACAB version |
 | `/acab help` | List all commands in-game |
+
+`/acab settings <page>` page names: `general`, `profiles`, `editmode`, `bars`, `main` (or `1`), `2`-`5`, `extra1`-`extra4` (or `6`-`9`), `pet`, `stance`, `bags`, `keyring`, `micro`, `latency`, `xp`, `cast`, `tooltip`.
 
 ## Credits
 
