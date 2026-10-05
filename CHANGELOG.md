@@ -20,6 +20,8 @@
 - Fix empty dark squares sometimes showing at the vanilla Stance Bar spot when using the ACAB-styled Stance Bar after playing a character with the vanilla one.
 - Fix a fresh install saving action bar positions before the UI scale applied (the first login no longer prints "Recapturing positions").
 - Fix Extra Bar hotkeys disappearing (and their key going dead) after an action bar swapped back from showing that Extra Bar on a page or stance change; while swapped, the Main Bar now keeps showing its own hotkeys.
+- Fix casting, leaving combat or looting in the first seconds after the loading screen sometimes saving the Cast Bar or other elements at a wrong position, or changing another profile's Pet Bar setting.
+- `/acab` commands used right after the loading screen now say "Still loading" until setup finishes, instead of opening settings or changing profiles before your profile loaded (`/acab version` and `/acab help` still work).
 
 ### Performance
 
