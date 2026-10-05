@@ -201,6 +201,17 @@ end
 -- Main Bar's Blizzard art ("Gryphons / Background Art" dropdown, ACABDB.mainBarArtMode)
 -------------------------------------------------------------------------
 
+-- MainMenuBarArtFrame's regions ({ GetRegions() }), captured once on first use.
+local artFrameRegions = nil
+
+local function GetArtFrameRegions(artFrame)
+	if not artFrameRegions then
+		artFrameRegions = { artFrame:GetRegions() }
+	end
+
+	return artFrameRegions
+end
+
 -- Shows/hides MainMenuBarArtFrame's Texture regions per art mode - never the frame itself, whose children
 -- are ActionButton1-12. Level 5 must stay between MainMenuExpBar (2) and ACAB bars (10) or either renders wrong.
 function ACAB:ApplyBlizzardArtVisibility()
@@ -223,7 +234,7 @@ function ACAB:ApplyBlizzardArtVisibility()
 	local mode = ACABDB.mainBarArtMode or self.MAIN_BAR_ART_MODE_FULL
 	local gryphonNames = self.MAIN_BAR_ART_GRYPHON_REGION_NAMES
 
-	local regions = { artFrame:GetRegions() }
+	local regions = GetArtFrameRegions(artFrame)
 	local i
 
 	for i = 1, table.getn(regions) do
@@ -464,7 +475,7 @@ function ACAB:ApplyMainBarArtPosition()
 
 	-- Forces the shown art textures to redraw at the new anchor (Hide/Show each one).
 	do
-		local regions = { artFrame:GetRegions() }
+		local regions = GetArtFrameRegions(artFrame)
 		local i
 
 		for i = 1, table.getn(regions) do
