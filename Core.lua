@@ -1208,7 +1208,10 @@ end
 
 local hoverPollTicker = nil
 
--- Single shared ticker for every registered hover-only frame, started lazily on first registration.
+-- Frames whose ACABHoverOnlyEnabled is true; the poll ticker only runs while this is above 0.
+local hoverOnlyEnabledCount = 0
+
+-- Single shared ticker for every hover-only frame; no-op while already running.
 local function StartHoverPollTicker()
 	if hoverPollTicker then return end
 
@@ -1235,6 +1238,13 @@ local function StartHoverPollTicker()
 	end)
 end
 
+local function StopHoverPollTicker()
+	if hoverPollTicker then
+		hoverPollTicker:Cancel()
+		hoverPollTicker = nil
+	end
+end
+
 -- Cancels frame's running fade ticker, if any.
 function ACAB:CancelHoverFadeTicker(frame)
 	if frame.ACABHoverFadeTicker then
@@ -1257,6 +1267,7 @@ function ACAB:StartHoverFadeTicker(frame, duration)
 
 	local holdEnd = duration * 0.8
 	local startTime = GetTime()
+	local holdAlphaWritten = false
 
 	frame:SetAlpha(1)
 
@@ -1275,7 +1286,11 @@ function ACAB:StartHoverFadeTicker(frame, duration)
 		end
 
 		if elapsed <= holdEnd then
-			frame:SetAlpha(1)
+			-- Written on the first hold tick only.
+			if not holdAlphaWritten then
+				frame:SetAlpha(1)
+				holdAlphaWritten = true
+			end
 		else
 			frame:SetAlpha(1 - ((elapsed - holdEnd) / (duration - holdEnd)))
 		end
@@ -1298,18 +1313,28 @@ function ACAB:ApplyHoverOnlyState(frame, enabled, getDuration)
 
 	enabled = enabled and true or false
 
+	if enabled ~= (frame.ACABHoverOnlyEnabled == true) then
+		hoverOnlyEnabledCount = hoverOnlyEnabledCount + (enabled and 1 or -1)
+	end
+
 	frame.ACABHoverOnlyEnabled = enabled
 	frame.ACABHoverOnlyGetDuration = getDuration
 
 	if not enabled then
 		self:CancelHoverFadeTicker(frame)
 		frame:SetAlpha(1)
+
+		if hoverOnlyEnabledCount == 0 then
+			StopHoverPollTicker()
+		end
+
 		return
 	end
 
 	frame:EnableMouse(true)
 
 	self:InstallHoverFadeController(frame)
+	StartHoverPollTicker()
 
 	-- Seeds hover state so enabling under the cursor doesn't hide the frame.
 	frame.ACABHoverOnlyHovering = IsCursorOverFrame(frame)
