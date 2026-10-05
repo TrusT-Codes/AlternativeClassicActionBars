@@ -98,6 +98,9 @@ end)
 local stanceFormEventFrame = CreateFrame("Frame", "ACABStanceFormEventFrame")
 stanceFormEventFrame:RegisterEvent("UPDATE_SHAPESHIFT_FORMS")
 stanceFormEventFrame:SetScript("OnEvent", function()
+	-- must skip before login: ACABDB may still be another character's profile
+	if not ACAB.activeProfileName then return end
+
 	-- Native mode.
 	ACAB:RebuildStanceBarContainer()
 
