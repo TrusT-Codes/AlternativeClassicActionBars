@@ -90,32 +90,8 @@ end
 -- Simple bar pages: Position + optional Enabled/hover-only/Spacing/Scale/Grid + Reset buttons
 -------------------------------------------------------------------------
 
-local function CreateSimpleBarPage(key)
-	local config = ACAB.simpleBarPageConfigs[key]
-	if not config then return nil end
-
-	local page = CreateFrame("Frame", nil, ACAB.settingsFrame.contentPanel)
-	ACAB:ApplyPageBannerReserve(page, false)
-	page.barId = key
-	page.isDefault = true
-	page.profileLockWarning = ACAB:CreateProfileLockWarning(page)
-
-	-- Anchored to contentPanel so it stays put while the page slides down.
-	local title = page:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-	title:SetPoint("TOPLEFT", ACAB.settingsFrame.contentPanel, "TOPLEFT", ACAB.INDENT_SECTION, -14)
-	title:SetText(config.title .. " Settings (Default)")
-
-	-- Group lock icon, top right.
-	if ACAB.GROUPABLE_SIMPLE_PAGES[key] then
-		page.groupLockButton = ACAB:CreateGroupLockButton(
-			page,
-			"ACABSimplePage" .. key .. "GroupLockButton",
-			{ "TOPRIGHT", ACAB.settingsFrame.contentPanel, "TOPRIGHT", -20, -14 },
-			config.title .. " Grouped with Main Bar",
-			key
-		)
-	end
-
+-- Simple page: Enabled, hover-only and native Pet/Stance mode rows. Returns the Y below them.
+local function BuildSimplePageToggleRows(page, key, config)
 	local enableCheckboxY = -44
 	local topY = -46
 
@@ -160,32 +136,37 @@ local function CreateSimpleBarPage(key)
 		topY = topY - 24 - 14
 	end
 
-	-- Tooltip Grows From: which GameTooltip corner anchors to the box's matching corner.
-	if key == "tooltip" then
-		local row, dropdown = ACAB:CreateDropdownRow(page, topY, "Tooltip Grows From", 180, "ACABTooltipAnchorCornerDropdown", {
-			{ text = "Bottom Right (Default)", value = "BOTTOMRIGHT" },
-			{ text = "Bottom Left", value = "BOTTOMLEFT" },
-			{ text = "Top Right", value = "TOPRIGHT" },
-			{ text = "Top Left", value = "TOPLEFT" },
-		})
+	return topY
+end
 
-		local function RefreshTooltipAnchorCorner()
-			dropdown:SetSelected(ACABDB.tooltipAnchorCorner or "BOTTOMRIGHT")
-		end
+-- Tooltip page: Tooltip Grows From dropdown (which GameTooltip corner anchors to the box's matching corner). Returns the Y below it.
+local function BuildTooltipCornerRow(page, topY)
+	local row, dropdown = ACAB:CreateDropdownRow(page, topY, "Tooltip Grows From", 180, "ACABTooltipAnchorCornerDropdown", {
+		{ text = "Bottom Right (Default)", value = "BOTTOMRIGHT" },
+		{ text = "Bottom Left", value = "BOTTOMLEFT" },
+		{ text = "Top Right", value = "TOPRIGHT" },
+		{ text = "Top Left", value = "TOPLEFT" },
+	})
 
-		dropdown.onSelect = function(value)
-			ACAB:SetTooltipAnchorCorner(value)
-			RefreshTooltipAnchorCorner()
-		end
-
-		RefreshTooltipAnchorCorner()
-
-		-- Listed in assignmentRows so ApplyProfileLockGating's dropdown sweep locks it too.
-		page.tooltipAnchorCornerRow = row
-		page.assignmentRows = { row }
-		topY = topY - 32 - 14
+	local function RefreshTooltipAnchorCorner()
+		dropdown:SetSelected(ACABDB.tooltipAnchorCorner or "BOTTOMRIGHT")
 	end
 
+	dropdown.onSelect = function(value)
+		ACAB:SetTooltipAnchorCorner(value)
+		RefreshTooltipAnchorCorner()
+	end
+
+	RefreshTooltipAnchorCorner()
+
+	-- Listed in assignmentRows so ApplyProfileLockGating's dropdown sweep locks it too.
+	page.tooltipAnchorCornerRow = row
+	page.assignmentRows = { row }
+	return topY - 32 - 14
+end
+
+-- Simple page: Position section at topY. Returns the Y below it.
+local function BuildSimplePagePositionSection(page, key, config, topY)
 	-- Clamp range from the element's real frame size, or the generic screen range without one.
 	local minX, maxX, minY, maxY
 
@@ -213,87 +194,289 @@ local function CreateSimpleBarPage(key)
 
 	page.xLabel = xLabel
 	page.yLabel = yLabel
-	local cursorY = ySliderY - 36
+	return ySliderY - 36
+end
 
-	-- Spacing (config.hasSpacing)
-	if config.hasSpacing then
-		-- config.spacingMin overrides the shared floor (Micro Menu: -10).
-		local spacingMin = config.spacingMin or ACAB.SPACING_MIN
-		local spacingTitleY = cursorY
-		local spacingSliderY = spacingTitleY - 26
-		page.spacingTitle = ACAB:CreateReflowText(page, "GameFontNormal", ACAB.INDENT_SECTION, spacingTitleY,
-			"Spacing (" .. tostring(spacingMin) .. " to " .. tostring(ACAB.SPACING_MAX) .. ")"
-		)
+-- Simple page: Spacing slider (config.hasSpacing) at cursorY. Returns the Y below it.
+local function BuildSimplePageSpacingSection(page, key, config, cursorY)
+	-- config.spacingMin overrides the shared floor (Micro Menu: -10).
+	local spacingMin = config.spacingMin or ACAB.SPACING_MIN
+	local spacingTitleY = cursorY
+	local spacingSliderY = spacingTitleY - 26
+	page.spacingTitle = ACAB:CreateReflowText(page, "GameFontNormal", ACAB.INDENT_SECTION, spacingTitleY,
+		"Spacing (" .. tostring(spacingMin) .. " to " .. tostring(ACAB.SPACING_MAX) .. ")"
+	)
 
-		local spacingSlider, spacingValueText = ACAB:CreateReflowSlider(
-			page,
-			"ACABSimplePage" .. key .. "SpacingSlider",
-			spacingSliderY,
-			{
-				min = spacingMin,
-				max = ACAB.SPACING_MAX,
-				step = ACAB.SPACING_STEP,
-				lowText = tostring(spacingMin),
-				highText = tostring(ACAB.SPACING_MAX),
-				initialText = "0",
-				round = RoundWhole,
-				format = tostring,
-				onChange = function(value, suppressApply)
-					if not suppressApply then
-						if ACAB:RevertIfGroupLocked(key) then return end
+	local spacingSlider, spacingValueText = ACAB:CreateReflowSlider(
+		page,
+		"ACABSimplePage" .. key .. "SpacingSlider",
+		spacingSliderY,
+		{
+			min = spacingMin,
+			max = ACAB.SPACING_MAX,
+			step = ACAB.SPACING_STEP,
+			lowText = tostring(spacingMin),
+			highText = tostring(ACAB.SPACING_MAX),
+			initialText = "0",
+			round = RoundWhole,
+			format = tostring,
+			onChange = function(value, suppressApply)
+				if not suppressApply then
+					if ACAB:RevertIfGroupLocked(key) then return end
 
-						-- Stored spacing = displayed value - spacingUiOffset (Micro Menu only).
-						local uiOffset = config.spacingUiOffset or 0
-						config.setSpacing(value - uiOffset)
-					end
+					-- Stored spacing = displayed value - spacingUiOffset (Micro Menu only).
+					local uiOffset = config.spacingUiOffset or 0
+					config.setSpacing(value - uiOffset)
+				end
 
+				ACAB:RefreshSimplePositionSliderRange(page, key)
+			end,
+		}
+	)
+
+	page.spacingValueText = spacingValueText
+	page.spacingSlider = spacingSlider
+	return spacingSliderY - 36
+end
+
+-- Simple page: Scale slider (config.hasScale) at cursorY. Returns the Y below it.
+local function BuildSimplePageScaleSection(page, key, config, cursorY)
+	local scaleTitleY = cursorY
+	local scaleSliderY = scaleTitleY - 26
+	page.scaleTitle = ACAB:CreateReflowText(page, "GameFontNormal", ACAB.INDENT_SECTION, scaleTitleY, "Scale (0.5 to 2.0)")
+
+	local scaleSlider, scaleValueText = ACAB:CreateReflowSlider(
+		page,
+		"ACABSimplePage" .. key .. "ScaleSlider",
+		scaleSliderY,
+		{
+			min = 0.5,
+			max = 2.0,
+			step = 0.1,
+			lowText = "0.5",
+			highText = "2.0",
+			initialText = "1.0",
+			round = RoundTenth,
+			format = FormatTenth,
+			onChange = function(value, suppressApply)
+				if not suppressApply then
+					if ACAB:RevertIfGroupLocked(key) then return end
+
+					config.setScale(value)
+
+					-- Must be a full page refresh (re-syncs X/Y before re-clamping), or the position jumps.
+					ACAB:RefreshSimpleBarPage(key)
+				else
 					ACAB:RefreshSimplePositionSliderRange(page, key)
-				end,
-			}
-		)
+				end
+			end,
+		}
+	)
 
-		page.spacingValueText = spacingValueText
-		page.spacingSlider = spacingSlider
-		cursorY = spacingSliderY - 36
+	page.scaleValueText = scaleValueText
+	page.scaleSlider = scaleSlider
+	return scaleSliderY - 36
+end
+
+-- Experience Bar page: Better Experience Bar toggle, text size, text toggles, colors and pulse interval. Returns the Y below them.
+local function BuildExpBarPageSection(page, cursorY)
+	page.betterExpBarCheckbox = ACAB:CreateReflowCheckbox(page, "ACABSimplePageExpBarBetterCheckbox", cursorY, {
+		label = "Enable Better Experience Bar",
+		tooltip = {
+			title = "Enable Better Experience Bar",
+			lines = {
+				"Replaces the native percent label with a customizable text " ..
+				"line, and lets you recolor the bar's own fill and rested-" ..
+				"bonus fill below.",
+			},
+		},
+		onClick = function()
+			local checked = this:GetChecked() and true or false
+			ACABDB.betterExpBarEnabled = checked
+			ACAB:ApplyBetterExpBarVisual()
+
+			-- Applies the saved colors when turning on (no-op when off).
+			ACAB:ApplyExpBarColors()
+			ApplyBetterExpBarGating(page)
+		end,
+	})
+
+	cursorY = cursorY - 24 - 14
+
+	-- Overlay Text Size: same range/step as the General tab's Hotkey/Count Text Size sliders.
+	local fontSizeTitleY = cursorY
+	local fontSizeSliderY = fontSizeTitleY - 26
+	ACAB:CreateReflowText(page, "GameFontNormal", ACAB.INDENT_SECTION, fontSizeTitleY,
+		"Overlay Text Size (" .. tostring(ACAB.FONT_SIZE_MIN) ..
+		" to " .. tostring(ACAB.FONT_SIZE_MAX) .. ")"
+	)
+
+	local fontSizeSlider, fontSizeValueText = ACAB:CreateReflowSlider(
+		page,
+		"ACABSimplePageExpBarFontSizeSlider",
+		fontSizeSliderY,
+		{
+			min = ACAB.FONT_SIZE_MIN,
+			max = ACAB.FONT_SIZE_MAX,
+			step = ACAB.FONT_SIZE_STEP,
+			lowText = tostring(ACAB.FONT_SIZE_MIN),
+			highText = tostring(ACAB.FONT_SIZE_MAX),
+			initialText = tostring(ACAB.FONT_SIZE_MIN),
+			round = RoundWhole,
+			format = tostring,
+			onChange = function(value, suppressApply)
+				if not suppressApply then
+					ACAB:SetExpBarFontSize(value)
+				end
+			end,
+		}
+	)
+
+	page.expBarFontSizeValueText = fontSizeValueText
+	page.expBarFontSizeSlider = fontSizeSlider
+	cursorY = fontSizeSliderY - 36
+	local ti
+	for ti = 1, table.getn(EXP_BAR_TEXT_TOGGLES) do
+		local toggle = EXP_BAR_TEXT_TOGGLES[ti]
+		page[toggle.field] = CreateExpBarTextToggleCheckbox(page, toggle.name, toggle.label, cursorY, toggle.dbKey)
+		cursorY = cursorY - 24 - 6
 	end
 
-	-- Scale (config.hasScale)
-	if config.hasScale then
-		local scaleTitleY = cursorY
-		local scaleSliderY = scaleTitleY - 26
-		page.scaleTitle = ACAB:CreateReflowText(page, "GameFontNormal", ACAB.INDENT_SECTION, scaleTitleY, "Scale (0.5 to 2.0)")
+	cursorY = cursorY - 12
+	page.earnedColorSwatch = CreateExpBarColorRow(page, cursorY, "Earned XP Bar Color", "ACABSimplePageExpBarEarnedColorSwatch",
+		function() return ACABDB.expBarColorEarned end,
+		function(r, g, b) ACAB:SetExpBarColorEarned(r, g, b) end
+	)
 
-		local scaleSlider, scaleValueText = ACAB:CreateReflowSlider(
+	cursorY = cursorY - 24 - 14
+	page.restedColorSwatch = CreateExpBarColorRow(page, cursorY, "Rested XP Bar Color", "ACABSimplePageExpBarRestedColorSwatch",
+		function() return ACABDB.expBarColorRested end,
+		function(r, g, b) ACAB:SetExpBarColorRested(r, g, b) end
+	)
+
+	cursorY = cursorY - 24 - 14
+	page.expBarTextColorSwatch = CreateExpBarColorRow(page, cursorY, "Overlay Text Color", "ACABSimplePageExpBarTextColorSwatch",
+		function() return ACABDB.expBarTextColor end,
+		function(r, g, b) ACAB:SetExpBarTextColor(r, g, b) end
+	)
+
+	cursorY = cursorY - 24 - 14
+	page.resetColorsButton = ACAB:CreateReflowResetButton(page, cursorY, "Reset Colors to Default", function()
+		ACAB:ResetExpBarColors()
+		ACAB:RefreshBarSettingsPage("expbar")
+	end)
+
+	cursorY = cursorY - 22 - 26
+	local pulseIntervalTitleY = cursorY
+	local pulseIntervalSliderY = pulseIntervalTitleY - 26
+	ACAB:CreateReflowText(page, "GameFontNormal", ACAB.INDENT_SECTION, pulseIntervalTitleY, "Rested Glow Pulse Interval (0.5 to 5.0 sec)")
+
+	local pulseIntervalSlider, pulseIntervalValueText = ACAB:CreateReflowSlider(
+		page,
+		"ACABSimplePageExpBarPulseIntervalSlider",
+		pulseIntervalSliderY,
+		{
+			min = 0.5,
+			max = 5.0,
+			step = 0.1,
+			lowText = "0.5",
+			highText = "5.0",
+			initialText = "1.5",
+			round = RoundTenth,
+			format = FormatTenth,
+			onChange = function(value, suppressApply)
+				if not suppressApply then
+					ACAB:SetExpBarGlowPulseInterval(value)
+				end
+			end,
+		}
+	)
+
+	page.expBarGlowPulseIntervalValueText = pulseIntervalValueText
+	page.expBarGlowPulseIntervalSlider = pulseIntervalSlider
+	return pulseIntervalSliderY - 36
+end
+
+-- Simple page: Reset to Vanilla / Modern Layout buttons at resetY.
+local function BuildSimplePageResetButtons(page, key, config, resetY)
+	-- Must defer the page refresh one frame: the clamp range reads the element's new size.
+	page.resetPositionButton = ACAB:CreateReflowResetButton(page, resetY, "Reset to Vanilla Layout", function()
+		config.reset()
+		ACAB:DeferFit(function() ACAB:RefreshBarSettingsPage(key) end)
+	end)
+
+	if config.resetModern then
+		page.resetModernButton = ACAB:CreateReflowResetButton(page, resetY - 30, "Reset to Modern Layout Default", function()
+			config.resetModern()
+			ACAB:DeferFit(function() ACAB:RefreshBarSettingsPage(key) end)
+		end)
+	end
+end
+
+-- Groupable simple page: grouped-with-Main-Bar guard on every GROUP_LOCK_CONTROL_NAMES control.
+local function BuildSimplePageGroupLockGuards(page, key, config)
+	local controlNames = config.hasSpacing and "Position/Spacing/Scale" or "Position/Scale"
+	local lockedText = config.title .. " is grouped with Main Bar while Gryphons / Background Art is enabled - its own " .. controlNames .. " controls are locked."
+
+	local function IsElementLocked()
+		return ACAB:IsElementGrouped(key)
+	end
+
+	local function OnLockedClick()
+		ACAB:HighlightMainBarArtModeDropdownFromElsewhere()
+	end
+
+	local i
+	for i = 1, table.getn(ACAB.GROUP_LOCK_CONTROL_NAMES) do
+		local control = page[ACAB.GROUP_LOCK_CONTROL_NAMES[i]]
+		if control then
+			ACAB:InstallGroupLockGuard(control, IsElementLocked, lockedText, OnLockedClick)
+		end
+	end
+
+	ACAB:ApplySimpleElementGroupedLock(page)
+end
+
+local function CreateSimpleBarPage(key)
+	local config = ACAB.simpleBarPageConfigs[key]
+	if not config then return nil end
+
+	local page = CreateFrame("Frame", nil, ACAB.settingsFrame.contentPanel)
+	ACAB:ApplyPageBannerReserve(page, false)
+	page.barId = key
+	page.isDefault = true
+	page.profileLockWarning = ACAB:CreateProfileLockWarning(page)
+
+	-- Anchored to contentPanel so it stays put while the page slides down.
+	local title = page:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+	title:SetPoint("TOPLEFT", ACAB.settingsFrame.contentPanel, "TOPLEFT", ACAB.INDENT_SECTION, -14)
+	title:SetText(config.title .. " Settings (Default)")
+
+	-- Group lock icon, top right.
+	if ACAB.GROUPABLE_SIMPLE_PAGES[key] then
+		page.groupLockButton = ACAB:CreateGroupLockButton(
 			page,
-			"ACABSimplePage" .. key .. "ScaleSlider",
-			scaleSliderY,
-			{
-				min = 0.5,
-				max = 2.0,
-				step = 0.1,
-				lowText = "0.5",
-				highText = "2.0",
-				initialText = "1.0",
-				round = RoundTenth,
-				format = FormatTenth,
-				onChange = function(value, suppressApply)
-					if not suppressApply then
-						if ACAB:RevertIfGroupLocked(key) then return end
-
-						config.setScale(value)
-
-						-- Must be a full page refresh (re-syncs X/Y before re-clamping), or the position jumps.
-						ACAB:RefreshSimpleBarPage(key)
-					else
-						ACAB:RefreshSimplePositionSliderRange(page, key)
-					end
-				end,
-			}
+			"ACABSimplePage" .. key .. "GroupLockButton",
+			{ "TOPRIGHT", ACAB.settingsFrame.contentPanel, "TOPRIGHT", -20, -14 },
+			config.title .. " Grouped with Main Bar",
+			key
 		)
+	end
 
-		page.scaleValueText = scaleValueText
-		page.scaleSlider = scaleSlider
-		cursorY = scaleSliderY - 36
+	local topY = BuildSimplePageToggleRows(page, key, config)
+
+	if key == "tooltip" then
+		topY = BuildTooltipCornerRow(page, topY)
+	end
+
+	local cursorY = BuildSimplePagePositionSection(page, key, config, topY)
+
+	if config.hasSpacing then
+		cursorY = BuildSimplePageSpacingSection(page, key, config, cursorY)
+	end
+
+	if config.hasScale then
+		cursorY = BuildSimplePageScaleSection(page, key, config, cursorY)
 	end
 
 	-- Grid Layout (config.hasGrid)
@@ -307,159 +490,14 @@ local function CreateSimpleBarPage(key)
 
 	-- Better Experience Bar (Experience Bar page only), independent of Enabled
 	if key == "expbar" then
-		page.betterExpBarCheckbox = ACAB:CreateReflowCheckbox(page, "ACABSimplePageExpBarBetterCheckbox", cursorY, {
-			label = "Enable Better Experience Bar",
-			tooltip = {
-				title = "Enable Better Experience Bar",
-				lines = {
-					"Replaces the native percent label with a customizable text " ..
-					"line, and lets you recolor the bar's own fill and rested-" ..
-					"bonus fill below.",
-				},
-			},
-			onClick = function()
-				local checked = this:GetChecked() and true or false
-				ACABDB.betterExpBarEnabled = checked
-				ACAB:ApplyBetterExpBarVisual()
-
-				-- Applies the saved colors when turning on (no-op when off).
-				ACAB:ApplyExpBarColors()
-				ApplyBetterExpBarGating(page)
-			end,
-		})
-
-		cursorY = cursorY - 24 - 14
-
-		-- Overlay Text Size: same range/step as the General tab's Hotkey/Count Text Size sliders.
-		local fontSizeTitleY = cursorY
-		local fontSizeSliderY = fontSizeTitleY - 26
-		ACAB:CreateReflowText(page, "GameFontNormal", ACAB.INDENT_SECTION, fontSizeTitleY,
-			"Overlay Text Size (" .. tostring(ACAB.FONT_SIZE_MIN) ..
-			" to " .. tostring(ACAB.FONT_SIZE_MAX) .. ")"
-		)
-
-		local fontSizeSlider, fontSizeValueText = ACAB:CreateReflowSlider(
-			page,
-			"ACABSimplePageExpBarFontSizeSlider",
-			fontSizeSliderY,
-			{
-				min = ACAB.FONT_SIZE_MIN,
-				max = ACAB.FONT_SIZE_MAX,
-				step = ACAB.FONT_SIZE_STEP,
-				lowText = tostring(ACAB.FONT_SIZE_MIN),
-				highText = tostring(ACAB.FONT_SIZE_MAX),
-				initialText = tostring(ACAB.FONT_SIZE_MIN),
-				round = RoundWhole,
-				format = tostring,
-				onChange = function(value, suppressApply)
-					if not suppressApply then
-						ACAB:SetExpBarFontSize(value)
-					end
-				end,
-			}
-		)
-
-		page.expBarFontSizeValueText = fontSizeValueText
-		page.expBarFontSizeSlider = fontSizeSlider
-		cursorY = fontSizeSliderY - 36
-		local ti
-		for ti = 1, table.getn(EXP_BAR_TEXT_TOGGLES) do
-			local toggle = EXP_BAR_TEXT_TOGGLES[ti]
-			page[toggle.field] = CreateExpBarTextToggleCheckbox(page, toggle.name, toggle.label, cursorY, toggle.dbKey)
-			cursorY = cursorY - 24 - 6
-		end
-
-		cursorY = cursorY - 12
-		page.earnedColorSwatch = CreateExpBarColorRow(page, cursorY, "Earned XP Bar Color", "ACABSimplePageExpBarEarnedColorSwatch",
-			function() return ACABDB.expBarColorEarned end,
-			function(r, g, b) ACAB:SetExpBarColorEarned(r, g, b) end
-		)
-
-		cursorY = cursorY - 24 - 14
-		page.restedColorSwatch = CreateExpBarColorRow(page, cursorY, "Rested XP Bar Color", "ACABSimplePageExpBarRestedColorSwatch",
-			function() return ACABDB.expBarColorRested end,
-			function(r, g, b) ACAB:SetExpBarColorRested(r, g, b) end
-		)
-
-		cursorY = cursorY - 24 - 14
-		page.expBarTextColorSwatch = CreateExpBarColorRow(page, cursorY, "Overlay Text Color", "ACABSimplePageExpBarTextColorSwatch",
-			function() return ACABDB.expBarTextColor end,
-			function(r, g, b) ACAB:SetExpBarTextColor(r, g, b) end
-		)
-
-		cursorY = cursorY - 24 - 14
-		page.resetColorsButton = ACAB:CreateReflowResetButton(page, cursorY, "Reset Colors to Default", function()
-			ACAB:ResetExpBarColors()
-			ACAB:RefreshBarSettingsPage("expbar")
-		end)
-
-		cursorY = cursorY - 22 - 26
-		local pulseIntervalTitleY = cursorY
-		local pulseIntervalSliderY = pulseIntervalTitleY - 26
-		ACAB:CreateReflowText(page, "GameFontNormal", ACAB.INDENT_SECTION, pulseIntervalTitleY, "Rested Glow Pulse Interval (0.5 to 5.0 sec)")
-
-		local pulseIntervalSlider, pulseIntervalValueText = ACAB:CreateReflowSlider(
-			page,
-			"ACABSimplePageExpBarPulseIntervalSlider",
-			pulseIntervalSliderY,
-			{
-				min = 0.5,
-				max = 5.0,
-				step = 0.1,
-				lowText = "0.5",
-				highText = "5.0",
-				initialText = "1.5",
-				round = RoundTenth,
-				format = FormatTenth,
-				onChange = function(value, suppressApply)
-					if not suppressApply then
-						ACAB:SetExpBarGlowPulseInterval(value)
-					end
-				end,
-			}
-		)
-
-		page.expBarGlowPulseIntervalValueText = pulseIntervalValueText
-		page.expBarGlowPulseIntervalSlider = pulseIntervalSlider
-		cursorY = pulseIntervalSliderY - 36
+		cursorY = BuildExpBarPageSection(page, cursorY)
 	end
 
-	-- Reset buttons. Must defer the page refresh one frame: the clamp range reads the element's new size.
-	local resetY = cursorY
-	page.resetPositionButton = ACAB:CreateReflowResetButton(page, resetY, "Reset to Vanilla Layout", function()
-		config.reset()
-		ACAB:DeferFit(function() ACAB:RefreshBarSettingsPage(key) end)
-	end)
+	BuildSimplePageResetButtons(page, key, config, cursorY)
 
-	if config.resetModern then
-		page.resetModernButton = ACAB:CreateReflowResetButton(page, resetY - 30, "Reset to Modern Layout Default", function()
-			config.resetModern()
-			ACAB:DeferFit(function() ACAB:RefreshBarSettingsPage(key) end)
-		end)
-	end
-
-	-- Grouped-with-Main-Bar guard on every GROUP_LOCK_CONTROL_NAMES control; must run once the Reset buttons exist.
+	-- Group lock guards must run once the Reset buttons exist.
 	if ACAB.GROUPABLE_SIMPLE_PAGES[key] then
-		local controlNames = config.hasSpacing and "Position/Spacing/Scale" or "Position/Scale"
-		local lockedText = config.title .. " is grouped with Main Bar while Gryphons / Background Art is enabled - its own " .. controlNames .. " controls are locked."
-
-		local function IsElementLocked()
-			return ACAB:IsElementGrouped(key)
-		end
-
-		local function OnLockedClick()
-			ACAB:HighlightMainBarArtModeDropdownFromElsewhere()
-		end
-
-		local i
-		for i = 1, table.getn(ACAB.GROUP_LOCK_CONTROL_NAMES) do
-			local control = page[ACAB.GROUP_LOCK_CONTROL_NAMES[i]]
-			if control then
-				ACAB:InstallGroupLockGuard(control, IsElementLocked, lockedText, OnLockedClick)
-			end
-		end
-
-		ACAB:ApplySimpleElementGroupedLock(page)
+		BuildSimplePageGroupLockGuards(page, key, config)
 	end
 
 	page:Hide()
