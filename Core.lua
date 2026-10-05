@@ -1350,7 +1350,7 @@ local SETTLE_TIMEOUT = 3
 -- Polls sample() (up to two values) every SETTLE_POLL_INTERVAL until isSame(a, b, lastA, lastB) held
 -- stableReads ticks in a row, or timeout; then onDone(settled, lastA, lastB, elapsed).
 -- must keep: count resets on any mismatch/nil, check runs after elapsed++, Cancel before onDone (login timing).
-local function PollUntilSettled(sample, isSame, lastA, lastB, stableReads, timeout, onDone)
+function ACAB:PollUntilSettled(sample, isSame, lastA, lastB, stableReads, timeout, onDone)
 	local stableCount = 0
 	local elapsed = 0
 
@@ -1393,7 +1393,7 @@ function ACAB:WaitForNativeBarSettle(callback)
 
 	local earlyLeft, earlyTop = ref:GetLeft(), ref:GetTop()
 
-	PollUntilSettled(function() return ref:GetLeft(), ref:GetTop() end, SameLeftTop, earlyLeft, earlyTop,
+	self:PollUntilSettled(function() return ref:GetLeft(), ref:GetTop() end, SameLeftTop, earlyLeft, earlyTop,
 		SETTLE_STABLE_READS_REQUIRED, SETTLE_TIMEOUT, function(settled, lastLeft, lastTop, elapsed)
 		if not settled then
 			ACAB:Print(
@@ -1422,7 +1422,7 @@ local function WaitForWrappedFrameAnchorSettle(frame, callback)
 		return
 	end
 
-	PollUntilSettled(function() return frame.ACABSwallowedAnchor end, SameAnchor, frame.ACABSwallowedAnchor, nil,
+	ACAB:PollUntilSettled(function() return frame.ACABSwallowedAnchor end, SameAnchor, frame.ACABSwallowedAnchor, nil,
 		SETTLE_STABLE_READS_REQUIRED, SETTLE_TIMEOUT, function(settled, lastAnchor)
 		callback(settled and lastAnchor or nil)
 	end)
@@ -1518,7 +1518,7 @@ local function WaitForPostLoginSettleThenVerify()
 
 	local lastLeft, lastTop = ref:GetLeft(), ref:GetTop()
 
-	PollUntilSettled(function() return ref:GetLeft(), ref:GetTop() end, SameLeftTop, lastLeft, lastTop,
+	ACAB:PollUntilSettled(function() return ref:GetLeft(), ref:GetTop() end, SameLeftTop, lastLeft, lastTop,
 		POST_LOGIN_SETTLE_STABLE_READS, POST_LOGIN_SETTLE_TIMEOUT, function()
 		VerifyDefaultBarAnchorsSettled()
 	end)
