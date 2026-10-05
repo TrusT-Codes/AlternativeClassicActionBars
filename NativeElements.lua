@@ -359,8 +359,11 @@ function ACAB:CreateBagBarAndMicroMenu()
 end
 
 -- Re-lays-out the Micro Menu whenever vanilla's UpdateMicroButtons changes which micro buttons are shown.
+-- must skip until the login sequence built the container: an earlier EnsureDB seeds anchors at the wrong UI scale
 if hooksecurefunc and UpdateMicroButtons then
 	hooksecurefunc("UpdateMicroButtons", function()
+		if not ACAB.microMenuContainer then return end
+
 		ACAB:ApplyMicroMenuShape()
 	end)
 end
