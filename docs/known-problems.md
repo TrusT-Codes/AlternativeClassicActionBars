@@ -69,7 +69,7 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
   - Plain Frames have no OnClick.
   - To lock while keeping a "why is this locked" tooltip, use `LockControlKeepingTooltip` (`ACABLocked` flag, honored by `CreateLabeledCheckbox`'s OnClick wrapper).
 - **Position sliders must keep `SetValueStep(0)`** (`UIWidgets.lua` `CreatePositionAxisSlider`). A non-zero step re-snaps to a grid that isn't pixel-aligned. Drag values get pixel-snapped by hand; stepper/typed commits bypass that via `ACAB:SetSliderValueUnsnapped`.
-- **`SetMinMaxValues` fires `OnValueChanged` like a real drag.** Set `suppressApply`/`suppressSnap` before changing a range and clear them after the last `SetValue` (`SettingsSimplePages.lua` `RefreshSimpleBarPage` / `SettingsBars.lua` `RefreshBarSettingsPage`). `SetValue` with an unchanged value doesn't fire, hence the explicit `xAppliedValue`/`yAppliedValue`.
+- **`SetMinMaxValues` fires `OnValueChanged` like a real drag.** Set `suppressApply`/`suppressSnap` before changing a range and clear them after the last `SetValue` (`SettingsSimplePages.lua` `RefreshSimpleBarPage` / `SettingsBars.lua` `RefreshBarSettingsPage`); the X/Y flags go through `ACAB:SetPositionSlidersSuppressed`. `SetValue` with an unchanged value doesn't fire, hence the explicit `xAppliedValue`/`yAppliedValue` (set by `ACAB:SyncPositionSliders`).
 - **Never `SetValue` a slider from its own `OnValueChanged`.** It breaks the native drag for the rest of that gesture. Position pages read `page.*AppliedValue or slider:GetValue()`.
 
 ### Experience Bar (env §4.13)
@@ -94,7 +94,7 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
 - **Where:** `Settings.lua` — `ApplySettingsHeightFromCandidates`
 - **What:** After `SetVerticalScroll(0)` it does `scrollChildPanel:GetTop()`, then `GetBottom()` on every candidate, then `GetBottom()` on the General panel's static anchor chain, all discarded. This is the env §4.6 fix, and three "equivalent" rewrites all brought the bug back.
 - **Keep:** the block byte-for-byte, including the per-call `resolveNames` table and loop order. A new General-tab control hanging off an unmeasured static anchor needs that anchor added to `resolveNames`. Symptom if broken: toggling Global Spacing makes the controls below it unreachable.
-- **Related:** `MeasureDeepestExtent` must stay a live-position delta (`referenceTop - frame:GetBottom()`), since the window is movable. The `Fit*` candidate lists feed this pass in order: any conversion to name tables must produce an identical array.
+- **Related:** `MeasureDeepestExtent` must stay a live-position delta (`referenceTop - frame:GetBottom()`), since the window is movable. The `*_CANDIDATE_NAMES` tables in `Settings.lua` feed this pass in order; keep them in order.
 
 ### Inline dropdown SetParent after CreateFrame
 - **Where:** `UIWidgets.lua` — `ACAB:CreateInlineDropdown`
@@ -196,15 +196,15 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
   - `PLAYER_AURAS_CHANGED` doesn't `Refresh` stance buttons: `UpdateStanceFormChange` compares `GetShapeshiftFormInfo`'s texture/isActive/isCastable against the cache `Refresh` writes, and only on a change updates icon + glow (plus every stance cooldown). `UPDATE_SHAPESHIFT_FORMS` (fires on learning a form), `PLAYER_ENTERING_WORLD` and `Rebind` still do a full `Refresh`.
 
 ### Removed intra-addon existence guards
-- **Where:** `Bar.lua`, `Button.lua`, `HoverBind.lua`, `Core.lua`, `Events.lua`
+- **Where:** `Bar.lua`, `Button.lua`, `HoverBind.lua`, `Core.lua`, `Events.lua`, `Database.lua`, `ElementEngine.lua`, `DefaultBars.lua`, `NativeElements.lua`, `PetStanceBars.lua`, `ExperienceBar.lua`, `PageIndicator.lua`, `Tooltip.lua`, `SettingsBars.lua` (except `ResetAllElementsToVanillaLayout`, which keeps its guards)
 - **What:** Same for `C_Timer` hedges: ClassicAPI is enforced at login (`CheckRequiredMods`, the only place that still checks `type(C_Timer)`), so tickers/`C_Timer.After` calls are unguarded. Guards like `if ACAB.RefreshBarSettingsPage then` were dropped because every guarded member is defined at the top level of a file that always loads, and every call runs after login. So:
   - Nothing may call `CreateActionButton` / `ApplyEditModeVisual` / `ApplyGlobalButtonStyle` / `ApplyHoverOnlyState` at file-load time.
   - `HoverBind.lua`'s top-level `customBindTargets = {}` must run before any button is created.
   - `Core.lua`'s hover-fade code calls `ACAB:GetCursorPositionUIScale` (defined later, in ElementEngine.lua): runtime-only.
 
 ### Shared single-frame element helpers
-- **Where:** `ElementEngine.lua` — "Single-frame element helpers" section: `SetElementShown`, `WriteSavedPositionXY`, `StoreCompensatedScale`, `ResetScaleAndResolveNative`, `ReadNativeAnchor`, `SeedNativePosition`, `CopyNativePosition`
-- **What:** NativeElements, PetStanceBars and ExperienceBar all call these. `StoreCompensatedScale` does `EnsureDB` + clamp + CENTER compensation + write, but never `SetScale`/apply; each caller still applies. Bag Bar, Micro Menu and Stance Bar apply scale through their shape pass. Keep the signatures, and re-check all three files when changing one.
+- **Where:** `ElementEngine.lua` — "Single-frame element helpers" section: `SetElementShown`, `WriteSavedPositionXY`, `StoreCompensatedScale`, `ResetScaleAndResolveNative`, `ReadNativeAnchor`, `SeedNativePosition`, `CopyNativePosition`, `CaptureAbsolutePosition`, `StoreElementEnabled`, `SetElementScale`, `SetElementSpacing`
+- **What:** NativeElements, PetStanceBars and ExperienceBar all call these. `StoreCompensatedScale` does `EnsureDB` + clamp + CENTER compensation + write, but never `SetScale`/apply; each caller still applies. Bag Bar, Micro Menu and Stance Bar apply scale through their shape pass. Keep the signatures, and re-check all three files when changing one. Element drags go through `StartElementDrag(dragKind)` / `StopElementDrag(settingsKey)`; `POSITION_DRAG_KINDS.capture` names the seed method; manual-move flags are cleared before `StopElementDrag`.
 - **Not covered, on purpose:**
   - Pet Bar native mode stores on the shared `defaultBars[PET_BAR_ID]` cfg, not an `ACABDB` field, and must mutate it in place.
   - Key Ring reset uses its own-scale path.
@@ -227,7 +227,7 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
 - **Exp Bar layered under Latency Bar.** `ExperienceBar.lua` `ApplyExpBarPosition` copies Latency Bar's strata at level −1. This interacts with `MainMenuBarArtFrame`'s pinned LOW/level-5 masking (env §4.8), so change both together.
 - **Wheel resize.** `Bar.lua` `ACAB:ResizeBarFromWheel` is shared by the bar overlay and the button handler. The button's wheel handler must stay installed, since it swallows camera zoom over buttons outside edit mode.
 - **Login stages.** `Core.lua` `RunLoginSequence` runs each step through `RunLoginStage` (`xpcall` → client error handler, then continue). Only the "profile" stage aborts the sequence (live-confirmed: a forced "tooltip" failure left every other element in place; a forced "profile" failure disabled the addon cleanly). A failed stage leaves later stages running on whatever it left half-built, so expect follow-up errors from the stage that broke first; report that one. New steps go into an existing stage or a new named one, in the same position the order comments require.
-- **Login timing.** The settle polls (`Core.lua` `WaitForNativeBarSettle`, `WaitForWrappedFrameAnchorSettle`, `WaitForPostLoginSettleThenVerify`) are load-bearing: `stableCount` resets on any mismatch/nil, the check runs after `elapsed++`, and only a timeout without settling warns. Test any change with `/reload` and a fresh login.
+- **Login timing.** The settle polls (`Core.lua` `WaitForNativeBarSettle`, `WaitForWrappedFrameAnchorSettle`, `WaitForPostLoginSettleThenVerify`) are load-bearing: `stableCount` resets on any mismatch/nil, the check runs after `elapsed++`, and only a timeout without settling warns. All three run through `Core.lua` `PollUntilSettled`; keep its order (elapsed++ → compare → store last → check → Cancel → onDone). Test any change with `/reload` and a fresh login.
 
 ---
 
@@ -243,25 +243,20 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
 - **Extra Bar fallback size.** `Database.lua` `GetDefaultExtraBarLayout` returns `BUTTON_SIZE` on the normal path but `GetCurrentButtonSizeBaseline()` on the fallback path.
 - **Two screen-size reads.** `Settings.lua` `GetScreenCoordinateRange` and `Bar.lua` `RebuildLayoutGrid` use `UIParent:GetWidth()/GetHeight()` instead of `GetUIParentAnchorSize`. It's harmless in both today (legacy range only / covered by overshoot lines). In `RebuildLayoutGrid`, `GetLayoutGridSpacing()` is already in local units, so don't divide it by effective scale.
 - **Sidebar rows follow `getElementFrame`.** `SettingsBars.lua` `RefreshBarList` shows a simple-page row only when its config's `getElementFrame()` is non-nil. New simple pages need a `getElementFrame`.
-- **Composed names hide greppable identifiers.** The Pet/Stance "Use Vanilla" checkbox name and field are built by concatenation (`CreateUseVanillaBarCheckbox`). Grep the factory name.
+- **Composed names hide greppable identifiers.** The Pet/Stance "Use Vanilla" checkbox name and field are built by concatenation (`CreateUseVanillaBarCheckbox`). `SettingsSimplePages.lua` `ElementConfig` builds simple-page accessors from strings (`ACABDB.<db><Field>`, `ACAB:Set<method><Field>`, e.g. `bagBar`/`BagBar` → `bagBarScale`/`SetBagBarScale`), and `SettingsBars.lua` `CreateGlobalOverrideLockButton` gets `ApplyGlobalButtonSizeToBar`/`ApplyGlobalSpacingToBar` as name strings. Grep the factory name or the field/method stem.
 
 ### Performance (measured as fine so far; look here first if something stutters)
-- **Main Bar drag.** Every tick re-applies the art frame (texture Hide/Show redraw, which is load-bearing) plus all grouped elements, each with a fresh hover closure.
+- **Main Bar drag.** Every tick re-applies the art frame (texture Hide/Show redraw, which is load-bearing) plus all grouped elements (hover getter cached per element as `element.getHoverDuration`).
 
-Done: range-ticker write cache (`rangeKey` in `UpdateRange`), Pet Bar layout coalescing (`petLayoutPending` in `Refresh`), rested-glow pulse stops with the Exp Bar, pooled bar-list rows (`RefreshBarList`), grid swatches and assignment rows (`RebuildGridSwatches`, `RebuildDefaultBarAssignmentRows`), one shared event dispatcher for all pool buttons (`Button.lua` `POOL_BUTTON_EVENT_ROUTES`), hover-bind tint ticker reuses one callback and one ref table (`HoverBind.lua` `ForEachButton`).
+Done: range-ticker write cache (`rangeKey` in `UpdateRange`), Pet Bar layout coalescing (`petLayoutPending` in `Refresh`), rested-glow pulse stops with the Exp Bar, pooled bar-list rows (`RefreshBarList`), grid swatches and assignment rows (`RebuildGridSwatches`, `RebuildDefaultBarAssignmentRows`), one shared event dispatcher for all pool buttons (`Button.lua` `POOL_BUTTON_EVENT_ROUTES`), hover-bind tint ticker reuses one callback and one ref table (`HoverBind.lua` `ForEachButton`), bar-drag scratch position (`barDragPos`), cached hover-duration getters (Exp Bar, grouped elements, `bar.ACABHoverDurationGetter`), per-call allocation cuts in pool-button hot paths (cached lower-case macro spell name, shared hotkey-text table, cached hoverbind binding-id strings, closure-free `ApplyEditModeVisual`), closure-free snap-target boxes (`Core.lua` `AddSnapTargetBox`).
 
 ### Remaining duplication
 - **`AppendCandidate`** is file-local in both `Core.lua` (grid-snap candidates) and `Settings.lua` (height-fit). It was left alone because the Settings copy sits inside the resolve-pass machinery. If shared, define it in Core.lua and keep the candidate order.
-- **Absolute-position capture.** `NativeElements.lua` `CaptureKeyRingPositionIfNeeded` and `ExperienceBar.lua` `CaptureExpBarPositionIfNeeded` still hand-roll the same code (GetLeft/GetTop → UIParent units → TOPLEFT write → `ReadNativeAnchor`). An `ACAB:CaptureAbsolutePosition(frame, posField, nativeField)` would cover both. `Database.lua` `CaptureNativeAnchor` is different on purpose: it returns nil on a missing scale.
+- **Baseline settle poll.** `DefaultBars.lua` `WaitForBaselineSettle` still hand-rolls the ticker that `Core.lua` `PollUntilSettled` shares between the three login polls (it polls several frames).
+- **Flat tooltip backdrop.** The inset-0 tile-8 backdrop is defined twice (`Bar.lua` `CreateBarFromConfig` inline, `Button.lua` `VANILLA_BUTTON_BACKDROP`); could join the `ACAB.*_BACKDROP` tables.
+- **Stance-swap bar re-shape.** `DefaultBars.lua` `RefreshDefaultBarSlots` calls `ApplyBarShape` on 5 bars, and each re-runs the full `ApplyEditModeVisual`. One trailing call would need a skip option in Bar.lua.
 - **Pet Bar native helpers.** Pet Bar native-mode position/scale/reset would need the single-frame helpers to take a table instead of a field name.
-- **Two backdrop pairs** are still inline:
-  - tile 16 / edge 12 / inset 2: `UIWidgets.lua` dialog error banner + `Settings.lua` `CreateProfileLockWarning`
-  - tile 8 / edge 8 / inset 2: `Settings.lua` `ApplyPanelBackdrop` + `SettingsBars.lua` `CreateGridSwatch`
-
-  They could join `ACAB.DIALOG_BACKDROP` / `SMALL_BACKDROP` / `MODERN_BACKDROP` in UIWidgets.lua.
 - **Modern button factory.** `SetupWizard.lua` `CreateWizardButton`, `UIWidgets.lua` `ACAB:CreateResetButton`, and hand-rolled `CreateFrame` + `StyleModernButton` sequences elsewhere could share one `ACAB:CreateModernButton(parent, config)` with a danger/prominent `variant`. `CreateResetButton` anchors before styling, the others style first, so confirm live that the order doesn't matter.
-- **Login settle polls.** `Core.lua` has three near-identical tickers. See the login-timing entry in §3 before unifying.
-- **`Fit*` candidate lists.** `Settings.lua` (~60 lines of `AppendCandidate` calls) could be name tables. The resulting array must be identical and in the same order.
 - **Default-bar overlays.** `ElementEngine.lua` `EnsureContainerOverlay`'s overlays have wheel handlers similar to `ACAB:ResizeBarFromWheel`.
 
 ### Decomposition ideas (need `.toc` + CLAUDE.md updates)
