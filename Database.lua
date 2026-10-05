@@ -1453,7 +1453,14 @@ local ANCHOR_RECAPTURE_FLAGS = {
 	"anchorEnterWorldFixDone",
 }
 
+-- ACABDB table the last EnsureDB pass completed on.
+local lastEnsuredDB = nil
+
+-- Full pass once per ACABDB table; a replaced ACABDB (profile switch/copy/import/wizard) gets a new pass.
+-- Seeded fields must never be cleared in place afterwards: see known-problems.md: "EnsureDB ordering and one-shot flags".
 function ACAB:EnsureDB()
+	if ACABDB ~= nil and ACABDB == lastEnsuredDB then return end
+
 	if type(ACABDB) ~= "table" then
 		ACABDB = {}
 	end
@@ -1695,7 +1702,7 @@ function ACAB:EnsureDB()
 		ACABDB.defaultBars[self.PET_BAR_ID] = SeedOneDefaultBar(self, self.PET_BAR_ID)
 	end
 
-	-- Pet Bar structural fields re-asserted every call; user-editable ones only nil-seeded.
+	-- Pet Bar structural fields re-asserted every pass; user-editable ones only nil-seeded.
 	-- Its default position is set later, by SetupPetBarNativeContainer.
 	do
 		local petCfg = ACABDB.defaultBars[self.PET_BAR_ID]
@@ -1712,7 +1719,7 @@ function ACAB:EnsureDB()
 		ACABDB.defaultBars[self.STANCE_BAR_ID] = SeedOneDefaultBar(self, self.STANCE_BAR_ID)
 	end
 
-	-- Stance Bar structural fields re-asserted every call; useNativeStanceBar only nil-seeded.
+	-- Stance Bar structural fields re-asserted every pass; useNativeStanceBar only nil-seeded.
 	do
 		local stanceCfg = ACABDB.defaultBars[self.STANCE_BAR_ID]
 
@@ -1733,4 +1740,6 @@ function ACAB:EnsureDB()
 		ACABDB.hoverBindMode = false
 		hasResetHoverBindModeThisSession = true
 	end
+
+	lastEnsuredDB = ACABDB
 end
