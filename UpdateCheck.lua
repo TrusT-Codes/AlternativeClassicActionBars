@@ -186,7 +186,39 @@ local function JoinVersionChannel()
 	end
 end
 
--- Checks the saved newest version, then announces on group channels and (after a delay) the hidden channel.
+-- Joins the hidden version channel and announces on it 2 seconds later.
+local function JoinAndAnnounceOnVersionChannel()
+	JoinVersionChannel()
+	C_Timer.After(2, function()
+		SendOwnVersion("CHANNEL")
+	end)
+end
+
+-- Leaves the hidden version channel if this client is in it.
+local function LeaveVersionChannel()
+	local channelId = GetChannelName(VERSION_CHANNEL)
+	if channelId and channelId > 0 then
+		LeaveChannelByName(VERSION_CHANNEL)
+	end
+end
+
+-- True unless the active profile opted out of the hidden version channel.
+function ACAB:IsUpdateChannelEnabled()
+	return not (ACABDB and ACABDB.updateChannelDisabled == true)
+end
+
+-- Saves the hidden-channel opt-out and joins (and announces) or leaves the channel right away.
+function ACAB:SetUpdateChannelEnabled(enabled)
+	ACABDB.updateChannelDisabled = not enabled
+	if enabled then
+		JoinAndAnnounceOnVersionChannel()
+	else
+		LeaveVersionChannel()
+	end
+end
+
+-- Checks the saved newest version, then announces on group channels and (after a delay) joins and announces
+-- on the hidden channel, or leaves it when opted out.
 function ACAB:CheckForUpdates()
 	CheckSavedLatestVersion()
 
@@ -195,10 +227,11 @@ function ACAB:CheckForUpdates()
 	end
 
 	C_Timer.After(CHANNEL_JOIN_DELAY, function()
-		JoinVersionChannel()
-		C_Timer.After(2, function()
-			SendOwnVersion("CHANNEL")
-		end)
+		if ACAB:IsUpdateChannelEnabled() then
+			JoinAndAnnounceOnVersionChannel()
+		else
+			LeaveVersionChannel()
+		end
 	end)
 end
 
