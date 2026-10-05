@@ -19,6 +19,7 @@
 - Fix fallback-placed Extra Bars overlapping in the Modern button style (only when their reference bar had no saved position).
 - Fix empty dark squares sometimes showing at the vanilla Stance Bar spot when using the ACAB-styled Stance Bar after playing a character with the vanilla one.
 - Fix a fresh install saving action bar positions before the UI scale applied (the first login no longer prints "Recapturing positions").
+- Fix Extra Bar hotkeys disappearing (and their key going dead) after an action bar swapped back from showing that Extra Bar on a page or stance change; while swapped, the Main Bar now keeps showing its own hotkeys.
 
 ### Performance
 
