@@ -113,7 +113,7 @@ Solved mistakes, so they don't happen twice. Each entry has three parts: **what 
 ### Latency Bar / Key Ring drifting after combat, looting or zoning
 - **What happened:** wrapped native frames moved back on their own, sometimes without user input.
 - **Root cause:** positions were applied once. Native FrameXML re-anchors those frames later, without `ClearAllPoints`.
-- **Prevention:** wrap every native frame we position with `InstallReanchorGuard`, and reassert on `PLAYER_REGEN_ENABLED`/`LOOT_CLOSED`. Assume native code will undo any one-time change to a native frame.
+- **Prevention:** wrap every native frame we position with `InstallReanchorGuard`, and reassert on `PLAYER_REGEN_ENABLED` (a `LOOT_CLOSED` reassert was dropped in 1.3.0-rc2 after a logged session showed it never moved anything). Assume native code will undo any one-time change to a native frame.
 
 ### Disabled Experience Bar reappearing
 - **What happened:** after the user disabled it, the Exp Bar came back on quest turn-in, level-up and XP updates.

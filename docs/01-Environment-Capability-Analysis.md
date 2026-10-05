@@ -97,6 +97,7 @@ Other mod features, noted but not used: SuperWoW `UnitPosition`, `TrackUnit`, `S
 - **Main Bar paging reads `VIEWABLE_ACTION_BAR_PAGES`, which follows Blizzard's saved toggles, not the session globals.** Live: `GetActionBarToggles()` returned `1 1 1 nil` while `SHOW_MULTI_ACTIONBAR_1-4` were all `1` (set by ACAB), and `VIEWABLE_ACTION_BAR_PAGES` still had page 4 viewable.
 - **`SHOW_MULTI_ACTIONBAR_1-4` do not persist across logout** on this fork (they are absent from WTF). They are fine for same-session reads, but never treat them as the source of truth at login. The addon's own saved flag is authoritative, and it gets pushed into the client every login.
 - **`ACABDB` is account-wide.** Any login or `/reload` on any character consumes a one-shot migration marker. That's fine for migrations, but useless for "force one recapture I can watch". Use an explicit command for that (`/acab recapture`).
+- **Custom chat channels:** `LeaveChannelByName(name)` exists and leaves at once (`GetChannelName(name)` returns 0 afterwards, no chat line with the `ChatFrame_OnEvent` filter in place). A channel left before `/reload` is not rejoined by the client (still 0 after 15 s); `JoinChannelByName` rejoins it.
 - The in-game AddOns folder name is `AlternativeClassicActionBars`, so texture paths must use `Interface\AddOns\AlternativeClassicActionBars\...`. A wrong segment renders blank with no error.
 
 ### 4.6 Frame rects and coordinates
@@ -119,7 +120,7 @@ Other mod features, noted but not used: SuperWoW `UnitPosition`, `TrackUnit`, `S
 
 ### 4.9 Login timing
 - **`MainMenuBar` re-centers horizontally after `PLAYER_LOGIN`** (a ~76 px shift in `ActionButton1:GetLeft()`). Capture native positions only after `PLAYER_ENTERING_WORLD` plus a stability poll (`Core.lua` `WaitForNativeBarSettle`). Two equal reads 0.1 s apart prove local stability only, not finality.
-- Native FrameXML re-anchors wrapped frames later on its own (Key Ring, Latency Bar, Micro Menu/Bag Bar buttons, the art frame), without `ClearAllPoints`. Handled by `InstallReanchorGuard`, plus a position reassert on `PLAYER_REGEN_ENABLED` / `LOOT_CLOSED`.
+- Native FrameXML re-anchors wrapped frames later on its own (Key Ring, Latency Bar, Micro Menu/Bag Bar buttons, the art frame), without `ClearAllPoints`. Handled by `InstallReanchorGuard`, plus a position reassert on `PLAYER_REGEN_ENABLED`. A logged play session (1.3.0-rc2) saw the reassert move nothing in 25 `LOOT_CLOSED` and 17 `PLAYER_REGEN_ENABLED` calls, so the guard catches everything seen so far; the `LOOT_CLOSED` reassert was dropped.
 
 ### 4.10 Native Main Bar elements
 - `ActionButton1-12` are children of `MainMenuBarArtFrame`. To hide the art, hide only the `Texture` entries of `MainMenuBarArtFrame:GetRegions()` (regions are never child frames), never the frame itself.
