@@ -6,6 +6,9 @@ local ACAB = AlternativeClassicActionBars
 local MSG_PREFIX = "ACABVersion"
 local ANNOUNCE_CHANNELS = { "PARTY", "GUILD", "RAID", "BATTLEGROUND" }
 
+-- Logins in a row without a peer re-announcing the saved newer version before it is forgotten.
+local SAVED_NAG_MAX_MISSED_LOGINS = 5
+
 -- Strips a leading "v" or "release/" from a version string.
 local function StripVersionPrefix(v)
 	if string.find(v, "^release/") then
@@ -108,26 +111,46 @@ local function NotifyNewerVersion(remoteVersion)
 		". Get it at https://github.com/TrusT-Codes/AlternativeClassicActionBars/releases")
 end
 
--- Stores remoteVersion as the newest seen version if it beats the saved one.
+-- Clears the saved newest version and its missed-login counter.
+local function ForgetSavedVersion()
+	ACABDB.latestSeenVersion = nil
+	ACABDB.latestSeenVersionMisses = nil
+end
+
+-- Stores remoteVersion as the newest seen version if it beats the saved one; resets the missed-login
+-- counter when it is at least the saved one.
 local function RememberVersion(remoteVersion)
 	if not ACABDB then return end
-	if not ACABDB.latestSeenVersion or ACAB:CompareVersions(remoteVersion, ACABDB.latestSeenVersion) > 0 then
+	local cmp = ACABDB.latestSeenVersion and ACAB:CompareVersions(remoteVersion, ACABDB.latestSeenVersion) or 1
+	if cmp > 0 then
 		ACABDB.latestSeenVersion = remoteVersion
+	end
+	if cmp >= 0 then
+		ACABDB.latestSeenVersionMisses = 0
 	end
 end
 
--- Nags on login if a previously seen version is newer than this one; clears it once caught up.
+-- Login check: counts one missed login and nags if a saved version is newer than this one; forgets it once
+-- caught up or after SAVED_NAG_MAX_MISSED_LOGINS logins in a row without a peer re-announcing it.
 local function CheckSavedLatestVersion()
 	if not ACABDB or not ACABDB.latestSeenVersion then return end
 	if not ACAB:IsValidVersionString(ACABDB.latestSeenVersion) then
-		ACABDB.latestSeenVersion = nil
+		ForgetSavedVersion()
 		return
 	end
-	if ACAB:CompareVersions(ACABDB.latestSeenVersion, ACAB.currentVersion) > 0 then
-		NotifyNewerVersion(ACABDB.latestSeenVersion)
-	else
-		ACABDB.latestSeenVersion = nil
+	if ACAB:CompareVersions(ACABDB.latestSeenVersion, ACAB.currentVersion) <= 0 then
+		ForgetSavedVersion()
+		return
 	end
+
+	local misses = (ACABDB.latestSeenVersionMisses or 0) + 1
+	if misses >= SAVED_NAG_MAX_MISSED_LOGINS then
+		ForgetSavedVersion()
+		return
+	end
+
+	ACABDB.latestSeenVersionMisses = misses
+	NotifyNewerVersion(ACABDB.latestSeenVersion)
 end
 
 -- Schedules a reply after a random delay; cancelled if another peer answers with >= our version first.
