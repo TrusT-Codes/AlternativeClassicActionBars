@@ -192,12 +192,35 @@ local function UpdateActionButtonStates()
 	end
 end
 
+-- Re-checks the glow of macro action buttons only (the only UpdateState branch that reads firedName).
+local function UpdateMacroButtonStates()
+	local i
+
+	for i = 1, table.getn(actionPoolButtons) do
+		local btn = actionPoolButtons[i]
+
+		if btn.macroName then
+			btn:UpdateState()
+		end
+	end
+end
+
+-- Spell id -> lower-case SpellInfo name, filled on first cast.
+local castSpellNamesLower = {}
+
 -- nampower SPELL_CAST_EVENT (arg2 = spell id): flashes macros targeting that spell; Auto Shot / Shoot / Attack never flash.
 local function FlashCastSpell(spellId)
-	local name = SpellInfo and spellId and SpellInfo(spellId)
-	if not name then return end
+	if not spellId then return end
 
-	name = string.lower(name)
+	local name = castSpellNamesLower[spellId]
+
+	if not name then
+		name = SpellInfo and SpellInfo(spellId)
+		if not name then return end
+
+		name = string.lower(name)
+		castSpellNamesLower[spellId] = name
+	end
 
 	if name == "auto shot" or name == "shoot" or name == "attack" then return end
 
@@ -206,13 +229,13 @@ local function FlashCastSpell(spellId)
 	playerActionState.firedToken = token
 	playerActionState.firedName = name
 
-	UpdateActionButtonStates()
+	UpdateMacroButtonStates()
 
 	C_Timer.After(MACRO_CAST_FLASH_DURATION, function()
 		if playerActionState.firedToken == token then
 			playerActionState.firedName = nil
 
-			UpdateActionButtonStates()
+			UpdateMacroButtonStates()
 		end
 	end)
 end
