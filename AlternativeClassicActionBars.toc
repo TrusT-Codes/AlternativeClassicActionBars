@@ -24,6 +24,7 @@ HoverBind.lua
 Minimap.lua
 Menu.lua
 UIWidgets.lua
+Dialog.lua
 SetupWizard.lua
 Settings.lua
 SettingsBars.lua
