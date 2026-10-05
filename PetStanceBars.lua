@@ -263,6 +263,23 @@ function ACAB:SetPetBarNativeHoverDuration(duration)
 end
 
 -- Restores the native position (on the computed stack baseline), native spacing and scale 1.
+-- Moves the native Pet Bar back to its default stack spot (nativeAnchor x, computed baseline y); keeps spacing/scale.
+function ACAB:ResetPetBarNativePosition()
+	local cfg = ACABDB.defaultBars[self.PET_BAR_ID]
+	if not cfg or not cfg.nativeAnchor then return end
+
+	cfg.point = cfg.nativeAnchor.point
+	cfg.relativePoint = cfg.nativeAnchor.relativePoint
+	cfg.x = cfg.nativeAnchor.x
+
+	local bar3Cfg = ACABDB.defaultBars[3]
+	cfg.y = self:GetPetBarBaselineY(bar3Cfg and bar3Cfg.enabled) or cfg.nativeAnchor.y
+
+	cfg.usesDefaultPosition = true
+
+	self:ApplyPetBarNativePosition()
+end
+
 function ACAB:ResetPetBarNativeLayout()
 	self:EnsureDB()
 

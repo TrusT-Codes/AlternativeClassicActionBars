@@ -350,15 +350,32 @@ function ACAB:ReapplyAfterNativeRecapture()
 	-- Re-derives Pet Bar's x/y from Bar 3/Bar 1's just-refreshed nativeAnchor.
 	self:SyncPetBarAnchorX()
 
-	if self.petBarNativeContainer and ACABDB.useDefaultLayout ~= false then
-		local bar3Cfg = ACABDB.defaultBars[3]
-		self:ReflowPetBarForBar3Toggle(bar3Cfg and bar3Cfg.enabled)
+	-- Pet/Stance Bar back to their default stack spot in either mode.
+	local petCfg = ACABDB.defaultBars[self.PET_BAR_ID]
+	local stanceCfg = ACABDB.defaultBars[self.STANCE_BAR_ID]
+
+	if self:IsPetBarNativeModeEffective() then
+		self:ResetPetBarNativePosition()
+	elseif petCfg then
+		petCfg.styledDefaultPosition = true
+	end
+
+	if self:IsStanceBarNativeModeEffective() then
+		self:ResetStanceBarPosition()
+	elseif stanceCfg then
+		stanceCfg.styledDefaultPosition = true
 	end
 
 	-- Extra Bar 1-4's default layout is relative to a default bar's nativeAnchor.
 	for i = self.EXTRA_BAR_ID_START, self.EXTRA_BAR_ID_START + self.EXTRA_BAR_COUNT - 1 do
 		self:ResetExtraBarLayout(i)
 	end
+
+	-- Must run after the Extra Bar resets: restacks Pet/Stance above the final Action Bar 1/2 + Extra Bar 1/2.
+	local bar2Cfg = ACABDB.defaultBars[2]
+	local bar3Cfg = ACABDB.defaultBars[3]
+	self:ReflowStanceBarForBar2Toggle(bar2Cfg and bar2Cfg.enabled)
+	self:ReflowPetBarForBar3Toggle(bar3Cfg and bar3Cfg.enabled)
 
 	self:Print("All Bars and UI-Elements applied to their correct position after recapture.")
 end
