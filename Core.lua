@@ -790,7 +790,7 @@ local function SnapPointWithinCapture(point, origin, spacing, capturePx)
 end
 
 -- Appends `value` to `list` at index n+1 if non-nil, returns the new n.
-local function AppendCandidate(list, n, value)
+function ACAB:AppendCandidate(list, n, value)
 	if value then
 		list[n + 1] = value
 		return n + 1
@@ -814,9 +814,9 @@ function ACAB:ComputeCenterGridSnapAdjustment(proposedLeft, proposedTop, width, 
 
 	local xCandidates = {}
 	local xn = 0
-	xn = AppendCandidate(xCandidates, xn, nearX)
-	xn = AppendCandidate(xCandidates, xn, farX and (farX - width))
-	xn = AppendCandidate(xCandidates, xn, midX and (midX - (width / 2)))
+	xn = self:AppendCandidate(xCandidates, xn, nearX)
+	xn = self:AppendCandidate(xCandidates, xn, farX and (farX - width))
+	xn = self:AppendCandidate(xCandidates, xn, midX and (midX - (width / 2)))
 
 	local adjustedLeft
 
@@ -830,9 +830,9 @@ function ACAB:ComputeCenterGridSnapAdjustment(proposedLeft, proposedTop, width, 
 
 	local yCandidates = {}
 	local yn = 0
-	yn = AppendCandidate(yCandidates, yn, nearY)
-	yn = AppendCandidate(yCandidates, yn, farY and (farY + height))
-	yn = AppendCandidate(yCandidates, yn, midY and (midY + (height / 2)))
+	yn = self:AppendCandidate(yCandidates, yn, nearY)
+	yn = self:AppendCandidate(yCandidates, yn, farY and (farY + height))
+	yn = self:AppendCandidate(yCandidates, yn, midY and (midY + (height / 2)))
 
 	local adjustedTop
 
