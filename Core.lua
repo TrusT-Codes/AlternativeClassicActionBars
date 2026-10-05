@@ -1626,9 +1626,6 @@ function ACAB:RunLoginSequence()
 
 		ACAB:CreateAllBars()
 
-		-- Must run before CreateFixedSlotDefaultBars hides bar 2's real buttons and reflows ShapeshiftBarFrame.
-		ACAB:CaptureStanceBarNativeGap()
-
 		ACAB:CreateFixedSlotDefaultBars()
 
 		ACAB:ApplyAllDefaultBars()

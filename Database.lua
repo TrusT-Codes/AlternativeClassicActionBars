@@ -903,7 +903,7 @@ local SANITIZE_BOOLEAN_KEYS = {
 local SANITIZE_NUMBER_KEYS = {
 	"minimapAngle", "globalSpacingValue", "globalButtonSizeValue", "keyRingHoverDuration",
 	"bagBarHoverDuration", "microMenuHoverDuration", "latencyBarHoverDuration", "expBarHoverDuration",
-	"expBarGlowPulseInterval", "microMenuCols", "microMenuRows", "stanceBarNativeGap",
+	"expBarGlowPulseInterval", "microMenuCols", "microMenuRows",
 	"bagBarSpacing", "bagBarNativeSpacing", "microMenuSpacing", "microMenuNativeSpacing", "stanceBarSpacing",
 	"stanceBarNativeSpacing", "castBarStackBaseY", "layoutUIScale",
 }
@@ -1594,11 +1594,8 @@ function ACAB:EnsureDB()
 	if ACABDB.mainBarPageIndicatorFollowsMainBar == nil then ACABDB.mainBarPageIndicatorFollowsMainBar = true end
 
 	-- stanceBarPosition/stanceBarNativeAnchor are captured lazily on first build, not seeded here.
-	-- Nils a corrupted stanceBarNativeGap so the next login recaptures it.
-	if ACABDB.stanceBarNativeGap
-		and (ACABDB.stanceBarNativeGap <= 0 or ACABDB.stanceBarNativeGap >= self.BUTTON_SIZE) then
-		ACABDB.stanceBarNativeGap = nil
-	end
+	-- Clears the obsolete stanceBarNativeGap.
+	ACABDB.stanceBarNativeGap = nil
 
 	if ACABDB.tintWholeButtonOnRange == nil then ACABDB.tintWholeButtonOnRange = true end
 
