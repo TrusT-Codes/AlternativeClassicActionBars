@@ -25,6 +25,7 @@ The house rules are in `CLAUDE.md` ("Critical constraint: Lua 5.0"). Extra detai
 - `X and X(...)` keeps only the **first** return value (plain Lua semantics). To capture several returns behind an existence guard, use a real `if X then ... end` block.
 - `math.sin`, `math.pi` and the rest of the standard math library are present.
 - `GetCVar("unknownName")` throws a hard error, it does not return `nil`. Never probe CVar names by guessing.
+- **`hooksecurefunc(table, "Method", fn)` works** (per-instance form, live: original then hook both ran), not only the global-name form.
 
 ---
 
@@ -91,7 +92,7 @@ Other mod features, noted but not used: SuperWoW `UnitPosition`, `TrackUnit`, `S
 - An `EnableKeyboard(true)` capture frame blocks every other key on this client. Edit mode's Escape therefore uses a temporary `ESCAPE` → `ACABEDITMODEESCAPE` binding.
 
 ### 4.5 Native globals and saved state
-- **Lock Action Bars is the plain global `LOCK_ACTIONBAR`**, the string `"1"`/`"0"`. It is not a CVar, and it persists in the WTF `SavedVariables.lua`.
+- **Lock Action Bars is the plain global `LOCK_ACTIONBAR`**, the string `"1"`/`"0"`. It is not a CVar, and it persists in the WTF `SavedVariables.lua`. Writing it mid-session takes effect at once (live: dragging off a native bar blocked without a reload).
 - **Main Bar paging reads `VIEWABLE_ACTION_BAR_PAGES`, which follows Blizzard's saved toggles, not the session globals.** Live: `GetActionBarToggles()` returned `1 1 1 nil` while `SHOW_MULTI_ACTIONBAR_1-4` were all `1` (set by ACAB), and `VIEWABLE_ACTION_BAR_PAGES` still had page 4 viewable.
 - **`SHOW_MULTI_ACTIONBAR_1-4` do not persist across logout** on this fork (they are absent from WTF). They are fine for same-session reads, but never treat them as the source of truth at login. The addon's own saved flag is authoritative, and it gets pushed into the client every login.
 - **`ACABDB` is account-wide.** Any login or `/reload` on any character consumes a one-shot migration marker. That's fine for migrations, but useless for "force one recapture I can watch". Use an explicit command for that (`/acab recapture`).
@@ -113,6 +114,7 @@ Other mod features, noted but not used: SuperWoW `UnitPosition`, `TrackUnit`, `S
 - **A `CooldownFrameTemplate` child defaults to MEDIUM.** Set it to its button's strata explicitly.
 - **Same-strata, same-level overlaps are undefined.** Creation order doesn't settle them, so overlapping overlays need distinct explicit levels. Levels are only comparable within one parent tree, which is why every edit-mode overlay is parented to `UIParent`.
 - **Strata survives `SetParent`.** A reparented native button keeps its old strata, so reassert it after reparenting.
+- **A new child frame inherits its parent's strata** (live: child of a HIGH frame reported HIGH).
 
 ### 4.9 Login timing
 - **`MainMenuBar` re-centers horizontally after `PLAYER_LOGIN`** (a ~76 px shift in `ActionButton1:GetLeft()`). Capture native positions only after `PLAYER_ENTERING_WORLD` plus a stability poll (`Core.lua` `WaitForNativeBarSettle`). Two equal reads 0.1 s apart prove local stability only, not finality.
@@ -136,6 +138,8 @@ Other mod features, noted but not used: SuperWoW `UnitPosition`, `TrackUnit`, `S
 - `GetShapeshiftFormInfo(i)` returns `texture, name, isActive, isCastable`. `GetShapeshiftFormCooldown(i)` returns `start, duration, enable`.
 - **`GetShapeshiftForm()` returns `nil` while a form is active.** Use `isActive` from `GetShapeshiftFormInfo`.
 - **`UPDATE_SHAPESHIFT_FORM` / `UPDATE_SHAPESHIFT_FORMS` never fire on form toggles.** `PLAYER_AURAS_CHANGED`, `SPELLCAST_STOP` and `UNIT_SPELLCAST_SUCCEEDED` do fire. Travel/Aquatic Form keep the action page at 1, and `UPDATE_BONUS_ACTIONBAR` only covers bonus-page forms.
+- **`UPDATE_SHAPESHIFT_FORMS` does fire when a new form is learned** (live: twice on a rogue learning Stealth).
+- **The active form's `texture` is swapped for a generic "active" icon.** Live: active Aspect of the Monkey/Hawk returned `Spell_Nature_WispSplode`, active Stealth `Spell_Nature_Invisibilty`; inactive entries return their own icon.
 
 ### 4.13 Experience Bar
 - **Regions:** `MainMenuExpBar` is a StatusBar. `ExhaustionLevelFillBar` is a **Texture** (a solid fill: use `Set/GetVertexColor`; `SetStatusBarColor` silently no-ops). `MainMenuExpText` does not exist. The "XP cur / max" label is the FontString region of `MainMenuBarOverlayFrame` (find it by `GetObjectType()`, not by index), and native code re-shows it.
@@ -152,8 +156,3 @@ Other mod features, noted but not used: SuperWoW `UnitPosition`, `TrackUnit`, `S
 
 - `C_Spell.UnitChannelInfo` return order (expected `name, text, texture, startTimeMS, endTimeMS, isTradeSkill, notInterruptible, spellID`). No channel has been captured yet.
 - Unknown nampower event fields (the "?" entries in §4.3). Check nampower's `EVENTS.md` before relying on them.
-- Does a child frame inherit its parent's strata? Check: `/run local p=CreateFrame("Frame") p:SetFrameStrata("HIGH") print(CreateFrame("Frame",nil,p):GetFrameStrata())`. The code sets strata explicitly everywhere, so it works either way.
-- Does the per-instance form `hooksecurefunc(frame, "Method", fn)` exist? Only the global-name form is confirmed.
-- Does writing `LOCK_ACTIONBAR` mid-session take effect on native bars without a reload?
-- Does `UPDATE_SHAPESHIFT_FORMS` fire when the *set* of forms changes (a new form learned)? See known-problems.md.
-- While a stance/aspect was active, `GetShapeshiftFormInfo` returned `Spell_Nature_WispSplode` instead of the real icon. No symptom has been traced to it.
