@@ -21,6 +21,12 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
 - **What:** on a fresh install, `ACABDB.defaultBars[1].nativeAnchor.x` already reads 178 (Main Bar centered at UI scale 1.0) at the start of `RunLoginSequence`, while `ActionButton1` measures 254. A temporary trace in `seedDefaultBars` printed nothing before that point, so the early seed happens before chat output shows, or somewhere else.
 - **Verify:** fresh install, then `/run print(ACABProfilesDB["Default Vanilla"].defaultBars[1].nativeAnchor.x)` right after the first `/reload`.
 
+### Key Ring / Exp Bar edit-mode overlay may not match the visible art
+- **Status:** unchecked; Latency Bar already trims its overlay (`ACAB.LATENCY_BAR_OVERLAY_INSET`).
+- **Where:** `ElementEngine.lua` `EnsureContainerOverlay` (`container.overlayInset`), `DefaultBars.lua` `GROUPABLE_ELEMENTS` (`overlayInset` field), `Core.lua` `GetVisualInsets`
+- **What:** Key Ring and Exp Bar overlays cover their bare frame rect. If `KeyRingButton`'s NormalTexture is larger than the frame, the overlay and snap boxes undershoot the visible art.
+- **Verify:** in edit mode, check whether art bleeds past the blue tint. `/run local f=KeyRingButton local t=f:GetNormalTexture() print(f:GetWidth(),f:GetHeight(),t and t:GetWidth(),t and t:GetHeight(),t and t:GetTexture())`. Texture larger than frame → add a Key Ring `overlayInset` from the measured numbers.
+
 ---
 
 ## 2. Client quirks (how this client behaves, and where the code relies on it)

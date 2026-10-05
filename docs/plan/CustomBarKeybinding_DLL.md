@@ -1,12 +1,14 @@
-# TrustyBars — Custom-Bar Keybinding: Native DLL Development Environment
+# ACAB — Custom-Bar Keybinding: Native DLL Development Environment
+
+**Status:** parked. Custom-bar keys already work through the shipped `bindings.xml` (`ACABBIND1-48`, env §4.4), so this DLL is no longer needed for that. Kept only as a reference in case a native input hook is ever wanted.
 
 ## Context
 
-Live testing conclusively proved that this vanilla 1.12.1 client cannot bind a raw keypress to a non-native action (no `SetBindingClick`, and the `SetBinding(key, "CLICK <frame>:<button>")` command is recorded correctly both live and in `bindings-cache.wtf` but is never dispatched — confirmed via direct file inspection, not a guess). Combined with the earlier-confirmed absence of `SecureActionButtonTemplate` and the confirmed fact that `EnableKeyboard(true)` blocks ALL other input (movement, chat) while active, there is currently no way, from Lua alone, to bind a key to one of TrustyBars' custom-bar buttons (the 48 free slots on pages 7-10).
+Live testing conclusively proved that this vanilla 1.12.1 client cannot bind a raw keypress to a non-native action (no `SetBindingClick`, and the `SetBinding(key, "CLICK <frame>:<button>")` command is recorded correctly both live and in `bindings-cache.wtf` but is never dispatched — confirmed via direct file inspection, not a guess). Combined with the earlier-confirmed absence of `SecureActionButtonTemplate` and the confirmed fact that `EnableKeyboard(true)` blocks ALL other input (movement, chat) while active, there is currently no way, from Lua alone, to bind a key to one of ACAB's custom-bar buttons (the 48 free slots on pages 7-10).
 
 The real, durable fix is a custom client-injected DLL — the same category of mod as SuperWoW/nampower/ClassicAPI/UnitXP_SP3, which this addon already runs on top of — that can detect a specific keypress at a level below WoW's own Lua-frame keyboard focus, and call into the Lua state without stealing all other input. This is a genuinely separate, native-code project. The user wants a dedicated Claude Code project set up for it, with Visual Studio 2022 (already installed) as the primary toolchain, so they can develop and test the injection against their live client themselves.
 
-This plan is meant to be picked up in its own session whenever the user is ready to start that native-development track — it is intentionally kept separate from the Lua addon work happening in TrustyBars itself.
+This plan is meant to be picked up in its own session whenever the user is ready to start that native-development track — it is intentionally kept separate from the Lua addon work happening in ACAB itself.
 
 ---
 
@@ -23,15 +25,15 @@ This plan is meant to be picked up in its own session whenever the user is ready
 ## Step-by-step setup
 
 1. **Confirm the exact client build** (`Wow.exe` version, e.g. via its file properties) and locate the current mods' install layout (folder listing of the WoW install directory) to see how SuperWoW/nampower/ClassicAPI/UnitXP_SP3 are currently being loaded.
-2. **Create a new, separate Claude Code project folder** for this (distinct from the TrustyBars Lua repo — different language, different toolchain, different concerns). Initialize it as its own git repo.
+2. **Create a new, separate Claude Code project folder** for this (distinct from the ACAB Lua repo — different language, different toolchain, different concerns). Initialize it as its own git repo.
 3. **Set up the VS2022 project as a DLL**: New Project → "Dynamic-Link Library (DLL)" template, C++, Platform = Win32 (x86), Configuration = Debug and Release both x86. Confirm it builds and produces a `.dll` before writing any real logic.
-4. **Add a `CLAUDE.md`** at the new project's root documenting: the target client build/version, the confirmed absence of `SetBindingClick`/working `CLICK` binding dispatch and of `SecureActionButtonTemplate` (so Claude doesn't re-suggest solving this from the Lua side), the goal (detect a specific keypress at a level below WoW's own Lua-frame keyboard focus, then call a registered Lua function so TrustyBars can react without blocking any other input), and a link/pointer to wherever the SuperWoW/nampower reference source ends up living locally once the user retrieves it.
+4. **Add a `CLAUDE.md`** at the new project's root documenting: the target client build/version, the confirmed absence of `SetBindingClick`/working `CLICK` binding dispatch and of `SecureActionButtonTemplate` (so Claude doesn't re-suggest solving this from the Lua side), the goal (detect a specific keypress at a level below WoW's own Lua-frame keyboard focus, then call a registered Lua function so ACAB can react without blocking any other input), and a link/pointer to wherever the SuperWoW/nampower reference source ends up living locally once the user retrieves it.
 5. **Pull in a minimal hooking library** (MinHook is the common lightweight choice for this class of project) via vcpkg or a git submodule, rather than hand-rolling inline-assembly trampolines from scratch.
 6. **Reference the existing mods' source** for exactly how they register new Lua-callable C functions into the running Lua state (this part — "add a new Lua global function from native code" — is already solved by nampower/UnitXP_SP3 and directly reusable) and for whichever of them do any kind of persistent background hook (UnitXP_SP3's independent background timer is the closest existing precedent for "run native code on every tick without going through WoW's own frame/Lua update loop").
 7. **New research needed beyond what the existing 4 mods already do**: none of them currently expose anything keyboard/input-related (confirmed via this project's research), so finding the right hook point for "detect a raw keypress independent of WoW's Lua keyboard focus" is genuinely new work — likely hooking the client's low-level Win32 message loop or DirectInput read call, not anything already solved by SuperWoW/nampower. This is the part Ghidra/IDA will be needed for.
 8. **Test loop**: build the DLL, drop it into the client folder using the same loading mechanism identified in step 1, launch the client, confirm the existing 4 mods still work (to catch any accidental interference), then test the new hook in isolation (e.g., have it just print/log a detected keypress first, before wiring it to actually trigger a button click).
 
-This part of the work happens in its own project/session — the eventual Lua-side integration point (what the native→Lua callback signature should look like so TrustyBars' `HoverBind.lua` can consume it cleanly) can be designed together whenever the native side is far enough along to test against, but the actual C++ hook development itself needs to happen in this dedicated project with the user's own testing against the live client.
+This part of the work happens in its own project/session — the eventual Lua-side integration point (what the native→Lua callback signature should look like so ACAB's `HoverBind.lua` can consume it cleanly) can be designed together whenever the native side is far enough along to test against, but the actual C++ hook development itself needs to happen in this dedicated project with the user's own testing against the live client.
 
 ---
 
