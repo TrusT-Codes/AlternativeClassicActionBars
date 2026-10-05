@@ -2006,6 +2006,9 @@ local function PrintCommandHelp()
 	PrintUsageLines(COMMAND_HELP_LINES)
 end
 
+-- Read-only subcommands that work before the login sequence has finished.
+local SLASH_ALLOWED_BEFORE_LOGIN = { version = true, help = true }
+
 -- /acab dispatcher; PrintCommandHelp lists every command.
 SLASH_ACAB1 = "/acab"
 SlashCmdList["ACAB"] = function(msg)
@@ -2018,6 +2021,12 @@ SlashCmdList["ACAB"] = function(msg)
 
 	local command, rest = string.match(msg, "^(%S*)%s*(.-)$")
 	command = string.lower(command or "")
+
+	-- must block before login: ACABDB may still be another character's profile
+	if not ACAB.loginSequenceDone and not SLASH_ALLOWED_BEFORE_LOGIN[command] then
+		ACAB:Print("|cffffd000Still loading - try again in a moment.|r")
+		return
+	end
 
 	if command == "" then
 		ACAB:ToggleSettingsFrame()
