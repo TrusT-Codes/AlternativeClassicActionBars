@@ -23,6 +23,7 @@
 ### Maintenance
 
 - Developer docs refreshed: stale plan files removed, newly confirmed client behavior recorded.
+- Duplicated code merged into shared helpers (login settle poll, settings height-fit, flat backdrop).
 
 ## 1.3.0-rc1
 
