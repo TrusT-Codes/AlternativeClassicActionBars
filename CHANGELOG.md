@@ -17,6 +17,8 @@
 - Fix `/acab recapture` leaving a moved Stance Bar in place and not putting the Pet Bar back above Extra Bar 2: both now return to their default spot on the vanilla stack.
 - Remove the Stance Bar "native gap ... implausible value" warning at login; the value it measured was never used.
 - Fix fallback-placed Extra Bars overlapping in the Modern button style (only when their reference bar had no saved position).
+- Fix empty dark squares sometimes showing at the vanilla Stance Bar spot when using the ACAB-styled Stance Bar after playing a character with the vanilla one.
+- Fix a fresh install saving action bar positions before the UI scale applied (the first login no longer prints "Recapturing positions").
 
 ### Performance
 
