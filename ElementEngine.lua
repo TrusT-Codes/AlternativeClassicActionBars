@@ -305,6 +305,8 @@ function ACAB:StartSharedDrag(dragKind, dragId, startX, startY)
 	-- First tick always applies.
 	frame.dragInputsRecorded = nil
 
+	self:SetSnapTargetCacheActive(true)
+
 	frame:SetScript("OnUpdate", self.DefaultBarDrag_OnUpdate)
 	frame:Show()
 end
@@ -314,6 +316,8 @@ function ACAB:StopSharedDrag()
 
 	dragFrame:SetScript("OnUpdate", nil)
 	dragFrame:Hide()
+
+	self:SetSnapTargetCacheActive(false)
 end
 
 -- Starts a POSITION_DRAG_KINDS drag from its saved position (running its capture first); no-op without one.
