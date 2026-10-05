@@ -936,19 +936,7 @@ function ACAB:CreateBarFromConfig(cfg)
 
 	self:PixelSetSize(bar, barW, barH)
 
-	bar:SetBackdrop({
-		bgFile   = "Interface\\Tooltips\\UI-Tooltip-Background",
-		edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-		tile     = true,
-		tileSize = 8,
-		edgeSize = 8,
-		insets   = {
-			left = 0,
-			right = 0,
-			top = 0,
-			bottom = 0
-		},
-	})
+	bar:SetBackdrop(self.FLAT_BACKDROP)
 
 	bar:SetBackdropColor(0, 0, 0, 0)
 	bar:SetBackdropBorderColor(0, 0, 0, 0)

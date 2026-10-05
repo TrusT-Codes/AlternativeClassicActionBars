@@ -1466,7 +1466,6 @@ end
 -------------------------------------------------------------------------
 
 -- Settle poll before the baseline pass measures live frames; delay before the follow-up reload.
-local BASELINE_POLL_INTERVAL = 0.1
 local BASELINE_STABLE_READS = 2
 local BASELINE_SETTLE_TIMEOUT = 5
 local BASELINE_RELOAD_DELAY = 0.5
@@ -1494,38 +1493,21 @@ local function ReadBaselineSettleSignature()
 	return table.concat(parts, "|")
 end
 
+-- True when the settle signature matches the previous one.
+local function SameSignature(current, _, last)
+	return current == last
+end
+
 -- Calls callback once every settle frame's rect held for BASELINE_STABLE_READS polls (or on timeout).
 local function WaitForBaselineSettle(callback)
-	local last = ReadBaselineSettleSignature()
-	local stableCount = 0
-	local elapsed = 0
-
-	local ticker
-	ticker = C_Timer.NewTicker(BASELINE_POLL_INTERVAL, function()
-		elapsed = elapsed + BASELINE_POLL_INTERVAL
-
-		local current = ReadBaselineSettleSignature()
-
-		if current == last then
-			stableCount = stableCount + 1
-		else
-			stableCount = 0
+	ACAB:PollUntilSettled(ReadBaselineSettleSignature, SameSignature, ReadBaselineSettleSignature(), nil,
+		BASELINE_STABLE_READS, BASELINE_SETTLE_TIMEOUT, function(settled)
+		if not settled then
+			ACAB:Print("WARNING: UI did not settle within " .. tostring(BASELINE_SETTLE_TIMEOUT) ..
+				"s - applying the layout anyway.")
 		end
 
-		last = current
-
-		local settled = stableCount >= BASELINE_STABLE_READS
-
-		if settled or elapsed >= BASELINE_SETTLE_TIMEOUT then
-			ticker:Cancel()
-
-			if not settled then
-				ACAB:Print("WARNING: UI did not settle within " .. tostring(BASELINE_SETTLE_TIMEOUT) ..
-					"s - applying the layout anyway.")
-			end
-
-			callback()
-		end
+		callback()
 	end)
 end
 
