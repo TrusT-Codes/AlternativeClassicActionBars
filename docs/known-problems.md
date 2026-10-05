@@ -27,6 +27,12 @@ Resolved in the live-verification pass: slot allocator (cleared: 4 Extra Bars si
 - **What:** Key Ring and Exp Bar overlays cover their bare frame rect. If `KeyRingButton`'s NormalTexture is larger than the frame, the overlay and snap boxes undershoot the visible art.
 - **Verify:** in edit mode, check whether art bleeds past the blue tint. `/run local f=KeyRingButton local t=f:GetNormalTexture() print(f:GetWidth(),f:GetHeight(),t and t:GetWidth(),t and t:GetHeight(),t and t:GetTexture())`. Texture larger than frame → add a Key Ring `overlayInset` from the measured numbers.
 
+### Stance Bar backdrops left at the vanilla spot
+- **Status:** seen live (hunter, 2 aspects, modern border; also on a warrior), not reliably reproducible.
+- **Where:** `PetStanceBars.lua` `ApplyStanceBarBorderStyle` (`btn.ACABModernBackdrop`, parented to the button's parent, anchored to the button)
+- **What:** dark empty squares, one per form, render at the native Stance Bar position while the buttons sit elsewhere.
+- **Verify:** while it shows, `/run local A=AlternativeClassicActionBars print(A:IsStanceBarNativeModeEffective(),A:IsVanillaBorderStyle())`, then `/run for i=1,2 do local b=getglobal("ShapeshiftButton"..i) local d=b.ACABModernBackdrop print(i,b:IsVisible(),b:GetLeft(),b:GetBottom(),d and d:IsVisible(),d and d:GetLeft(),d and d:GetBottom()) end`, then `/run for i=1,2 do local b=getglobal("ShapeshiftButton"..i) local d=b.ACABModernBackdrop if d then d:ClearAllPoints() d:SetAllPoints(b) end end`.
+
 ---
 
 ## 2. Client quirks (how this client behaves, and where the code relies on it)
