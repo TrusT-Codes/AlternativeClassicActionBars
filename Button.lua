@@ -331,11 +331,21 @@ local function RefreshActionSlotButtons(slot)
 	end
 end
 
-local function PoolButtonDispatcher_OnEvent()
-	-- Copied first: per-button code can clobber the event/arg1 globals mid-loop.
-	local ev = event
-	local changedArg = arg1
+-- Macro-item bag index (FindBagItemByName) is fresh only inside a session: one dispatched event, bags can't change mid-loop.
+local bagIndexSessionOpen = false
+local bagIndexFresh = false
 
+local function OpenBagIndexSession()
+	bagIndexSessionOpen = true
+	bagIndexFresh = false
+end
+
+local function CloseBagIndexSession()
+	bagIndexSessionOpen = false
+	bagIndexFresh = false
+end
+
+local function DispatchPoolButtonEvent(ev, changedArg)
 	-- ACTIONBAR_SLOT_CHANGED arg1 0/nil means every slot.
 	if ev == "ACTIONBAR_SLOT_CHANGED" then
 		if not changedArg or changedArg == 0 then
@@ -356,6 +366,16 @@ local function PoolButtonDispatcher_OnEvent()
 	end
 
 	CallOnPoolButtons(route.list, route.method)
+end
+
+local function PoolButtonDispatcher_OnEvent()
+	-- Copied first: per-button code can clobber the event/arg1 globals mid-loop.
+	local ev = event
+	local changedArg = arg1
+
+	OpenBagIndexSession()
+	DispatchPoolButtonEvent(ev, changedArg)
+	CloseBagIndexSession()
 end
 
 -- Creates the dispatcher on the first pool button; must register after Events.lua's frames.
@@ -1113,10 +1133,16 @@ local function GetLinkMaxStack(link)
 	return maxStack
 end
 
--- Named item in the bags: first bag, slot, texture, total count over all stacks, max stack size (nil if none).
-local function FindBagItemByName(name)
-	local firstBag, firstSlot, firstTexture, firstLink
-	local total = 0
+-- Bag index: lower-case item name -> { gen, n, link (first stack), bags = {}, slots = {} } in bag 0-4 / slot order.
+-- Entries are reused across rebuilds; only those with gen == bagIndexGen are current.
+local bagIndex = {}
+local bagIndexGen = 0
+
+-- Scans bags 0-4 once into bagIndex.
+local function BuildBagIndex()
+	bagIndexGen = bagIndexGen + 1
+
+	local gen = bagIndexGen
 	local bag
 
 	for bag = 0, 4 do
@@ -1124,24 +1150,59 @@ local function FindBagItemByName(name)
 
 		for slot = 1, GetContainerNumSlots(bag) do
 			local link = GetContainerItemLink(bag, slot)
+			local name = GetLinkItemName(link)
 
-			if GetLinkItemName(link) == name then
-				local texture, itemCount = GetContainerItemInfo(bag, slot)
-
-				total = total + (itemCount or 1)
-
-				if not firstBag then
-					firstBag, firstSlot, firstTexture, firstLink = bag, slot, texture, link
+			if name then
+				local entry = bagIndex[name]
+				if not entry then
+					entry = { bags = {}, slots = {} }
+					bagIndex[name] = entry
 				end
+
+				if entry.gen ~= gen then
+					entry.gen = gen
+					entry.n = 0
+					entry.link = link
+				end
+
+				local n = entry.n + 1
+
+				entry.n = n
+				entry.bags[n] = bag
+				entry.slots[n] = slot
 			end
 		end
 	end
 
-	if not firstBag then return nil end
+	bagIndexFresh = bagIndexSessionOpen
+end
 
-	RememberMacroItem(name, firstTexture, firstLink)
+-- Named item in the bags: first bag, slot, texture, total count over all stacks, max stack size (nil if none).
+local function FindBagItemByName(name)
+	if not bagIndexFresh then
+		BuildBagIndex()
+	end
 
-	return firstBag, firstSlot, firstTexture, total, GetLinkMaxStack(firstLink)
+	local entry = bagIndex[name]
+	if not entry or entry.gen ~= bagIndexGen then return nil end
+
+	local firstTexture
+	local total = 0
+	local i
+
+	for i = 1, entry.n do
+		local texture, itemCount = GetContainerItemInfo(entry.bags[i], entry.slots[i])
+
+		total = total + (itemCount or 1)
+
+		if i == 1 then
+			firstTexture = texture
+		end
+	end
+
+	RememberMacroItem(name, firstTexture, entry.link)
+
+	return entry.bags[1], entry.slots[1], firstTexture, total, GetLinkMaxStack(entry.link)
 end
 
 -- Equipment slot holding the named item: invSlot, texture (nil if none).
