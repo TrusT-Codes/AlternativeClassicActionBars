@@ -200,12 +200,47 @@ local POSITION_DRAG_KINDS = {
 -- Reused per-tick scratch position for bar drags.
 local barDragPos = {}
 
+-- True when cursor, Shift/Alt/Ctrl and frame's scale/size match drag's last applied tick; else records them.
+local function DragInputsUnchanged(drag, frame, cx, cy)
+	local shift, alt, ctrl = IsShiftKeyDown(), IsAltKeyDown(), IsControlKeyDown()
+	local scale, width, height
+
+	if frame then
+		scale, width, height = frame:GetEffectiveScale(), frame:GetWidth(), frame:GetHeight()
+	end
+
+	if drag.dragInputsRecorded
+		and cx == drag.lastCursorX and cy == drag.lastCursorY
+		and shift == drag.lastShift and alt == drag.lastAlt and ctrl == drag.lastCtrl
+		and scale == drag.lastScale and width == drag.lastWidth and height == drag.lastHeight then
+		return true
+	end
+
+	drag.dragInputsRecorded = true
+	drag.lastCursorX, drag.lastCursorY = cx, cy
+	drag.lastShift, drag.lastAlt, drag.lastCtrl = shift, alt, ctrl
+	drag.lastScale, drag.lastWidth, drag.lastHeight = scale, width, height
+
+	return false
+end
+
 -- Shared OnUpdate body for every drag kind - `this` is dragFrame (engine-invoked handler).
+-- Skips ticks whose inputs match the last applied one (same result as the drag having stopped there).
 function ACAB:DefaultBarDrag_OnUpdate()
 	local cx, cy = ACAB:GetCursorPositionUIScale()
+	local kind = POSITION_DRAG_KINDS[this.dragKind]
+	local frame
+
+	if kind then
+		frame = kind.getFrame()
+	elseif this.dragKind == "bar" then
+		frame = ACAB.bars and ACAB.bars[this.dragId]
+	end
+
+	if DragInputsUnchanged(this, frame, cx, cy) then return end
+
 	local dx = cx - this.dragStartCursorX
 	local dy = cy - this.dragStartCursorY
-	local kind = POSITION_DRAG_KINDS[this.dragKind]
 
 	if kind then
 		local pos = kind.getPos()
@@ -214,13 +249,13 @@ function ACAB:DefaultBarDrag_OnUpdate()
 			pos.x = this.dragStartX + dx
 			pos.y = this.dragStartY + dy
 
-			ACAB:ApplyDragSnap(kind.getFrame(), pos, kind.centerSnap)
+			ACAB:ApplyDragSnap(frame, pos, kind.centerSnap)
 
 			ACAB[kind.apply](ACAB)
 		end
 	elseif this.dragKind == "bar" then
 		-- Bars 1-9 (position on bar.config). ApplyBarPosition only - ApplyBarShape would re-bind every slot per tick.
-		local bar = ACAB.bars and ACAB.bars[this.dragId]
+		local bar = frame
 
 		if bar and bar.config then
 			local pos = barDragPos
@@ -267,6 +302,11 @@ function ACAB:StartSharedDrag(dragKind, dragId, startX, startY)
 	frame.dragStartX = startX or 0
 	frame.dragStartY = startY or 0
 
+	-- First tick always applies.
+	frame.dragInputsRecorded = nil
+
+	self:SetSnapTargetCacheActive(true)
+
 	frame:SetScript("OnUpdate", self.DefaultBarDrag_OnUpdate)
 	frame:Show()
 end
@@ -276,6 +316,8 @@ function ACAB:StopSharedDrag()
 
 	dragFrame:SetScript("OnUpdate", nil)
 	dragFrame:Hide()
+
+	self:SetSnapTargetCacheActive(false)
 end
 
 -- Starts a POSITION_DRAG_KINDS drag from its saved position (running its capture first); no-op without one.

@@ -294,6 +294,32 @@ function ACAB:GetAllSnapTargetBoxes(excludeElement)
 	return boxes
 end
 
+-- Snap-target boxes reused for the whole shared drag (ElementEngine.lua's StartSharedDrag/StopSharedDrag).
+local snapBoxCacheActive = false
+local snapBoxCache = nil
+local snapBoxCacheExclude = nil
+
+-- Turns per-drag snap-box caching on/off; either way drops the cached boxes.
+function ACAB:SetSnapTargetCacheActive(active)
+	snapBoxCacheActive = active and true or false
+	snapBoxCache = nil
+	snapBoxCacheExclude = nil
+end
+
+-- GetAllSnapTargetBoxes(excludeElement), built once per drag while caching is active.
+local function GetSnapTargetBoxes(self, excludeElement)
+	if not snapBoxCacheActive then
+		return self:GetAllSnapTargetBoxes(excludeElement)
+	end
+
+	if not snapBoxCache or snapBoxCacheExclude ~= excludeElement then
+		snapBoxCache = self:GetAllSnapTargetBoxes(excludeElement)
+		snapBoxCacheExclude = excludeElement
+	end
+
+	return snapBoxCache
+end
+
 -- Visible edges of `frame` (visual-inset-adjusted) in UIParent units: left, right, top, bottom.
 function ACAB:GetElementRealEdges(frame)
 	if not frame then return nil end
@@ -656,7 +682,7 @@ function ACAB:ComputeSnapAdjustment(proposedLeft, proposedTop, width, height, ex
 		ConsiderY(screenBottom, proposedBottom)
 	end
 
-	local boxes = self:GetAllSnapTargetBoxes(excludeElement)
+	local boxes = GetSnapTargetBoxes(self, excludeElement)
 	local i
 
 	for i = 1, table.getn(boxes) do
@@ -1182,7 +1208,10 @@ end
 
 local hoverPollTicker = nil
 
--- Single shared ticker for every registered hover-only frame, started lazily on first registration.
+-- Frames whose ACABHoverOnlyEnabled is true; the poll ticker only runs while this is above 0.
+local hoverOnlyEnabledCount = 0
+
+-- Single shared ticker for every hover-only frame; no-op while already running.
 local function StartHoverPollTicker()
 	if hoverPollTicker then return end
 
@@ -1209,6 +1238,13 @@ local function StartHoverPollTicker()
 	end)
 end
 
+local function StopHoverPollTicker()
+	if hoverPollTicker then
+		hoverPollTicker:Cancel()
+		hoverPollTicker = nil
+	end
+end
+
 -- Cancels frame's running fade ticker, if any.
 function ACAB:CancelHoverFadeTicker(frame)
 	if frame.ACABHoverFadeTicker then
@@ -1231,6 +1267,7 @@ function ACAB:StartHoverFadeTicker(frame, duration)
 
 	local holdEnd = duration * 0.8
 	local startTime = GetTime()
+	local holdAlphaWritten = false
 
 	frame:SetAlpha(1)
 
@@ -1249,7 +1286,11 @@ function ACAB:StartHoverFadeTicker(frame, duration)
 		end
 
 		if elapsed <= holdEnd then
-			frame:SetAlpha(1)
+			-- Written on the first hold tick only.
+			if not holdAlphaWritten then
+				frame:SetAlpha(1)
+				holdAlphaWritten = true
+			end
 		else
 			frame:SetAlpha(1 - ((elapsed - holdEnd) / (duration - holdEnd)))
 		end
@@ -1272,18 +1313,28 @@ function ACAB:ApplyHoverOnlyState(frame, enabled, getDuration)
 
 	enabled = enabled and true or false
 
+	if enabled ~= (frame.ACABHoverOnlyEnabled == true) then
+		hoverOnlyEnabledCount = hoverOnlyEnabledCount + (enabled and 1 or -1)
+	end
+
 	frame.ACABHoverOnlyEnabled = enabled
 	frame.ACABHoverOnlyGetDuration = getDuration
 
 	if not enabled then
 		self:CancelHoverFadeTicker(frame)
 		frame:SetAlpha(1)
+
+		if hoverOnlyEnabledCount == 0 then
+			StopHoverPollTicker()
+		end
+
 		return
 	end
 
 	frame:EnableMouse(true)
 
 	self:InstallHoverFadeController(frame)
+	StartHoverPollTicker()
 
 	-- Seeds hover state so enabling under the cursor doesn't hide the frame.
 	frame.ACABHoverOnlyHovering = IsCursorOverFrame(frame)
