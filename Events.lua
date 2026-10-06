@@ -110,6 +110,23 @@ end)
 -- Stance/form set changes (PetStanceBars.lua)
 -------------------------------------------------------------------------
 
+-- Styled mode: re-lays-out the pool bar if the live form count changed its shape.
+local stanceLiveShapePending = false
+
+local function ApplyPendingStanceLiveShape()
+	stanceLiveShapePending = false
+
+	if ACAB:ApplyStanceBarLiveShape() then
+		local styledBar = ACAB.bars and ACAB.bars[ACAB.STANCE_BAR_ID]
+
+		if styledBar then
+			ACAB:ApplyBarShape(styledBar)
+		end
+
+		ACAB:RefreshBarSettingsPage(ACAB.STANCE_BAR_ID)
+	end
+end
+
 -- UPDATE_SHAPESHIFT_FORMS: the available form set changed (kept registered despite env §4.12).
 local stanceFormEventFrame = CreateFrame("Frame", "ACABStanceFormEventFrame")
 stanceFormEventFrame:RegisterEvent("UPDATE_SHAPESHIFT_FORMS")
@@ -125,15 +142,10 @@ stanceFormEventFrame:SetScript("OnEvent", function()
 		ShapeshiftBar_Update()
 	end
 
-	-- Styled mode: re-lay-out the pool bar if the live form count changed its shape.
-	if ACAB:ApplyStanceBarLiveShape() then
-		local styledBar = ACAB.bars and ACAB.bars[ACAB.STANCE_BAR_ID]
-
-		if styledBar then
-			ACAB:ApplyBarShape(styledBar)
-		end
-
-		ACAB:RefreshBarSettingsPage(ACAB.STANCE_BAR_ID)
+	-- must run next frame: zoning fires one event per form (count 1, 2, 3), which would reset a custom grid
+	if not stanceLiveShapePending then
+		stanceLiveShapePending = true
+		C_Timer.After(0, ApplyPendingStanceLiveShape)
 	end
 
 	-- Re-syncs bars 1-5's per-stance assignment rows on any already-built settings page.
@@ -189,10 +201,9 @@ end)
 -- Position reassert after combat / looting (DefaultBars.lua)
 -------------------------------------------------------------------------
 
--- Native FrameXML may re-anchor wrapped native frames on its own; re-apply ours after combat and looting.
+-- Native FrameXML may re-anchor wrapped native frames on its own; re-apply ours after combat.
 local positionReassertFrame = CreateFrame("Frame", "ACABPositionReassertFrame")
 positionReassertFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-positionReassertFrame:RegisterEvent("LOOT_CLOSED")
 positionReassertFrame:SetScript("OnEvent", function()
 	-- must skip before login: moving native frames before the "native capture" stage stores wrong anchors
 	if not ACAB.loginSequenceDone then return end

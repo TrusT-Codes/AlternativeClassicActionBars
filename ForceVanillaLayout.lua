@@ -8,6 +8,30 @@ local ACAB = AlternativeClassicActionBars
 -- Force Vanilla Layout Mode
 -------------------------------------------------------------------------
 
+-- Turns "Only show on hover" off on every default bar, Pet/Stance Bar and native element.
+local function ClearAllHoverOnly()
+	local i
+
+	for i = 1, table.getn(ACAB.DEFAULT_BAR_IDS) do
+		local id = ACAB.DEFAULT_BAR_IDS[i]
+		local bar = ACAB.bars and ACAB.bars[id]
+
+		if bar and bar.config then
+			ACAB:SetBarHoverOnly(bar, false)
+		elseif ACABDB.defaultBars[id] then
+			ACABDB.defaultBars[id].hoverOnly = false
+		end
+	end
+
+	ACAB:SetPetBarNativeHoverOnly(false)
+	ACAB:SetStanceBarNativeHoverOnly(false)
+	ACAB:SetBagBarHoverOnly(false)
+	ACAB:SetMicroMenuHoverOnly(false)
+	ACAB:SetKeyRingHoverOnly(false)
+	ACAB:SetLatencyBarHoverOnly(false)
+	ACAB:SetExpBarHoverOnly(false)
+end
+
 -- Applies a "Force Vanilla Layout Mode" change: persists it, re-gates every built page, and (only when
 -- switching on) runs the full reset-to-Vanilla-Layout cascade.
 function ACAB:ApplyUseDefaultLayoutChange(checked)
@@ -28,6 +52,9 @@ function ACAB:ApplyUseDefaultLayoutChange(checked)
 			(stanceCfg and stanceCfg.useNativeStanceBar ~= true) or false
 
 		ACAB:ResetAllElementsToVanillaLayout()
+
+		-- Hover-only controls are locked while Force Vanilla is on, so they reset to off here.
+		ClearAllHoverOnly()
 
 		-- Clears the modern-style/global-override flags (the Setup Wizard's shared cascade keeps them).
 		ACABDB.modernBorderStyle = false

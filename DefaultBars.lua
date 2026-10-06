@@ -1961,7 +1961,7 @@ function ACAB:ApplyDefaultLayoutEditVisual()
 end
 
 -------------------------------------------------------------------------
--- Position reassert after combat / looting (PLAYER_REGEN_ENABLED, LOOT_CLOSED)
+-- Position reassert after combat (PLAYER_REGEN_ENABLED)
 -- Re-applies every native-wrapped element FrameXML may have re-anchored; each Apply* no-ops if unbuilt.
 -------------------------------------------------------------------------
 
