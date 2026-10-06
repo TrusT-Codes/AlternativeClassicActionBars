@@ -29,6 +29,8 @@
 - A remembered "newer version available" message now stops after 5 logins in a row without any other player announcing that version again.
 - Importing a profile no longer takes over the exporter's update-nag state, Edit Layout mode or Hoverbind mode.
 - Fix "Only show on hover" staying on (and locked) for action bars and elements after turning on Force Vanilla Layout Mode; it now turns off for all of them.
+- Fix macros with next-swing abilities (Heroic Strike, Cleave) glowing only briefly: they now stay lit until the swing lands, like the plain ability. Macros of instant abilities no longer flash longer than the plain ability (outside Auto Shot / Shoot).
+- Fix a custom ACAB-styled Stance Bar grid (e.g. 1x3) resetting to a single row after entering or leaving a dungeon.
 
 ### Performance
 

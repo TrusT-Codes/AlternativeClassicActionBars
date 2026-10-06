@@ -85,6 +85,7 @@ Other mod features, noted but not used: SuperWoW `UnitPosition`, `TrackUnit`, `S
 | `SPELL_FAILED_SELF` | 1=spellId, 2=reason code (35 = interrupted, live; 77?), 3=0/1 flag? |
 | `SPELL_FAILED_OTHER` | 1=caster GUID, 2=spellId |
 | `SPELL_CAST_EVENT` | 1=0/1 (queued?), 2=spellId, 3=2, 4=short hex id (not a GUID), 5=0 |
+- **Queued next-swing spells (Heroic Strike, Cleave)** fire `CURRENT_SPELL_CAST_CHANGED` + `SPELL_CAST_EVENT` (arg1 = 1) + `SPELL_START_SELF` (cast duration 0) on press. `IsCurrentAction` is true on every slot holding the spell, macro slots included, until the swing lands (`ACTIONBAR_UPDATE_STATE` + `SPELL_GO_SELF`) or it fails (`SPELL_FAILED_SELF`, reason 35). A `/startattack` macro's slot is not current from melee auto-attack alone. `SPELL_START/GO_SELF` need nampower's `NP_EnableSpellStartEvents`/`NP_EnableSpellGoEvents` CVars, so the glow uses `IsCurrentAction` instead.
 - **`SPELL_CAST_EVENT` fires for instant spells** (Arcane Shot, Serpent Sting) as well as Auto Shot, with `arg2` = spell id; SuperWoW `SpellInfo(arg2)` returns the spell name. `IsCurrentAction(slot)` on a macro slot returns `true` or `1` (both seen) and stays true while a `/cast Auto Shot` in the same macro is active.
 
 ### 4.4 Keybinding
@@ -141,6 +142,7 @@ Other mod features, noted but not used: SuperWoW `UnitPosition`, `TrackUnit`, `S
 - **`GetShapeshiftForm()` returns `nil` while a form is active.** Use `isActive` from `GetShapeshiftFormInfo`.
 - **`UPDATE_SHAPESHIFT_FORM` / `UPDATE_SHAPESHIFT_FORMS` never fire on form toggles.** `PLAYER_AURAS_CHANGED`, `SPELLCAST_STOP` and `UNIT_SPELLCAST_SUCCEEDED` do fire. Travel/Aquatic Form keep the action page at 1, and `UPDATE_BONUS_ACTIONBAR` only covers bonus-page forms.
 - **`UPDATE_SHAPESHIFT_FORMS` does fire when a new form is learned** (live: twice on a rogue learning Stealth).
+- **Zoning fires `UPDATE_SHAPESHIFT_FORMS` once per form, all in one frame, with a growing count** (live, warrior entering a dungeon: `GetNumShapeshiftForms()` 1, 2, 3 at the same `GetTime()`). Anything that reacts to the count must wait a frame (`Events.lua` `ApplyPendingStanceLiveShape`).
 - **The active form's `texture` is swapped for a generic "active" icon.** Live: active Aspect of the Monkey/Hawk returned `Spell_Nature_WispSplode`, active Stealth `Spell_Nature_Invisibilty`; inactive entries return their own icon.
 
 ### 4.13 Experience Bar
