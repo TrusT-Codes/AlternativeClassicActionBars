@@ -106,6 +106,12 @@ ACABButtonMixin = {}
 -- Native hotkey/count/macro fonts are captured once, on the first button created.
 local hasCapturedFontDefaults = false
 
+-- Every pool button, and the same buttons split by slot type (filled by RegisterPoolButton).
+local allPoolButtons = {}
+local actionPoolButtons = {}
+local petPoolButtons = {}
+local stancePoolButtons = {}
+
 -- One shared ticker refreshes every button's range/usability and grid visibility; started lazily, never cancelled.
 local sharedRangeTicker
 
@@ -119,23 +125,36 @@ local function RefreshButtonRangeAndGrid(btn)
 	btn:UpdateGridVisibility()
 end
 
+-- Skips buttons whose bar isn't visible (disabled bar, no pet); they catch up on the first tick after it shows.
+local function SharedRangeTick()
+	local lastBar
+	local lastBarVisible
+	local i
+
+	for i = 1, table.getn(allPoolButtons) do
+		local btn = allPoolButtons[i]
+		local bar = btn.parentBar
+
+		if bar ~= lastBar then
+			lastBar = bar
+			lastBarVisible = bar:IsVisible()
+		end
+
+		if lastBarVisible then
+			RefreshButtonRangeAndGrid(btn)
+		end
+	end
+end
+
 local function EnsureSharedRangeTicker()
 	if sharedRangeTicker then return end
 
-	sharedRangeTicker = C_Timer.NewTicker(0.2, function()
-		ACAB:ForEachPoolButton(RefreshButtonRangeAndGrid)
-	end)
+	sharedRangeTicker = C_Timer.NewTicker(0.2, SharedRangeTick)
 end
 
 -------------------------------------------------------------------------
 -- Shared event dispatcher: one frame routes each event to the pool buttons that need it
 -------------------------------------------------------------------------
-
--- Every pool button, and the same buttons split by slot type (filled by RegisterPoolButton).
-local allPoolButtons = {}
-local actionPoolButtons = {}
-local petPoolButtons = {}
-local stancePoolButtons = {}
 
 -- Action slot -> action pool buttons currently showing it (paging can put two buttons on one slot).
 local actionSlotButtons = {}
@@ -173,12 +192,35 @@ local function UpdateActionButtonStates()
 	end
 end
 
+-- Re-checks the glow of macro action buttons only (the only UpdateState branch that reads firedName).
+local function UpdateMacroButtonStates()
+	local i
+
+	for i = 1, table.getn(actionPoolButtons) do
+		local btn = actionPoolButtons[i]
+
+		if btn.macroName then
+			btn:UpdateState()
+		end
+	end
+end
+
+-- Spell id -> lower-case SpellInfo name, filled on first cast.
+local castSpellNamesLower = {}
+
 -- nampower SPELL_CAST_EVENT (arg2 = spell id): flashes macros targeting that spell; Auto Shot / Shoot / Attack never flash.
 local function FlashCastSpell(spellId)
-	local name = SpellInfo and spellId and SpellInfo(spellId)
-	if not name then return end
+	if not spellId then return end
 
-	name = string.lower(name)
+	local name = castSpellNamesLower[spellId]
+
+	if not name then
+		name = SpellInfo and SpellInfo(spellId)
+		if not name then return end
+
+		name = string.lower(name)
+		castSpellNamesLower[spellId] = name
+	end
 
 	if name == "auto shot" or name == "shoot" or name == "attack" then return end
 
@@ -187,13 +229,13 @@ local function FlashCastSpell(spellId)
 	playerActionState.firedToken = token
 	playerActionState.firedName = name
 
-	UpdateActionButtonStates()
+	UpdateMacroButtonStates()
 
 	C_Timer.After(MACRO_CAST_FLASH_DURATION, function()
 		if playerActionState.firedToken == token then
 			playerActionState.firedName = nil
 
-			UpdateActionButtonStates()
+			UpdateMacroButtonStates()
 		end
 	end)
 end
@@ -331,11 +373,21 @@ local function RefreshActionSlotButtons(slot)
 	end
 end
 
-local function PoolButtonDispatcher_OnEvent()
-	-- Copied first: per-button code can clobber the event/arg1 globals mid-loop.
-	local ev = event
-	local changedArg = arg1
+-- Macro-item bag index (FindBagItemByName) is fresh only inside a session: one dispatched event, bags can't change mid-loop.
+local bagIndexSessionOpen = false
+local bagIndexFresh = false
 
+local function OpenBagIndexSession()
+	bagIndexSessionOpen = true
+	bagIndexFresh = false
+end
+
+local function CloseBagIndexSession()
+	bagIndexSessionOpen = false
+	bagIndexFresh = false
+end
+
+local function DispatchPoolButtonEvent(ev, changedArg)
 	-- ACTIONBAR_SLOT_CHANGED arg1 0/nil means every slot.
 	if ev == "ACTIONBAR_SLOT_CHANGED" then
 		if not changedArg or changedArg == 0 then
@@ -356,6 +408,16 @@ local function PoolButtonDispatcher_OnEvent()
 	end
 
 	CallOnPoolButtons(route.list, route.method)
+end
+
+local function PoolButtonDispatcher_OnEvent()
+	-- Copied first: per-button code can clobber the event/arg1 globals mid-loop.
+	local ev = event
+	local changedArg = arg1
+
+	OpenBagIndexSession()
+	DispatchPoolButtonEvent(ev, changedArg)
+	CloseBagIndexSession()
 end
 
 -- Creates the dispatcher on the first pool button; must register after Events.lua's frames.
@@ -1113,10 +1175,16 @@ local function GetLinkMaxStack(link)
 	return maxStack
 end
 
--- Named item in the bags: first bag, slot, texture, total count over all stacks, max stack size (nil if none).
-local function FindBagItemByName(name)
-	local firstBag, firstSlot, firstTexture, firstLink
-	local total = 0
+-- Bag index: lower-case item name -> { gen, n, link (first stack), bags = {}, slots = {} } in bag 0-4 / slot order.
+-- Entries are reused across rebuilds; only those with gen == bagIndexGen are current.
+local bagIndex = {}
+local bagIndexGen = 0
+
+-- Scans bags 0-4 once into bagIndex.
+local function BuildBagIndex()
+	bagIndexGen = bagIndexGen + 1
+
+	local gen = bagIndexGen
 	local bag
 
 	for bag = 0, 4 do
@@ -1124,24 +1192,59 @@ local function FindBagItemByName(name)
 
 		for slot = 1, GetContainerNumSlots(bag) do
 			local link = GetContainerItemLink(bag, slot)
+			local name = GetLinkItemName(link)
 
-			if GetLinkItemName(link) == name then
-				local texture, itemCount = GetContainerItemInfo(bag, slot)
-
-				total = total + (itemCount or 1)
-
-				if not firstBag then
-					firstBag, firstSlot, firstTexture, firstLink = bag, slot, texture, link
+			if name then
+				local entry = bagIndex[name]
+				if not entry then
+					entry = { bags = {}, slots = {} }
+					bagIndex[name] = entry
 				end
+
+				if entry.gen ~= gen then
+					entry.gen = gen
+					entry.n = 0
+					entry.link = link
+				end
+
+				local n = entry.n + 1
+
+				entry.n = n
+				entry.bags[n] = bag
+				entry.slots[n] = slot
 			end
 		end
 	end
 
-	if not firstBag then return nil end
+	bagIndexFresh = bagIndexSessionOpen
+end
 
-	RememberMacroItem(name, firstTexture, firstLink)
+-- Named item in the bags: first bag, slot, texture, total count over all stacks, max stack size (nil if none).
+local function FindBagItemByName(name)
+	if not bagIndexFresh then
+		BuildBagIndex()
+	end
 
-	return firstBag, firstSlot, firstTexture, total, GetLinkMaxStack(firstLink)
+	local entry = bagIndex[name]
+	if not entry or entry.gen ~= bagIndexGen then return nil end
+
+	local firstTexture
+	local total = 0
+	local i
+
+	for i = 1, entry.n do
+		local texture, itemCount = GetContainerItemInfo(entry.bags[i], entry.slots[i])
+
+		total = total + (itemCount or 1)
+
+		if i == 1 then
+			firstTexture = texture
+		end
+	end
+
+	RememberMacroItem(name, firstTexture, entry.link)
+
+	return entry.bags[1], entry.slots[1], firstTexture, total, GetLinkMaxStack(entry.link)
 end
 
 -- Equipment slot holding the named item: invSlot, texture (nil if none).
@@ -1545,7 +1648,11 @@ function ACABButtonMixin:Refresh()
 	end
 
 	self:UpdateCount()
+
+	-- Full refresh always rewrites the spiral.
+	self.cooldownStart = nil
 	self:UpdateCooldown()
+
 	self:UpdateRange()
 	self:UpdateState()
 	self:UpdateEquipRing()
@@ -1620,7 +1727,18 @@ function ACABButtonMixin:UpdateCooldown()
 		start, duration, enable = GetActionCooldown(self.actionSlot)
 	end
 
-	CooldownFrame_SetTimer(self.cooldown, start or 0, duration or 0, enable or 0)
+	start = start or 0
+	duration = duration or 0
+	enable = enable or 0
+
+	-- Skips the write while the spiral already runs these values (only this method sets self.cooldown's timer).
+	if start == self.cooldownStart and duration == self.cooldownDuration and enable == self.cooldownEnable then return end
+
+	self.cooldownStart = start
+	self.cooldownDuration = duration
+	self.cooldownEnable = enable
+
+	CooldownFrame_SetTimer(self.cooldown, start, duration, enable)
 end
 
 -- Range/usability icon tint (or hotkey-only red tint); untinted for pet/stance/empty slots.
