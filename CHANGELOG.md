@@ -5,6 +5,7 @@
 ### Features
 
 - Stance Bar, Pet Bar and Cast Bar sitting at their default spot now move above Extra Bar 1 / Extra Bar 2 whenever those get enabled, disabled or reset to their vanilla position - in every profile, not only with Force Vanilla Layout, and for both the Vanilla and the ACAB-styled Pet/Stance Bar. Moved them yourself? They stay where you put them. A styled Pet/Stance Bar follows once you've used its "Reset to Vanilla Layout".
+- New General setting "Join update-check channel": turn it off to keep ACAB out of its hidden realm-wide chat channel (frees a custom channel slot). Version checks with party, raid, guild and battleground still run.
 
 ### Bugfixes
 
@@ -23,6 +24,10 @@
 - Fix casting, leaving combat or looting in the first seconds after the loading screen sometimes saving the Cast Bar or other elements at a wrong position, or changing another profile's Pet Bar setting.
 - `/acab` commands used right after the loading screen now say "Still loading" until setup finishes, instead of opening settings or changing profiles before your profile loaded (`/acab version` and `/acab help` still work).
 - Chat messages, `/acab help` and the minimap menu now say "Edit Layout" like the settings window (was "Configure Layout").
+- Profile names are now trimmed; empty names, names containing `|` and names longer than 32 characters are refused (create dialog, setup wizard, `/acab profile add`). Existing profiles are unchanged.
+- The update check ignores malformed version strings from other players and drops a malformed saved one, so a bogus announcement can't cause a permanent update nag.
+- A remembered "newer version available" message now stops after 5 logins in a row without any other player announcing that version again.
+- Importing a profile no longer takes over the exporter's update-nag state, Edit Layout mode or Hoverbind mode.
 
 ### Performance
 

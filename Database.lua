@@ -890,7 +890,7 @@ end
 local SANITIZE_LIMIT = 1e15
 
 local SANITIZE_BOOLEAN_KEYS = {
-	"editMode", "useDefaultLayout", "modernBorderStyle", "bypassRightActionBar2Dependency", "lastAppliedVanillaStyle",
+	"editMode", "updateChannelDisabled", "useDefaultLayout", "modernBorderStyle", "bypassRightActionBar2Dependency", "lastAppliedVanillaStyle",
 	"globalSpacingEnabled", "globalButtonSizeEnabled", "defaultBarPaginationEnabled", "defaultBarStanceSwapEnabled",
 	"mainBarPageIndicatorFollowsMainBar", "tintWholeButtonOnRange", "snapToAdjacentElements", "showLayoutGrid",
 	"snapToGrid", "useCustomGridSize", "bagBarEnabled", "microMenuEnabled", "stanceBarEnabled", "keyRingEnabled",
@@ -1083,6 +1083,13 @@ function ACAB:SanitizeProfileData(data, issues)
 
 	if data.latestSeenVersion ~= nil and type(data.latestSeenVersion) ~= "string" then
 		Drop("latestSeenVersion", "must be text")
+	elseif data.latestSeenVersion ~= nil and not self:IsValidVersionString(data.latestSeenVersion) then
+		data.latestSeenVersion = nil
+	end
+
+	if data.latestSeenVersionMisses ~= nil
+		and not (IsFiniteNumber(data.latestSeenVersionMisses) and data.latestSeenVersionMisses >= 0) then
+		Drop("latestSeenVersionMisses", "must be a number of 0 or more")
 	end
 
 	local artMode = data.mainBarArtMode
@@ -1311,18 +1318,48 @@ function ACAB:ProfileNameTaken(name)
 	return false
 end
 
+ACAB.PROFILE_NAME_MAX_LENGTH = 32
+
+-- Trims a new profile's name and checks it; returns the trimmed name, or nil and an error message.
+function ACAB:ValidateNewProfileName(name)
+	if type(name) ~= "string" then
+		return nil, "Profile name cannot be empty."
+	end
+
+	local _, _, trimmed = string.find(name, "^%s*(.-)%s*$")
+
+	if trimmed == "" then
+		return nil, "Profile name cannot be empty."
+	end
+
+	if string.find(trimmed, "|", 1, true) then
+		return nil, "Profile name cannot contain \"|\"."
+	end
+
+	if string.len(trimmed) > self.PROFILE_NAME_MAX_LENGTH then
+		return nil, "Profile name cannot be longer than " .. self.PROFILE_NAME_MAX_LENGTH .. " characters."
+	end
+
+	if self:ProfileNameTaken(trimmed) then
+		return nil, "A profile named \"" .. trimmed .. "\" already exists."
+	end
+
+	return trimmed
+end
+
 -- Creates a profile from the active Default Modern, else Default Vanilla's saved data, else the live ACABDB.
 -- Must never fall back to an empty table (see known-problems.md: "Profile data integrity").
+-- Returns true and the trimmed name, or false and an error message.
 function ACAB:CreateProfile(name)
-	if not name or name == "" then
-		return false, "Profile name cannot be empty."
+	local reason
+
+	name, reason = self:ValidateNewProfileName(name)
+
+	if not name then
+		return false, reason
 	end
 
 	ACABProfilesDB = ACABProfilesDB or {}
-
-	if self:ProfileNameTaken(name) then
-		return false, "A profile named \"" .. name .. "\" already exists."
-	end
 
 	if self.activeProfileName == self.MODERN_PROFILE_NAME then
 		self:SaveActiveProfileData()
@@ -1330,7 +1367,7 @@ function ACAB:CreateProfile(name)
 		ACABProfilesDB[name] = self:DeepCopyTable(ACABProfilesDB[self.MODERN_PROFILE_NAME])
 		ACABProfilesDB[name].builtInModernProfile = nil
 
-		return true
+		return true, name
 	end
 
 	local defaultData = ACABProfilesDB[self.DEFAULT_PROFILE_NAME]
@@ -1341,7 +1378,7 @@ function ACAB:CreateProfile(name)
 
 	ACABProfilesDB[name] = self:DeepCopyTable(defaultData)
 
-	return true
+	return true, name
 end
 
 -- Deletes a profile (never a built-in one); deleting the active profile falls this character back to Default Vanilla.
