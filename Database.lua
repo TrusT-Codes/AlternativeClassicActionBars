@@ -1,6 +1,6 @@
 -- Database.lua
--- SavedVariable lifecycle: native-anchor/spacing/action-slot capture, default- and extra-bar seeding,
--- ACAB:EnsureDB (migration-safe defaults), and the profile system (create/delete/copy/export/import).
+-- SavedVariable lifecycle: native capture, default/extra-bar seeding, EnsureDB, the profile sanitizer and
+-- the profile system (create/delete/copy/switch + dialogs). Export/import lives in ProfileIO.lua.
 
 local ACAB = AlternativeClassicActionBars
 
@@ -25,31 +25,19 @@ end
 -- Captures a default bar's on-screen position from its first real Blizzard button, as a UIParent-relative
 -- TOPLEFT/BOTTOMLEFT anchor.
 function ACAB:CaptureNativeAnchor(id)
-	local buttons = self.GetDefaultBarButtons and self:GetDefaultBarButtons(id)
-
-	if not buttons then
-		return nil
-	end
+	local buttons = self:GetDefaultBarButtons(id)
+	if not buttons then return nil end
 
 	local first = buttons[1]
-
-	if not first then
-		return nil
-	end
+	if not first then return nil end
 
 	local left = first:GetLeft()
 	local top = first:GetTop()
-
-	if not left or not top then
-		return nil
-	end
+	if not left or not top then return nil end
 
 	local buttonScale = first:GetEffectiveScale()
 	local targetScale = UIParent:GetEffectiveScale()
-
-	if not buttonScale or not targetScale or targetScale == 0 then
-		return nil
-	end
+	if not buttonScale or not targetScale or targetScale == 0 then return nil end
 
 	local screenX = left * buttonScale
 	local screenY = top * buttonScale
@@ -64,11 +52,8 @@ end
 
 -- Captures the native gap between adjacent buttons on default bar `id`, rounded to the nearest pixel.
 local function CaptureNativeSpacing(self, id, grid)
-	local buttons = self.GetDefaultBarButtons and self:GetDefaultBarButtons(id)
-
-	if not buttons then
-		return nil
-	end
+	local buttons = self:GetDefaultBarButtons(id)
+	if not buttons then return nil end
 
 	local horizontal = (grid.cols or 1) > (grid.rows or 1)
 
@@ -77,25 +62,18 @@ local function CaptureNativeSpacing(self, id, grid)
 
 	for i = 1, table.getn(buttons) do
 		local btn = buttons[i]
-
 		if not btn then
 			break
 		end
 
 		local pos = horizontal and btn:GetLeft() or btn:GetBottom()
-
-		if not pos then
-			return nil
-		end
+		if not pos then return nil end
 
 		positions[i] = pos
 	end
 
 	local count = table.getn(positions)
-
-	if count < 2 then
-		return nil
-	end
+	if count < 2 then return nil end
 
 	local size = horizontal and buttons[1]:GetWidth() or buttons[1]:GetHeight()
 	size = size or self.BUTTON_SIZE
@@ -178,11 +156,8 @@ local FIXED_SLOT_FALLBACK_OFFSET = {
 
 -- Discovers default bar `id`'s (2-5) 12 real action slots from its live buttons. Returns slots, usedFallback.
 local function CaptureFixedActionSlots(self, id)
-	local buttons = self.GetDefaultBarButtons and self:GetDefaultBarButtons(id)
-
-	if not buttons then
-		return nil
-	end
+	local buttons = self:GetDefaultBarButtons(id)
+	if not buttons then return nil end
 
 	local slots = {}
 	local usedFallback = false
@@ -190,13 +165,9 @@ local function CaptureFixedActionSlots(self, id)
 
 	for i = 1, table.getn(buttons) do
 		local btn = buttons[i]
-
-		if not btn then
-			return nil
-		end
+		if not btn then return nil end
 
 		local slot = btn.action
-
 		if not slot then
 			local offset = FIXED_SLOT_FALLBACK_OFFSET[id]
 
@@ -206,9 +177,7 @@ local function CaptureFixedActionSlots(self, id)
 			end
 		end
 
-		if not slot then
-			return nil
-		end
+		if not slot then return nil end
 
 		slots[i] = slot
 	end
@@ -372,39 +341,48 @@ end
 -- Re-applies the default bars and everything derived from their native anchors (Pet Bar X, Extra Bars 1-4).
 -- No-op until bars are built.
 function ACAB:ReapplyAfterNativeRecapture()
-	if not (self.bars and self.bars[1]) then
-		return
-	end
+	if not (self.bars and self.bars[1]) then return end
 
 	local i
 
 	self:ApplyAllDefaultBars()
 
 	-- Re-derives Pet Bar's x/y from Bar 3/Bar 1's just-refreshed nativeAnchor.
-	if self.SyncPetBarAnchorX then
-		self:SyncPetBarAnchorX()
+	self:SyncPetBarAnchorX()
+
+	-- Pet/Stance Bar back to their default stack spot in either mode.
+	local petCfg = ACABDB.defaultBars[self.PET_BAR_ID]
+	local stanceCfg = ACABDB.defaultBars[self.STANCE_BAR_ID]
+
+	if self:IsPetBarNativeModeEffective() then
+		self:ResetPetBarNativePosition()
+	elseif petCfg then
+		petCfg.styledDefaultPosition = true
 	end
 
-	if self.petBarNativeContainer and ACABDB.useDefaultLayout ~= false then
-		local bar3Cfg = ACABDB.defaultBars[3]
-		self:ReflowPetBarForBar3Toggle(bar3Cfg and bar3Cfg.enabled)
+	if self:IsStanceBarNativeModeEffective() then
+		self:ResetStanceBarPosition()
+	elseif stanceCfg then
+		stanceCfg.styledDefaultPosition = true
 	end
 
 	-- Extra Bar 1-4's default layout is relative to a default bar's nativeAnchor.
-	if self.ResetExtraBarLayout then
-		for i = self.EXTRA_BAR_ID_START, self.EXTRA_BAR_ID_START + self.EXTRA_BAR_COUNT - 1 do
-			self:ResetExtraBarLayout(i)
-		end
+	for i = self.EXTRA_BAR_ID_START, self.EXTRA_BAR_ID_START + self.EXTRA_BAR_COUNT - 1 do
+		self:ResetExtraBarLayout(i)
 	end
+
+	-- Must run after the Extra Bar resets: restacks Pet/Stance above the final Action Bar 1/2 + Extra Bar 1/2.
+	local bar2Cfg = ACABDB.defaultBars[2]
+	local bar3Cfg = ACABDB.defaultBars[3]
+	self:ReflowStanceBarForBar2Toggle(bar2Cfg and bar2Cfg.enabled)
+	self:ReflowPetBarForBar3Toggle(bar3Cfg and bar3Cfg.enabled)
 
 	self:Print("All Bars and UI-Elements applied to their correct position after recapture.")
 end
 
--- Clears the stored native anchor + position of Key Ring/Latency Bar/Exp Bar/Cast Bar so the next reload
--- recaptures them.
-function ACAB:RecaptureWrappedNativeFrameAnchors()
-	self:EnsureDB()
-
+-- Clears the stored native anchor + position of Key Ring/Latency Bar/Exp Bar/Cast Bar so the next login's
+-- "native capture" stage recaptures them.
+local function ClearWrappedNativeFrameAnchors()
 	ACABDB.keyRingPosition = nil
 	ACABDB.keyRingNativeAnchor = nil
 	ACABDB.latencyBarPosition = nil
@@ -416,13 +394,100 @@ function ACAB:RecaptureWrappedNativeFrameAnchors()
 
 	-- Must clear alongside castBarPosition above, or the stack-reflow floor stays stale.
 	ACABDB.castBarStackBaseY = nil
+end
+
+-- /acab recapture: clears Key Ring/Latency Bar/Exp Bar/Cast Bar's native anchors so the next reload recaptures them.
+function ACAB:RecaptureWrappedNativeFrameAnchors()
+	self:EnsureDB()
+
+	ClearWrappedNativeFrameAnchors()
 
 	self:Print("Key Ring/Latency Bar/Exp Bar/Cast Bar native anchors cleared - /reload now to capture them fresh.")
 end
 
+-------------------------------------------------------------------------
+-- UI scale change: ACABDB.layoutUIScale is the UIParent effective scale the profile was laid out at
+-------------------------------------------------------------------------
+
+-- Scale differences below this count as unchanged.
+local UI_SCALE_TOLERANCE = 0.001
+
+-- Multiplies x/y of every canonical position table inside t by ratio.
+local function ScaleCanonicalPositions(self, t, ratio, depth)
+	if depth > 6 then return end
+
+	local k, v
+
+	for k, v in pairs(t) do
+		if type(v) == "table" then
+			if self:IsCanonicalPosition(v) and type(v.x) == "number" and type(v.y) == "number" then
+				v.x = v.x * ratio
+				v.y = v.y * ratio
+			end
+
+			ScaleCanonicalPositions(self, v, ratio, depth + 1)
+		end
+	end
+end
+
+-- Recaptures every default bar's native anchor/spacing without moving the bars themselves.
+local function RefreshDefaultBarNativeAnchors(self)
+	local fresh = seedDefaultBars(self)
+	local i
+
+	for i = 1, table.getn(self.DEFAULT_BAR_IDS) do
+		local id = self.DEFAULT_BAR_IDS[i]
+		local oldCfg = ACABDB.defaultBars[id]
+		local newCfg = fresh[id]
+
+		if oldCfg and newCfg and newCfg.nativeAnchor then
+			oldCfg.nativeAnchor = newCfg.nativeAnchor
+			oldCfg.nativeSpacing = newCfg.nativeSpacing
+		end
+	end
+end
+
+-- Login-time UI scale check: rebuilds a built-in profile for the new scale, or scales a custom profile's
+-- positions to keep their screen spots. A profile without a stored scale just records the current one.
+function ACAB:HandleUIScaleChange()
+	local current = UIParent:GetEffectiveScale()
+	local saved = ACABDB.layoutUIScale
+
+	if not current or current <= 0 then return end
+
+	if not saved or saved <= 0 then
+		ACABDB.layoutUIScale = current
+		return
+	end
+
+	if math.abs(saved - current) < UI_SCALE_TOLERANCE then return end
+
+	if self:IsBuiltInProfileName(self.activeProfileName) then
+		-- layoutUIScale is written by ApplyPendingLayoutBaseline once the pass ran.
+		if self.activeProfileName == self.MODERN_PROFILE_NAME then
+			ACABDB.pendingLayoutBaseline = "modern"
+		else
+			ACABDB.pendingLayoutBaseline = "vanilla"
+		end
+
+		ACABDB.pendingDefaultBarRecapture = true
+		ClearWrappedNativeFrameAnchors()
+
+		self:Print("UI scale changed - rebuilding \"" .. self.activeProfileName .. "\" for the new scale.")
+		return
+	end
+
+	ScaleCanonicalPositions(self, ACABDB, saved / current, 1)
+	RefreshDefaultBarNativeAnchors(self)
+	ACABDB.castBarStackBaseY = nil
+	ACABDB.layoutUIScale = current
+
+	self:Print("UI scale changed - moved this profile's elements so they keep their screen positions.")
+end
+
 -- Fallback Extra Bar position (stacked vertically by index) when the reference bar's native anchor is missing.
 local function GetFallbackExtraBarPosition(self, index)
-	return 20, 150 + (index * ((self.BUTTON_ROWS * self.BUTTON_SIZE) + 40))
+	return 20, 150 + (index * ((self.BUTTON_ROWS * self:GetCurrentButtonSizeBaseline()) + 40))
 end
 
 -- Extra Bar default positions: pitchCount button pitches to `side` of a reference default bar's native
@@ -434,9 +499,8 @@ local EXTRA_BAR_DEFAULT_REFERENCE = {
 	[3] = { refId = 5, side = "left",  pitchCount = 2 }, -- Extra Bar 4: left of Right Action Bar 2 (double pitch, i.e. left of Extra Bar 3).
 }
 
--- Extra Bar `index`'s default layout (seeding and ResetExtraBarLayout): the reference bar's size, spacing and grid,
--- one bar pitch (its frame plus its own button gap) above/left of it. Reads the built reference bar's current
--- config, else its Reset-to-Vanilla values. Returns TOPLEFT/BOTTOMLEFT x, y, cols, rows, buttonSize, spacing.
+-- Extra Bar `index`'s default layout: the reference bar's size/spacing and vanilla grid, one pitch above/left of it
+-- (built bar's cfg, else its Reset-to-Vanilla values). Returns TOPLEFT/BOTTOMLEFT x, y, cols, rows, buttonSize, spacing.
 function ACAB:GetDefaultExtraBarLayout(index)
 	local ref = EXTRA_BAR_DEFAULT_REFERENCE[index]
 	local refCfg = ref and ACABDB.defaultBars and ACABDB.defaultBars[ref.refId]
@@ -454,38 +518,36 @@ function ACAB:GetDefaultExtraBarLayout(index)
 		left, right, bottom, top = self:GetPositionFrameRect(refBar, refCfg, "TOPLEFT")
 	end
 
-	local buttonSize, spacing, cols, rows
+	local buttonSize, spacing
+
+	-- Always the reference bar's vanilla grid (12x1 above bars 2/3, 1x12 left of bar 5), whatever its current grid.
+	local cols = grid.cols
+	local rows = grid.rows
 
 	if left then
 		buttonSize = refCfg.buttonSize
 		spacing = refCfg.spacing or 0
-		cols = refCfg.cols or grid.cols
-		rows = refCfg.rows or grid.rows
 	else
 		-- Same values ResetDefaultBarLayout gives the reference bar (Modern style: corner shifted up-left).
 		local shift = self:IsVanillaBorderStyle() and 0 or self.MODERN_BUTTON_SIZE_POSITION_SHIFT
 
 		buttonSize = self:GetCurrentButtonSizeBaseline()
 		spacing = self:GetDefaultBarNativeSpacing(refCfg)
-		cols = grid.cols
-		rows = grid.rows
-
-		local width, height = self:GetBarFrameSize({ cols = cols, rows = rows, buttonCount = cols * rows, buttonSize = buttonSize, spacing = spacing })
 
 		left = refCfg.nativeAnchor.x - shift
 		top = refCfg.nativeAnchor.y + shift
-		right = left + width
-		bottom = top - height
 	end
 
+	-- Pitch is the Extra Bar's own frame plus its button gap.
+	local width, height = self:GetBarFrameSize({ cols = cols, rows = rows, buttonCount = cols * rows, buttonSize = buttonSize, spacing = spacing })
 	local gap = self:GetBarEffectiveSpacing({ buttonSize = buttonSize, spacing = spacing })
 	local x = left
 	local y = top
 
 	if ref.side == "above" then
-		y = top + (((top - bottom) + gap) * ref.pitchCount)
+		y = top + ((height + gap) * ref.pitchCount)
 	elseif ref.side == "left" then
-		x = left - (((right - left) + gap) * ref.pitchCount)
+		x = left - ((width + gap) * ref.pitchCount)
 	end
 
 	return x, y, cols, rows, buttonSize, spacing
@@ -504,7 +566,8 @@ function ACAB:GetExtraBarStackPitch(extraBarId)
 	return (bar:GetHeight() or 0) + self:GetBarEffectiveSpacing(bar.config)
 end
 
--- Resettles Stance/Pet/Cast Bar when Extra Bar 1/2's stacking contribution changes (each Reflow* self-guards).
+-- Resettles Stance/Pet/Cast Bar when Extra Bar 1/2's stacking contribution changes, in every profile; each
+-- Reflow* only moves its element while it sits at its default (vanilla) position.
 function ACAB:ReflowExtraBarDependants(extraBarId)
 	local index = extraBarId - self.EXTRA_BAR_ID_START
 
@@ -516,9 +579,7 @@ function ACAB:ReflowExtraBarDependants(extraBarId)
 		self:ReflowPetBarForBar3Toggle(bar3Cfg and bar3Cfg.enabled)
 	end
 
-	if self.ReflowCastBarForStackToggle then
-		self:ReflowCastBarForStackToggle()
-	end
+	self:ReflowCastBarForStackToggle()
 end
 
 -- Allocates one Extra Bar's config.
@@ -528,7 +589,6 @@ local function seedExtraBarConfig(self, id)
 
 	local needed = cols * rows
 	local slotStart = self:GetNextFreeSlotStart(needed)
-
 	if not slotStart then
 		self:Print(
 			"WARNING: Extra Bar " .. tostring(id - self.EXTRA_BAR_ID_START + 1) ..
@@ -563,9 +623,7 @@ end
 
 -- Converts a legacy (non-canonical) CENTER-anchored Extra Bar to TOPLEFT/BOTTOMLEFT, keeping its on-screen position.
 function ACAB:MigrateExtraBarAnchor(cfg)
-	if not cfg or cfg.point ~= "CENTER" or self:IsCanonicalPosition(cfg) then
-		return
-	end
+	if not cfg or cfg.point ~= "CENTER" or self:IsCanonicalPosition(cfg) then return end
 
 	local screenWidth = GetScreenWidth() or 1024
 	local screenHeight = GetScreenHeight() or 768
@@ -625,7 +683,7 @@ ACAB.MODERN_PROFILE_NAME = "Default Modern"
 -- Default Vanilla's pre-rename name; migrated in ResolveActiveProfile and reserved afterwards.
 ACAB.LEGACY_DEFAULT_PROFILE_NAME = "Default"
 
--- Reserved name: hidden from GetProfileNames and rejected by ProfileNameTaken.
+-- Legacy reserved name: rejected by ProfileNameTaken; its old entry is dropped by MigrateBuiltInProfileNames.
 ACAB.MODERN_BASE_PROFILE_NAME = "ModernBase"
 
 -- True for the two built-in locked profiles.
@@ -730,6 +788,9 @@ local function MigrateBuiltInProfileNames(self)
 	if ACABCharDB.activeProfile == legacy then
 		ACABCharDB.activeProfile = self.DEFAULT_PROFILE_NAME
 	end
+
+	-- Drops the obsolete hidden ModernBase profile (the name stays reserved).
+	ACABProfilesDB[self.MODERN_BASE_PROFILE_NAME] = nil
 end
 
 -- Writes the Modern Layout baseline flags onto profile data; the geometry itself is applied live on the next
@@ -798,10 +859,7 @@ end
 -- Default Vanilla has no snapshot yet.
 function ACAB:BuildModernBaseProfileData()
 	local source = ACABProfilesDB and ACABProfilesDB[self.DEFAULT_PROFILE_NAME]
-
-	if not source then
-		return nil
-	end
+	if not source then return nil end
 
 	local data = self:DeepCopyTable(source)
 
@@ -813,9 +871,7 @@ end
 
 -- Builds Default Modern if it's still missing (a fresh install has no Default Vanilla snapshot at login).
 function ACAB:EnsureModernBaseProfile()
-	if ACABProfilesDB and ACABProfilesDB[self.MODERN_PROFILE_NAME] then
-		return
-	end
+	if ACABProfilesDB and ACABProfilesDB[self.MODERN_PROFILE_NAME] then return end
 
 	self:GetDefaultVanillaData()
 
@@ -834,7 +890,7 @@ end
 local SANITIZE_LIMIT = 1e15
 
 local SANITIZE_BOOLEAN_KEYS = {
-	"editMode", "useDefaultLayout", "modernBorderStyle", "bypassRightActionBar2Dependency", "lastAppliedVanillaStyle",
+	"editMode", "updateChannelDisabled", "useDefaultLayout", "modernBorderStyle", "bypassRightActionBar2Dependency", "lastAppliedVanillaStyle",
 	"globalSpacingEnabled", "globalButtonSizeEnabled", "defaultBarPaginationEnabled", "defaultBarStanceSwapEnabled",
 	"mainBarPageIndicatorFollowsMainBar", "tintWholeButtonOnRange", "snapToAdjacentElements", "showLayoutGrid",
 	"snapToGrid", "useCustomGridSize", "bagBarEnabled", "microMenuEnabled", "stanceBarEnabled", "keyRingEnabled",
@@ -850,9 +906,9 @@ local SANITIZE_BOOLEAN_KEYS = {
 local SANITIZE_NUMBER_KEYS = {
 	"minimapAngle", "globalSpacingValue", "globalButtonSizeValue", "keyRingHoverDuration",
 	"bagBarHoverDuration", "microMenuHoverDuration", "latencyBarHoverDuration", "expBarHoverDuration",
-	"expBarGlowPulseInterval", "microMenuCols", "microMenuRows", "stanceBarNativeGap",
+	"expBarGlowPulseInterval", "microMenuCols", "microMenuRows",
 	"bagBarSpacing", "bagBarNativeSpacing", "microMenuSpacing", "microMenuNativeSpacing", "stanceBarSpacing",
-	"stanceBarNativeSpacing", "castBarStackBaseY",
+	"stanceBarNativeSpacing", "castBarStackBaseY", "layoutUIScale",
 }
 
 -- Numbers that must stay above 0 (scales, font sizes, grid size).
@@ -870,7 +926,7 @@ local SANITIZE_COLOR_KEYS = {
 local SANITIZE_BAR_BOOLEAN_KEYS = {
 	"enabled", "usesDefaultPosition", "hoverOnly", "useNativeStanceBar", "useNativePetBar", "condenseEmptyPetSlots",
 	"spacingUnlocked", "buttonSizeUnlocked", "animateAutoCastGlow", "dynamicDefaultBar", "isPetBar", "isStanceBar",
-	"visualCenter",
+	"visualCenter", "styledDefaultPosition",
 }
 
 local SANITIZE_BAR_NUMBER_KEYS = { "hoverDuration", "nativeSpacing" }
@@ -901,16 +957,12 @@ end
 
 -- Bar cfg (default-bar family or custom bar): finite numeric fields, grid within MAX_BAR_BUTTONS, slot start in the pool.
 local function IsValidBarConfig(self, cfg)
-	if not IsValidPositionTable(cfg) then
-		return false
-	end
+	if not IsValidPositionTable(cfg) then return false end
 
 	if cfg.cols ~= nil and not IsIntegerInRange(cfg.cols, 1, self.MAX_BAR_BUTTONS) then return false end
 	if cfg.rows ~= nil and not IsIntegerInRange(cfg.rows, 1, self.MAX_BAR_BUTTONS) then return false end
 
-	if cfg.cols and cfg.rows and cfg.cols * cfg.rows > self.MAX_BAR_BUTTONS then
-		return false
-	end
+	if cfg.cols and cfg.rows and cfg.cols * cfg.rows > self.MAX_BAR_BUTTONS then return false end
 
 	if cfg.buttonCount ~= nil and not IsIntegerInRange(cfg.buttonCount, 0, self.MAX_BAR_BUTTONS) then return false end
 	if cfg.slotStart ~= nil and not IsIntegerInRange(cfg.slotStart, self.ACTION_SLOT_START, self.ACTION_SLOT_END) then return false end
@@ -919,16 +971,12 @@ local function IsValidBarConfig(self, cfg)
 	if cfg.nativeAnchor ~= nil and not IsValidPositionTable(cfg.nativeAnchor) then return false end
 
 	if cfg.fixedActionSlots ~= nil then
-		if type(cfg.fixedActionSlots) ~= "table" then
-			return false
-		end
+		if type(cfg.fixedActionSlots) ~= "table" then return false end
 
 		local k, slot
 
 		for k, slot in pairs(cfg.fixedActionSlots) do
-			if not IsIntegerInRange(slot, 1, self.ACTION_SLOT_END) then
-				return false
-			end
+			if not IsIntegerInRange(slot, 1, self.ACTION_SLOT_END) then return false end
 		end
 	end
 
@@ -1035,6 +1083,13 @@ function ACAB:SanitizeProfileData(data, issues)
 
 	if data.latestSeenVersion ~= nil and type(data.latestSeenVersion) ~= "string" then
 		Drop("latestSeenVersion", "must be text")
+	elseif data.latestSeenVersion ~= nil and not self:IsValidVersionString(data.latestSeenVersion) then
+		data.latestSeenVersion = nil
+	end
+
+	if data.latestSeenVersionMisses ~= nil
+		and not (IsFiniteNumber(data.latestSeenVersionMisses) and data.latestSeenVersionMisses >= 0) then
+		Drop("latestSeenVersionMisses", "must be a number of 0 or more")
 	end
 
 	local artMode = data.mainBarArtMode
@@ -1124,7 +1179,7 @@ function ACAB:SanitizeProfileData(data, issues)
 end
 
 -- Joins the first few sanitize issues into one line.
-local function FormatSanitizeIssues(issues)
+function ACAB:FormatSanitizeIssues(issues)
 	local shown = {}
 	local total = table.getn(issues)
 	local i
@@ -1172,7 +1227,7 @@ function ACAB:ResolveActiveProfile()
 			self:SanitizeProfileData(profileData, issues)
 
 			if issues[1] then
-				self:Print("Reset invalid saved settings in profile \"" .. profileName .. "\": " .. FormatSanitizeIssues(issues))
+				self:Print("Reset invalid saved settings in profile \"" .. profileName .. "\": " .. self:FormatSanitizeIssues(issues))
 			end
 		end
 	end
@@ -1183,7 +1238,7 @@ function ACAB:ResolveActiveProfile()
 		self:SanitizeProfileData(ACABDB, issues)
 
 		if issues[1] then
-			self:Print("Reset invalid saved settings: " .. FormatSanitizeIssues(issues))
+			self:Print("Reset invalid saved settings: " .. self:FormatSanitizeIssues(issues))
 		end
 	end
 
@@ -1233,9 +1288,7 @@ end
 
 -- Writes the live ACABDB back into ACABProfilesDB[activeProfileName].
 function ACAB:SaveActiveProfileData()
-	if not self.activeProfileName or not ACABDB then
-		return
-	end
+	if not self.activeProfileName or not ACABDB then return end
 
 	ACABProfilesDB = ACABProfilesDB or {}
 	ACABProfilesDB[self.activeProfileName] = self:DeepCopyTable(ACABDB)
@@ -1243,9 +1296,7 @@ end
 
 -- Case-insensitive check against every existing profile name (including the built-in and reserved names).
 function ACAB:ProfileNameTaken(name)
-	if not name or name == "" then
-		return false
-	end
+	if not name or name == "" then return false end
 
 	local lowerName = string.lower(name)
 
@@ -1267,19 +1318,48 @@ function ACAB:ProfileNameTaken(name)
 	return false
 end
 
--- Creates a new profile seeded from the active Default Modern, else Default Vanilla's saved data, or from the live
--- ACABDB if it isn't saved yet. Must not fall back to an empty table - native-mode Pet/Stance Bar resets no-op
--- without defaultBars entries.
+ACAB.PROFILE_NAME_MAX_LENGTH = 32
+
+-- Trims a new profile's name and checks it; returns the trimmed name, or nil and an error message.
+function ACAB:ValidateNewProfileName(name)
+	if type(name) ~= "string" then
+		return nil, "Profile name cannot be empty."
+	end
+
+	local _, _, trimmed = string.find(name, "^%s*(.-)%s*$")
+
+	if trimmed == "" then
+		return nil, "Profile name cannot be empty."
+	end
+
+	if string.find(trimmed, "|", 1, true) then
+		return nil, "Profile name cannot contain \"|\"."
+	end
+
+	if string.len(trimmed) > self.PROFILE_NAME_MAX_LENGTH then
+		return nil, "Profile name cannot be longer than " .. self.PROFILE_NAME_MAX_LENGTH .. " characters."
+	end
+
+	if self:ProfileNameTaken(trimmed) then
+		return nil, "A profile named \"" .. trimmed .. "\" already exists."
+	end
+
+	return trimmed
+end
+
+-- Creates a profile from the active Default Modern, else Default Vanilla's saved data, else the live ACABDB.
+-- Must never fall back to an empty table (see known-problems.md: "Profile data integrity").
+-- Returns true and the trimmed name, or false and an error message.
 function ACAB:CreateProfile(name)
-	if not name or name == "" then
-		return false, "Profile name cannot be empty."
+	local reason
+
+	name, reason = self:ValidateNewProfileName(name)
+
+	if not name then
+		return false, reason
 	end
 
 	ACABProfilesDB = ACABProfilesDB or {}
-
-	if self:ProfileNameTaken(name) then
-		return false, "A profile named \"" .. name .. "\" already exists."
-	end
 
 	if self.activeProfileName == self.MODERN_PROFILE_NAME then
 		self:SaveActiveProfileData()
@@ -1287,11 +1367,10 @@ function ACAB:CreateProfile(name)
 		ACABProfilesDB[name] = self:DeepCopyTable(ACABProfilesDB[self.MODERN_PROFILE_NAME])
 		ACABProfilesDB[name].builtInModernProfile = nil
 
-		return true
+		return true, name
 	end
 
 	local defaultData = ACABProfilesDB[self.DEFAULT_PROFILE_NAME]
-
 	if not defaultData then
 		self:EnsureDB()
 		defaultData = ACABDB
@@ -1299,7 +1378,7 @@ function ACAB:CreateProfile(name)
 
 	ACABProfilesDB[name] = self:DeepCopyTable(defaultData)
 
-	return true
+	return true, name
 end
 
 -- Deletes a profile (never a built-in one); deleting the active profile falls this character back to Default Vanilla.
@@ -1345,371 +1424,6 @@ function ACAB:CopyProfileInto(sourceName, targetName)
 	return true
 end
 
--------------------------------------------------------------------------
--- Profile export/import
--- Format: PROFILE_EXPORT_PREFIX + a compact [key]=value table literal. Import is parsed by hand, never
--- loadstring'd (pasted text is untrusted). Keep the format stable so existing exports still import.
--------------------------------------------------------------------------
-
-local PROFILE_EXPORT_PREFIX = "TBVPROFILE1:"
-
--- Import strings beyond these limits are rejected (a real export is ~5 KB, 4 tables deep).
-local PROFILE_IMPORT_MAX_LENGTH = 262144
-local PROFILE_IMPORT_MAX_DEPTH = 12
-
-ACAB.PROFILE_IMPORT_ERROR_MESSAGE =
-	"Invalid Profile Import Syntax, please double check you copied all " ..
-	"Text correctly on your Export and try again"
-
--- Escapes backslash, quote, and \n \r \t (ParseImportString's inverse).
-local function EscapeExportString(s)
-	s = string.gsub(s, "\\", "\\\\")
-	s = string.gsub(s, "\"", "\\\"")
-	s = string.gsub(s, "\n", "\\n")
-	s = string.gsub(s, "\r", "\\r")
-	s = string.gsub(s, "\t", "\\t")
-
-	return s
-end
-
--- Appends `value`'s serialized form to `parts`; unsupported types serialize as nil.
-local function SerializeValue(value, parts)
-	if type(value) == "table" then
-		table.insert(parts, "{")
-
-		local k, v
-
-		for k, v in pairs(value) do
-			if v ~= nil then
-				table.insert(parts, "[")
-				SerializeValue(k, parts)
-				table.insert(parts, "]=")
-				SerializeValue(v, parts)
-				table.insert(parts, ",")
-			end
-		end
-
-		table.insert(parts, "}")
-	elseif type(value) == "string" then
-		table.insert(parts, "\"" .. EscapeExportString(value) .. "\"")
-	elseif type(value) == "number" then
-		table.insert(parts, tostring(value))
-	elseif type(value) == "boolean" then
-		table.insert(parts, value and "true" or "false")
-	else
-		table.insert(parts, "nil")
-	end
-end
-
--- Serializes the active profile's live ACABDB into one exportable string.
-function ACAB:ExportActiveProfileString()
-	local parts = {}
-
-	SerializeValue(ACABDB, parts)
-
-	return PROFILE_EXPORT_PREFIX .. table.concat(parts, "")
-end
-
--- Recursive-descent parser for SerializeValue's grammar. Parse functions return value, or nil, errorString.
-local function NewImportParser(str)
-	return { str = str, pos = 1, len = string.len(str), depth = 0 }
-end
-
-local function SkipImportWhitespace(p)
-	while p.pos <= p.len do
-		local c = string.sub(p.str, p.pos, p.pos)
-
-		if c == " " or c == "\t" or c == "\n" or c == "\r" then
-			p.pos = p.pos + 1
-		else
-			break
-		end
-	end
-end
-
-local ParseImportValue
-
--- Parses a quoted string starting at the opening quote.
-local function ParseImportString(p)
-	p.pos = p.pos + 1
-
-	local resultParts = {}
-
-	while true do
-		if p.pos > p.len then
-			return nil, "unterminated string"
-		end
-
-		local c = string.sub(p.str, p.pos, p.pos)
-
-		if c == "\"" then
-			p.pos = p.pos + 1
-			break
-		elseif c == "\\" then
-			local nextC = string.sub(p.str, p.pos + 1, p.pos + 1)
-
-			if nextC == "\\" then
-				table.insert(resultParts, "\\")
-			elseif nextC == "\"" then
-				table.insert(resultParts, "\"")
-			elseif nextC == "n" then
-				table.insert(resultParts, "\n")
-			elseif nextC == "r" then
-				table.insert(resultParts, "\r")
-			elseif nextC == "t" then
-				table.insert(resultParts, "\t")
-			else
-				return nil, "bad escape sequence"
-			end
-
-			p.pos = p.pos + 2
-		else
-			table.insert(resultParts, c)
-			p.pos = p.pos + 1
-		end
-	end
-
-	return table.concat(resultParts, "")
-end
-
--- Parses a bare token up to the next , } or ] as true/false/nil or a number.
-local function ParseImportNumberOrKeyword(p)
-	local startPos = p.pos
-
-	while p.pos <= p.len do
-		local c = string.sub(p.str, p.pos, p.pos)
-
-		if c == "," or c == "}" or c == "]" then
-			break
-		end
-
-		p.pos = p.pos + 1
-	end
-
-	local token = string.sub(p.str, startPos, p.pos - 1)
-
-	if token == "true" then
-		return true
-	elseif token == "false" then
-		return false
-	elseif token == "nil" then
-		return nil
-	end
-
-	local num = tonumber(token)
-
-	-- Rejects NaN and +-infinity.
-	if not num or num ~= num or num <= -SANITIZE_LIMIT or num >= SANITIZE_LIMIT then
-		return nil, "invalid value (expected true, false, nil or a normal number)"
-	end
-
-	return num
-end
-
--- Parses a {[key]=value,...} table starting at the opening brace; nil keys are skipped.
-local function ParseImportTable(p)
-	p.pos = p.pos + 1
-	p.depth = p.depth + 1
-
-	if p.depth > PROFILE_IMPORT_MAX_DEPTH then
-		return nil, "tables nested too deep"
-	end
-
-	local result = {}
-
-	SkipImportWhitespace(p)
-
-	if string.sub(p.str, p.pos, p.pos) == "}" then
-		p.pos = p.pos + 1
-		p.depth = p.depth - 1
-		return result
-	end
-
-	while true do
-		SkipImportWhitespace(p)
-
-		if string.sub(p.str, p.pos, p.pos) ~= "[" then
-			return nil, "expected '[' for table key"
-		end
-
-		p.pos = p.pos + 1
-		SkipImportWhitespace(p)
-
-		local key, keyErr = ParseImportValue(p)
-
-		if key == nil and keyErr then
-			return nil, keyErr
-		end
-
-		if key ~= nil and type(key) ~= "string" and type(key) ~= "number" then
-			return nil, "invalid key type"
-		end
-
-		SkipImportWhitespace(p)
-
-		if string.sub(p.str, p.pos, p.pos) ~= "]" then
-			return nil, "expected ']' after table key"
-		end
-
-		p.pos = p.pos + 1
-		SkipImportWhitespace(p)
-
-		if string.sub(p.str, p.pos, p.pos) ~= "=" then
-			return nil, "expected '=' after table key"
-		end
-
-		p.pos = p.pos + 1
-		SkipImportWhitespace(p)
-
-		local value, valueErr = ParseImportValue(p)
-
-		if value == nil and valueErr then
-			return nil, valueErr
-		end
-
-		if key ~= nil then
-			result[key] = value
-		end
-
-		SkipImportWhitespace(p)
-
-		local c = string.sub(p.str, p.pos, p.pos)
-
-		if c == "," then
-			p.pos = p.pos + 1
-			SkipImportWhitespace(p)
-
-			if string.sub(p.str, p.pos, p.pos) == "}" then
-				p.pos = p.pos + 1
-				break
-			end
-		elseif c == "}" then
-			p.pos = p.pos + 1
-			break
-		else
-			return nil, "expected ',' or '}' in table"
-		end
-	end
-
-	p.depth = p.depth - 1
-
-	return result
-end
-
-ParseImportValue = function(p)
-	SkipImportWhitespace(p)
-
-	if p.pos > p.len then
-		return nil, "unexpected end of input"
-	end
-
-	local c = string.sub(p.str, p.pos, p.pos)
-
-	if c == "{" then
-		return ParseImportTable(p)
-	elseif c == "\"" then
-		return ParseImportString(p)
-	else
-		return ParseImportNumberOrKeyword(p)
-	end
-end
-
--- Parses one whole value; returns the value, or nil, error, position on failure or trailing input.
-local function ParseImportBody(body)
-	local p = NewImportParser(body)
-	local value, err = ParseImportValue(p)
-
-	if err then
-		return nil, err, p.pos
-	end
-
-	SkipImportWhitespace(p)
-
-	if p.pos <= p.len then
-		return nil, "unexpected text after the end of the profile", p.pos
-	end
-
-	return value
-end
-
--- Error banner text: the general message plus what went wrong and where (character count includes the prefix).
-function ACAB:BuildImportErrorMessage(detail, body, pos)
-	local text = self.PROFILE_IMPORT_ERROR_MESSAGE .. "\nProblem: " .. detail
-
-	if body and pos then
-		local near = string.gsub(string.sub(body, math.max(pos - 12, 1), pos + 8), "%c", "?")
-
-		text = text .. " at character " .. tostring(pos + string.len(PROFILE_EXPORT_PREFIX)) .. " (near \"" .. near .. "\")"
-	end
-
-	return text
-end
-
--- Validates and parses an exported profile string without applying it.
--- Returns true, data, warningText-or-nil (fields dropped for wrong types) or false, errorMessage.
-function ACAB:ParseProfileImportString(str)
-	if type(str) ~= "string" then
-		return false, self:BuildImportErrorMessage("the pasted value is not text")
-	end
-
-	if string.len(str) > PROFILE_IMPORT_MAX_LENGTH then
-		return false, self:BuildImportErrorMessage("the text is longer than " .. tostring(PROFILE_IMPORT_MAX_LENGTH / 1024) .. " KB")
-	end
-
-	local prefixLen = string.len(PROFILE_EXPORT_PREFIX)
-
-	if string.sub(str, 1, prefixLen) ~= PROFILE_EXPORT_PREFIX then
-		return false, self:BuildImportErrorMessage("the text must start with " .. PROFILE_EXPORT_PREFIX)
-	end
-
-	local body = string.sub(str, prefixLen + 1)
-	local ok, result, err, pos = pcall(ParseImportBody, body)
-
-	if not ok then
-		return false, self:BuildImportErrorMessage("the text could not be read")
-	end
-
-	if err then
-		return false, self:BuildImportErrorMessage(err, body, pos)
-	end
-
-	if type(result) ~= "table" or type(result.schemaVersion) ~= "number" then
-		return false, self:BuildImportErrorMessage("this is not a profile (no numeric schemaVersion found)")
-	end
-
-	-- Marks the built-in Default Modern profile; only ACAB itself writes it.
-	result.builtInModernProfile = nil
-
-	local issues = {}
-
-	if not pcall(self.SanitizeProfileData, self, result, issues) then
-		return false, self:BuildImportErrorMessage("the profile values could not be checked")
-	end
-
-	local warning
-
-	if issues[1] then
-		warning = "Wrong-typed values will be reset to defaults: " .. FormatSanitizeIssues(issues)
-	end
-
-	return true, result, warning
-end
-
--- Overwrites the active profile's live data and saved entry with parsed import data.
--- Must write both, or the logout-time SaveActiveProfileData before ReloadUI clobbers the import.
-function ACAB:ApplyImportedProfileData(data)
-	if not self.activeProfileName or self:IsBuiltInProfileName(self.activeProfileName) then
-		return false
-	end
-
-	ACABDB = self:DeepCopyTable(data)
-
-	ACABProfilesDB = ACABProfilesDB or {}
-	ACABProfilesDB[self.activeProfileName] = self:DeepCopyTable(data)
-
-	return true
-end
-
 -- Switches this character to an existing profile and reloads the UI.
 function ACAB:SwitchProfile(name)
 	if not ACABProfilesDB or not ACABProfilesDB[name] then
@@ -1727,106 +1441,6 @@ function ACAB:SwitchProfile(name)
 	return true
 end
 
--- Shared "enter a new profile name" dialog; creates the profile and switches to it.
-function ACAB:ShowCreateProfileDialog(onCreated)
-	self:ShowDialog({
-		title = "New Profile",
-		message = "Enter the name for the new profile",
-		mode = "textinput",
-		buttons = {
-			{
-				text = "Accept",
-				isDefault = true,
-				onClick = function(value)
-					local ok, reason = ACAB:CreateProfile(value)
-
-					if ok then
-						ACAB:SwitchProfile(value)
-					elseif reason then
-						ACAB:Print(reason)
-					end
-
-					if onCreated then
-						onCreated(ok, value)
-					end
-				end,
-			},
-			{ text = "Cancel", onClick = function() end },
-		},
-	})
-end
-
--- This character's first-login dialog: setup wizard, use an existing profile, or stay on Default Vanilla.
-function ACAB:ShowFirstLoginDialog()
-	local buttons = {
-		{
-			text = "Set up a new custom Profile",
-			isDefault = true,
-			variant = "prominent",
-			onClick = function()
-				ACAB:ShowSetupWizard()
-			end,
-		},
-	}
-
-	-- Shown only when a custom (non-built-in) profile exists.
-	local names = self:GetProfileNames()
-	local hasCustomProfile = false
-	local i
-
-	for i = 1, table.getn(names) do
-		if not self:IsBuiltInProfileName(names[i]) then
-			hasCustomProfile = true
-		end
-	end
-
-	if hasCustomProfile then
-		table.insert(buttons, {
-			text = "use existing profile",
-			onClick = function()
-				ACAB:ShowDialog({
-					title = "Use Existing Profile",
-					message = "Choose a profile to use for this character.",
-					mode = "dropdown",
-					options = ACAB:GetProfileNames(),
-					buttons = {
-						{
-							text = "Accept",
-							isDefault = true,
-							onClick = function(value)
-								if value then
-									ACAB:SwitchProfile(value)
-								end
-							end,
-						},
-						{ text = "Cancel", onClick = function() end },
-					},
-				})
-			end,
-		})
-	end
-
-	table.insert(buttons, {
-		text = "Stay on this uneditable default profile!",
-		danger = true,
-		variant = "minor",
-		onClick = function()
-			ACABCharDB = ACABCharDB or {}
-			ACABCharDB.hasSelectedProfileBefore = true
-		end,
-	})
-
-	self:ShowDialog({
-		title = "Welcome to ACAB",
-		message = "Thank you for choosing ACAB, you are currently using the Profile \"" .. self.DEFAULT_PROFILE_NAME .. "\". " ..
-			"The built-in \"" .. self.DEFAULT_PROFILE_NAME .. "\" and \"" .. self.MODERN_PROFILE_NAME .. "\" profiles are locked and " ..
-			"cannot be edited - Edit Layout mode and Settings changes are unavailable while one of them is active.\n\n" ..
-			"Do you wish to set up your own custom profile?",
-		mode = "confirm",
-		buttons = buttons,
-	})
-end
-
 -------------------------------------------------------------------------
 -- EnsureDB: migration-safe defaults. Order matters - never reorder, change a default, or reset a one-shot flag.
 -------------------------------------------------------------------------
@@ -1839,7 +1453,14 @@ local ANCHOR_RECAPTURE_FLAGS = {
 	"anchorEnterWorldFixDone",
 }
 
+-- ACABDB table the last EnsureDB pass completed on.
+local lastEnsuredDB = nil
+
+-- Full pass once per ACABDB table; a replaced ACABDB (profile switch/copy/import/wizard) gets a new pass.
+-- Seeded fields must never be cleared in place afterwards: see known-problems.md: "EnsureDB ordering and one-shot flags".
 function ACAB:EnsureDB()
+	if ACABDB ~= nil and ACABDB == lastEnsuredDB then return end
+
 	if type(ACABDB) ~= "table" then
 		ACABDB = {}
 	end
@@ -1920,15 +1541,12 @@ function ACAB:EnsureDB()
 	if ACABDB.mainBarPageIndicatorFollowsMainBar == nil then ACABDB.mainBarPageIndicatorFollowsMainBar = true end
 
 	-- stanceBarPosition/stanceBarNativeAnchor are captured lazily on first build, not seeded here.
-	-- Nils a corrupted stanceBarNativeGap so the next login recaptures it.
-	if ACABDB.stanceBarNativeGap
-		and (ACABDB.stanceBarNativeGap <= 0 or ACABDB.stanceBarNativeGap >= self.BUTTON_SIZE) then
-		ACABDB.stanceBarNativeGap = nil
-	end
+	-- Clears the obsolete stanceBarNativeGap.
+	ACABDB.stanceBarNativeGap = nil
 
 	if ACABDB.tintWholeButtonOnRange == nil then ACABDB.tintWholeButtonOnRange = true end
 
-	-- One-time migration from the old boolean ACABDB.disableBlizzardArt (left in place, no longer read).
+	-- One-time migration from the old boolean ACABDB.disableBlizzardArt (cleared below).
 	if ACABDB.mainBarArtMode == nil then
 		if ACABDB.disableBlizzardArt == true then
 			ACABDB.mainBarArtMode = ACAB.MAIN_BAR_ART_MODE_DISABLED
@@ -1937,8 +1555,13 @@ function ACAB:EnsureDB()
 		end
 	end
 
-	-- Clears an obsolete saved field.
+	-- Clears obsolete saved fields; must run after the migrations above read them.
 	ACABDB.groupedElementOffsets = nil
+	ACABDB.disableBlizzardArt = nil
+	ACABDB.mainBarPaginationEnabled = nil
+	ACABDB.mainBarStanceSwapEnabled = nil
+	ACABDB.mainBarPageBarAssignment = nil
+	ACABDB.mainBarStanceBarAssignment = nil
 
 	-- Key Ring's hover-only settings are seeded once from Bag Bar's.
 	if ACABDB.keyRingHoverOnly == nil then
@@ -2079,7 +1702,7 @@ function ACAB:EnsureDB()
 		ACABDB.defaultBars[self.PET_BAR_ID] = SeedOneDefaultBar(self, self.PET_BAR_ID)
 	end
 
-	-- Pet Bar structural fields re-asserted every call; user-editable ones only nil-seeded.
+	-- Pet Bar structural fields re-asserted every pass; user-editable ones only nil-seeded.
 	-- Its default position is set later, by SetupPetBarNativeContainer.
 	do
 		local petCfg = ACABDB.defaultBars[self.PET_BAR_ID]
@@ -2096,7 +1719,7 @@ function ACAB:EnsureDB()
 		ACABDB.defaultBars[self.STANCE_BAR_ID] = SeedOneDefaultBar(self, self.STANCE_BAR_ID)
 	end
 
-	-- Stance Bar structural fields re-asserted every call; useNativeStanceBar only nil-seeded.
+	-- Stance Bar structural fields re-asserted every pass; useNativeStanceBar only nil-seeded.
 	do
 		local stanceCfg = ACABDB.defaultBars[self.STANCE_BAR_ID]
 
@@ -2117,4 +1740,6 @@ function ACAB:EnsureDB()
 		ACABDB.hoverBindMode = false
 		hasResetHoverBindModeThisSession = true
 	end
+
+	lastEnsuredDB = ACABDB
 end

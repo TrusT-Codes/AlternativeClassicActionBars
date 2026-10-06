@@ -1,6 +1,6 @@
 -- Settings.lua
 -- Settings-window shell: frame, view tabs and scroll areas, position-range math, profile/layout lock
--- gating, and the dynamic window-height fit. Page builders live in SettingsBars.lua/SettingsGeneral.lua.
+-- gating, and the dynamic window-height fit. Page builders live in SettingsBars.lua/SettingsSimplePages.lua/SettingsGeneral.lua.
 
 local ACAB = AlternativeClassicActionBars
 
@@ -51,7 +51,7 @@ function ACAB:GetSpacingMax()
 	return ACAB.SPACING_MAX + ACAB:GetSpacingDisplayOffset()
 end
 
--- Simple-page configs by page key. must stay a top-level init: SettingsBars.lua fills it at load time.
+-- Simple-page configs by page key. must stay a top-level init: SettingsSimplePages.lua fills it at load time.
 ACAB.simpleBarPageConfigs = {}
 
 -- Every string-keyed simple page, in bar-list order.
@@ -98,7 +98,6 @@ function ACAB:FindCustomBarConfig(barId)
 
 	for i = 1, table.getn(ACABDB.bars) do
 		local cfg = ACABDB.bars[i]
-
 		if cfg and cfg.id == barId then
 			return cfg
 		end
@@ -122,8 +121,7 @@ end
 
 -- Generic X/Y range: twice UIParent's size per axis, covering every anchor corner plus off-screen drags.
 function ACAB:GetScreenCoordinateRange()
-	local width = UIParent:GetWidth()
-	local height = UIParent:GetHeight()
+	local width, height = self:GetUIParentAnchorSize()
 
 	if not width or width <= 0 then
 		width = 1024
@@ -216,15 +214,10 @@ end
 
 -- Re-applies an action-bar page's X/Y slider range from the bar's current size and border style.
 function ACAB:RefreshPositionSliderRange(page)
-	if not page or not page.xSlider or not page.ySlider or not page.barId then
-		return
-	end
+	if not page or not page.xSlider or not page.ySlider or not page.barId then return end
 
 	local cfg = ACAB:GetBarConfig(page.barId)
-
-	if not cfg then
-		return
-	end
+	if not cfg then return end
 
 	local minX, maxX, minY, maxY = ACAB:GetActionBarCoordinateRange(cfg)
 
@@ -233,10 +226,9 @@ end
 
 -------------------------------------------------------------------------
 -- Native/simple-element X/Y position clamp range
--- Symmetric around screen center minus half the element's scaled visual footprint;
--- extraMaxYPixels (optional) adds real screen pixels of headroom above the top edge.
 -------------------------------------------------------------------------
 
+-- Symmetric around screen center minus half the element's scaled visual footprint; extraMaxYPixels adds top headroom.
 function ACAB:GetSimpleElementCoordinateRange(frame, extraMaxYPixels)
 	local screenWidth, screenHeight = ACAB:GetUIParentAnchorSize()
 	local visualWidth, visualHeight = 0, 0
@@ -279,7 +271,6 @@ end
 -- Simple-page element range; the generic screen range while its saved position is still non-canonical.
 function ACAB:GetSimplePageCoordinateRange(config, frame)
 	local pos = config.getPosition and config.getPosition()
-
 	if pos and not self:IsCanonicalPosition(pos) then
 		return self:GetScreenCoordinateRange()
 	end
@@ -289,21 +280,13 @@ end
 
 -- Re-applies a simple page's X/Y slider range from its element's current size; no-op without getElementFrame.
 function ACAB:RefreshSimplePositionSliderRange(page, key)
-	if not page or not page.xSlider or not page.ySlider then
-		return
-	end
+	if not page or not page.xSlider or not page.ySlider then return end
 
 	local config = ACAB.simpleBarPageConfigs[key]
-
-	if not config or not config.getElementFrame then
-		return
-	end
+	if not config or not config.getElementFrame then return end
 
 	local frame = config.getElementFrame()
-
-	if not frame then
-		return
-	end
+	if not frame then return end
 
 	local minX, maxX, minY, maxY = ACAB:GetSimplePageCoordinateRange(config, frame)
 
@@ -311,8 +294,7 @@ function ACAB:RefreshSimplePositionSliderRange(page, key)
 end
 
 -------------------------------------------------------------------------
--- Reusable scrollable content area: every settings page/tab scrolls through
--- CreateScrollFrame + UpdateScrollFrame.
+-- Scrollable content areas (CreateScrollFrame + UpdateScrollFrame)
 -------------------------------------------------------------------------
 
 -- Pixels scrolled per mouse-wheel notch.
@@ -347,9 +329,7 @@ function ACAB:CreateScrollFrame(parent, name, scrollbarOnLeft)
 	scrollFrame:EnableMouseWheel(true)
 
 	scrollFrame:SetScript("OnMouseWheel", function()
-		if not scrollBar then
-			return
-		end
+		if not scrollBar then return end
 
 		local minVal, maxVal = scrollBar:GetMinMaxValues()
 		local newValue = scrollBar:GetValue() - (arg1 * SETTINGS_SCROLL_WHEEL_STEP)
@@ -433,15 +413,7 @@ end
 
 -- Dark translucent bordered backdrop shared by the bar list and every content viewport.
 local function ApplyPanelBackdrop(frame)
-	frame:SetBackdrop({
-		bgFile   = "Interface\\Tooltips\\UI-Tooltip-Background",
-		edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-		tile = true,
-		tileSize = 8,
-		edgeSize = 8,
-		insets = { left = 2, right = 2, top = 2, bottom = 2 },
-	})
-
+	frame:SetBackdrop(ACAB.PANEL_BACKDROP)
 	frame:SetBackdropColor(0, 0, 0, 0.3)
 end
 
@@ -559,13 +531,14 @@ function ACAB:CreateSettingsFrame()
 	end
 
 	local function CreateTabButton(text, onClick, point, relativeTo, relativePoint, x, y)
-		local button = CreateFrame("Button", nil, f)
+		local button = ACAB:CreateModernButton(f, {
+			height = 20,
+			minWidth = 90,
+			maxWidth = 90,
+			text = text,
+			anchor = { point, relativeTo, relativePoint, x, y },
+		})
 
-		button:SetHeight(20)
-		button:SetPoint(point, relativeTo, relativePoint, x, y)
-
-		ACAB:StyleModernButton(button, 90, 90)
-		button:SetText(text)
 		ApplyTabFadeHighlight(button)
 
 		button:SetScript("OnClick", onClick)
@@ -638,11 +611,9 @@ function ACAB:CreateSettingsFrame()
 
 	-------------------------------------------------------------------------
 	-- Right content panel: contentScrollFrame is the Bars-view viewport, contentPanel its scroll child.
-	-- Other views get their own pair (ACAB:CreateWideContentScrollFrame).
-	-- WARNING: keep every scrollframe paired with the scrollchild it was created with - re-targeting
-	-- it leaves the new child with no resolvable position/size.
 	-------------------------------------------------------------------------
 
+	-- must stay paired with its original scroll child, see known-problems.md: "ScrollFrame must stay paired"
 	f.contentScrollFrame = ACAB:CreateScrollFrame(f, "ACABSettingsContentScrollFrame")
 
 	f.contentScrollFrame:SetHeight(610)
@@ -706,8 +677,7 @@ function ACAB:CreateWideContentScrollFrame(name)
 
 	scrollFrame:SetHeight(610)
 
-	-- Sized from settingsFrame:GetWidth() (a fixed literal), not anchors, which may not be resolved yet.
-	-- Reserves scrollbar width only while the scrollbar is shown, and the step list's width in the Setup Wizard.
+	-- Width from settingsFrame:GetWidth(), not anchors; reserves scrollbar width while shown and the wizard step list's.
 	scrollFrame.applyScrollbarReserve = function()
 		local reserve = scrollFrame.needsScrollbar and SETTINGS_SCROLLBAR_RESERVED_WIDTH or 0
 		local sidebar = 0
@@ -737,8 +707,7 @@ function ACAB:CreateWideContentScrollFrame(name)
 end
 
 -------------------------------------------------------------------------
--- Default-profile lock: while the Default profile is active every page shows a red banner and locks
--- its controls. Independent of ApplyDefaultLayoutGating below; both can apply at once.
+-- Default-profile lock: red banner + locked controls (independent of ApplyDefaultLayoutGating)
 -------------------------------------------------------------------------
 
 -- Banner text while the Default profile is active (wins over the layout-lock text).
@@ -763,7 +732,6 @@ function ACAB:HandleLockReasonClick()
 				ACAB:ApplyUseDefaultLayoutChange(false)
 
 				local generalPanel = ACAB.settingsFrame and ACAB.settingsFrame.generalPanel
-
 				if generalPanel and generalPanel.useDefaultLayoutCheckbox then
 					generalPanel.useDefaultLayoutCheckbox:SetChecked(false)
 				end
@@ -786,14 +754,7 @@ function ACAB:CreateProfileLockWarning(page)
 	banner:SetHeight(PROFILE_LOCK_BANNER_HEIGHT)
 	banner:SetFrameLevel(page:GetFrameLevel() + 5)
 
-	banner:SetBackdrop({
-		bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-		edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-		tile = true,
-		tileSize = 16,
-		edgeSize = 12,
-		insets = { left = 2, right = 2, top = 2, bottom = 2 },
-	})
+	banner:SetBackdrop(ACAB.BANNER_BACKDROP)
 
 	banner.lockedBackdropColor = { 0.35, 0, 0, 0.9 }
 	banner.hoverBackdropColor = { 0.5, 0.08, 0.08, 0.9 }
@@ -831,9 +792,7 @@ end
 
 -- Slides page down by the lock banner's height while locked; title and banner stay on contentPanel.
 function ACAB:ApplyPageBannerReserve(page, locked)
-	if not page or not ACAB.settingsFrame or not ACAB.settingsFrame.contentPanel then
-		return
-	end
+	if not page or not ACAB.settingsFrame or not ACAB.settingsFrame.contentPanel then return end
 
 	local reserve = 0
 
@@ -857,7 +816,6 @@ local function SetProfileLockBannerMessage(banner, message)
 	-- must set explicit widths: a TOPLEFT+TOPRIGHT pair alone doesn't wrap text on this client.
 	local page = banner:GetParent()
 	local width = page:GetWidth()
-
 	if width and width > 0 then
 		banner:SetWidth(width)
 		banner.text:SetWidth(width - (2 * ACAB.INDENT_SECTION))
@@ -937,7 +895,6 @@ function ACAB:ApplyProfileLockGating(page, alsoCheckLayoutLock)
 	for i = 1, table.getn(PROFILE_LOCK_CONTROL_NAMES) do
 		local name = PROFILE_LOCK_CONTROL_NAMES[i]
 		local control = page[name]
-
 		if control then
 			local exempt = isNumberedDefaultBar and name == "enableCheckbox"
 
@@ -958,7 +915,6 @@ function ACAB:ApplyProfileLockGating(page, alsoCheckLayoutLock)
 			if row.dropdown then
 				-- UIDropDownMenuTemplate clicks go through its child Button, which needs Disable()/Enable().
 				local dropdownButton = getglobal(row.dropdown:GetName() .. "Button")
-
 				if dropdownButton then
 					ACAB:LockControl(dropdownButton, locked)
 				else
@@ -970,9 +926,7 @@ function ACAB:ApplyProfileLockGating(page, alsoCheckLayoutLock)
 end
 
 -------------------------------------------------------------------------
--- Default-layout gating (General tab's "Force Vanilla Layout Mode")
--- Called by simple/native-backed pages only; default bars get it via ApplyProfileLockGating's
--- alsoCheckLayoutLock, custom bars never gate on it.
+-- Default-layout gating ("Force Vanilla Layout Mode"), simple/native-backed pages only
 -------------------------------------------------------------------------
 
 -- Position stepper buttons and click-to-edit readouts, gated like the sliders they flank.
@@ -984,9 +938,7 @@ local POSITION_BUTTON_NAMES = {
 
 -- EnableMouse + alpha gate (works on template-less swatches); toggleEnabled also calls Enable()/Disable().
 local function GateControl(control, interactive, alpha, toggleEnabled)
-	if not control then
-		return
-	end
+	if not control then return end
 
 	control:EnableMouse(interactive)
 	control:SetAlpha(alpha)
@@ -1031,9 +983,7 @@ end
 
 -- Refreshes every already-built default-bar and simple page after a layout/style gating change.
 function ACAB:RefreshDefaultLayoutGatingOnAllPages()
-	if not ACAB.settingsFrame then
-		return
-	end
+	if not ACAB.settingsFrame then return end
 
 	local i
 
@@ -1078,32 +1028,66 @@ local SETTINGS_CONTENT_MIN_HEIGHT = 260
 -- Maximum window height as a fraction of screen height.
 local SETTINGS_MAX_HEIGHT_RATIO = 0.9
 
--- Appends frame at n+1 if non-nil and returns the new count (keeps candidate lists free of nil holes).
-local function AppendCandidate(list, n, frame)
-	if frame then
-		list[n + 1] = frame
-		return n + 1
+-- Appends owner[name] for each of names, in order; returns the new count.
+local function AppendNamedCandidates(list, n, owner, names)
+	local i
+
+	for i = 1, table.getn(names) do
+		n = ACAB:AppendCandidate(list, n, owner[names[i]])
 	end
 
 	return n
 end
 
+-- Height-fit candidate field names, in measuring order.
+local BAR_PAGE_CANDIDATE_NAMES = {
+	"hoverOnlyCheckbox", "hoverDurationSlider", "hoverDurationValueText", "mainBarArtModeRow",
+	"xValueText", "yValueText", "spacingValueText", "buttonSizeValueText",
+	"resetPositionButton", "resetModernButton", "buttonCountMinus", "buttonCountPlus", "buttonCountValueText",
+	"enableCheckbox", "pageIndicatorValueText", "useVanillaPetBarCheckbox",
+	-- Simple pages.
+	"scaleValueText",
+	-- Experience Bar page.
+	"betterExpBarCheckbox", "expBarFontSizeSlider", "expBarFontSizeValueText",
+	"expBarShowLevelCheckbox", "expBarShowCurrentOverMaxCheckbox", "expBarShowPercentCheckbox",
+	"expBarShowRestedPercentCheckbox", "expBarShowRestedTotalCheckbox",
+	"earnedColorSwatch", "restedColorSwatch", "expBarTextColorSwatch", "resetColorsButton",
+	"expBarGlowPulseIntervalSlider", "expBarGlowPulseIntervalValueText",
+}
+
+-- After the assignment rows and grid swatches.
+local BAR_PAGE_TAIL_CANDIDATE_NAMES = { "noStancesText", "useVanillaStanceBarCheckbox" }
+
+local GENERAL_CANDIDATE_NAMES = {
+	"useDefaultLayoutCheckbox", "tintWholeButtonCheckbox", "mainBarPaginationCheckbox", "mainBarStanceSwapCheckbox",
+	"macroTextCheckbox", "macroValueText", "macroResetButton",
+	"hotkeyValueText", "hotkeyResetButton", "countValueText", "countResetButton",
+	"modernBorderStyleCheckbox", "globalSpacingCheckbox", "globalSpacingSlider", "globalSpacingValueText",
+	"globalButtonSizeCheckbox", "globalButtonSizeSlider", "globalButtonSizeValueText", "bypassBar2DepCheckbox",
+	"updateChannelCheckbox",
+}
+
+local PROFILES_CANDIDATE_NAMES = {
+	"profileDropdown", "wizardButton", "exportButton", "copyButton", "importButton", "deleteButton",
+}
+
+local EDIT_MODE_CANDIDATE_NAMES = {
+	"snapToAdjacentCheckbox", "showLayoutGridCheckbox", "snapToGridCheckbox",
+	"useCustomGridSizeCheckbox", "customGridSizeSlider", "customGridSizeValueText",
+}
+
 -- Largest distance from referenceTop down to a shown candidate's bottom edge.
 -- must stay a delta of two live positions: the window is movable, so position estimates break once dragged.
 local function MeasureDeepestExtent(candidateList, referenceTop)
-	if not candidateList or not referenceTop then
-		return nil
-	end
+	if not candidateList or not referenceTop then return nil end
 
 	local deepest = nil
 	local i
 
 	for i = 1, table.getn(candidateList) do
 		local frame = candidateList[i]
-
 		if frame and frame.GetBottom and not (frame.IsShown and not frame:IsShown()) then
 			local bottom = frame:GetBottom()
-
 			if bottom then
 				local depth = referenceTop - bottom
 
@@ -1121,9 +1105,7 @@ end
 -- returns the raw measured content height. Optional: listCandidateList (bar-list rows, same viewport),
 -- minContentHeight (extra floor), noMinFloor (skip SETTINGS_CONTENT_MIN_HEIGHT).
 local function ApplySettingsHeightFromCandidates(candidateList, scrollFrame, scrollChildPanel, listCandidateList, minContentHeight, noMinFloor)
-	if not ACAB.settingsFrame or not scrollFrame or not scrollChildPanel then
-		return nil
-	end
+	if not ACAB.settingsFrame or not scrollFrame or not scrollChildPanel then return nil end
 
 	-- Saved so UpdateScrollFrame can restore the user's scroll position after the re-fit.
 	local previousContentScroll = scrollFrame:GetVerticalScroll()
@@ -1178,9 +1160,7 @@ local function ApplySettingsHeightFromCandidates(candidateList, scrollFrame, scr
 		listDepth = MeasureDeepestExtent(listCandidateList, ACAB.settingsFrame.listContent:GetTop())
 	end
 
-	if not contentDepth and not listDepth then
-		return nil
-	end
+	if not contentDepth and not listDepth then return nil end
 
 	local BOTTOM_MARGIN = 20
 	local measuredContentHeight = contentDepth and (contentDepth + BOTTOM_MARGIN) or 0
@@ -1199,7 +1179,6 @@ local function ApplySettingsHeightFromCandidates(candidateList, scrollFrame, scr
 
 	-- The Setup Wizard's step list shares the viewport height and must fit every row.
 	local stepList = ACAB.settingsFrame.wizardMode and ACAB.settingsFrame.wizardStepList
-
 	if stepList and stepList.requiredHeight and sharedRequirement < stepList.requiredHeight then
 		sharedRequirement = stepList.requiredHeight
 	end
@@ -1257,61 +1236,20 @@ end
 
 -- Bars view: fits the window to the bar page's controls and the bar-list rows beside it.
 function ACAB:FitSettingsWindowToBarPage(barId)
-	if not ACAB.settingsFrame then
-		return
-	end
+	if not ACAB.settingsFrame then return end
 
 	local page = ACAB.settingsFrame.pages[barId]
-
-	if not page then
-		return
-	end
+	if not page then return end
 
 	local candidates = {}
-	local n = 0
-
-	n = AppendCandidate(candidates, n, page.hoverOnlyCheckbox)
-	n = AppendCandidate(candidates, n, page.hoverDurationSlider)
-	n = AppendCandidate(candidates, n, page.hoverDurationValueText)
-	n = AppendCandidate(candidates, n, page.mainBarArtModeRow)
-	n = AppendCandidate(candidates, n, page.xValueText)
-	n = AppendCandidate(candidates, n, page.yValueText)
-	n = AppendCandidate(candidates, n, page.spacingValueText)
-	n = AppendCandidate(candidates, n, page.buttonSizeValueText)
-	n = AppendCandidate(candidates, n, page.resetPositionButton)
-	n = AppendCandidate(candidates, n, page.resetModernButton)
-	n = AppendCandidate(candidates, n, page.buttonCountMinus)
-	n = AppendCandidate(candidates, n, page.buttonCountPlus)
-	n = AppendCandidate(candidates, n, page.buttonCountValueText)
-	n = AppendCandidate(candidates, n, page.enableCheckbox)
-	n = AppendCandidate(candidates, n, page.pageIndicatorValueText)
-	n = AppendCandidate(candidates, n, page.useVanillaPetBarCheckbox)
-
-	-- Simple-page controls.
-	n = AppendCandidate(candidates, n, page.scaleValueText)
-
-	-- Experience Bar page controls.
-	n = AppendCandidate(candidates, n, page.betterExpBarCheckbox)
-	n = AppendCandidate(candidates, n, page.expBarFontSizeSlider)
-	n = AppendCandidate(candidates, n, page.expBarFontSizeValueText)
-	n = AppendCandidate(candidates, n, page.expBarShowLevelCheckbox)
-	n = AppendCandidate(candidates, n, page.expBarShowCurrentOverMaxCheckbox)
-	n = AppendCandidate(candidates, n, page.expBarShowPercentCheckbox)
-	n = AppendCandidate(candidates, n, page.expBarShowRestedPercentCheckbox)
-	n = AppendCandidate(candidates, n, page.expBarShowRestedTotalCheckbox)
-	n = AppendCandidate(candidates, n, page.earnedColorSwatch)
-	n = AppendCandidate(candidates, n, page.restedColorSwatch)
-	n = AppendCandidate(candidates, n, page.expBarTextColorSwatch)
-	n = AppendCandidate(candidates, n, page.resetColorsButton)
-	n = AppendCandidate(candidates, n, page.expBarGlowPulseIntervalSlider)
-	n = AppendCandidate(candidates, n, page.expBarGlowPulseIntervalValueText)
+	local n = AppendNamedCandidates(candidates, 0, page, BAR_PAGE_CANDIDATE_NAMES)
 
 	-- Stance/Page assignment rows (default bars 1-5).
 	if page.assignmentRows then
 		local i
 
 		for i = 1, table.getn(page.assignmentRows) do
-			n = AppendCandidate(candidates, n, page.assignmentRows[i])
+			n = ACAB:AppendCandidate(candidates, n, page.assignmentRows[i])
 		end
 	end
 
@@ -1321,15 +1259,12 @@ function ACAB:FitSettingsWindowToBarPage(barId)
 		for i = 1, table.getn(page.gridSwatches) do
 			local swatch = page.gridSwatches[i]
 
-			n = AppendCandidate(candidates, n, swatch)
-			n = AppendCandidate(candidates, n, swatch.caption)
+			n = ACAB:AppendCandidate(candidates, n, swatch)
+			n = ACAB:AppendCandidate(candidates, n, swatch.caption)
 		end
 	end
 
-	-- Stance Bar's "no stances" message, shown instead of the grid swatches.
-	n = AppendCandidate(candidates, n, page.noStancesText)
-
-	n = AppendCandidate(candidates, n, page.useVanillaStanceBarCheckbox)
+	AppendNamedCandidates(candidates, n, page, BAR_PAGE_TAIL_CANDIDATE_NAMES)
 
 	-- Bar-list rows, measured separately since the sidebar scrolls independently (hidden in the Setup Wizard).
 	local listCandidates = nil
@@ -1341,7 +1276,7 @@ function ACAB:FitSettingsWindowToBarPage(barId)
 		local i
 
 		for i = 1, table.getn(ACAB.settingsFrame.barButtons) do
-			listN = AppendCandidate(listCandidates, listN, ACAB.settingsFrame.barButtons[i])
+			listN = ACAB:AppendCandidate(listCandidates, listN, ACAB.settingsFrame.barButtons[i])
 		end
 	end
 
@@ -1362,54 +1297,29 @@ function ACAB:FitSettingsWindowToBarPage(barId)
 	end
 end
 
+-- Fits the window to a wide-view panel's named controls; no-op until the panel exists.
+local function FitWideViewToNamedCandidates(panelKey, scrollFrameKey, names, noMinFloor)
+	if not ACAB.settingsFrame or not ACAB.settingsFrame[panelKey] then return end
+
+	local panel = ACAB.settingsFrame[panelKey]
+	local candidates = {}
+
+	AppendNamedCandidates(candidates, 0, panel, names)
+	ApplySettingsHeightFromCandidates(candidates, ACAB.settingsFrame[scrollFrameKey], panel, nil, nil, noMinFloor)
+end
+
 -- General view: fits the window to the General panel's controls.
 function ACAB:FitSettingsWindowToGeneralView()
-	if not ACAB.settingsFrame or not ACAB.settingsFrame.generalPanel then
-		return
-	end
-
-	local panel = ACAB.settingsFrame.generalPanel
-
-	local candidates = {}
-	local n = 0
-
-	n = AppendCandidate(candidates, n, panel.useDefaultLayoutCheckbox)
-	n = AppendCandidate(candidates, n, panel.tintWholeButtonCheckbox)
-	n = AppendCandidate(candidates, n, panel.mainBarPaginationCheckbox)
-	n = AppendCandidate(candidates, n, panel.mainBarStanceSwapCheckbox)
-
-	n = AppendCandidate(candidates, n, panel.macroTextCheckbox)
-	n = AppendCandidate(candidates, n, panel.macroValueText)
-	n = AppendCandidate(candidates, n, panel.macroResetButton)
-
-	n = AppendCandidate(candidates, n, panel.hotkeyValueText)
-	n = AppendCandidate(candidates, n, panel.hotkeyResetButton)
-	n = AppendCandidate(candidates, n, panel.countValueText)
-	n = AppendCandidate(candidates, n, panel.countResetButton)
-	n = AppendCandidate(candidates, n, panel.modernBorderStyleCheckbox)
-	n = AppendCandidate(candidates, n, panel.globalSpacingCheckbox)
-	n = AppendCandidate(candidates, n, panel.globalSpacingSlider)
-	n = AppendCandidate(candidates, n, panel.globalSpacingValueText)
-	n = AppendCandidate(candidates, n, panel.globalButtonSizeCheckbox)
-	n = AppendCandidate(candidates, n, panel.globalButtonSizeSlider)
-	n = AppendCandidate(candidates, n, panel.globalButtonSizeValueText)
-	n = AppendCandidate(candidates, n, panel.bypassBar2DepCheckbox)
-
-	ApplySettingsHeightFromCandidates(candidates, ACAB.settingsFrame.generalScrollFrame, panel)
+	FitWideViewToNamedCandidates("generalPanel", "generalScrollFrame", GENERAL_CANDIDATE_NAMES)
 end
 
 -- Setup Wizard decision steps: shrink-to-fit the shown step's direct children and regions.
 function ACAB:FitSettingsWindowToWizardView()
-	if not ACAB.settingsFrame or not ACAB.settingsFrame.wizardPanel then
-		return
-	end
+	if not ACAB.settingsFrame or not ACAB.settingsFrame.wizardPanel then return end
 
 	local panel = ACAB.settingsFrame.wizardPanel
 	local step = panel.activeStep
-
-	if not step then
-		return
-	end
+	if not step then return end
 
 	local candidates = {}
 	local n = 0
@@ -1418,11 +1328,11 @@ function ACAB:FitSettingsWindowToWizardView()
 	local i
 
 	for i = 1, table.getn(widgets) do
-		n = AppendCandidate(candidates, n, widgets[i])
+		n = ACAB:AppendCandidate(candidates, n, widgets[i])
 	end
 
 	for i = 1, table.getn(regions) do
-		n = AppendCandidate(candidates, n, regions[i])
+		n = ACAB:AppendCandidate(candidates, n, regions[i])
 	end
 
 	ApplySettingsHeightFromCandidates(candidates, ACAB.settingsFrame.wizardScrollFrame, panel, nil, nil, true)
@@ -1430,44 +1340,12 @@ end
 
 -- Profiles view: shrink-to-fit (no minimum height floor).
 function ACAB:FitSettingsWindowToProfilesView()
-	if not ACAB.settingsFrame or not ACAB.settingsFrame.profilesPanel then
-		return
-	end
-
-	local panel = ACAB.settingsFrame.profilesPanel
-
-	local candidates = {}
-	local n = 0
-
-	n = AppendCandidate(candidates, n, panel.profileDropdown)
-	n = AppendCandidate(candidates, n, panel.wizardButton)
-	n = AppendCandidate(candidates, n, panel.exportButton)
-	n = AppendCandidate(candidates, n, panel.copyButton)
-	n = AppendCandidate(candidates, n, panel.importButton)
-	n = AppendCandidate(candidates, n, panel.deleteButton)
-
-	ApplySettingsHeightFromCandidates(candidates, ACAB.settingsFrame.profilesScrollFrame, panel, nil, nil, true)
+	FitWideViewToNamedCandidates("profilesPanel", "profilesScrollFrame", PROFILES_CANDIDATE_NAMES, true)
 end
 
 -- Edit Mode view: shrink-to-fit (no minimum height floor).
 function ACAB:FitSettingsWindowToEditModeView()
-	if not ACAB.settingsFrame or not ACAB.settingsFrame.editModePanel then
-		return
-	end
-
-	local panel = ACAB.settingsFrame.editModePanel
-
-	local candidates = {}
-	local n = 0
-
-	n = AppendCandidate(candidates, n, panel.snapToAdjacentCheckbox)
-	n = AppendCandidate(candidates, n, panel.showLayoutGridCheckbox)
-	n = AppendCandidate(candidates, n, panel.snapToGridCheckbox)
-	n = AppendCandidate(candidates, n, panel.useCustomGridSizeCheckbox)
-	n = AppendCandidate(candidates, n, panel.customGridSizeSlider)
-	n = AppendCandidate(candidates, n, panel.customGridSizeValueText)
-
-	ApplySettingsHeightFromCandidates(candidates, ACAB.settingsFrame.editModeScrollFrame, panel, nil, nil, true)
+	FitWideViewToNamedCandidates("editModePanel", "editModeScrollFrame", EDIT_MODE_CANDIDATE_NAMES, true)
 end
 
 -------------------------------------------------------------------------

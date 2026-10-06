@@ -21,9 +21,7 @@ loadFrame:SetScript("OnEvent", function()
 
 	loadFrame:UnregisterEvent("PLAYER_ENTERING_WORLD")
 
-	if not ACAB:CheckRequiredMods() then
-		return
-	end
+	if not ACAB:CheckRequiredMods() then return end
 
 	-- WaitForNativeBarSettle calls its callback as a plain function; the wrapper keeps RunLoginSequence's self.
 	ACAB:WaitForNativeBarSettle(function()
@@ -44,6 +42,9 @@ gridVisibilityFrame:SetScript("OnEvent", function()
 	-- Pet spell drags fire the PET_BAR_* pair instead of the ACTIONBAR_* pair.
 	ACAB.isShowingActionGrid = (event == "ACTIONBAR_SHOWGRID" or event == "PET_BAR_SHOWGRID")
 
+	-- must skip before login: bars aren't built yet
+	if not ACAB.loginSequenceDone then return end
+
 	ACAB:SweepCustomBarGridVisibility()
 end)
 
@@ -61,8 +62,14 @@ local lastDefaultBarStanceIndex = false
 
 mainBarBonusEventFrame:SetScript("OnEvent", function()
 	if event == "UPDATE_BONUS_ACTIONBAR" then
+		-- must also run before login: the login sequence never hides BonusActionBarFrame itself
 		ACAB:HideBonusActionBarFrame()
-		ACAB:RefreshDefaultBarSlots()
+
+		-- must skip before login: ACABDB may still be another character's profile
+		if ACAB.loginSequenceDone then
+			ACAB:RefreshDefaultBarSlots()
+		end
+
 		lastDefaultBarStanceIndex = ACAB:GetActiveStanceIndex()
 		return
 	end
@@ -72,7 +79,11 @@ mainBarBonusEventFrame:SetScript("OnEvent", function()
 
 	if stanceIndex ~= lastDefaultBarStanceIndex then
 		lastDefaultBarStanceIndex = stanceIndex
-		ACAB:RefreshDefaultBarSlots()
+
+		-- must skip before login: ACABDB may still be another character's profile
+		if ACAB.loginSequenceDone then
+			ACAB:RefreshDefaultBarSlots()
+		end
 	end
 end)
 
@@ -87,9 +98,10 @@ petBarVisibilityFrame:RegisterEvent("PLAYER_CONTROL_LOST")
 petBarVisibilityFrame:RegisterEvent("PLAYER_CONTROL_GAINED")
 petBarVisibilityFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 petBarVisibilityFrame:SetScript("OnEvent", function()
-	if event == "UNIT_PET" and arg1 ~= "player" then
-		return
-	end
+	if event == "UNIT_PET" and arg1 ~= "player" then return end
+
+	-- must skip before login: ACABDB may still be another character's profile
+	if not ACAB.loginSequenceDone then return end
 
 	ACAB:RefreshPetBarVisibility()
 end)
@@ -98,19 +110,12 @@ end)
 -- Stance/form set changes (PetStanceBars.lua)
 -------------------------------------------------------------------------
 
--- UPDATE_SHAPESHIFT_FORMS: the available form set changed (kept registered despite env §4.12).
-local stanceFormEventFrame = CreateFrame("Frame", "ACABStanceFormEventFrame")
-stanceFormEventFrame:RegisterEvent("UPDATE_SHAPESHIFT_FORMS")
-stanceFormEventFrame:SetScript("OnEvent", function()
-	-- Native mode.
-	ACAB:RebuildStanceBarContainer()
+-- Styled mode: re-lays-out the pool bar if the live form count changed its shape.
+local stanceLiveShapePending = false
 
-	-- Reparented native buttons only draw after the game's own refresh.
-	if ACAB:IsStanceBarNativeModeEffective() then
-		ShapeshiftBar_Update()
-	end
+local function ApplyPendingStanceLiveShape()
+	stanceLiveShapePending = false
 
-	-- Styled mode: re-lay-out the pool bar if the live form count changed its shape.
 	if ACAB:ApplyStanceBarLiveShape() then
 		local styledBar = ACAB.bars and ACAB.bars[ACAB.STANCE_BAR_ID]
 
@@ -119,6 +124,28 @@ stanceFormEventFrame:SetScript("OnEvent", function()
 		end
 
 		ACAB:RefreshBarSettingsPage(ACAB.STANCE_BAR_ID)
+	end
+end
+
+-- UPDATE_SHAPESHIFT_FORMS: the available form set changed (kept registered despite env §4.12).
+local stanceFormEventFrame = CreateFrame("Frame", "ACABStanceFormEventFrame")
+stanceFormEventFrame:RegisterEvent("UPDATE_SHAPESHIFT_FORMS")
+stanceFormEventFrame:SetScript("OnEvent", function()
+	-- must skip before login: ACABDB may still be another character's profile
+	if not ACAB.activeProfileName then return end
+
+	-- Native mode.
+	ACAB:RebuildStanceBarContainer()
+
+	-- Reparented native buttons only draw after the game's own refresh.
+	if ACAB:IsStanceBarNativeModeEffective() then
+		ShapeshiftBar_Update()
+	end
+
+	-- must run next frame: zoning fires one event per form (count 1, 2, 3), which would reset a custom grid
+	if not stanceLiveShapePending then
+		stanceLiveShapePending = true
+		C_Timer.After(0, ApplyPendingStanceLiveShape)
 	end
 
 	-- Re-syncs bars 1-5's per-stance assignment rows on any already-built settings page.
@@ -134,6 +161,9 @@ local castBarEventFrame = CreateFrame("Frame", "ACABCastBarEventFrame")
 castBarEventFrame:RegisterEvent("UNIT_SPELLCAST_START")
 castBarEventFrame:RegisterEvent("UNIT_SPELLCAST_CHANNEL_START")
 castBarEventFrame:SetScript("OnEvent", function()
+	-- must skip before login: a capture here would land in the wrong profile
+	if not ACAB.loginSequenceDone then return end
+
 	if not ACABDB or not ACABDB.castBarPosition then
 		ACAB:ApplyCastBarPosition()
 	end
@@ -153,9 +183,7 @@ betterExpBarEventFrame:RegisterEvent("PLAYER_LEVEL_UP")
 betterExpBarEventFrame:RegisterEvent("PLAYER_UPDATE_RESTING")
 
 betterExpBarEventFrame:SetScript("OnEvent", function()
-	if not ACAB.activeProfileName then
-		return
-	end
+	if not ACAB.activeProfileName then return end
 
 	ACAB:BetterExpBarOnEvent()
 end)
@@ -164,9 +192,7 @@ end)
 local restCalibrationFrame = CreateFrame("Frame", "ACABRestCalibrationFrame")
 restCalibrationFrame:RegisterEvent("CHAT_MSG_COMBAT_XP_GAIN")
 restCalibrationFrame:SetScript("OnEvent", function()
-	if not ACAB.activeProfileName then
-		return
-	end
+	if not ACAB.activeProfileName then return end
 
 	ACAB:CalibrateRestPoolFromXPMessage(arg1)
 end)
@@ -175,10 +201,12 @@ end)
 -- Position reassert after combat / looting (DefaultBars.lua)
 -------------------------------------------------------------------------
 
--- Native FrameXML may re-anchor wrapped native frames on its own; re-apply ours after combat and looting.
+-- Native FrameXML may re-anchor wrapped native frames on its own; re-apply ours after combat.
 local positionReassertFrame = CreateFrame("Frame", "ACABPositionReassertFrame")
 positionReassertFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-positionReassertFrame:RegisterEvent("LOOT_CLOSED")
 positionReassertFrame:SetScript("OnEvent", function()
+	-- must skip before login: moving native frames before the "native capture" stage stores wrong anchors
+	if not ACAB.loginSequenceDone then return end
+
 	ACAB:ReassertNativeElementPositions()
 end)

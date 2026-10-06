@@ -1,12 +1,11 @@
 -- ExperienceBar.lua
 -- Experience Bar: position/enable/scale, bar-fill colors, rested-XP overlay/tick/glow pulse, and the
--- "Better Experience Bar" text overlay. Built on DefaultBars.lua's single-native-frame container engine.
+-- "Better Experience Bar" text overlay. Built on ElementEngine.lua's single-native-frame container engine.
 
 local ACAB = AlternativeClassicActionBars
 
 -------------------------------------------------------------------------
 -- Experience Bar (MainMenuExpBar) - single native frame; its rested/text regions move and scale with it.
--- Movable/scalable via EnsureContainerOverlay regardless of ACABDB.betterExpBarEnabled.
 -------------------------------------------------------------------------
 
 ACAB.EXP_BAR_FRAME_NAME = "MainMenuExpBar"
@@ -26,10 +25,7 @@ function ACAB:GetNativeExpOverlayText()
 	end
 
 	local overlayFrame = getglobal(self.EXP_OVERLAY_FRAME_NAME)
-
-	if not overlayFrame then
-		return nil
-	end
+	if not overlayFrame then return nil end
 
 	local regions = { overlayFrame:GetRegions() }
 	local i
@@ -51,48 +47,7 @@ ACAB.EXP_RESTED_FRAME_NAME = "ExhaustionLevelFillBar"
 
 -- Captures MainMenuExpBar's position once (scale-converted to UIParent units) plus its native GetPoint(1) anchor.
 function ACAB:CaptureExpBarPositionIfNeeded()
-	self:EnsureDB()
-
-	if ACABDB.expBarPosition then
-		return
-	end
-
-	local frame = getglobal(self.EXP_BAR_FRAME_NAME)
-
-	if not frame then
-		return
-	end
-
-	local left = frame:GetLeft()
-	local top = frame:GetTop()
-
-	if not left or not top then
-		return
-	end
-
-	local buttonScale = frame:GetEffectiveScale()
-	local uiParentScale = UIParent:GetEffectiveScale()
-
-	local x, y = left, top
-
-	if buttonScale and uiParentScale and uiParentScale ~= 0 then
-		x = (left * buttonScale) / uiParentScale
-		y = (top * buttonScale) / uiParentScale
-	end
-
-	local anchor = {
-		point = "TOPLEFT",
-		relativePoint = "BOTTOMLEFT",
-		x = x,
-		y = y,
-	}
-
-	ACABDB.expBarPosition = anchor
-
-	-- Permanent pristine snapshot for "Reset to Vanilla Layout"; captured once, never rewritten.
-	if not ACABDB.expBarNativeAnchor then
-		ACABDB.expBarNativeAnchor = self:ReadNativeAnchor(frame)
-	end
+	self:CaptureAbsolutePosition(getglobal(self.EXP_BAR_FRAME_NAME), "expBarPosition", "expBarNativeAnchor")
 end
 
 -- Gradient strip covering the bottom 3 units of MainMenuExpBar that its native border art leaves bare.
@@ -123,15 +78,17 @@ local function EnsureExpBarBottomBorderStrip(frame)
 	return strip
 end
 
+-- Hover-only fade duration for ApplyHoverOnlyState.
+local function GetExpBarHoverDuration()
+	return ACABDB.expBarHoverDuration or 3
+end
+
 -- Applies ACABDB.expBarPosition to MainMenuExpBar and ensures its overlay, border strip, and hover-only state.
 function ACAB:ApplyExpBarPosition()
 	self:CaptureExpBarPositionIfNeeded()
 
 	local frame = getglobal(self.EXP_BAR_FRAME_NAME)
-
-	if not frame then
-		return
-	end
+	if not frame then return end
 
 	local pos = ACABDB.expBarPosition
 
@@ -155,7 +112,7 @@ function ACAB:ApplyExpBarPosition()
 	EnsureExpBarBottomBorderStrip(frame)
 
 	-- Also fades the rested-glow child texture (it inherits this frame's alpha).
-	self:ApplyHoverOnlyState(frame, ACABDB.expBarHoverOnly, function() return ACABDB.expBarHoverDuration or 3 end)
+	self:ApplyHoverOnlyState(frame, ACABDB.expBarHoverOnly, GetExpBarHoverDuration)
 end
 
 function ACAB:SetExpBarPosition(x, y)
@@ -166,15 +123,9 @@ end
 
 -- Shows/hides MainMenuExpBar together with its drag overlay and text overlay.
 function ACAB:SetExpBarEnabled(enabled)
-	self:EnsureDB()
-
-	enabled = enabled and true or false
-
-	ACABDB.expBarEnabled = enabled
-
 	local frame = getglobal(self.EXP_BAR_FRAME_NAME)
 
-	self:SetElementShown(frame, enabled)
+	self:StoreElementEnabled("expBarEnabled", frame, enabled)
 
 	-- Must re-show explicitly, or the text overlay stays hidden after a disable/re-enable cycle.
 	if frame and frame.ACABTextOverlay then
@@ -191,22 +142,7 @@ end
 
 -- Clamps, compensates the saved position around the bar's center, then applies the new scale.
 function ACAB:SetExpBarScale(scale)
-	local frame = getglobal(self.EXP_BAR_FRAME_NAME)
-	local pos
-
-	scale, pos = self:StoreCompensatedScale("expBarScale", "expBarPosition", frame, scale)
-
-	if not scale then
-		return
-	end
-
-	if frame then
-		frame:SetScale(scale)
-	end
-
-	if pos then
-		self:ApplyExpBarPosition()
-	end
+	self:SetElementScale("expBarScale", "expBarPosition", getglobal(self.EXP_BAR_FRAME_NAME), scale, nil, self.ApplyExpBarPosition)
 end
 
 -- Experience Bar settings page "Only show on hover" checkbox/slider.
@@ -231,30 +167,41 @@ function ACAB:ResetExpBarLayout()
 	self:ApplyExpBarPosition()
 end
 
+-- Centers the Experience Bar at the bottom of its settings page's Y range, keeping its scale.
+function ACAB:PlaceExpBarAtBottom()
+	local frame = getglobal(self.EXP_BAR_FRAME_NAME)
+	if not frame then return end
+
+	local _, _, minY = self:GetSimpleElementCoordinateRange(frame, 2)
+
+	if not minY then return end
+
+	ACABDB.expBarPosition = {
+		point = "CENTER", relativePoint = "CENTER", visualCenter = true,
+		x = 0,
+		y = minY,
+	}
+
+	self:ApplyExpBarPosition()
+end
+
+-- "Reset to Modern Layout Default": scale 1, centered at the bottom of the screen.
+function ACAB:ResetExpBarLayoutToModernBase()
+	self:ResetExpBarLayout()
+	self:PlaceExpBarAtBottom()
+end
+
 function ACAB:StartExpBarDrag()
-	self:CaptureExpBarPositionIfNeeded()
-
-	local pos = ACABDB.expBarPosition
-
-	if not pos then
-		return
-	end
-
-	self:StartSharedDrag("expBar", nil, pos.x or 0, pos.y or 0)
+	self:StartElementDrag("expBar")
 end
 
 function ACAB:StopExpBarDrag()
-	self:StopSharedDrag()
-
-	if self.RefreshBarSettingsPage then
-		self:RefreshBarSettingsPage("expbar")
-	end
+	self:StopElementDrag("expbar")
 end
 
 -------------------------------------------------------------------------
 -- Bar-fill colors
 -- Earned fill = MainMenuExpBar StatusBar color; rested fill = ExhaustionLevelFillBar vertex color.
--- Both native baselines are captured lazily from the live frames, not seeded in EnsureDB.
 -------------------------------------------------------------------------
 
 -- Better Experience Bar's default overlay text size.
@@ -275,10 +222,7 @@ end
 -- see known-problems.md: "Native code repaints the Exp Bar fill colors"
 local function InstallExpBarColorGuard(frame, methodName, colorField)
 	local guardFlag = "ACABColorGuarded" .. methodName
-
-	if not frame or not frame[methodName] or frame[guardFlag] then
-		return
-	end
+	if not frame or not frame[methodName] or frame[guardFlag] then return end
 
 	local nativeSetColor = frame[methodName]
 
@@ -314,8 +258,7 @@ function ACAB:CaptureExpBarColorsIfNeeded()
 			r, g, b = frame:GetStatusBarColor()
 		end
 
-		-- Permanent pristine snapshot of the native fill (fallback purple if the live frame isn't available yet);
-		-- captured once, never rewritten.
+		-- Native fill snapshot (fallback purple), captured once, never rewritten.
 		ACABDB.expBarNativeColorEarned = {
 			r = r or 0.58,
 			g = g or 0.0,
@@ -431,14 +374,11 @@ function ACAB:ResetExpBarColors()
 end
 
 -------------------------------------------------------------------------
--- Custom rested-XP overlay, drawn over ExhaustionLevelFillBar (whose native width breaks with a large
--- rested pool). Fill and tick formulas ported from BEB/BEB.lua. Shown only while Better Experience Bar is
--- on and GetRestState() == 1; the native fill is never touched.
+-- Custom rested-XP overlay over ExhaustionLevelFillBar (formulas from BEB/BEB.lua); the native fill is never touched.
 -------------------------------------------------------------------------
 
--- Rested-pool calibration: GetXPExhaustion() units consumed per point of rested bonus XP, measured on the
--- character's first rested kill and saved in ACABCharDB.restPoolPerBonusXP. Uncalibrated = 1 (native formula).
--- see known-problems.md: "Rested overlay uses bonus XP, not GetXPExhaustion()"
+-- Rested-pool calibration: GetXPExhaustion() units per rested bonus XP, measured on the first rested kill
+-- (ACABCharDB.restPoolPerBonusXP, uncalibrated = 1). see known-problems.md: "Rested overlay uses bonus XP, not GetXPExhaustion()"
 
 -- Pool changes further than this from the XP chat line are not counted as that kill's drop.
 local REST_CALIBRATION_WINDOW = 2
@@ -466,17 +406,12 @@ end
 
 -- CHAT_MSG_COMBAT_XP_GAIN handler: measures pool drop / rested bonus once per character.
 function ACAB:CalibrateRestPoolFromXPMessage(message)
-	if not ACABCharDB or ACABCharDB.restPoolPerBonusXP or not message then
-		return
-	end
+	if not ACABCharDB or ACABCharDB.restPoolPerBonusXP or not message then return end
 
 	-- First number inside the parentheses is the rested bonus, e.g. "(+31 exp Rested bonus)".
 	local _, _, bonusText = string.find(message, "%(%+?(%d+)")
 	local bonus = tonumber(bonusText)
-
-	if not bonus or bonus < REST_CALIBRATION_MIN_BONUS then
-		return
-	end
+	if not bonus or bonus < REST_CALIBRATION_MIN_BONUS then return end
 
 	local messageTime = GetTime()
 
@@ -491,10 +426,7 @@ function ACAB:CalibrateRestPoolFromXPMessage(message)
 		end
 
 		local drop = restPoolPrevious - restPoolCurrent
-
-		if drop <= 0 or ACABCharDB.restPoolPerBonusXP then
-			return
-		end
+		if drop <= 0 or ACABCharDB.restPoolPerBonusXP then return end
 
 		ACABCharDB.restPoolPerBonusXP = drop / bonus
 		ACAB:Print("Rested XP calibrated: " .. string.format("%.2f", ACABCharDB.restPoolPerBonusXP) .. " pool per bonus XP.")
@@ -505,10 +437,7 @@ end
 -- Remaining rested bonus XP (GetXPExhaustion() converted to real XP), or nil when not rested.
 local function GetRestedBonusXP()
 	local exhaustion = GetXPExhaustion and GetXPExhaustion()
-
-	if not exhaustion then
-		return nil
-	end
+	if not exhaustion then return nil end
 
 	local ratio = ACABCharDB and ACABCharDB.restPoolPerBonusXP or 1
 
@@ -608,9 +537,7 @@ end
 
 -- Starts the pulse ticker; no-op while already running.
 local function StartExpBarRestedGlowPulse(glow)
-	if expBarRestedGlowPulseTicker then
-		return
-	end
+	if expBarRestedGlowPulseTicker then return end
 
 	expBarRestedGlowPulseStartTime = GetTime()
 
@@ -656,10 +583,7 @@ function ACAB:ApplyExpBarRestedOverlay()
 	self:EnsureDB()
 
 	local frame = getglobal(self.EXP_BAR_FRAME_NAME)
-
-	if not frame then
-		return
-	end
+	if not frame then return end
 
 	local tex = frame.ACABRestedOverlay
 	local tick = frame.ACABRestedTick
@@ -799,9 +723,7 @@ end
 
 -------------------------------------------------------------------------
 -- "Better Experience Bar" text overlay
--- One centered FontString built from up to 5 toggleable segments (BEB TextVars.lua formulas), kept live by
--- Events.lua's betterExpBarEventFrame. Lives on its own "HIGH"-strata child frame of MainMenuExpBar so
--- MainMenuBarArtFrame (same "MEDIUM" tier as the bar) can't cover it.
+-- One FontString of up to 5 toggleable segments, on a HIGH-strata child of MainMenuExpBar (above the art).
 -------------------------------------------------------------------------
 
 -- Text overlay frame tracking MainMenuExpBar via SetAllPoints; starts hidden if the bar is disabled.
@@ -911,15 +833,10 @@ function ACAB:CaptureNativeExpBarFontIfNeeded()
 		return self.NATIVE_EXPBAR_FONT
 	end
 
-	if not GameFontNormalSmall or not GameFontNormalSmall.GetFont then
-		return nil
-	end
+	if not GameFontNormalSmall or not GameFontNormalSmall.GetFont then return nil end
 
 	local path, size = GameFontNormalSmall:GetFont()
-
-	if not path then
-		return nil
-	end
+	if not path then return nil end
 
 	self.NATIVE_EXPBAR_FONT = { path = path, size = size }
 
@@ -931,10 +848,7 @@ function ACAB:ApplyBetterExpBarVisual()
 	self:EnsureDB()
 
 	local frame = getglobal(self.EXP_BAR_FRAME_NAME)
-
-	if not frame then
-		return
-	end
+	if not frame then return end
 
 	local nativeText = self:GetNativeExpOverlayText()
 
@@ -1023,9 +937,7 @@ function ACAB:SetExpBarGlowPulseInterval(interval)
 
 	interval = tonumber(interval)
 
-	if not interval then
-		return
-	end
+	if not interval then return end
 
 	interval = ExpBarRound(interval * 10) / 10
 

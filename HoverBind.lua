@@ -1,6 +1,6 @@
 -- HoverBind.lua
--- Hoverbind mode: hover a pool button, press a key to bind it. Default bars bind their native actions
--- (ACTIONBUTTON#, MULTIACTIONBAR#BUTTON#); custom/styled Pet/Stance slots bind bindings.xml's ACABBIND/ACABPETBIND/ACABSTANCEBIND.
+-- Hoverbind mode: hover a pool button, press a key to bind it (native actions on default bars, else bindings.xml's
+-- ACABBIND/ACABPETBIND/ACABSTANCEBIND).
 -- WARNING: SetBindingClick and SetBinding(key, "BONUSACTIONBUTTON1") never fire on this client - don't use them.
 
 local ACAB = AlternativeClassicActionBars
@@ -32,16 +32,31 @@ function ACAB_StanceHoverBindFire(stanceIndex)
 	end
 end
 
+-- prefix .. n binding-action names, built once per (prefix, n).
+local bindingIdCache = { ACABPETBIND = {}, ACABSTANCEBIND = {}, ACABBIND = {} }
+
+local function CachedBindingId(prefix, n)
+	local cache = bindingIdCache[prefix]
+	local id = cache[n]
+
+	if not id then
+		id = prefix .. tostring(n)
+		cache[n] = id
+	end
+
+	return id
+end
+
 -- A button's home binding-action name: nativeBindingId, ACABPETBIND<n>, ACABSTANCEBIND<n> or ACABBIND<actionSlot - 72>.
 function ACAB:GetHoverBindingId(btn)
 	if btn.nativeBindingId then
 		return btn.nativeBindingId
 	elseif btn.isPetSlot then
-		return "ACABPETBIND" .. tostring(btn.actionSlot)
+		return CachedBindingId("ACABPETBIND", btn.actionSlot)
 	elseif btn.isStanceSlot then
-		return "ACABSTANCEBIND" .. tostring(btn.actionSlot)
+		return CachedBindingId("ACABSTANCEBIND", btn.actionSlot)
 	else
-		return "ACABBIND" .. tostring(btn.actionSlot - 72)
+		return CachedBindingId("ACABBIND", btn.actionSlot - 72)
 	end
 end
 
@@ -54,21 +69,12 @@ ACAB.DEFAULT_BAR_BINDING_PREFIXES = {
 	[5] = "MULTIACTIONBAR4BUTTON", -- Right 2.
 }
 
--- Fills ref as the hoverbind reference for a pool button (fixedSlotBar = default-bar button with a nativeBindingId).
-local function FillButtonRef(ref, btn, barId, slotIndex)
-	ref.kind = "custom"
+-- Fills ref as the hoverbind reference (frame, bindingId) for a pool button.
+local function FillButtonRef(ref, btn)
 	ref.frame = btn
 	ref.bindingId = ACAB:GetHoverBindingId(btn)
-	ref.actionSlot = btn.actionSlot
-	ref.barId = barId
-	ref.slotIndex = slotIndex
-	ref.fixedSlotBar = btn.nativeBindingId and true or nil
 
 	return ref
-end
-
-local function MakeButtonRef(btn, barId, slotIndex)
-	return FillButtonRef({}, btn, barId, slotIndex)
 end
 
 -- Reused by every ForEachButton call.
@@ -83,7 +89,7 @@ function ACAB:ForEachButton(fn)
 			for i = 1, table.getn(bar.buttons) do
 				local btn = bar.buttons[i]
 				if btn and btn.slotVisible then
-					fn(FillButtonRef(sharedButtonRef, btn, barId, i))
+					fn(FillButtonRef(sharedButtonRef, btn))
 				end
 			end
 		end
@@ -91,30 +97,72 @@ function ACAB:ForEachButton(fn)
 end
 
 -------------------------------------------------------------------------
--- Default-bar swap redirect: while a stance/page swap puts a default-bar
--- button's actionSlot in the pool range, its key is moved (session-only,
--- never saved) from nativeBindingId onto ACABBIND<n>, since native actions
--- always fire their fixed vanilla slot. btn.activeBindingId tracks where it is.
+-- Default-bar swap redirect: session-only key move onto ACABBIND<n> (btn.activeBindingId) while a swap shows a pool slot
 -------------------------------------------------------------------------
 
--- Rebinds every key of fromId onto toId.
-local function MoveBindingKeys(fromId, toId)
-	local k1, k2 = GetBindingKey(fromId)
+-- Keys a default-bar swap redirect moved off their native action (key -> true).
+local redirectedBindingKeys = {}
 
-	if k1 then SetBinding(k1); SetBinding(k1, toId) end
-	if k2 then SetBinding(k2); SetBinding(k2, toId) end
+-- First key bound to bindingId that isn't a default-bar button's redirected key, or nil.
+function ACAB:GetOwnBindingKey(bindingId)
+	local k1, k2, k3, k4 = GetBindingKey(bindingId)
+
+	if k1 and not redirectedBindingKeys[k1] then return k1 end
+	if k2 and not redirectedBindingKeys[k2] then return k2 end
+	if k3 and not redirectedBindingKeys[k3] then return k3 end
+	if k4 and not redirectedBindingKeys[k4] then return k4 end
+
+	return nil
+end
+
+-- Moves btn's own native keys onto targetId and remembers them in btn.redirectedKeys.
+local function RedirectOwnKeys(btn, targetId)
+	local keys = btn.redirectedKeys or {}
+	local i
+
+	keys[1], keys[2] = GetBindingKey(btn.nativeBindingId)
+	btn.redirectedKeys = keys
+
+	for i = 1, 2 do
+		local key = keys[i]
+
+		if key then
+			redirectedBindingKeys[key] = true
+			SetBinding(key)
+			SetBinding(key, targetId)
+		end
+	end
+end
+
+-- Moves only the keys RedirectOwnKeys moved back onto btn.nativeBindingId (other keys of the target stay).
+local function RestoreOwnKeys(btn)
+	local keys = btn.redirectedKeys
+	if not keys then return end
+
+	local i
+
+	for i = 1, 2 do
+		local key = keys[i]
+
+		if key then
+			redirectedBindingKeys[key] = nil
+			keys[i] = nil
+
+			if GetBindingAction(key) == btn.activeBindingId then
+				SetBinding(key)
+				SetBinding(key, btn.nativeBindingId)
+			end
+		end
+	end
 end
 
 -- Moves the key back onto btn.nativeBindingId; called before a hoverbind edit/clear reads or writes it.
 function ACAB:RehomeDefaultBarBinding(btn)
-	if not btn or not btn.nativeBindingId then
-		return
-	end
+	if not btn or not btn.nativeBindingId then return end
 
 	local liveId = btn.activeBindingId or btn.nativeBindingId
-
 	if liveId ~= btn.nativeBindingId then
-		MoveBindingKeys(liveId, btn.nativeBindingId)
+		RestoreOwnKeys(btn)
 	end
 
 	btn.activeBindingId = btn.nativeBindingId
@@ -122,18 +170,15 @@ end
 
 -- Moves the key onto ACABBIND<n> while btn.actionSlot is in the pool range, else back home. Idempotent.
 function ACAB:SyncDefaultBarBindingRedirect(btn)
-	if not btn or not btn.nativeBindingId then
-		return
-	end
+	if not btn or not btn.nativeBindingId then return end
 
 	local targetId = btn.nativeBindingId
 
 	if btn.actionSlot and btn.actionSlot >= ACAB.ACTION_SLOT_START then
-		targetId = "ACABBIND" .. tostring(btn.actionSlot - 72)
+		targetId = CachedBindingId("ACABBIND", btn.actionSlot - 72)
 	end
 
 	local liveId = btn.activeBindingId or btn.nativeBindingId
-
 	if liveId == targetId then
 		btn.activeBindingId = targetId
 		return
@@ -141,11 +186,11 @@ function ACAB:SyncDefaultBarBindingRedirect(btn)
 
 	-- Always funnels through nativeBindingId, so chained swaps read the key from one stable source.
 	if liveId ~= btn.nativeBindingId then
-		MoveBindingKeys(liveId, btn.nativeBindingId)
+		RestoreOwnKeys(btn)
 	end
 
 	if targetId ~= btn.nativeBindingId then
-		MoveBindingKeys(btn.nativeBindingId, targetId)
+		RedirectOwnKeys(btn, targetId)
 	end
 
 	btn.activeBindingId = targetId
@@ -187,8 +232,7 @@ function ACAB:IsButtonBound(ref)
 end
 
 -------------------------------------------------------------------------
--- Tinting: bound/unbound icon tint while hoverbind mode is on (UpdateRange
--- skips its own tint then).
+-- Tinting: bound/unbound icon tint while hoverbind mode is on
 -------------------------------------------------------------------------
 
 local HOVERBIND_BOUND_COLOR   = { 0.2, 1.0, 0.2 }
@@ -196,9 +240,7 @@ local HOVERBIND_UNBOUND_COLOR = { 1.0, 0.25, 0.25 }
 
 function ACAB:TintHoverBindButton(ref)
 	local icon = ref.frame.icon
-	if not icon then
-		return
-	end
+	if not icon then return end
 
 	local color = self:IsButtonBound(ref)
 		and HOVERBIND_BOUND_COLOR
@@ -219,7 +261,6 @@ local function TintHoverBindRef(ref)
 	ACAB:TintHoverBindButton(ref)
 end
 
--- Tint ticker callback, built once instead of per tick.
 local function HoverBindTintTick()
 	-- Skips a tick queued before hoverbind mode turned off.
 	if ACAB:IsHoverBindMode() then
@@ -265,17 +306,13 @@ end
 -------------------------------------------------------------------------
 
 function ACAB:SetHoverBindHoveredCustomButton(btn)
-	if not self.hoverBindCaptureFrame or not btn or not btn.parentBar or not btn.parentBar.config then
-		return
-	end
+	if not self.hoverBindCaptureFrame or not btn or not btn.parentBar or not btn.parentBar.config then return end
 
-	self.hoverBindCaptureFrame.hoveredButton = MakeButtonRef(btn, btn.parentBar.config.id, btn.slotIndex)
+	self.hoverBindCaptureFrame.hoveredButton = FillButtonRef({}, btn)
 end
 
 function ACAB:ClearHoverBindHoveredButton(frame)
-	if not self.hoverBindCaptureFrame then
-		return
-	end
+	if not self.hoverBindCaptureFrame then return end
 	local hovered = self.hoverBindCaptureFrame.hoveredButton
 	if hovered and hovered.frame == frame then
 		self.hoverBindCaptureFrame.hoveredButton = nil
@@ -377,14 +414,10 @@ end
 -- Escape clears the hovered button's binding instead of being bound.
 local function HoverBindCaptureFrame_OnKeyDown()
 	local key = arg1
-	if not key or MODIFIER_KEYS[key] then
-		return
-	end
+	if not key or MODIFIER_KEYS[key] then return end
 
 	local hovered = this.hoveredButton
-	if not hovered then
-		return
-	end
+	if not hovered then return end
 
 	if key == "ESCAPE" then
 		ClearHoverBindKey(hovered)
@@ -398,14 +431,10 @@ end
 function ACAB:HandleHoverBindMouseButton(frame, buttonName)
 	local captureFrame = self.hoverBindCaptureFrame
 	local hovered = captureFrame and captureFrame.hoveredButton
-	if not hovered or hovered.frame ~= frame then
-		return
-	end
+	if not hovered or hovered.frame ~= frame then return end
 
 	local key = MOUSE_BUTTON_BINDING_KEYS[buttonName]
-	if not key then
-		return
-	end
+	if not key then return end
 
 	ApplyHoverBindKey(hovered, BuildComboString(key))
 end

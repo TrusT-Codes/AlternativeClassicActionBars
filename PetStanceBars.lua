@@ -1,5 +1,5 @@
 -- PetStanceBars.lua
--- Pet Bar and Stance Bar in native mode, on DefaultBars.lua's chain-anchored container engine (must load after it).
+-- Pet Bar and Stance Bar in native mode, on ElementEngine.lua's chain-anchored container engine (must load after it).
 -- Kept in one file since they cross-call each other's Reflow*ForBar*Toggle functions.
 
 local ACAB = AlternativeClassicActionBars
@@ -23,15 +23,35 @@ local function GetStackedBaselineY(self, stackBarId, stackBarEnabled, extraBarId
 		referenceY = referenceY + self:GetExtraBarStackPitch(extraBarId)
 	end
 
-	if not referenceY then
-		return nil
-	end
+	if not referenceY then return nil end
 
-	if not container then
-		return nil
-	end
+	if not container then return nil end
 
 	return referenceY + self.PET_BAR_NATIVE_GAP + container:GetHeight()
+end
+
+-- Styled mode: re-stacks barId's pool bar above stackBarId (+ extraBarId) while cfg.styledDefaultPosition is true.
+local function ReflowStyledStackBar(self, barId, stackBarId, stackBarEnabled, extraBarId)
+	local cfg = ACABDB.defaultBars[barId]
+	local bar = self.bars and self.bars[barId]
+	if not cfg or not bar or bar.config ~= cfg or cfg.styledDefaultPosition ~= true then return end
+
+	local y = GetStackedBaselineY(self, stackBarId, stackBarEnabled, extraBarId, bar)
+	if not y then return end
+
+	-- Modern style: the stack bar's reset corner sits MODERN_BUTTON_SIZE_POSITION_SHIFT higher (ResetDefaultBarLayout).
+	if not self:IsVanillaBorderStyle() then
+		y = y + self.MODERN_BUTTON_SIZE_POSITION_SHIFT
+	end
+
+	-- y is a top edge - write it in TOPLEFT/BOTTOMLEFT terms, ApplyBarPosition converts back.
+	self:ConvertPositionAnchor(bar, cfg, "TOPLEFT", "BOTTOMLEFT", nil, nil, "TOPLEFT")
+
+	cfg.y = y
+
+	self:ApplyBarPosition(bar)
+
+	self:RefreshBarSettingsPage(barId)
 end
 
 -- Writes cfg.hoverOnly on default bar barId's saved cfg, then re-runs applyFn.
@@ -39,10 +59,7 @@ local function SetBarCfgHoverOnly(self, barId, enabled, applyFn)
 	self:EnsureDB()
 
 	local cfg = ACABDB.defaultBars[barId]
-
-	if not cfg then
-		return
-	end
+	if not cfg then return end
 
 	cfg.hoverOnly = enabled and true or false
 
@@ -57,9 +74,7 @@ local function SetBarCfgHoverDuration(self, barId, duration, applyFn)
 
 	duration = self:ClampHoverDuration(duration)
 
-	if not cfg or not duration then
-		return
-	end
+	if not cfg or not duration then return end
 
 	cfg.hoverDuration = duration
 
@@ -96,18 +111,17 @@ end
 
 -- Re-stacks Pet Bar's Y off Bar 3's state (Default Layout only). No-op once cfg.usesDefaultPosition is false.
 function ACAB:ReflowPetBarForBar3Toggle(bar3Enabled)
+	if not self:IsPetBarNativeModeEffective() then
+		ReflowStyledStackBar(self, self.PET_BAR_ID, 3, bar3Enabled, self.EXTRA_BAR_ID_START + 1)
+		return
+	end
+
 	local cfg = ACABDB.defaultBars[self.PET_BAR_ID]
 	local container = self.petBarNativeContainer
-
-	if not cfg or not container or cfg.usesDefaultPosition == false then
-		return
-	end
+	if not cfg or not container or cfg.usesDefaultPosition == false then return end
 
 	local y = self:GetPetBarBaselineY(bar3Enabled)
-
-	if not y then
-		return
-	end
+	if not y then return end
 
 	-- y is a top edge - write it in TOPLEFT/BOTTOMLEFT terms, ApplyPetBarNativePosition converts back.
 	self:ConvertPositionAnchor(container, cfg, "TOPLEFT", "BOTTOMLEFT", nil, nil, "TOPLEFT")
@@ -120,25 +134,17 @@ function ACAB:ReflowPetBarForBar3Toggle(bar3Enabled)
 
 	self:ApplyPetBarNativePosition()
 
-	if self.RefreshBarSettingsPage then
-		self:RefreshBarSettingsPage(self.PET_BAR_ID)
-	end
+	self:RefreshBarSettingsPage(self.PET_BAR_ID)
 end
 
 function ACAB:CreatePetBarNativeContainer()
 	self:EnsureDB()
 
 	local cfg = ACABDB.defaultBars[self.PET_BAR_ID]
-
-	if not cfg or not self:IsPetBarNativeModeEffective() or self.petBarNativeContainer then
-		return
-	end
+	if not cfg or not self:IsPetBarNativeModeEffective() or self.petBarNativeContainer then return end
 
 	local buttons = self:GetDefaultBarButtons(self.PET_BAR_ID)
-
-	if not buttons then
-		return
-	end
+	if not buttons then return end
 
 	self:SortButtonsByNativeLeft(buttons)
 
@@ -167,10 +173,7 @@ end
 function ACAB:ApplyPetBarNativePosition()
 	local cfg = ACABDB and ACABDB.defaultBars and ACABDB.defaultBars[self.PET_BAR_ID]
 	local container = self.petBarNativeContainer
-
-	if not cfg or not container then
-		return
-	end
+	if not cfg or not container then return end
 
 	self:ApplyPositionToFrame(container, cfg, "TOPLEFT")
 
@@ -188,9 +191,7 @@ function ACAB:SetPetBarNativePosition(x, y)
 	x = tonumber(x)
 	y = tonumber(y)
 
-	if not cfg or not x or not y then
-		return
-	end
+	if not cfg or not x or not y then return end
 
 	cfg.x = x
 	cfg.y = y
@@ -206,10 +207,7 @@ function ACAB:ApplyPetBarNativeShape()
 	self:EnsureDB()
 
 	local cfg = ACABDB.defaultBars[self.PET_BAR_ID]
-
-	if not cfg then
-		return
-	end
+	if not cfg then return end
 
 	self:ApplyChainAnchoredShape(
 		self.petBarNativeContainer,
@@ -228,9 +226,7 @@ function ACAB:SetPetBarNativeSpacing(spacing)
 
 	spacing = self:ClampSpacingSetting(spacing, 0, 20)
 
-	if not cfg or not spacing then
-		return
-	end
+	if not cfg or not spacing then return end
 
 	cfg.spacing = spacing
 
@@ -244,9 +240,7 @@ function ACAB:SetPetBarNativeScale(scale)
 
 	scale = self:ClampScaleSetting(scale)
 
-	if not cfg or not scale then
-		return
-	end
+	if not cfg or not scale then return end
 
 	local oldScale = cfg.scale or 1
 
@@ -269,14 +263,28 @@ function ACAB:SetPetBarNativeHoverDuration(duration)
 end
 
 -- Restores the native position (on the computed stack baseline), native spacing and scale 1.
+-- Moves the native Pet Bar back to its default stack spot (nativeAnchor x, computed baseline y); keeps spacing/scale.
+function ACAB:ResetPetBarNativePosition()
+	local cfg = ACABDB.defaultBars[self.PET_BAR_ID]
+	if not cfg or not cfg.nativeAnchor then return end
+
+	cfg.point = cfg.nativeAnchor.point
+	cfg.relativePoint = cfg.nativeAnchor.relativePoint
+	cfg.x = cfg.nativeAnchor.x
+
+	local bar3Cfg = ACABDB.defaultBars[3]
+	cfg.y = self:GetPetBarBaselineY(bar3Cfg and bar3Cfg.enabled) or cfg.nativeAnchor.y
+
+	cfg.usesDefaultPosition = true
+
+	self:ApplyPetBarNativePosition()
+end
+
 function ACAB:ResetPetBarNativeLayout()
 	self:EnsureDB()
 
 	local cfg = ACABDB.defaultBars[self.PET_BAR_ID]
-
-	if not cfg or not cfg.nativeAnchor then
-		return
-	end
+	if not cfg or not cfg.nativeAnchor then return end
 
 	cfg.point = cfg.nativeAnchor.point
 	cfg.relativePoint = cfg.nativeAnchor.relativePoint
@@ -309,16 +317,11 @@ function ACAB:ResetPetBarLayoutToModernBase()
 	self:EnsureDB()
 
 	local bar3 = self.bars and self.bars[3]
-
-	if not bar3 then
-		return
-	end
+	if not bar3 then return end
 
 	local _, bar3Right, bar3Top = self:GetElementRealEdges(bar3)
 
-	if not bar3Right then
-		return
-	end
+	if not bar3Right then return end
 
 	if self:IsPetBarNativeModeEffective() then
 		local cfg = ACABDB.defaultBars[self.PET_BAR_ID]
@@ -327,10 +330,7 @@ function ACAB:ResetPetBarLayoutToModernBase()
 		self:CreatePetBarNativeContainer()
 
 		local container = self.petBarNativeContainer
-
-		if not cfg or not container then
-			return
-		end
+		if not cfg or not container then return end
 
 		-- Scale must settle before positioning - PixelSetPoint reads the live effective scale.
 		cfg.scale = self:GetModernPetStanceScale()
@@ -361,10 +361,7 @@ function ACAB:ResetPetBarLayoutToModernBase()
 	self:EnsureFixedSlotBarCreated(self.PET_BAR_ID)
 
 	local petBar = self.bars[self.PET_BAR_ID]
-
-	if not petBar then
-		return
-	end
+	if not petBar then return end
 
 	local buttonSize, spacing = self:GetModernLayoutSizing()
 	local cfg = petBar.config
@@ -383,6 +380,8 @@ function ACAB:ResetPetBarLayoutToModernBase()
 	cfg.x = bar3Right - insetRight - barWidth
 	cfg.y = bar3Top + insetBottom
 
+	cfg.styledDefaultPosition = false
+
 	self:ApplyBarPosition(petBar)
 	self:SetBarLayout(petBar, cfg.cols, cfg.rows)
 	self:SetBarButtonSize(petBar, buttonSize)
@@ -391,91 +390,24 @@ function ACAB:ResetPetBarLayoutToModernBase()
 end
 
 function ACAB:StartPetBarNativeDrag()
-	local cfg = ACABDB.defaultBars[self.PET_BAR_ID]
-
-	if not cfg then
-		return
-	end
-
-	self:StartSharedDrag("petBarNative", nil, cfg.x or 0, cfg.y or 0)
+	self:StartElementDrag("petBarNative")
 end
 
+-- Manually moved - stops auto-stacking its Y.
 function ACAB:StopPetBarNativeDrag()
-	self:StopSharedDrag()
-
-	-- Manually moved - stop auto-stacking its Y.
 	local cfg = ACABDB.defaultBars[self.PET_BAR_ID]
 
 	if cfg then
 		cfg.usesDefaultPosition = false
 	end
 
-	if self.RefreshBarSettingsPage then
-		self:RefreshBarSettingsPage(self.PET_BAR_ID)
-	end
+	self:StopElementDrag(self.PET_BAR_ID)
 end
 
 -------------------------------------------------------------------------
 -- Stance Bar, native mode (the real ShapeshiftButtonN in a synthetic chain-anchored container)
 -- Button count follows GetNumShapeshiftForms(); RebuildStanceBarContainer updates the chain in place.
 -------------------------------------------------------------------------
-
--- Captures once the topmost default bar (1 or 2) to ShapeshiftBarFrame gap.
--- Must run before CreateFixedSlotDefaultBars, which hides bar 2's buttons and collapses that native anchor.
-function ACAB:CaptureStanceBarNativeGap()
-	if ACABDB.stanceBarNativeGap then
-		return
-	end
-
-	local frame = ShapeshiftBarFrame
-
-	if not frame then
-		return
-	end
-
-	local bottom = frame:GetBottom()
-
-	if not bottom then
-		return
-	end
-
-	local frameScale = frame:GetEffectiveScale()
-	local targetScale = UIParent:GetEffectiveScale()
-
-	if not frameScale or not targetScale or targetScale == 0 then
-		return
-	end
-
-	local screenBottom = (bottom * frameScale) / targetScale
-
-	local defaults = ACABDB.defaultBars
-	local cfg1 = defaults and defaults[1]
-	local cfg2 = defaults and defaults[2]
-
-	local referenceY = cfg1 and cfg1.nativeAnchor and cfg1.nativeAnchor.y
-
-	if cfg2 and cfg2.enabled and cfg2.nativeAnchor then
-		referenceY = cfg2.nativeAnchor.y
-	end
-
-	if not referenceY then
-		return
-	end
-
-	local gap = screenBottom - referenceY
-
-	-- Discards implausible reads (real gap is ~5) from a corrupted/unreflowed frame.
-	if gap <= 0 or gap >= self.BUTTON_SIZE then
-		self:Print(
-			"WARNING: Stance Bar native gap capture produced an implausible " ..
-			"value (" .. tostring(gap) .. ") and was discarded - falling back " ..
-			"to a default clearance until a later capture succeeds."
-		)
-		return
-	end
-
-	ACABDB.stanceBarNativeGap = gap
-end
 
 -- Hides ShapeshiftBarFrame's leftover background art for good (vanilla's ShapeshiftBar_Update re-Shows it).
 local function HideShapeshiftBarFrame()
@@ -487,22 +419,12 @@ function ACAB:CreateStanceBarContainer()
 	self:EnsureDB()
 
 	-- Styled mode drives the real buttons through Button.lua's pool - must not build over them.
-	if not self:IsStanceBarNativeModeEffective() then
-		return
-	end
+	if not self:IsStanceBarNativeModeEffective() then return end
 
-	if self.stanceBarContainer then
-		return
-	end
+	if self.stanceBarContainer then return end
 
 	local buttons = self:GetStanceBarButtons()
-
-	if not buttons then
-		return
-	end
-
-	-- Safety net; the real capture runs earlier in the login sequence.
-	self:CaptureStanceBarNativeGap()
+	if not buttons then return end
 
 	self:SortButtonsByNativeLeft(buttons)
 
@@ -539,9 +461,7 @@ end
 function ACAB:RebuildStanceBarContainer()
 	self:EnsureDB()
 
-	if not self:IsStanceBarNativeModeEffective() then
-		return
-	end
+	if not self:IsStanceBarNativeModeEffective() then return end
 
 	HideShapeshiftBarFrame()
 
@@ -605,10 +525,7 @@ end
 function ACAB:ApplyStanceBarPosition()
 	local pos = ACABDB.stanceBarPosition
 	local container = self.stanceBarContainer
-
-	if not pos or not container then
-		return
-	end
+	if not pos or not container then return end
 
 	self:ApplyPositionToFrame(container, pos, "BOTTOMLEFT")
 
@@ -623,9 +540,7 @@ function ACAB:ApplyStanceBarPosition()
 end
 
 function ACAB:SetStanceBarPosition(x, y)
-	if not self:WriteSavedPositionXY("stanceBarPosition", x, y) then
-		return
-	end
+	if not self:WriteSavedPositionXY("stanceBarPosition", x, y) then return end
 
 	-- Manually positioned - stop auto-stacking its Y.
 	ACABDB.stanceBarUsesDefaultPosition = false
@@ -636,10 +551,7 @@ end
 -- Restores the native (Vanilla Layout) position on the computed stack baseline.
 function ACAB:ResetStanceBarPosition()
 	local native = ACABDB.stanceBarNativeAnchor
-
-	if not native then
-		return
-	end
+	if not native then return end
 
 	ACABDB.stanceBarPosition = self:CopyNativePosition(native)
 
@@ -670,20 +582,14 @@ function ACAB:ResetStanceBarPositionToModernBase()
 
 	local bar3 = self.bars and self.bars[3]
 	local container = self.stanceBarContainer
-
-	if not bar3 or not container then
-		return
-	end
+	if not bar3 or not container then return end
 
 	-- Scale must settle before positioning - PixelSetPoint reads the live effective scale.
 	ACABDB.stanceBarScale = self:GetModernPetStanceScale()
 	self:ApplyStanceBarShape()
 
 	local bar3Left, _, bar3Top = self:GetElementRealEdges(bar3)
-
-	if not bar3Left then
-		return
-	end
+	if not bar3Left then return end
 
 	local _, _, _, insetBottom = self:GetElementVisualInset(container)
 
@@ -708,16 +614,10 @@ function ACAB:ResetStanceBarShapeToModernBase()
 
 	local mainBar = self.bars and self.bars[1]
 	local stanceBar = self.bars and self.bars[self.STANCE_BAR_ID]
-
-	if not mainBar or not stanceBar then
-		return
-	end
+	if not mainBar or not stanceBar then return end
 
 	local mainBarLeft, _, _, mainBarBottom = self:GetElementRealEdges(mainBar)
-
-	if not mainBarLeft then
-		return
-	end
+	if not mainBarLeft then return end
 
 	local buttonSize, spacing = self:GetModernLayoutSizing()
 	local cfg = stanceBar.config
@@ -741,6 +641,7 @@ function ACAB:ResetStanceBarShapeToModernBase()
 	cfg.relativePoint = "BOTTOMLEFT"
 	cfg.x = mainBarLeft - insetRight - buttonSize
 	cfg.y = mainBarBottom + insetBottom
+	cfg.styledDefaultPosition = false
 
 	self:ApplyBarPosition(stanceBar)
 	self:SetBarLayout(stanceBar, cfg.cols, cfg.rows)
@@ -750,13 +651,39 @@ end
 
 -- The container's Show()/Hide() cascades to every real stance button.
 function ACAB:SetStanceBarEnabled(enabled)
-	self:EnsureDB()
+	self:StoreElementEnabled("stanceBarEnabled", self.stanceBarContainer, enabled)
+end
 
-	enabled = enabled and true or false
+-- "Use Vanilla Stance Bar" switch, before its reload: native (ACABDB.stanceBarPosition) and styled (defaultBars cfg)
+-- positions are stored separately, so the current spot and "at default spot" state carry over to the other mode.
+function ACAB:CarryStanceBarPositionToMode(toNative)
+	local cfg = ACABDB.defaultBars[self.STANCE_BAR_ID]
+	if not cfg then return end
 
-	ACABDB.stanceBarEnabled = enabled
+	if toNative then
+		if cfg.styledDefaultPosition == true then
+			-- Default-positioned: native follows the vanilla stack too (re-stacked at login).
+			ACABDB.stanceBarUsesDefaultPosition = true
+		elseif cfg.styledDefaultPosition == false and self:IsCanonicalPosition(cfg) then
+			ACABDB.stanceBarPosition = { point = "CENTER", relativePoint = "CENTER", visualCenter = true, x = cfg.x, y = cfg.y }
+			ACABDB.stanceBarUsesDefaultPosition = false
+		end
 
-	self:SetElementShown(self.stanceBarContainer, enabled)
+		return
+	end
+
+	local pos = ACABDB.stanceBarPosition
+
+	if self:IsCanonicalPosition(pos) then
+		cfg.point = "CENTER"
+		cfg.relativePoint = "CENTER"
+		cfg.visualCenter = true
+		cfg.x = pos.x
+		cfg.y = pos.y
+	end
+
+	-- A default-positioned native bar keeps following the vanilla stack (re-stacked at login).
+	cfg.styledDefaultPosition = ACABDB.stanceBarUsesDefaultPosition ~= false
 end
 
 -- Stance Bar's stacked top-edge Y: above Bar 2 (+ Extra Bar 1) if bar 2 is enabled, else above bar 1.
@@ -766,22 +693,19 @@ end
 
 -- Re-stacks Stance Bar's Y off Bar 2's state (Default Layout only). No-op once stanceBarUsesDefaultPosition is false.
 function ACAB:ReflowStanceBarForBar2Toggle(bar2Enabled)
-	if ACABDB.stanceBarUsesDefaultPosition == false then
+	if not self:IsStanceBarNativeModeEffective() then
+		ReflowStyledStackBar(self, self.STANCE_BAR_ID, 2, bar2Enabled, self.EXTRA_BAR_ID_START)
 		return
 	end
+
+	if ACABDB.stanceBarUsesDefaultPosition == false then return end
 
 	local pos = ACABDB.stanceBarPosition
 	local container = self.stanceBarContainer
-
-	if not pos or not container then
-		return
-	end
+	if not pos or not container then return end
 
 	local y = self:GetStanceBarBaselineY(bar2Enabled)
-
-	if not y then
-		return
-	end
+	if not y then return end
 
 	-- y is a top edge - write it in TOPLEFT/BOTTOMLEFT terms, ApplyStanceBarPosition converts back.
 	self:ConvertPositionAnchor(container, pos, "TOPLEFT", "BOTTOMLEFT", nil, nil, "BOTTOMLEFT")
@@ -790,9 +714,7 @@ function ACAB:ReflowStanceBarForBar2Toggle(bar2Enabled)
 
 	self:ApplyStanceBarPosition()
 
-	if self.RefreshBarSettingsPage then
-		self:RefreshBarSettingsPage(self.STANCE_BAR_ID)
-	end
+	self:RefreshBarSettingsPage(self.STANCE_BAR_ID)
 end
 
 -- Re-lays-out the real stance buttons from saved spacing/orientation/scale. No-op until the container exists.
@@ -810,10 +732,7 @@ end
 -- Applies the global border style to the real stance buttons (modern: no NormalTexture, dark backdrop, inset icon).
 function ACAB:ApplyStanceBarBorderStyle()
 	local buttons = self.stanceBarButtons
-
-	if not buttons then
-		return
-	end
+	if not buttons then return end
 
 	local vanilla = self:IsVanillaBorderStyle()
 	local i
@@ -858,14 +777,7 @@ function ACAB:ApplyStanceBarBorderStyle()
 					backdrop:SetFrameLevel(math.max((btn:GetFrameLevel() or 1) - 1, 0))
 					backdrop:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, 0)
 					backdrop:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 0, 0)
-					backdrop:SetBackdrop({
-						bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-						edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-						tile = true,
-						tileSize = 8,
-						edgeSize = 8,
-						insets = { left = 1, right = 1, top = 1, bottom = 1 },
-					})
+					backdrop:SetBackdrop(ACAB.SMALL_BACKDROP)
 					backdrop:SetBackdropColor(0, 0, 0, 0.75)
 					backdrop:SetBackdropBorderColor(1, 1, 1, 1)
 
@@ -880,33 +792,11 @@ end
 
 -- Plain 0-20 range in both border styles.
 function ACAB:SetStanceBarSpacing(spacing)
-	self:EnsureDB()
-
-	spacing = self:ClampSpacingSetting(spacing, 0, 20)
-
-	if not spacing then
-		return
-	end
-
-	ACABDB.stanceBarSpacing = spacing
-
-	self:ApplyStanceBarShape()
+	self:SetElementSpacing("stanceBarSpacing", spacing, 0, 20, self.ApplyStanceBarShape)
 end
 
 function ACAB:SetStanceBarScale(scale)
-	local pos
-
-	scale, pos = self:StoreCompensatedScale("stanceBarScale", "stanceBarPosition", self.stanceBarContainer, scale)
-
-	if not scale then
-		return
-	end
-
-	self:ApplyStanceBarShape()
-
-	if pos then
-		self:ApplyStanceBarPosition()
-	end
+	self:SetElementScale("stanceBarScale", "stanceBarPosition", self.stanceBarContainer, scale, self.ApplyStanceBarShape, self.ApplyStanceBarPosition)
 end
 
 function ACAB:SetStanceBarNativeHoverOnly(enabled)
@@ -929,24 +819,13 @@ function ACAB:ResetStanceBarLayout()
 end
 
 function ACAB:StartStanceBarDrag()
-	local pos = ACABDB.stanceBarPosition
-
-	if not pos then
-		return
-	end
-
-	self:StartSharedDrag("stanceBar", nil, pos.x or 0, pos.y or 0)
+	self:StartElementDrag("stanceBar")
 end
 
+-- Manually moved - stops auto-stacking its Y.
 function ACAB:StopStanceBarDrag()
-	self:StopSharedDrag()
-
-	-- Manually moved - stop auto-stacking its Y.
 	ACABDB.stanceBarUsesDefaultPosition = false
-
-	if self.RefreshBarSettingsPage then
-		self:RefreshBarSettingsPage(self.STANCE_BAR_ID)
-	end
+	self:StopElementDrag(self.STANCE_BAR_ID)
 end
 
 -------------------------------------------------------------------------
@@ -956,10 +835,7 @@ end
 -- The first GetNumShapeshiftForms() ShapeshiftButtonN frames (not IsShown(): unreliable early), capped, or nil.
 function ACAB:GetStanceBarButtons()
 	local count = self:GetClampedLiveStanceCount()
-
-	if count <= 0 then
-		return nil
-	end
+	if count <= 0 then return nil end
 
 	local buttons = {}
 	local i
@@ -975,9 +851,7 @@ function ACAB:GetStanceBarButtons()
 		buttons[i] = frame
 	end
 
-	if table.getn(buttons) == 0 then
-		return nil
-	end
+	if table.getn(buttons) == 0 then return nil end
 
 	return buttons
 end

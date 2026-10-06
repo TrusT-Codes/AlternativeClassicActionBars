@@ -1,6 +1,58 @@
 # Changelog
 
-## 1.3.0 (Unreleased)
+## 1.3.0-rc2
+
+### Features
+
+- Stance Bar, Pet Bar and Cast Bar sitting at their default spot now move above Extra Bar 1 / Extra Bar 2 whenever those get enabled, disabled or reset to their vanilla position - in every profile, not only with Force Vanilla Layout, and for both the Vanilla and the ACAB-styled Pet/Stance Bar. Moved them yourself? They stay where you put them. A styled Pet/Stance Bar follows once you've used its "Reset to Vanilla Layout".
+- New General setting "Join update-check channel": turn it off to keep ACAB out of its hidden realm-wide chat channel (frees a custom channel slot). Version checks with party, raid, guild and battleground still run.
+
+### Bugfixes
+
+- Fix Main Bar page switching (page arrows, Shift+1-6) landing on the page of an action bar that's already shown, when Blizzard's own "Show Right ActionBar 2" option was off.
+- Fix action bars, Experience Bar, Page Indicator, Micro Menu, Latency Bar, Key Ring and Bag Bar ending up in the wrong spots after changing the UI scale. Default Vanilla and Default Modern now rebuild themselves for the new scale (one automatic reload); custom profiles keep every element at its screen position.
+- Fix the Stance Bar starting at an old position after turning "Use Vanilla Stance Bar" off - it now keeps its spot (and keeps following the vanilla stack if it was on its default spot).
+- Fix Experience Bar's "Reset to Modern Layout Default" not placing it at the bottom center.
+- Fix Extra Bars' "Reset to Vanilla Layout" copying the shape of the bar they sit next to: Extra Bar 1/2 now reset to 12x1, Extra Bar 3/4 to 1x12.
+- Fix macros that also start Auto Shot never glowing: macros now flash briefly whenever their own ability fires (instant ones too), never for Auto Shot.
+- Fix `/acab recapture` leaving a moved Stance Bar in place and not putting the Pet Bar back above Extra Bar 2: both now return to their default spot on the vanilla stack.
+- Remove the Stance Bar "native gap ... implausible value" warning at login; the value it measured was never used.
+- Fix fallback-placed Extra Bars overlapping in the Modern button style (only when their reference bar had no saved position).
+- Fix empty dark squares sometimes showing at the vanilla Stance Bar spot when using the ACAB-styled Stance Bar after playing a character with the vanilla one.
+- Fix a fresh install saving action bar positions before the UI scale applied (the first login no longer prints "Recapturing positions").
+- Fix Extra Bar hotkeys disappearing (and their key going dead) after an action bar swapped back from showing that Extra Bar on a page or stance change; while swapped, the Main Bar now keeps showing its own hotkeys.
+- Fix casting, leaving combat or looting in the first seconds after the loading screen sometimes saving the Cast Bar or other elements at a wrong position, or changing another profile's Pet Bar setting.
+- `/acab` commands used right after the loading screen now say "Still loading" until setup finishes, instead of opening settings or changing profiles before your profile loaded (`/acab version` and `/acab help` still work).
+- Chat messages, `/acab help` and the minimap menu now say "Edit Layout" like the settings window (was "Configure Layout").
+- Profile names are now trimmed; empty names, names containing `|` and names longer than 32 characters are refused (create dialog, setup wizard, `/acab profile add`). Existing profiles are unchanged.
+- The update check ignores malformed version strings from other players and drops a malformed saved one, so a bogus announcement can't cause a permanent update nag.
+- A remembered "newer version available" message now stops after 5 logins in a row without any other player announcing that version again.
+- Importing a profile no longer takes over the exporter's update-nag state, Edit Layout mode or Hoverbind mode.
+- Fix "Only show on hover" staying on (and locked) for action bars and elements after turning on Force Vanilla Layout Mode; it now turns off for all of them.
+- Fix macros with next-swing abilities (Heroic Strike, Cleave) glowing only briefly: they now stay lit until the swing lands, like the plain ability. Macros of instant abilities no longer flash longer than the plain ability (outside Auto Shot / Shoot).
+- Fix a custom ACAB-styled Stance Bar grid (e.g. 1x3) resetting to a single row after entering or leaving a dungeon.
+
+### Performance
+
+- Less work and fewer temporary allocations in action button updates, hoverbind mode and while dragging elements; smaller addon files.
+- Page and stance swaps do about half the work: the edit-mode refresh runs once per swap instead of five times.
+- Item macros (potions, bandages, ammo) share one bag scan per bag update instead of one per button.
+- Cooldown spirals are only rewritten when the cooldown actually changes.
+- Range/usability updates skip bars that are turned off or hidden.
+- Macro cast flashes no longer re-check every action button on each cast (Auto Shot included).
+- Dragging elements in Edit Layout mode does no work while the mouse and Shift/Alt/Ctrl stay still, and reuses the snap targets for the whole drag.
+- Less per-frame work and garbage while dragging the Main Bar.
+- The hover-only poll stops entirely while no bar or element uses "Only show on hover".
+- Closing a loot window no longer re-applies every element's position.
+
+### Maintenance
+
+- Developer docs refreshed: stale plan files removed, newly confirmed client behavior recorded.
+- Duplicated code merged into shared helpers (login settle poll, settings height-fit, flat backdrop).
+- Old settings that are no longer used are removed from saved profiles after being carried over, and all modern-style settings buttons are built by one shared function.
+- The largest files are split up (new ForceVanillaLayout.lua, ProfileDialogs.lua, Dialog.lua, LayoutGrid.lua and ExtraBars.lua). When updating, replace the whole addon folder and restart the game - a /reload doesn't load new files.
+
+## 1.3.0-rc1
 
 ### Features
 

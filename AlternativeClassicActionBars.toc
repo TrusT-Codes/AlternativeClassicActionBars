@@ -2,26 +2,36 @@
 ## Title: |cff99051bA|cfffffffflternative|cff99051bC|cfffffffflassic|cff99051bA|cffffffffction|cff99051bB|cffffffffars
 ## Notes: Action bar addon to keep Vanilla-Styled Bars / Menus with more functionality + extra Bars
 ## Author: Trusty
-## Version: 1.2.1-beta
+## Version: 1.3.0-rc2
 ## SavedVariables: ACABDB, ACABProfilesDB
 ## SavedVariablesPerCharacter: ACABCharDB
 
 Core.lua
 UpdateCheck.lua
 Database.lua
+ProfileIO.lua
+ProfileDialogs.lua
+ElementEngine.lua
 DefaultBars.lua
 NativeElements.lua
+PageIndicator.lua
+Tooltip.lua
 PetStanceBars.lua
 ExperienceBar.lua
 Bar.lua
+LayoutGrid.lua
+ExtraBars.lua
 Button.lua
 HoverBind.lua
 Minimap.lua
 Menu.lua
 UIWidgets.lua
+Dialog.lua
 SetupWizard.lua
 Settings.lua
 SettingsBars.lua
+ForceVanillaLayout.lua
+SettingsSimplePages.lua
 SettingsGeneral.lua
 Events.lua
 bindings.xml
