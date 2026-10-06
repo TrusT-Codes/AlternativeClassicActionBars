@@ -977,7 +977,8 @@ function ACABButtonMixin:UpdateState()
 end
 
 -- True while a macro's spell target runs: Auto Shot / Shoot auto-repeating, Attack auto-attacking, any other
--- spell while cast or for MACRO_CAST_FLASH_DURATION after it was cast.
+-- spell while cast, while its slot is current (queued next-swing spells), or, while auto-repeating, for
+-- MACRO_CAST_FLASH_DURATION after it was cast.
 function ACABButtonMixin:IsMacroTargetActive()
 	local spellName = self:GetMacroTargetKind() == "spell" and self.macroSpellNameLower
 	if not spellName then return false end
@@ -990,7 +991,14 @@ function ACABButtonMixin:IsMacroTargetActive()
 		return playerActionState.autoAttack
 	end
 
-	return spellName == playerActionState.castName or spellName == playerActionState.firedName
+	if spellName == playerActionState.castName then return true end
+
+	-- must skip IsCurrentAction while auto-repeating: a macro with Auto Shot stays current the whole time
+	if playerActionState.autoRepeat then
+		return spellName == playerActionState.firedName
+	end
+
+	return IsCurrentAction(self.actionSlot) and true or false
 end
 
 -------------------------------------------------------------------------
