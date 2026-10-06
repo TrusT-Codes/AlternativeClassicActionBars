@@ -22,6 +22,7 @@
 - Fix Extra Bar hotkeys disappearing (and their key going dead) after an action bar swapped back from showing that Extra Bar on a page or stance change; while swapped, the Main Bar now keeps showing its own hotkeys.
 - Fix casting, leaving combat or looting in the first seconds after the loading screen sometimes saving the Cast Bar or other elements at a wrong position, or changing another profile's Pet Bar setting.
 - `/acab` commands used right after the loading screen now say "Still loading" until setup finishes, instead of opening settings or changing profiles before your profile loaded (`/acab version` and `/acab help` still work).
+- Chat messages, `/acab help` and the minimap menu now say "Edit Layout" like the settings window (was "Configure Layout").
 
 ### Performance
 
