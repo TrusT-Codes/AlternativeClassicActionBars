@@ -1598,6 +1598,21 @@ end
 -- Real Blizzard buttons stay hidden; cfg.enabled + Show()/Hide() on the Bar.lua bar frame is the sole visibility source.
 -------------------------------------------------------------------------
 
+-- Writes bars 2-5's cfg.enabled into Blizzard's saved action bar toggles (ALWAYS_SHOW_MULTIBARS kept as is).
+function ACAB:PushNativeActionBarToggles()
+	if not SetActionBarToggles or not (ACABDB and ACABDB.defaultBars) then return end
+
+	local toggles = {}
+	local id
+
+	for id = 2, 5 do
+		local cfg = ACABDB.defaultBars[id]
+		toggles[id - 1] = (cfg and cfg.enabled) and 1 or nil
+	end
+
+	SetActionBarToggles(toggles[1], toggles[2], toggles[3], toggles[4], self.IsAlwaysShowMultibars() and 1 or nil)
+end
+
 -- Also reflows dependent default-layout elements (Stance Bar on bar 2, Pet Bar on bar 3, Cast Bar on Pet Bar).
 function ACAB:SetDefaultBarEnabled(id, enabled)
 	if id == 1 then
@@ -1687,6 +1702,8 @@ function ACAB:SetDefaultBarEnabled(id, enabled)
 		if control and control.SetChecked then
 			control:SetChecked(enabled)
 		end
+
+		self:PushNativeActionBarToggles()
 	end
 
 	-- What MultiActionBar_Update would do: ActionBar_PageUp/Down skip the pages of shown bars.
@@ -1808,6 +1825,8 @@ end
 -- Post-hook: runs after MultiActionBar_Update has applied the native globals, so the reconcile reads new values.
 if hooksecurefunc and MultiActionBar_Update then
 	hooksecurefunc("MultiActionBar_Update", function()
+		if not ACAB.loginSequenceDone then return end
+
 		ACAB:ReconcileDefaultBarEnabledFromNative()
 	end)
 end
