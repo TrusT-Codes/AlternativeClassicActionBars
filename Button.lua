@@ -94,6 +94,8 @@ function ACAB:ToggleAlwaysShowMultibars()
 
 	ALWAYS_SHOW_MULTIBARS = newState and "1" or nil
 
+	ACAB:PushNativeActionBarToggles()
+
 	if MultiActionBar_UpdateGridVisibility then
 		MultiActionBar_UpdateGridVisibility()
 	end
