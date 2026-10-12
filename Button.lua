@@ -1751,6 +1751,26 @@ function ACABButtonMixin:UpdateCooldown()
 	CooldownFrame_SetTimer(self.cooldown, start, duration, enable)
 end
 
+-- Spell names nampower's name lookup threw on this session (see known-problems.md: "nampower name lookup fails for some spellbook spells").
+local nampowerUnknownSpellNames = {}
+
+-- pcall of a nampower name-based spell check; on error remembers the name and returns false.
+local function CallNampowerSpellCheck(fn, spellName, unit)
+	local ok, a, b
+	if unit then
+		ok, a, b = pcall(fn, spellName, unit)
+	else
+		ok, a, b = pcall(fn, spellName)
+	end
+
+	if not ok then
+		nampowerUnknownSpellNames[spellName] = true
+		return false
+	end
+
+	return true, a, b
+end
+
 -- Range/usability icon tint (or hotkey-only red tint); untinted for pet/stance/empty slots.
 function ACABButtonMixin:UpdateRange()
 	-- Hoverbind mode owns icon tinting while active.
@@ -1776,12 +1796,17 @@ function ACABButtonMixin:UpdateRange()
 	local macroKind = self:GetMacroTargetKind()
 	if macroKind == "spell" then
 		-- Macro naming a spell: nampower's checks for that spell, by spellbook name.
-		if IsSpellInRange and UnitExists("target") then
-			inRange = IsSpellInRange(self.macroSpellName, "target")
-		end
+		local spellName = self.macroSpellName
+		if spellName and not nampowerUnknownSpellNames[spellName] then
+			if IsSpellInRange and UnitExists("target") then
+				local ok, result = CallNampowerSpellCheck(IsSpellInRange, spellName, "target")
+				if ok then inRange = result end
+			end
 
-		if IsSpellUsable then
-			usable, noMana = IsSpellUsable(self.macroSpellName)
+			if IsSpellUsable then
+				local ok, isUsable, isNoMana = CallNampowerSpellCheck(IsSpellUsable, spellName)
+				if ok then usable, noMana = isUsable, isNoMana end
+			end
 		end
 	elseif macroKind == "missingItem" then
 		-- Out of stock: greyed like an empty item button.

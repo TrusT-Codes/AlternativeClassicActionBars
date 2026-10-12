@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.1-rc2
+
+### Bugfixes
+
+- Fix a repeating Lua error ("Unable to determine spell id from spell name") on macros naming a spell nampower can't look up by name, e.g. `/cast Attack`. Such macro buttons now skip the range/usable tint instead.
+
 ## 1.3.1-rc1
 
 ### Bugfixes
