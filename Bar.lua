@@ -81,13 +81,50 @@ end
 -- Position
 -------------------------------------------------------------------------
 
+-- One physical pixel in frame's own units.
+local function GetFramePixelUnit(frame)
+	local scale = frame:GetEffectiveScale()
+	if not scale or scale == 0 then return nil end
+
+	return PixelUtil.GetNearestPixelSize(0, scale, 1)
+end
+
+-- Nudges bar's anchor so its top-left corner sits on a whole physical pixel (keeps button edges sharp).
+local function SnapBarTopLeftToPixel(bar)
+	-- Must read UIParent first or bar's rect can resolve against a stale ancestor (env §4.6).
+	UIParent:GetLeft()
+
+	local left, top = bar:GetLeft(), bar:GetTop()
+	local unit = GetFramePixelUnit(bar)
+	if not left or not top or not unit or unit <= 0 then return end
+
+	local dx = (math.floor((left / unit) + 0.5) * unit) - left
+	local dy = (math.floor((top / unit) + 0.5) * unit) - top
+	if dx == 0 and dy == 0 then return end
+
+	local point, relativeTo, relativePoint, x, y = bar:GetPoint(1)
+	if not point then return end
+
+	bar:ClearAllPoints()
+	bar:SetPoint(point, relativeTo, relativePoint, (x or 0) + dx, (y or 0) + dy)
+end
+
+-- Places bar from its config at its current frame size, top-left pixel-aligned.
+local function PositionBarFrame(bar, barW, barH)
+	ACAB:ApplyPositionToFrame(bar, bar.config, "TOPLEFT", barW, barH)
+	SnapBarTopLeftToPixel(bar)
+
+	bar.ACABPositionedWidth = barW
+	bar.ACABPositionedHeight = barH
+end
+
 function ACAB:ApplyBarPosition(bar)
 	if not bar or not bar.config then return end
 
 	local cfg = bar.config
 	local barW, barH = BarFrameSize(cfg)
 
-	self:ApplyPositionToFrame(bar, cfg, "TOPLEFT", barW, barH)
+	PositionBarFrame(bar, barW, barH)
 
 	if cfg.id == 1 then
 		ApplyMainBarFollowers()
@@ -112,6 +149,8 @@ function ACAB:LayoutButtons(bar)
 
 	local compactIndex = 0
 
+	local pixelUnit = (self:GetButtonStyle() == self.BUTTON_STYLE_NO_BORDER) and GetFramePixelUnit(bar) or nil
+
 	for i = 1, table.getn(bar.buttons) do
 		local btn = bar.buttons[i]
 		if btn then
@@ -134,7 +173,19 @@ function ACAB:LayoutButtons(bar)
 				local yOff = -row * (cfg.buttonSize + spacing)
 
 				btn:ClearAllPoints()
-				self:PixelSetPoint(btn, "TOPLEFT", bar, "TOPLEFT", xOff, yOff)
+
+				if pixelUnit then
+					-- No Border: both corners on whole pixels, so neighbours share edges and the last one meets the bar's edge.
+					local left = math.floor((xOff / pixelUnit) + 0.5) * pixelUnit
+					local right = math.floor(((xOff + cfg.buttonSize) / pixelUnit) + 0.5) * pixelUnit
+					local top = math.floor((yOff / pixelUnit) + 0.5) * pixelUnit
+					local bottom = math.floor(((yOff - cfg.buttonSize) / pixelUnit) + 0.5) * pixelUnit
+
+					btn:SetPoint("TOPLEFT", bar, "TOPLEFT", left, top)
+					btn:SetPoint("BOTTOMRIGHT", bar, "TOPLEFT", right, bottom)
+				else
+					self:PixelSetPoint(btn, "TOPLEFT", bar, "TOPLEFT", xOff, yOff)
+				end
 			end
 		end
 	end
@@ -736,6 +787,11 @@ function ACAB:ApplyBarShape(bar, skipEditVisual)
 	local barW, barH = BarFrameSize(cfg)
 
 	self:PixelSetSize(bar, barW, barH)
+
+	-- New size moves the top-left off the pixel grid; re-place an already positioned bar.
+	if bar:GetPoint(1) and (bar.ACABPositionedWidth ~= barW or bar.ACABPositionedHeight ~= barH) then
+		PositionBarFrame(bar, barW, barH)
+	end
 
 	-- Must re-assert every call, or a page/stance swap can bury Bar 1 behind the art frame (LOW level 5).
 	bar:SetFrameStrata("LOW")

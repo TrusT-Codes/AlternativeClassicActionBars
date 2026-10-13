@@ -930,6 +930,13 @@ function ACAB:SetButtonStyle(style)
 	self:ApplyGlobalSpacing()
 	self:ApplyGlobalButtonSize()
 
+	-- No Border lays buttons out differently (spacing formula, pixel-aligned cells).
+	self:ForEachBar(function(barId, bar)
+		if bar.config then
+			ACAB:ApplyBarShape(bar)
+		end
+	end)
+
 	self:RefreshDefaultLayoutGatingOnAllPages()
 end
 

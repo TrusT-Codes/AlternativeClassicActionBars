@@ -422,7 +422,11 @@ function ACAB:GetBarEffectiveSpacing(cfg)
 	local spacing = (cfg and cfg.spacing) or 0
 	local scale = self:GetMainBarArtScale(cfg)
 
-	if self:IsVanillaBorderStyle() then
+	-- No Border off Main Bar's art: spacing 0 means touching icons at any button size.
+	local noBorderFree = self:GetButtonStyle() == self.BUTTON_STYLE_NO_BORDER
+		and not (cfg and cfg.id == 1 and self:IsMainBarArtEnabled())
+
+	if self:IsVanillaBorderStyle() or noBorderFree then
 		return spacing * scale
 	end
 
