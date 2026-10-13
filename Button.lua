@@ -478,14 +478,25 @@ local function CreateNativeBorder(btn)
 	btn.border:SetPoint("CENTER", btn, "CENTER", 0, -1)
 end
 
+-- Bar 1 under visible Blizzard art: no backdrop, vanilla styles draw the native border only.
+local function IsCoveredByMainBarArt(btn)
+	return btn.parentBar and btn.parentBar.config and btn.parentBar.config.id == 1
+		and ACABDB and ACAB:IsMainBarArtEnabled()
+end
+
 -- True for styles whose icon fills the whole button (vanilla family, No Border).
 local function IsIconFlush(btn)
 	return btn.hasNativeBorder or btn.buttonStyle == ACAB.BUTTON_STYLE_NO_BORDER
 end
 
--- Anchors the icon: inset 2px in modern style so the backdrop border shows, flush in vanilla and No Border style.
+-- Anchors the icon: inset 2px in modern style so the backdrop border shows, flush in vanilla and No Border style
+-- (No Border inset 1px on Main Bar under the art, to fit the art's slots).
 local function AnchorIcon(btn)
 	local iconInset = IsIconFlush(btn) and 0 or 2
+
+	if btn.buttonStyle == ACAB.BUTTON_STYLE_NO_BORDER and IsCoveredByMainBarArt(btn) then
+		iconInset = 1
+	end
 
 	btn.icon:SetPoint("TOPLEFT", btn, "TOPLEFT", iconInset, -iconInset)
 	btn.icon:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -iconInset, iconInset)
@@ -517,12 +528,6 @@ end
 local function IsMainBarShowingEmpty(btn)
 	return btn.parentBar and btn.parentBar.config and btn.parentBar.config.id == 1
 		and ACABDB and ACABDB.useDefaultLayout ~= false
-end
-
--- Bar 1 under visible Blizzard art: no backdrop, vanilla styles draw the native border only.
-local function IsCoveredByMainBarArt(btn)
-	return btn.parentBar and btn.parentBar.config and btn.parentBar.config.id == 1
-		and ACABDB and ACAB:IsMainBarArtEnabled()
 end
 
 function ACABButtonMixin:Init(parent, actionSlot, slotIndex)
@@ -854,6 +859,12 @@ function ACABButtonMixin:UpdateBackdropVisibility(hasContent, isMainBar)
 		and self.backdropFilled == hasContent
 	then
 		return
+	end
+
+	-- No Border's icon inset depends on the art cover.
+	if style == ACAB.BUTTON_STYLE_NO_BORDER and self.backdropCovered ~= covered then
+		self.icon:ClearAllPoints()
+		AnchorIcon(self)
 	end
 
 	self.backdropShown = shown
