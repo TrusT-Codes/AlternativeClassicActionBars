@@ -2,7 +2,16 @@
 
 ## 1.3.1-rc2
 
+### Features
+
+- New "Button Style" dropdown on the General tab replaces the "Use Modern Button Style" checkbox, with five styles: Vanilla Buttons, Modern Buttons, Darker Vanilla Buttons, Darker Modern Buttons and No Border. Your current style carries over (unchecked → Vanilla Buttons, checked → Modern Buttons). Force Vanilla Layout Mode offers the two vanilla styles.
+- Vanilla Buttons now look exactly like Blizzard's own action buttons: lighter grey slots, no dark backdrop. The previous darker look is kept as "Darker Vanilla Buttons". This started as a bug report: thanks to Discord user @Coriach for spotting that the Main Bar looked darker with ACAB than without, which became this feature instead of a plain color fix.
+- New "No Border" button style: icons only, no border or backdrop. With Spacing 0, icons touch seamlessly inside a bar and across bars snapped together in Edit Layout. On the Main Bar with Blizzard art shown, icons shrink slightly to fit the art's slots.
+
 ### Bugfixes
+
+- Fix the Main Bar's Blizzard art looking darker with ACAB: Main Bar buttons over the art no longer draw a dark backdrop, and vanilla styles draw Blizzard's own slot border there.
+- Fix button borders looking slightly lighter on some bars than others (seen on the Action Bars vs. Extra Bars in the Modern style): every bar now sits on whole screen pixels.
 
 - Fix a repeating Lua error ("Unable to determine spell id from spell name") on macros naming a spell nampower can't look up by name, e.g. `/cast Attack`. Such macro buttons now skip the range/usable tint instead.
 
