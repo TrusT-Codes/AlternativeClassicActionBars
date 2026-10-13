@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.3.1-rc2
+## 1.3.2-rc1
 
 ### Features
 
