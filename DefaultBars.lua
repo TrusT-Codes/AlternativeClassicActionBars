@@ -253,6 +253,15 @@ function ACAB:ApplyBlizzardArtVisibility()
 			end
 		end
 	end
+
+	-- Main Bar button backdrops depend on the art mode.
+	local mainBar = self.bars and self.bars[1]
+
+	if mainBar and mainBar.buttons then
+		for i = 1, table.getn(mainBar.buttons) do
+			mainBar.buttons[i]:UpdateBackdropVisibility()
+		end
+	end
 end
 
 -------------------------------------------------------------------------

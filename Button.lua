@@ -509,6 +509,12 @@ local function IsMainBarShowingEmpty(btn)
 		and ACABDB and ACABDB.useDefaultLayout ~= false
 end
 
+-- Bar 1 under visible Blizzard art: the art's own slot frames replace backdrop and border.
+local function IsCoveredByMainBarArt(btn)
+	return btn.parentBar and btn.parentBar.config and btn.parentBar.config.id == 1
+		and ACABDB and ACAB:IsMainBarArtEnabled()
+end
+
 function ACABButtonMixin:Init(parent, actionSlot, slotIndex)
 	self.actionSlot = actionSlot
 	self.parentBar = parent
@@ -824,7 +830,8 @@ function ACABButtonMixin:UpdateBackdropVisibility(hasContent, isMainBar)
 		isMainBar = IsMainBarShowingEmpty(self)
 	end
 
-	local shown = self.slotVisible and (isMainBar or hasContent or IsAlwaysShowMultibars() or ACAB.isShowingActionGrid or ACAB:IsHoverBindMode()) and true or false
+	local shown = self.slotVisible and (isMainBar or hasContent or IsAlwaysShowMultibars() or ACAB.isShowingActionGrid or ACAB:IsHoverBindMode())
+		and not IsCoveredByMainBarArt(self) and true or false
 
 	-- Skip the writes when neither the state nor the border style changed.
 	if self.backdropShown == shown and self.backdropNativeBorder == self.hasNativeBorder then return end
