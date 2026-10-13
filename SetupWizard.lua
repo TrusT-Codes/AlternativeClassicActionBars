@@ -873,6 +873,8 @@ local function BuildBaselineData(state, kind)
 	-- must match modernBorderStyle, or the next login treats it as a live style switch and shifts every bar
 	data.lastAppliedVanillaStyle = not data.modernBorderStyle
 
+	data.buttonStyle = data.modernBorderStyle and ACAB.BUTTON_STYLE_MODERN or ACAB.BUTTON_STYLE_VANILLA
+
 	return data
 end
 

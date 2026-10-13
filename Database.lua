@@ -804,6 +804,7 @@ function ACAB:ApplyModernBaselineFlags(data)
 	data.bagBarSpacing = 0
 
 	data.modernBorderStyle = true
+	data.buttonStyle = self.BUTTON_STYLE_MODERN
 
 	-- must match modernBorderStyle, or the next login treats it as a live style switch and shifts every bar
 	data.lastAppliedVanillaStyle = false
@@ -908,7 +909,7 @@ local SANITIZE_NUMBER_KEYS = {
 	"bagBarHoverDuration", "microMenuHoverDuration", "latencyBarHoverDuration", "expBarHoverDuration",
 	"expBarGlowPulseInterval", "microMenuCols", "microMenuRows",
 	"bagBarSpacing", "bagBarNativeSpacing", "microMenuSpacing", "microMenuNativeSpacing", "stanceBarSpacing",
-	"stanceBarNativeSpacing", "castBarStackBaseY", "layoutUIScale",
+	"stanceBarNativeSpacing", "castBarStackBaseY", "layoutUIScale", "buttonStyle",
 }
 
 -- Numbers that must stay above 0 (scales, font sizes, grid size).
@@ -1469,6 +1470,12 @@ function ACAB:EnsureDB()
 	if ACABDB.minimapAngle == nil then ACABDB.minimapAngle = 200 end
 	if ACABDB.useDefaultLayout == nil then ACABDB.useDefaultLayout = true end
 	if ACABDB.modernBorderStyle == nil then ACABDB.modernBorderStyle = false end
+
+	-- buttonStyle must belong to modernBorderStyle's family (pre-dropdown saves: false -> Vanilla, true -> Modern).
+	local styleDef = ACAB.BUTTON_STYLE_DEFS[ACABDB.buttonStyle]
+	if not styleDef or styleDef.modern ~= (ACABDB.modernBorderStyle == true) then
+		ACABDB.buttonStyle = ACABDB.modernBorderStyle and ACAB.BUTTON_STYLE_MODERN or ACAB.BUTTON_STYLE_VANILLA
+	end
 	if ACABDB.bypassRightActionBar2Dependency == nil then ACABDB.bypassRightActionBar2Dependency = false end
 
 	if ACABDB.lastAppliedVanillaStyle == nil then
