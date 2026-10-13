@@ -58,6 +58,11 @@ function ACAB:ApplyUseDefaultLayoutChange(checked)
 
 		-- Clears the modern-style/global-override flags (the Setup Wizard's shared cascade keeps them).
 		ACABDB.modernBorderStyle = false
+
+		-- Keeps Darker Vanilla Buttons; any modern-family style becomes Vanilla Buttons.
+		if ACAB.BUTTON_STYLE_DEFS[ACABDB.buttonStyle] == nil or ACAB.BUTTON_STYLE_DEFS[ACABDB.buttonStyle].modern then
+			ACABDB.buttonStyle = ACAB.BUTTON_STYLE_VANILLA
+		end
 		ACABDB.globalSpacingEnabled = false
 		ACABDB.globalButtonSizeEnabled = false
 

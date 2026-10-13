@@ -735,6 +735,9 @@ function ACAB:ApplyStanceBarBorderStyle()
 	if not buttons then return end
 
 	local vanilla = self:IsVanillaBorderStyle()
+	local style = self:GetButtonStyle()
+	local noBorder = style == self.BUTTON_STYLE_NO_BORDER
+	local dark = style == self.BUTTON_STYLE_DARK_MODERN
 	local i
 
 	for i = 1, table.getn(buttons) do
@@ -763,10 +766,12 @@ function ACAB:ApplyStanceBarBorderStyle()
 					normalTex:Hide()
 				end
 
+				local iconInset = noBorder and 0 or 2
+
 				if icon then
 					icon:ClearAllPoints()
-					icon:SetPoint("TOPLEFT", btn, "TOPLEFT", 2, -2)
-					icon:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -2, 2)
+					icon:SetPoint("TOPLEFT", btn, "TOPLEFT", iconInset, -iconInset)
+					icon:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -iconInset, iconInset)
 				end
 
 				-- Must be a separate lower-level frame: btn:SetBackdrop() renders above the icon and greys it out.
@@ -778,13 +783,24 @@ function ACAB:ApplyStanceBarBorderStyle()
 					backdrop:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, 0)
 					backdrop:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 0, 0)
 					backdrop:SetBackdrop(ACAB.SMALL_BACKDROP)
-					backdrop:SetBackdropColor(0, 0, 0, 0.75)
-					backdrop:SetBackdropBorderColor(1, 1, 1, 1)
 
 					btn.ACABModernBackdrop = backdrop
 				end
 
-				btn.ACABModernBackdrop:Show()
+				-- No Border: icon only; Darker Modern: denser fill, grey edge.
+				if noBorder then
+					btn.ACABModernBackdrop:Hide()
+				else
+					btn.ACABModernBackdrop:SetBackdropColor(0, 0, 0, dark and 0.9 or 0.75)
+
+					if dark then
+						btn.ACABModernBackdrop:SetBackdropBorderColor(0.5, 0.5, 0.5, 1)
+					else
+						btn.ACABModernBackdrop:SetBackdropBorderColor(1, 1, 1, 1)
+					end
+
+					btn.ACABModernBackdrop:Show()
+				end
 			end
 		end
 	end

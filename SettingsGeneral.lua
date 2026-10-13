@@ -337,54 +337,48 @@ local function BuildGeneralFontSizeSection(panel, mainBarStanceSwapCheckbox)
 	return countTitle, countSlider, countValueText
 end
 
--- General panel: global button border style checkbox (locked to vanilla under Force Vanilla Layout Mode). Returns it.
+-- Button Style dropdown options, all styles or only the vanilla family (Force Vanilla Layout Mode).
+local function BuildButtonStyleOptions(vanillaOnly)
+	local options = {}
+	local style
+
+	for style = 0, ACAB.BUTTON_STYLE_NO_BORDER do
+		local def = ACAB.BUTTON_STYLE_DEFS[style]
+
+		if not (vanillaOnly and def.modern) then
+			table.insert(options, { text = def.text, value = style })
+		end
+	end
+
+	return options
+end
+
+-- General panel: global Button Style dropdown (vanilla styles only under Force Vanilla Layout Mode). Returns its row.
 local function BuildGeneralBorderStyleSection(panel, countTitle, countSlider, countValueText)
+	local row, dropdown = ACAB:CreateDropdownRow(panel, nil, "Button Style:", 180, "ACABGeneralButtonStyleDropdown",
+		BuildButtonStyleOptions(false))
+
 	-- Anchored off countTitle (fixed X), not countValueText.
-	local modernBorderStyleCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABGeneralModernBorderStyleCheckbox", {
-		anchor = { "TOPLEFT", countTitle, "BOTTOMLEFT", 0, -12 - countSlider:GetHeight() - 2 - countValueText:GetHeight() - 18 },
-		label = "Use Modern Button Style",
-		tooltip = {
-			title = "Use Modern Button Style",
-			lines = {
-				"Choose the button border style used by ALL bars. When " ..
-				"enabled use a slick and thin modern rectangular Border, " ..
-				"when disabled use the default vanilla UI border.",
-				"Locked to vanilla UI Border while 'Force Vanilla Layout " ..
-				"Mode' is enabled",
-			},
-		},
-		onClick = function()
-			-- Re-checks the Force Vanilla lock (RefreshGeneralPanel also blocks mouse input).
-			if ACABDB.useDefaultLayout ~= false then
-				this:SetChecked(false)
-				return
-			end
+	row:SetPoint("TOPLEFT", countTitle, "BOTTOMLEFT", 0, -12 - countSlider:GetHeight() - 2 - countValueText:GetHeight() - 18)
 
-			ACABDB.modernBorderStyle = this:GetChecked() and true or false
+	dropdown.onSelect = function(value)
+		ACAB:SetButtonStyle(value)
 
-			ACAB:ApplyGlobalButtonStyle()
+		-- Re-syncs the dropdown (a refused style snaps back) and the global spacing slider's range/labels.
+		ACAB:RefreshGeneralPanel()
+	end
 
-			-- Re-applies the global spacing/size overrides for the new style's floor.
-			ACAB:ApplyGlobalSpacing()
-			ACAB:ApplyGlobalButtonSize()
+	panel.buttonStyleRow = row
+	panel.buttonStyleDropdown = dropdown
 
-			ACAB:RefreshDefaultLayoutGatingOnAllPages()
-
-			-- Re-syncs the global spacing slider's range/labels to the new floor.
-			ACAB:RefreshGeneralPanel()
-		end,
-	})
-
-	panel.modernBorderStyleCheckbox = modernBorderStyleCheckbox
-
-	return modernBorderStyleCheckbox
+	return row
 end
 
 -- General panel: global Spacing / Button size override checkboxes + sliders. Returns the Button size slider.
-local function BuildGeneralGlobalOverrideSection(panel, modernBorderStyleCheckbox)
+local function BuildGeneralGlobalOverrideSection(panel, buttonStyleRow)
 	-- OnClick is set below, once its slider exists.
 	local globalSpacingCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABGeneralGlobalSpacingCheckbox", {
-		anchor = { "TOPLEFT", modernBorderStyleCheckbox, "BOTTOMLEFT", 0, -14 },
+		anchor = { "TOPLEFT", buttonStyleRow, "BOTTOMLEFT", 0, -6 },
 		label = "Toggle global Spacing",
 		tooltip = {
 			title = "Toggle global Spacing",
@@ -532,8 +526,8 @@ function ACAB:GetOrCreateGeneralPanel()
 	local checkbox = BuildGeneralLayoutModeSection(panel)
 	local mainBarStanceSwapCheckbox = BuildGeneralBarToggleSection(panel, checkbox)
 	local countTitle, countSlider, countValueText = BuildGeneralFontSizeSection(panel, mainBarStanceSwapCheckbox)
-	local modernBorderStyleCheckbox = BuildGeneralBorderStyleSection(panel, countTitle, countSlider, countValueText)
-	local globalButtonSizeSlider = BuildGeneralGlobalOverrideSection(panel, modernBorderStyleCheckbox)
+	local buttonStyleRow = BuildGeneralBorderStyleSection(panel, countTitle, countSlider, countValueText)
+	local globalButtonSizeSlider = BuildGeneralGlobalOverrideSection(panel, buttonStyleRow)
 	BuildGeneralMiscSection(panel, globalButtonSizeSlider)
 
 	panel:Hide()
@@ -1119,10 +1113,8 @@ function ACAB:RefreshGeneralPanel()
 	-- Style and global override controls lock while Force Vanilla Layout Mode forces vanilla styling.
 	local vanillaBorderStyleLocked = ACABDB.useDefaultLayout ~= false
 
-	panel.modernBorderStyleCheckbox:SetChecked(
-		(not vanillaBorderStyleLocked) and ACABDB.modernBorderStyle == true
-	)
-	SetMouseLocked(panel.modernBorderStyleCheckbox, vanillaBorderStyleLocked)
+	panel.buttonStyleDropdown:SetOptions(BuildButtonStyleOptions(vanillaBorderStyleLocked))
+	panel.buttonStyleDropdown:SetSelected(ACAB:GetButtonStyle())
 
 	local spacingDisplayed = ACABDB.globalSpacingEnabled == true and
 		not vanillaBorderStyleLocked

@@ -873,6 +873,22 @@ end
 -- Global border/spacing style
 -------------------------------------------------------------------------
 
+-- ACABDB.buttonStyle values (General tab "Button Style" dropdown).
+ACAB.BUTTON_STYLE_VANILLA = 0
+ACAB.BUTTON_STYLE_MODERN = 1
+ACAB.BUTTON_STYLE_DARK_VANILLA = 2
+ACAB.BUTTON_STYLE_DARK_MODERN = 3
+ACAB.BUTTON_STYLE_NO_BORDER = 4
+
+-- Per style: dropdown text and family (modern = ACABDB.modernBorderStyle, which drives size/spacing/position math).
+ACAB.BUTTON_STYLE_DEFS = {
+	[0] = { text = "Vanilla Buttons", modern = false },
+	[1] = { text = "Modern Buttons", modern = true },
+	[2] = { text = "Darker Vanilla Buttons", modern = false },
+	[3] = { text = "Darker Modern Buttons", modern = true },
+	[4] = { text = "No Border", modern = true },
+}
+
 -- Single source of truth for the global border/spacing style.
 function ACAB:IsVanillaBorderStyle()
 	if ACABDB and ACABDB.useDefaultLayout ~= false then
@@ -880,6 +896,41 @@ function ACAB:IsVanillaBorderStyle()
 	end
 
 	return not (ACABDB and ACABDB.modernBorderStyle)
+end
+
+-- Effective button style; a modern-family style falls back to Vanilla Buttons while the vanilla family is forced.
+function ACAB:GetButtonStyle()
+	local style = ACABDB and ACABDB.buttonStyle
+
+	if not self.BUTTON_STYLE_DEFS[style] then
+		style = (ACABDB and ACABDB.modernBorderStyle) and self.BUTTON_STYLE_MODERN or self.BUTTON_STYLE_VANILLA
+	end
+
+	if self:IsVanillaBorderStyle() and self.BUTTON_STYLE_DEFS[style].modern then
+		return self.BUTTON_STYLE_VANILLA
+	end
+
+	return style
+end
+
+-- Saves style and its family flag, then reapplies styling, spacing and size to every bar.
+function ACAB:SetButtonStyle(style)
+	local def = self.BUTTON_STYLE_DEFS[style]
+	if not def then return end
+
+	-- Force Vanilla Layout Mode only allows the vanilla family.
+	if ACABDB.useDefaultLayout ~= false and def.modern then return end
+
+	ACABDB.buttonStyle = style
+	ACABDB.modernBorderStyle = def.modern
+
+	self:ApplyGlobalButtonStyle()
+
+	-- Re-applies the global spacing/size overrides for the new style's floor.
+	self:ApplyGlobalSpacing()
+	self:ApplyGlobalButtonSize()
+
+	self:RefreshDefaultLayoutGatingOnAllPages()
 end
 
 -- Whether the Pet Bar is effectively in native mode - forces native+uncondensed while default layout is on.

@@ -465,17 +465,27 @@ local function MovePoolButtonActionSlot(btn, oldSlot, newSlot)
 	AddToActionSlotMap(btn, newSlot)
 end
 
--- Creates the vanilla-style border texture (UI-Quickslot2, centered with native 0/-1 offset, below other overlays).
+-- Native ActionButton NormalTexture: UI-Quickslot2 on filled slots, UI-Quickslot on empty ones, both at alpha 0.5.
+local BORDER_TEXTURE_FILLED = "Interface\\Buttons\\UI-Quickslot2"
+local BORDER_TEXTURE_EMPTY = "Interface\\Buttons\\UI-Quickslot"
+local NATIVE_BORDER_ALPHA = 0.5
+
+-- Creates the vanilla-style border texture (centered with native 0/-1 offset, below other overlays).
 local function CreateNativeBorder(btn)
 	btn.border = btn:CreateTexture(nil, "OVERLAY")
 	btn.border:SetDrawLayer("OVERLAY", -1)
-	btn.border:SetTexture("Interface\\Buttons\\UI-Quickslot2")
+	btn.border:SetTexture(BORDER_TEXTURE_FILLED)
 	btn.border:SetPoint("CENTER", btn, "CENTER", 0, -1)
 end
 
--- Anchors the icon: inset 2px in modern style so the backdrop border shows, flush in vanilla style.
+-- True for styles whose icon fills the whole button (vanilla family, No Border).
+local function IsIconFlush(btn)
+	return btn.hasNativeBorder or btn.buttonStyle == ACAB.BUTTON_STYLE_NO_BORDER
+end
+
+-- Anchors the icon: inset 2px in modern style so the backdrop border shows, flush in vanilla and No Border style.
 local function AnchorIcon(btn)
-	local iconInset = btn.hasNativeBorder and 0 or 2
+	local iconInset = IsIconFlush(btn) and 0 or 2
 
 	btn.icon:SetPoint("TOPLEFT", btn, "TOPLEFT", iconInset, -iconInset)
 	btn.icon:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -iconInset, iconInset)
@@ -483,7 +493,7 @@ end
 
 -- Anchors the autocast Model to match the vanilla border's 0/-1 offset, or the modern backdrop's 1px inset.
 local function AnchorAutoCastModel(btn, model)
-	local modelInset = btn.hasNativeBorder and 0 or 1
+	local modelInset = IsIconFlush(btn) and 0 or 1
 	local modelYShift = btn.hasNativeBorder and -1 or 0
 
 	model:ClearAllPoints()
@@ -491,10 +501,10 @@ local function AnchorAutoCastModel(btn, model)
 	model:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -modelInset, modelInset + modelYShift)
 end
 
--- Sets the backdrop for the current border style (vanilla: ACAB.FLAT_BACKDROP, modern: ACAB.SMALL_BACKDROP),
+-- Sets the backdrop for the current border style (vanilla/No Border: ACAB.FLAT_BACKDROP, modern: ACAB.SMALL_BACKDROP),
 -- fully transparent; UpdateBackdropVisibility colors it.
 local function ApplyButtonBackdrop(btn)
-	btn:SetBackdrop(btn.hasNativeBorder and ACAB.FLAT_BACKDROP or ACAB.SMALL_BACKDROP)
+	btn:SetBackdrop(IsIconFlush(btn) and ACAB.FLAT_BACKDROP or ACAB.SMALL_BACKDROP)
 	btn:SetBackdropColor(0, 0, 0, 0)
 	btn:SetBackdropBorderColor(0, 0, 0, 0)
 
@@ -509,7 +519,7 @@ local function IsMainBarShowingEmpty(btn)
 		and ACABDB and ACABDB.useDefaultLayout ~= false
 end
 
--- Bar 1 under visible Blizzard art: the art's own slot frames replace backdrop and border.
+-- Bar 1 under visible Blizzard art: no backdrop, vanilla styles draw the native border only.
 local function IsCoveredByMainBarArt(btn)
 	return btn.parentBar and btn.parentBar.config and btn.parentBar.config.id == 1
 		and ACABDB and ACAB:IsMainBarArtEnabled()
@@ -563,6 +573,7 @@ function ACABButtonMixin:Init(parent, actionSlot, slotIndex)
 
 	-- Vanilla style draws a native border texture; modern style uses the backdrop border.
 	self.hasNativeBorder = ACAB:IsVanillaBorderStyle()
+	self.buttonStyle = ACAB:GetButtonStyle()
 
 	if self.hasNativeBorder then
 		CreateNativeBorder(self)
@@ -762,6 +773,7 @@ end
 -- Re-applies the current global border style to an existing button (same helpers as Init).
 function ACABButtonMixin:ApplyBorderStyle()
 	self.hasNativeBorder = ACAB:IsVanillaBorderStyle()
+	self.buttonStyle = ACAB:GetButtonStyle()
 
 	self:ApplyButtonTextInsets()
 
@@ -820,7 +832,8 @@ function ACABButtonMixin:UpdateGridVisibility()
 	self:UpdateBackdropVisibility(hasContent, isMainBar)
 end
 
--- Toggles the backdrop's color/border alpha and the native border texture; hasContent/isMainBar are optional precomputed values.
+-- Sets backdrop color/edge and the native border texture per button style; hasContent/isMainBar are optional
+-- precomputed values.
 function ACABButtonMixin:UpdateBackdropVisibility(hasContent, isMainBar)
 	if hasContent == nil then
 		hasContent = self:IsSlotFilled() and true or false
@@ -831,29 +844,60 @@ function ACABButtonMixin:UpdateBackdropVisibility(hasContent, isMainBar)
 	end
 
 	local shown = self.slotVisible and (isMainBar or hasContent or IsAlwaysShowMultibars() or ACAB.isShowingActionGrid or ACAB:IsHoverBindMode())
-		and not IsCoveredByMainBarArt(self) and true or false
+		and true or false
 
-	-- Skip the writes when neither the state nor the border style changed.
-	if self.backdropShown == shown and self.backdropNativeBorder == self.hasNativeBorder then return end
+	local style = self.buttonStyle or ACAB.BUTTON_STYLE_VANILLA
+	local covered = IsCoveredByMainBarArt(self) and true or false
+
+	-- Skip the writes when nothing that affects the look changed.
+	if self.backdropShown == shown and self.backdropStyle == style and self.backdropCovered == covered
+		and self.backdropFilled == hasContent
+	then
+		return
+	end
 
 	self.backdropShown = shown
-	self.backdropNativeBorder = self.hasNativeBorder
+	self.backdropStyle = style
+	self.backdropCovered = covered
+	self.backdropFilled = hasContent
 
-	if shown then
-		self:SetBackdropColor(0, 0, 0, 0.75)
+	local bgAlpha = 0
+	local edgeR, edgeG, edgeB, edgeA = 0, 0, 0, 0
+	local borderTexture = BORDER_TEXTURE_FILLED
+	local borderAlpha = 1
+	local borderShown = false
 
-		-- Vanilla style has its own border texture; don't double it with the backdrop edge.
-		if not self.hasNativeBorder then
-			self:SetBackdropBorderColor(1, 1, 1, 1)
+	if shown and self.hasNativeBorder then
+		borderShown = true
+
+		-- Vanilla Buttons, and any vanilla style under Main Bar art: native NormalTexture look, no backdrop.
+		if covered or style == ACAB.BUTTON_STYLE_VANILLA then
+			borderTexture = hasContent and BORDER_TEXTURE_FILLED or BORDER_TEXTURE_EMPTY
+			borderAlpha = NATIVE_BORDER_ALPHA
+		else
+			bgAlpha = 0.75
 		end
-	else
-		self:SetBackdropColor(0, 0, 0, 0)
-		self:SetBackdropBorderColor(0, 0, 0, 0)
+	elseif shown and not covered then
+		if style == ACAB.BUTTON_STYLE_NO_BORDER then
+			-- Empty slots keep a faint fill so they stay visible as drop targets.
+			bgAlpha = hasContent and 0 or 0.5
+		elseif style == ACAB.BUTTON_STYLE_DARK_MODERN then
+			bgAlpha = 0.9
+			edgeR, edgeG, edgeB, edgeA = 0.5, 0.5, 0.5, 1
+		else
+			bgAlpha = 0.75
+			edgeR, edgeG, edgeB, edgeA = 1, 1, 1, 1
+		end
 	end
+
+	self:SetBackdropColor(0, 0, 0, bgAlpha)
+	self:SetBackdropBorderColor(edgeR, edgeG, edgeB, edgeA)
 
 	-- Guarded on hasNativeBorder, or a leftover texture reappears after switching to modern style.
 	if self.border and self.hasNativeBorder then
-		if shown then
+		if borderShown then
+			self.border:SetTexture(borderTexture)
+			self.border:SetAlpha(borderAlpha)
 			self.border:Show()
 		else
 			self.border:Hide()
