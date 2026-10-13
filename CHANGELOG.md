@@ -12,7 +12,7 @@
 
 - Fix the Main Bar's Blizzard art looking darker with ACAB: Main Bar buttons over the art no longer draw a dark backdrop, and vanilla styles draw Blizzard's own slot border there.
 - Fix button borders looking slightly lighter on some bars than others (seen on the Action Bars vs. Extra Bars in the Modern style): every bar now sits on whole screen pixels.
-
+- Fix a button's tooltip showing the old spell after replacing it while hovering (e.g. Smite Rank 1 → Rank 2); the tooltip now updates right away.
 - Fix a repeating Lua error ("Unable to determine spell id from spell name") on macros naming a spell nampower can't look up by name, e.g. `/cast Attack`. Such macro buttons now skip the range/usable tint instead.
 
 ## 1.3.1-rc1
