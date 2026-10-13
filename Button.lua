@@ -1733,6 +1733,11 @@ function ACABButtonMixin:Refresh()
 
 	self:UpdateGridVisibility()
 
+	-- Hovered button: rebuild the open tooltip for the new slot content.
+	if GameTooltip:IsOwned(self) then
+		self:SetTooltip()
+	end
+
 	-- Pet Bar condense layout depends on which slots are filled.
 	if self.isPetSlot and self.parentBar then
 		local bar = self.parentBar
@@ -1954,6 +1959,53 @@ function ACABButtonMixin:PlaceCursor()
 	end
 end
 
+-- Fills GameTooltip for this button (owner, content, Show).
+function ACABButtonMixin:SetTooltip()
+	GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+	if self.isPetSlot then
+		-- Command slots (isToken): tooltip built by hand, SetPetAction can't show them.
+		local name, subtext, isToken
+		local _
+
+		if GetPetActionInfo then
+			name, subtext, _, isToken = GetPetActionInfo(self.actionSlot)
+		end
+
+		if isToken then
+			GameTooltip:SetText(getglobal(name) or name, 1, 1, 1)
+
+			if subtext then
+				GameTooltip:AddLine(getglobal(subtext) or subtext, 0.5, 0.5, 0.5)
+			end
+		elseif self:IsSlotFilled() and GameTooltip.SetPetAction then
+			GameTooltip:SetPetAction(self.actionSlot)
+		else
+			GameTooltip:SetText("AlternativeClassicActionBars")
+		end
+	elseif self.isStanceSlot then
+		if GameTooltip.SetShapeshift then
+			GameTooltip:SetShapeshift(self.actionSlot)
+		else
+			local name
+
+			if GetShapeshiftFormInfo then
+				local _, nameVal = GetShapeshiftFormInfo(self.actionSlot)
+				name = nameVal
+			end
+
+			GameTooltip:SetText(name or "AlternativeClassicActionBars", 1, 1, 1)
+		end
+	elseif self.macroName and self:SetMacroTargetTooltip() then
+		-- Tooltip of the macro's own /cast or /use target.
+	elseif self:IsSlotFilled() and GameTooltip.SetAction then
+		GameTooltip:SetAction(self.actionSlot)
+	else
+		GameTooltip:SetText("AlternativeClassicActionBars")
+		GameTooltip:AddLine("Drag a spell, item, or macro here.", 1, 1, 1)
+	end
+	GameTooltip:Show()
+end
+
 -- Script handlers below use global `this`.
 
 -- Uses/casts the slot, or places the cursor's action.
@@ -2033,49 +2085,7 @@ function ACABButtonMixin.OnMouseWheel()
 end
 
 function ACABButtonMixin.OnEnter()
-	GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
-	if this.isPetSlot then
-		-- Command slots (isToken): tooltip built by hand, SetPetAction can't show them.
-		local name, subtext, isToken
-		local _
-
-		if GetPetActionInfo then
-			name, subtext, _, isToken = GetPetActionInfo(this.actionSlot)
-		end
-
-		if isToken then
-			GameTooltip:SetText(getglobal(name) or name, 1, 1, 1)
-
-			if subtext then
-				GameTooltip:AddLine(getglobal(subtext) or subtext, 0.5, 0.5, 0.5)
-			end
-		elseif this:IsSlotFilled() and GameTooltip.SetPetAction then
-			GameTooltip:SetPetAction(this.actionSlot)
-		else
-			GameTooltip:SetText("AlternativeClassicActionBars")
-		end
-	elseif this.isStanceSlot then
-		if GameTooltip.SetShapeshift then
-			GameTooltip:SetShapeshift(this.actionSlot)
-		else
-			local name
-
-			if GetShapeshiftFormInfo then
-				local _, nameVal = GetShapeshiftFormInfo(this.actionSlot)
-				name = nameVal
-			end
-
-			GameTooltip:SetText(name or "AlternativeClassicActionBars", 1, 1, 1)
-		end
-	elseif this.macroName and this:SetMacroTargetTooltip() then
-		-- Tooltip of the macro's own /cast or /use target.
-	elseif this:IsSlotFilled() and GameTooltip.SetAction then
-		GameTooltip:SetAction(this.actionSlot)
-	else
-		GameTooltip:SetText("AlternativeClassicActionBars")
-		GameTooltip:AddLine("Drag a spell, item, or macro here.", 1, 1, 1)
-	end
-	GameTooltip:Show()
+	this:SetTooltip()
 
 	if ACAB:IsHoverBindMode() then
 		ACAB:SetHoverBindHoveredCustomButton(this)
