@@ -1062,7 +1062,7 @@ local GENERAL_CANDIDATE_NAMES = {
 	"useDefaultLayoutCheckbox", "tintWholeButtonCheckbox", "mainBarPaginationCheckbox", "mainBarStanceSwapCheckbox",
 	"macroTextCheckbox", "macroValueText", "macroResetButton",
 	"hotkeyValueText", "hotkeyResetButton", "countValueText", "countResetButton",
-	"modernBorderStyleCheckbox", "globalSpacingCheckbox", "globalSpacingSlider", "globalSpacingValueText",
+	"buttonStyleRow", "globalSpacingCheckbox", "globalSpacingSlider", "globalSpacingValueText",
 	"globalButtonSizeCheckbox", "globalButtonSizeSlider", "globalButtonSizeValueText", "bypassBar2DepCheckbox",
 	"updateChannelCheckbox",
 }
@@ -1138,7 +1138,7 @@ local function ApplySettingsHeightFromCandidates(candidateList, scrollFrame, scr
 			"macroTextCheckbox", "macroTitle", "macroSlider", "macroValueText", "macroResetButton",
 			"hotkeyTitle", "hotkeySlider", "hotkeyValueText", "hotkeyResetButton",
 			"countTitle", "countSlider", "countValueText", "countResetButton",
-			"modernBorderStyleCheckbox",
+			"buttonStyleRow",
 		}
 
 		local resolveJ
