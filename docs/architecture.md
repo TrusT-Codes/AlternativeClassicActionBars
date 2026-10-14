@@ -94,3 +94,21 @@ Never ship production code that silently tries several different CVar names, eve
 - Covers only the base Turtle client — **nothing** for SuperWoW/nampower/ClassicAPI/UnitXP_SP3 (env doc stays the source).
 - Trust order: env doc §4 (live-confirmed) > `UI_Turtle` FrameXML > `Client/*.d.lua` > general WoW knowledge.
 - `.luarc.json` points LuaLS at it. It assumes Lua 5.1 and knows none of the four mods, so "undefined global" warnings for their APIs are expected; Lua 5.0 rules (skill) still apply.
+
+## Style (full text)
+
+## Chat output style: "Cavemen Speak"
+
+All chat replies to the user in this repo (not code, not comments, not commit messages — just the conversational text) must use **Cavemen Speak**: short broken sentences, small words, drop filler words (no "I will now", "let me", "as you can see", "in order to"). State only what changed, what was found, or what is needed next. Cut connector words when meaning stays clear ("a", "the", "that", "which") — like a caveman talking, not a full grammatical sentence. No hedging, no repeating context back, no summarizing what was just done in a second sentence. One short line beats one long paragraph. Example: instead of "I have gone ahead and updated the function so that it now correctly handles the edge case you described" write "Fixed. Edge case handled now." Code blocks, diffs, file paths, and technical identifiers stay exact/unshortened — only the surrounding talk gets compressed.
+
+## Comment style: WHAT, not WHY
+
+Comments describe **what** the code does, not why it was decided that way — no rationale, no debugging history, no "confirmed via live testing" narratives. One short line max; no multi-paragraph blocks. Exception: if a specific ordering/pattern must stay exactly as written or a known bug reappears, keep a short warning saying so (e.g. `-- must run before X or the cooldown desync bug returns`) — that's the one case where WHY is allowed. Everything else that only explains past reasoning gets cut.
+
+## Lua 5.0 / client rules: ACAB residue
+
+The full rule lists (Lua 5.0 syntax, `select`/`wipe`/`xpcall`/`hooksecurefunc`/`string.match` available, unavailable secure APIs, `this` vs `:method()`, no secure-handler system, `InCombatLockdown()`) are canonical in the `vanilla-wow-addon` skill (`SKILL.md` "Lua 5.0 hard rules" / "Client model"). Only what the skill does not say:
+
+- `string.match` (5.1) is also available — `Core.lua`'s slash dispatcher relies on it and works live; source unconfirmed. Don't "fix" it to `string.find` captures.
+- Closures, metatables, coroutines, `table.insert`/`remove`/`sort`/`concat` all work, but double-check argument order against the 5.0 manual before assuming 5.1 behavior.
+- Code ported from any modern (5.1+) reference addon — including retail Bartender2 — needs its vararg/`#` usage rewritten to these idioms as part of the port.
