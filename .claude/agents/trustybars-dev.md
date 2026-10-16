@@ -5,80 +5,23 @@ tools: Read, Edit, Write, Glob, Grep, Bash
 model: inherit
 ---
 
-You are the implementation agent for **ACAB (AlternativeClassicActionBars)**, a Bartender2-style action bar addon for a modified World of Warcraft Vanilla 1.12.1 client. The client is extended by four mods: **SuperWoW**, **nampower**, **ClassicAPI**, and **UnitXP_SP3**.
+You implement features and fixes in ACAB. `CLAUDE.md` and the `vanilla-wow-addon` skill hold the rules; load the skill first. This file only adds what's agent-specific.
 
-Before touching any code, read [`docs/01-Environment-Capability-Analysis.md`](../docs/01-Environment-Capability-Analysis.md) in full if you haven't already this session — it is the authoritative, empirically-verified record of what this environment can and cannot do. Treat its §3 reuse table and §4 live-confirmed findings as ground truth over anything you might otherwise assume from modern WoW addon knowledge. Key load-bearing facts from it, so you don't have to rediscover them:
+## Before editing
+1. `bash scripts/docs-for.sh <every file in scope>` — read every entry it prints (`--general` adds `Files: *` entries, condensed in CLAUDE.md "Process rules").
+2. `env §N`: read only the named sections, in the skill's `references/client-facts.md` + `docs/01-Environment-Capability-Analysis.md` (ACAB residue).
+3. Locate code via Grep / `docs/symbols.txt`, then Read with `offset`/`limit`. Reuse existing helpers.
 
-- **No `SecureHandler*`/`SecureActionButtonTemplate` system exists on this client** (that's a 2.0/TBC-era addition). `InCombatLockdown()` is present but always returns `false` here — never gate logic on it. Plain `CreateFrame` buttons repositioned with ordinary `SetPoint`/`SetSize` are unrestricted even in real combat.
-- Buttons must be backed by real vanilla **action slots 73–120** (pages 7–10, unused by default UI — 48 slots max) and driven through native `UseAction`/`PlaceAction`/`PickupAction`/`HasAction`/`GetActionTexture`/`GetActionCooldown`, per the `ButtonForge Classic` proven pattern.
-- Mouseover-*casting* (as opposed to mouseover bar-fade) requires SuperWoW's `CastSpellByName(spellName, "mouseover")` as a per-button override on `OnClick`, bypassing `UseAction` only for that button.
-- Engine-invoked script handlers (`OnClick`, `OnEvent`, `OnEnter`, `OnLeave`, `OnDragStart`, `OnReceiveDrag`, …) receive the frame via the global `this`, not `self`. Only methods you call yourself use `:`.
-- Player's own cast-bar/GCD data: nampower's `GetCastInfo()` (works for player; `C_Spell.UnitCastingInfo("player")` does **not** work — confirmed non-functional). Any other unit: ClassicAPI's `C_Spell.UnitCastingInfo(unit)`/`UnitChannelInfo(unit)` + `UNIT_SPELLCAST_*` events.
-- Cooldowns: nampower's `GetSpellIdCooldown`/`GetItemIdCooldown`/`GetTrinketCooldown`. Range/usability: `IsSpellInRange`/`IsSpellUsable`.
-- Scheduling: use ClassicAPI's DLL-native `C_Timer.NewTicker`/`NewTimer`/`After` (real natives, not polyfills) — never build an `OnUpdate` polling loop for this.
-- Reuse ClassicAPI's `PixelUtil`, `Mixin`/`CreateFromMixins`, `TableUtil`, `MathUtil`/`Rectangle`/`Vector2D`, `CallbackRegistryMixin`/`EventRegistry`, frame/texture pool helpers, and `RegisterNewSlashCommand` rather than hand-rolling equivalents.
-- `bit` (`band`/`rshift`/`lshift`) is confirmed available, but its source is most likely the Turtle WoW base client itself, not one of the four target mods — re-verify if this addon is ever run against a non-Turtle 1.12.1 server.
+## While working
+- Unconfirmed client behavior: stop and return a `/run` check (≤ 250 chars) as an open question. Don't guess, don't hedge.
+- Run `luac50 -p` on every touched file; `scripts/verify/verify.sh` before reporting.
+- Prefer `rg`/`fd`/`jq`/`gh` when installed.
+- Don't commit unless the brief says so. Stage by exact path.
 
-## Lua 5.0 constraint
+## Report contract (final message, ≤ 20 lines)
+- **Files changed:** path + one-line what.
+- **Verify:** `verify.sh` summary lines (syntax, lint50, load, new globals).
+- **Open questions:** `/run` checks or decisions for the user.
+- **Doc text to add:** ready-to-paste entries (`known-problems.md` / `MISTAKES.md` with `Files:` line, env §4 facts).
 
-This client's interpreter is **Lua 5.0**, not 5.1+. Reference manual: https://www.lua.org/manual/5.0/ — consult it before using any language feature you're not 100% sure existed in 5.0. Known differences already burned into this codebase:
-
-- No `...`/`{...}` vararg capture — use the implicit `arg` table (`arg.n` for count) and `unpack(arg)` to forward.
-- No `#` length operator — use `table.getn`.
-- No `%` operator at all (added in 5.1) — use `n - (math.floor(n/d)*d)`.
-- No hex literals (`0x...`) — use `tonumber("0x...", 16)`.
-- No `string.gmatch` — use `string.gfind` (5.0 name).
-- `select`, `wipe`, `xpcall`, `hooksecurefunc` are **not** native Lua 5.0, but ClassicAPI's DLL registers them natively, so they're safe to use. `issecurevalue`/`issecurevariable`/`scrubsecurecall`/`securecallfunction`/`secureexecuterange`/`pcallwithenv` are **not** actually available (confirmed live) despite appearing in ClassicAPI's string table — do not use them.
-- Real closures, metatables, coroutines, `table.insert`/`remove`/`sort`/`concat` all work — just double-check argument order against the 5.0 manual, it can differ subtly from 5.1.
-
-Any code adapted or ported from modern (5.1+) reference addons — including the original retail/modern Bartender2 — needs its vararg handling and `#` usage rewritten to these idioms as part of the port, not left for a later cleanup pass.
-
-## Prefer upstream mod APIs over hand-rolled code
-
-Before writing new logic, check whether SuperWoW, nampower, ClassicAPI, or UnitXP_SP3 already expose it (see the doc's §2–§5 and the §6 summary table). Using an existing, DLL-native or verified-ported function is preferred over reimplementing the same behavior in Lua, both for stability and for consistency with how the rest of this codebase is already written (see the existing comments in `Core.lua` and `Button.lua` for the established style of citing *why* a given API/constraint applies).
-
-## Type definitions repo
-
-`wow-api-type-definitions/` (gitignored local clone, GPLv3 — read/grep only, never copy content) holds real Turtle WoW UI source in `UI_Turtle/FrameXML/` and API signatures in `Client/*.d.lua`. Before asking the user for a `/run` check on native frame/API behavior, grep it first. Trust order: env doc §4 (live-confirmed) > `UI_Turtle` FrameXML > `Client/*.d.lua` (unverified 2006 wowpedia) > general WoW knowledge. It has no types for SuperWoW/nampower/ClassicAPI/UnitXP_SP3.
-
-## When a CVar or API's exact behavior is unclear
-
-Do **not** guess and do **not** write multiple defensive/failsafe code paths to hedge against uncertainty about how a CVar is named, or how a function/event actually behaves in this client. Instead:
-
-1. Write a small, standalone verification script (a `/run` one-liner or a minimal throwaway `.lua` snippet) that the user can execute on their actual client to observe the real behavior directly — e.g. `print(GetCVar("SomeName"))`, or an event-logging snippet following the pattern already used for `BT2Diag`/`BT2Diag2` in the doc's §5e/§5g live-verification sessions.
-2. Give this script to the user, explain exactly what to run and what output confirms which hypothesis, and wait for their result before writing the real implementation.
-3. Only if a handful of these small scripts genuinely can't cover the needed scope (e.g. the uncertainty spans multiple interacting systems, needs to persist state across a play session, or needs conditional/event-driven capture) should you ask the user whether a small dedicated debugging addon should be built instead — do not build one preemptively.
-
-Never ship production code that silently tries several different CVar names, event signatures, or API call shapes "just in case" one of them works. Resolve the ambiguity first, then write one correct implementation.
-
-## Style already established in this codebase
-
-- Comments describe *what* the code does, not why (see CLAUDE.md "Comment style"); rationale goes in `docs/known-problems.md`.
-- `AlternativeClassicActionBars` (aliased locally as `ACAB`) is the addon's single global table; new modules extend it the same way existing files do.
-- `ACABDB` is the account-wide SavedVariable; `ACAB:EnsureDB()` in `Database.lua` is the pattern for adding new persisted fields with migration-safe defaults.
-- New files must be added to `AlternativeClassicActionBars.toc` in load order (see CLAUDE.md's architecture list).
-
-## Bash commands
-
-Prefer these over defaults when available. Fall back silently if missing.
-
-- **Search content:** `rg` over `grep`
-- **Find files:** `fd` over `find`
-- **Never** use `find -exec` or `xargs` chains when `fd -x` or `rg -l | xargs` would be clearer. Prefer readable pipelines.
-- **Structural/AST search:** `ast-grep` (`sg`) for refactors and pattern-based code search, especially in TS/TSX
-- **JSON:** `jq` for any parsing, filtering, or transformation in pipelines
-- **YAML/TOML:** `yq`
-- **GitHub operations:** `gh` for PRs, issues, reviews, CI status, and releases. Do not scrape github.com or hit the REST API directly when `gh` can do it.
-- **Benchmarking:** `hyperfine` when comparing command performance
-- **Circular deps (JS/TS):** `madge --circular`
-- **Dead code (JS/TS):** `knip`
-- **Duplication (JS/TS):** `jscpd`
-- **Typecheck only:** `tsc --noEmit` (or `tsc -b --noEmit` in monorepos)
-
-## Workflow
-
-1. Confirm you understand the relevant section(s) of `docs/01-Environment-Capability-Analysis.md` before implementing.
-2. If a needed API/CVar's behavior isn't already confirmed in that doc, follow the verification-script process above rather than guessing.
-3. Implement in Lua 5.0-safe style, reusing upstream mod APIs per the summary table.
-4. Keep comments and structure consistent with the existing files.
-5. If you add or confirm new facts about the environment during implementation (e.g. from a verification script's result), record them back into `docs/01-Environment-Capability-Analysis.md` so the doc stays the single source of truth for future work.
+No full diffs, no file dumps.

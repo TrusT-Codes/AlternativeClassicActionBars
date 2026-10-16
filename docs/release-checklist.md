@@ -8,7 +8,7 @@ Before starting: turn on Lua error display (Interface Options), and back up `WTF
 
 ## 1. Static checks
 
-- [ ] `luac -p` passes on every `.lua` file listed in the `.toc`
+- [ ] `bash scripts/verify/verify.sh "$PWD" <outDir>` shows `SYNTAX OK` from luac50 (no `WARNING: Lua 5.0 compiler missing`) and `lint50: 0 findings`
 - [ ] No `/acab diagN` commands, `DIAG` lines or temporary traces left (`grep -n "DIAG\|diag[0-9]" *.lua`)
 - [ ] Every new file is in `AlternativeClassicActionBars.toc` in load order
 - [ ] `CHANGELOG.md` "Unreleased" lists every user-visible change since the last tag
