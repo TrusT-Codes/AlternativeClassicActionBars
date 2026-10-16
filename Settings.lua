@@ -471,7 +471,7 @@ function ACAB:CreateSettingsFrame()
 	f.closeButton = closeButton
 
 	-------------------------------------------------------------------------
-	-- Top-level view tabs (Bars / General / Profiles / Edit Mode)
+	-- Top-level view tabs (Bars / Buttons / General / Profiles / Edit Mode)
 	-------------------------------------------------------------------------
 
 	f.currentView = "bars"
@@ -548,8 +548,10 @@ function ACAB:CreateSettingsFrame()
 
 	local tabBarsButton = CreateTabButton("Bars", function() ACAB:ShowBarsView() end,
 		"TOPLEFT", f, "TOPLEFT", 18, -34)
-	local tabGeneralButton = CreateTabButton("General", function() ACAB:ShowGeneralView() end,
+	local tabButtonsButton = CreateTabButton("Buttons", function() ACAB:ShowButtonsView() end,
 		"LEFT", tabBarsButton, "RIGHT", 6, 0)
+	local tabGeneralButton = CreateTabButton("General", function() ACAB:ShowGeneralView() end,
+		"LEFT", tabButtonsButton, "RIGHT", 6, 0)
 	local tabProfilesButton = CreateTabButton("Profiles", function() ACAB:ShowProfilesView() end,
 		"LEFT", tabGeneralButton, "RIGHT", 6, 0)
 	local tabEditModeButton = CreateTabButton("Edit Mode", function() ACAB:ShowEditModeView() end,
@@ -557,6 +559,7 @@ function ACAB:CreateSettingsFrame()
 
 	f.tabButtonsByView = {
 		bars = tabBarsButton,
+		buttons = tabButtonsButton,
 		general = tabGeneralButton,
 		profiles = tabProfilesButton,
 		editmode = tabEditModeButton,
@@ -1060,11 +1063,15 @@ local BAR_PAGE_TAIL_CANDIDATE_NAMES = { "noStancesText", "useVanillaStanceBarChe
 
 local GENERAL_CANDIDATE_NAMES = {
 	"useDefaultLayoutCheckbox", "tintWholeButtonCheckbox", "mainBarPaginationCheckbox", "mainBarStanceSwapCheckbox",
+	"bypassBar2DepCheckbox", "updateChannelCheckbox",
+}
+
+local BUTTONS_CANDIDATE_NAMES = {
+	"buttonStyleRow", "globalSpacingCheckbox", "globalSpacingValueText", "globalSpacingResetButton",
+	"globalButtonSizeCheckbox", "globalButtonSizeValueText", "globalButtonSizeResetButton",
 	"macroTextCheckbox", "macroValueText", "macroResetButton",
-	"hotkeyValueText", "hotkeyResetButton", "countValueText", "countResetButton",
-	"buttonStyleRow", "globalSpacingCheckbox", "globalSpacingSlider", "globalSpacingValueText",
-	"globalButtonSizeCheckbox", "globalButtonSizeSlider", "globalButtonSizeValueText", "bypassBar2DepCheckbox",
-	"updateChannelCheckbox",
+	"hotkeyTextCheckbox", "hotkeyValueText", "hotkeyResetButton",
+	"countTextCheckbox", "countValueText", "countResetButton",
 }
 
 local PROFILES_CANDIDATE_NAMES = {
@@ -1135,9 +1142,11 @@ local function ApplySettingsHeightFromCandidates(candidateList, scrollFrame, scr
 
 	if scrollChildPanel.hotkeyTitle then
 		local resolveNames = {
+			"globalSpacingCheckbox", "globalSpacingTitle", "globalSpacingSlider", "globalSpacingValueText",
+			"globalButtonSizeCheckbox", "globalButtonSizeTitle", "globalButtonSizeSlider", "globalButtonSizeValueText",
 			"macroTextCheckbox", "macroTitle", "macroSlider", "macroValueText", "macroResetButton",
-			"hotkeyTitle", "hotkeySlider", "hotkeyValueText", "hotkeyResetButton",
-			"countTitle", "countSlider", "countValueText", "countResetButton",
+			"hotkeyTextCheckbox", "hotkeyTitle", "hotkeySlider", "hotkeyValueText", "hotkeyResetButton",
+			"countTextCheckbox", "countTitle", "countSlider", "countValueText", "countResetButton",
 			"buttonStyleRow",
 		}
 
@@ -1313,6 +1322,11 @@ function ACAB:FitSettingsWindowToGeneralView()
 	FitWideViewToNamedCandidates("generalPanel", "generalScrollFrame", GENERAL_CANDIDATE_NAMES)
 end
 
+-- Buttons view: fits the window to the Buttons panel's controls.
+function ACAB:FitSettingsWindowToButtonsView()
+	FitWideViewToNamedCandidates("buttonsPanel", "buttonsScrollFrame", BUTTONS_CANDIDATE_NAMES)
+end
+
 -- Setup Wizard decision steps: shrink-to-fit the shown step's direct children and regions.
 function ACAB:FitSettingsWindowToWizardView()
 	if not ACAB.settingsFrame or not ACAB.settingsFrame.wizardPanel then return end
@@ -1370,6 +1384,8 @@ function ACAB:ShowSettingsFrame()
 
 	if not ACAB.settingsFrame.activeBarId then
 		self:ShowBarPage(1)
+	elseif ACAB.settingsFrame.currentView == "buttons" then
+		ACAB:DeferFit(function() ACAB:FitSettingsWindowToButtonsView() end)
 	elseif ACAB.settingsFrame.currentView == "general" then
 		ACAB:DeferFit(function() ACAB:FitSettingsWindowToGeneralView() end)
 	elseif ACAB.settingsFrame.currentView == "profiles" then

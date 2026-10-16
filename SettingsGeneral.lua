@@ -1,5 +1,5 @@
 -- SettingsGeneral.lua
--- General / Profiles / Edit Mode settings views, their refreshers, and top-level view switching.
+-- Buttons / General / Profiles / Edit Mode settings views, their refreshers, and top-level view switching.
 
 local ACAB = AlternativeClassicActionBars
 
@@ -24,55 +24,82 @@ local function FontSizeTitleText(label)
 		" to " .. tostring(ACAB.FONT_SIZE_MAX) .. ")"
 end
 
--- Creates a font-size slider under `title` plus a Reset button restoring ACAB[nativeFontKey].size;
--- applySize(size) applies a value. Returns slider, valueText, resetButton.
-local function CreateFontSizeSlider(panel, title, sliderName, nativeFontKey, applySize)
-	-- Placeholder initial text; RefreshGeneralPanel sets the real value before the panel is shown.
-	local slider, valueText = ACAB:CreateLabeledSlider(
+-- Buttons tab two-column geometry (x offsets inside the panel) and its titled-slider sizes.
+local BUTTONS_LEFT_COLUMN_X = ACAB.INDENT_SECTION
+local BUTTONS_RIGHT_COLUMN_X = 372
+local BUTTONS_SLIDER_INDENT = 40
+local BUTTONS_SLIDER_WIDTH = 180
+local BUTTONS_RESET_GAP = 12
+local BUTTONS_RESET_WIDTH = 70
+
+-- Title text "<label> (MIN to MAX)".
+local function RangeTitleText(label, minValue, maxValue)
+	return label .. " (" .. tostring(minValue) .. " to " .. tostring(maxValue) .. ")"
+end
+
+-- Creates an indented slider under `title` plus a Reset button. config = { min, max, step, applyValue(value),
+-- resetValue() (nil = no-op) }. Returns slider, valueText, resetButton, lowLabel, highLabel.
+local function CreateTitledSlider(panel, title, sliderName, config)
+	-- Placeholder initial text; RefreshButtonsPanel sets the real value before the panel is shown.
+	local slider, valueText, lowLabel, highLabel = ACAB:CreateLabeledSlider(
 		panel,
 		sliderName,
 		{
-			width = 260,
-			anchor = { "TOPLEFT", title, "BOTTOMLEFT", ACAB.INDENT_INPUT - ACAB.INDENT_SECTION, -12 },
-			min = ACAB.FONT_SIZE_MIN,
-			max = ACAB.FONT_SIZE_MAX,
-			step = ACAB.FONT_SIZE_STEP,
-			lowText = tostring(ACAB.FONT_SIZE_MIN),
-			highText = tostring(ACAB.FONT_SIZE_MAX),
-			initialText = tostring(ACAB.FONT_SIZE_MIN),
+			width = BUTTONS_SLIDER_WIDTH,
+			anchor = { "TOPLEFT", title, "BOTTOMLEFT", BUTTONS_SLIDER_INDENT, -12 },
+			min = config.min,
+			max = config.max,
+			step = config.step,
+			lowText = tostring(config.min),
+			highText = tostring(config.max),
+			initialText = tostring(config.min),
 			round = RoundToInteger,
 			format = tostring,
 			onChange = function(value, suppressApply)
 				if not suppressApply then
-					applySize(value)
+					config.applyValue(value)
 				end
 			end,
 		}
 	)
 
 	local resetButton = ACAB:CreateResetButton(panel, {
-		anchor = { "LEFT", slider, "RIGHT", 16, 4 },
-		minWidth = 90,
-		maxWidth = 90,
+		anchor = { "LEFT", slider, "RIGHT", BUTTONS_RESET_GAP, 4 },
+		minWidth = BUTTONS_RESET_WIDTH,
+		maxWidth = BUTTONS_RESET_WIDTH,
 		text = "Reset",
 		onClick = function()
+			local value = config.resetValue()
+			if not value then return end
+
+			config.applyValue(value)
+			ACAB:SetSliderValueSilently(slider, value, valueText)
+		end,
+	})
+
+	return slider, valueText, resetButton, lowLabel, highLabel
+end
+
+-- Font-size CreateTitledSlider; Reset restores ACAB[nativeFontKey].size. Returns slider, valueText, resetButton.
+local function CreateFontSizeSlider(panel, title, sliderName, nativeFontKey, applySize)
+	local slider, valueText, resetButton = CreateTitledSlider(panel, title, sliderName, {
+		min = ACAB.FONT_SIZE_MIN,
+		max = ACAB.FONT_SIZE_MAX,
+		step = ACAB.FONT_SIZE_STEP,
+		applyValue = applySize,
+		resetValue = function()
 			-- No-op until a native size has been captured.
 			local nativeFont = ACAB[nativeFontKey]
-			if not nativeFont then return end
-
-			local size = ACAB:ClampFontSize(nativeFont.size)
-
-			applySize(size)
-			ACAB:SetSliderValueSilently(slider, size, valueText)
+			return nativeFont and ACAB:ClampFontSize(nativeFont.size)
 		end,
 	})
 
 	return slider, valueText, resetButton
 end
 
--- OnClick for a global Spacing/Button size override checkbox: stores its flag, shows its slider
--- while checked, applies, and reflows. Blocked while Force Vanilla Layout Mode is on.
-local function GlobalOverrideOnClick(panel, enabledKey, slider, valueText, apply)
+-- OnClick for a global Spacing/Button size override checkbox: stores its flag, applies, and refreshes the panel
+-- (slider visibility + reflow). Blocked while Force Vanilla Layout Mode is on.
+local function GlobalOverrideOnClick(enabledKey, apply)
 	return function()
 		if ACABDB.useDefaultLayout ~= false then
 			this:SetChecked(false)
@@ -83,14 +110,11 @@ local function GlobalOverrideOnClick(panel, enabledKey, slider, valueText, apply
 
 		ACABDB[enabledKey] = checked
 
-		slider:SetShown(checked)
-		valueText:SetShown(checked)
-
 		if checked then
 			apply()
 		end
 
-		ACAB:ReflowGeneralOverrideSliders(panel)
+		ACAB:RefreshButtonsPanel()
 		ACAB:RefreshAllBarPagesGlobalOverrideGating()
 	end
 end
@@ -257,225 +281,11 @@ local function BuildGeneralBarToggleSection(panel, checkbox)
 	return mainBarStanceSwapCheckbox
 end
 
--- General panel: macro text toggle and the Macro/Hotkey/Item Count text size sliders. Returns countTitle, countSlider, countValueText.
-local function BuildGeneralFontSizeSection(panel, mainBarStanceSwapCheckbox)
-	-------------------------------------------------------------------------
-	-- Macro text toggle + font size
-	-------------------------------------------------------------------------
-
-	local macroTextCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABGeneralMacroTextCheckbox", {
-		anchor = { "TOPLEFT", mainBarStanceSwapCheckbox, "BOTTOMLEFT", 0, -14 },
-		label = "Toggle Macro Text",
-		onClick = function()
-			local checked = this:GetChecked() and true or false
-
-			ACAB:SetMacroTextEnabled(checked)
-			ACAB:RefreshGeneralPanel()
-		end,
-	})
-
-	panel.macroTextCheckbox = macroTextCheckbox
-
-	local macroTitle = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-
-	macroTitle:SetPoint("TOPLEFT", macroTextCheckbox, "BOTTOMLEFT", 8, -10)
-	macroTitle:SetText(FontSizeTitleText("Macro"))
-
-	-- The *Title fields must stay on panel: ApplySettingsHeightFromCandidates' resolve pass reads them.
-	panel.macroTitle = macroTitle
-
-	panel.macroSlider, panel.macroValueText, panel.macroResetButton = CreateFontSizeSlider(
-		panel, macroTitle, "ACABGeneralMacroFontSizeSlider", "NATIVE_MACRO_FONT",
-		function(size) ACAB:SetMacroFontSize(size) end
-	)
-
-	-------------------------------------------------------------------------
-	-- Hotkey / Item Count text font size (global, live)
-	-------------------------------------------------------------------------
-
-	local hotkeyTitle = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-
-	-- Placeholder anchor; ReflowGeneralHotkeySection re-anchors it.
-	hotkeyTitle:SetPoint("TOPLEFT", macroTextCheckbox, "BOTTOMLEFT", 8, -22)
-	hotkeyTitle:SetText(FontSizeTitleText("Hotkey"))
-
-	panel.hotkeyTitle = hotkeyTitle
-
-	local hotkeySlider, hotkeyValueText, hotkeyResetButton = CreateFontSizeSlider(
-		panel, hotkeyTitle, "ACABGeneralHotkeyFontSizeSlider", "NATIVE_HOTKEY_FONT",
-		function(size) ACAB:SetHotkeyFontSize(size) end
-	)
-
-	panel.hotkeyValueText = hotkeyValueText
-	panel.hotkeySlider = hotkeySlider
-	panel.hotkeyResetButton = hotkeyResetButton
-
-	local countTitle = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-
-	-- must anchor off hotkeyTitle, not hotkeyValueText: a value text's left edge drifts with its digit count.
-	countTitle:SetPoint(
-		"TOPLEFT",
-		hotkeyTitle,
-		"BOTTOMLEFT",
-		0,
-		-12 - hotkeySlider:GetHeight() - 2 - hotkeyValueText:GetHeight() - 18
-	)
-
-	countTitle:SetText(FontSizeTitleText("Item Count"))
-
-	panel.countTitle = countTitle
-
-	local countSlider, countValueText, countResetButton = CreateFontSizeSlider(
-		panel, countTitle, "ACABGeneralCountFontSizeSlider", "NATIVE_COUNT_FONT",
-		function(size) ACAB:SetCountFontSize(size) end
-	)
-
-	panel.countValueText = countValueText
-	panel.countSlider = countSlider
-	panel.countResetButton = countResetButton
-
-	return countTitle, countSlider, countValueText
-end
-
--- Button Style dropdown options, all styles or only the vanilla family (Force Vanilla Layout Mode).
-local function BuildButtonStyleOptions(vanillaOnly)
-	local options = {}
-	local style
-
-	for style = 0, ACAB.BUTTON_STYLE_NO_BORDER do
-		local def = ACAB.BUTTON_STYLE_DEFS[style]
-
-		if not (vanillaOnly and def.modern) then
-			table.insert(options, { text = def.text, value = style })
-		end
-	end
-
-	return options
-end
-
--- General panel: global Button Style dropdown (vanilla styles only under Force Vanilla Layout Mode). Returns its row.
-local function BuildGeneralBorderStyleSection(panel, countTitle, countSlider, countValueText)
-	local row, dropdown = ACAB:CreateDropdownRow(panel, nil, "Button Style:", 180, "ACABGeneralButtonStyleDropdown",
-		BuildButtonStyleOptions(false))
-
-	-- Anchored off countTitle (fixed X), not countValueText.
-	row:SetPoint("TOPLEFT", countTitle, "BOTTOMLEFT", 0, -12 - countSlider:GetHeight() - 2 - countValueText:GetHeight() - 18)
-
-	dropdown.onSelect = function(value)
-		ACAB:SetButtonStyle(value)
-
-		-- Re-syncs the dropdown (a refused style snaps back) and the global spacing slider's range/labels.
-		ACAB:RefreshGeneralPanel()
-	end
-
-	panel.buttonStyleRow = row
-	panel.buttonStyleDropdown = dropdown
-
-	return row
-end
-
--- General panel: global Spacing / Button size override checkboxes + sliders. Returns the Button size slider.
-local function BuildGeneralGlobalOverrideSection(panel, buttonStyleRow)
-	-- OnClick is set below, once its slider exists.
-	local globalSpacingCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABGeneralGlobalSpacingCheckbox", {
-		anchor = { "TOPLEFT", buttonStyleRow, "BOTTOMLEFT", 0, -6 },
-		label = "Toggle global Spacing",
-		tooltip = {
-			title = "Toggle global Spacing",
-			lines = {
-				"When enabled, disables the Option to set Spacing on " ..
-				"individual bars.",
-				"Instead shows a new Slider to set the Spacing globally for " ..
-				"every bar. Unlock a bar's own lock icon to exempt it.",
-			},
-		},
-	})
-
-	-- Range and end labels are set by RefreshGeneralPanel (they depend on the border style).
-	local globalSpacingSlider, globalSpacingValueText, globalSpacingSliderLow, globalSpacingSliderHigh = ACAB:CreateLabeledSlider(
-		panel,
-		"ACABGeneralGlobalSpacingSlider",
-		{
-			anchor = { "TOPLEFT", globalSpacingCheckbox, "BOTTOMLEFT", 20, -28 },
-			step = ACAB.SPACING_STEP,
-			initialText = "0",
-			round = RoundToInteger,
-			format = tostring,
-			onChange = function(value, suppressApply)
-				if not suppressApply then
-					ACABDB.globalSpacingValue = value
-					ACAB:ApplyGlobalSpacing()
-				end
-			end,
-		}
-	)
-
-	globalSpacingCheckbox:SetScript("OnClick", GlobalOverrideOnClick(
-		panel, "globalSpacingEnabled", globalSpacingSlider, globalSpacingValueText,
-		function() ACAB:ApplyGlobalSpacing() end
-	))
-
-	panel.globalSpacingCheckbox = globalSpacingCheckbox
-	panel.globalSpacingSlider = globalSpacingSlider
-	panel.globalSpacingSliderLow = globalSpacingSliderLow
-	panel.globalSpacingSliderHigh = globalSpacingSliderHigh
-	panel.globalSpacingValueText = globalSpacingValueText
-
-	-- Anchored off the slider itself (-20 cancels its +20 indent), never its value text.
-	local globalButtonSizeCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABGeneralGlobalButtonSizeCheckbox", {
-		anchor = { "TOPLEFT", globalSpacingSlider, "BOTTOMLEFT", -20, -26 },
-		label = "Toggle global Button size",
-		tooltip = {
-			title = "Toggle global Button size",
-			lines = {
-				"When enabled, disables the Option to set the Button size on " ..
-				"individual bars.",
-				"Instead shows a new Slider to set the Button size globally " ..
-				"for every bar. Unlock a bar's own lock icon to exempt it.",
-			},
-		},
-	})
-
-	local globalButtonSizeSlider, globalButtonSizeValueText = ACAB:CreateLabeledSlider(
-		panel,
-		"ACABGeneralGlobalButtonSizeSlider",
-		{
-			anchor = { "TOPLEFT", globalButtonSizeCheckbox, "BOTTOMLEFT", 20, -28 },
-			min = ACAB.BUTTON_SIZE_MIN,
-			max = ACAB.BUTTON_SIZE_MAX,
-			step = 1,
-			lowText = tostring(ACAB.BUTTON_SIZE_MIN),
-			highText = tostring(ACAB.BUTTON_SIZE_MAX),
-			initialText = tostring(ACAB.BUTTON_SIZE),
-			round = RoundToInteger,
-			format = tostring,
-			onChange = function(value, suppressApply)
-				if not suppressApply then
-					ACABDB.globalButtonSizeValue = value
-					ACAB:ApplyGlobalButtonSize()
-				end
-			end,
-		}
-	)
-
-	globalButtonSizeCheckbox:SetScript("OnClick", GlobalOverrideOnClick(
-		panel, "globalButtonSizeEnabled", globalButtonSizeSlider, globalButtonSizeValueText,
-		function() ACAB:ApplyGlobalButtonSize() end
-	))
-
-	panel.globalButtonSizeCheckbox = globalButtonSizeCheckbox
-	panel.globalButtonSizeSlider = globalButtonSizeSlider
-	panel.globalButtonSizeValueText = globalButtonSizeValueText
-
-	return globalButtonSizeSlider
-end
-
 -- General panel: Right ActionBar 2 dependency bypass and update-check channel opt-out checkboxes.
-local function BuildGeneralMiscSection(panel, globalButtonSizeSlider)
+local function BuildGeneralMiscSection(panel, mainBarStanceSwapCheckbox)
 	-- Lets bar 5 (Right ActionBar 2) toggle independently of bar 4.
-	-- must anchor off a slider/checkbox edge, never a *ValueText FontString (centered under its slider).
 	local bypassBar2DepCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABGeneralBypassBar2DepCheckbox", {
-		anchor = { "TOPLEFT", globalButtonSizeSlider, "BOTTOMLEFT", -20, -28 },
+		anchor = { "TOPLEFT", mainBarStanceSwapCheckbox, "BOTTOMLEFT", 0, -14 },
 		label = "Allow Right ActionBar 2 independent of Right ActionBar 1",
 		onClick = function()
 			ACABDB.bypassRightActionBar2Dependency = this:GetChecked() and true or false
@@ -525,14 +335,265 @@ function ACAB:GetOrCreateGeneralPanel()
 	-- Each section anchors off the last control of the one above.
 	local checkbox = BuildGeneralLayoutModeSection(panel)
 	local mainBarStanceSwapCheckbox = BuildGeneralBarToggleSection(panel, checkbox)
-	local countTitle, countSlider, countValueText = BuildGeneralFontSizeSection(panel, mainBarStanceSwapCheckbox)
-	local buttonStyleRow = BuildGeneralBorderStyleSection(panel, countTitle, countSlider, countValueText)
-	local globalButtonSizeSlider = BuildGeneralGlobalOverrideSection(panel, buttonStyleRow)
-	BuildGeneralMiscSection(panel, globalButtonSizeSlider)
+	BuildGeneralMiscSection(panel, mainBarStanceSwapCheckbox)
 
 	panel:Hide()
 
 	ACAB.settingsFrame.generalPanel = panel
+
+	return panel
+end
+
+-------------------------------------------------------------------------
+-- Buttons tab panel
+-------------------------------------------------------------------------
+
+-- Button Style dropdown options, all styles or only the vanilla family (Force Vanilla Layout Mode).
+local function BuildButtonStyleOptions(vanillaOnly)
+	local options = {}
+	local style
+
+	for style = 0, ACAB.BUTTON_STYLE_NO_BORDER do
+		local def = ACAB.BUTTON_STYLE_DEFS[style]
+
+		if not (vanillaOnly and def.modern) then
+			table.insert(options, { text = def.text, value = style })
+		end
+	end
+
+	return options
+end
+
+-- Buttons panel, left column: global Button Style dropdown (vanilla styles only under Force Vanilla Layout Mode).
+local function BuildButtonsStyleSection(panel)
+	local row, dropdown = ACAB:CreateDropdownRow(panel, nil, "Button Style:", 180, "ACABButtonsButtonStyleDropdown",
+		BuildButtonStyleOptions(false))
+
+	-- Narrowed to its column so the right column stays clear.
+	row:SetPoint("TOPLEFT", panel, "TOPLEFT", BUTTONS_LEFT_COLUMN_X, -52)
+	row:SetWidth(BUTTONS_RIGHT_COLUMN_X - BUTTONS_LEFT_COLUMN_X - 20)
+	row.label:SetWidth(90)
+
+	dropdown.onSelect = function(value)
+		ACAB:SetButtonStyle(value)
+
+		-- Re-syncs the dropdown (a refused style snaps back) and the global spacing slider's range/labels.
+		ACAB:RefreshButtonsPanel()
+	end
+
+	panel.buttonStyleRow = row
+	panel.buttonStyleDropdown = dropdown
+end
+
+-- Buttons panel, right column: Macro/Hotkey/Item Count text toggles and their text size sliders.
+local function BuildButtonsTextSection(panel)
+	-------------------------------------------------------------------------
+	-- Macro text toggle + font size
+	-------------------------------------------------------------------------
+
+	local macroTextCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABButtonsMacroTextCheckbox", {
+		anchor = { "TOPLEFT", panel, "TOPLEFT", BUTTONS_RIGHT_COLUMN_X, -56 },
+		label = "Toggle Macro Text",
+		onClick = function()
+			local checked = this:GetChecked() and true or false
+
+			ACAB:SetMacroTextEnabled(checked)
+			ACAB:RefreshButtonsPanel()
+		end,
+	})
+
+	panel.macroTextCheckbox = macroTextCheckbox
+
+	local macroTitle = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+
+	macroTitle:SetPoint("TOPLEFT", macroTextCheckbox, "BOTTOMLEFT", 8, -10)
+	macroTitle:SetText(FontSizeTitleText("Macro"))
+
+	-- The *Title fields must stay on panel: ApplySettingsHeightFromCandidates' resolve pass reads them.
+	panel.macroTitle = macroTitle
+
+	panel.macroSlider, panel.macroValueText, panel.macroResetButton = CreateFontSizeSlider(
+		panel, macroTitle, "ACABButtonsMacroFontSizeSlider", "NATIVE_MACRO_FONT",
+		function(size) ACAB:SetMacroFontSize(size) end
+	)
+
+	-------------------------------------------------------------------------
+	-- Hotkey / Item Count text toggles + font size (global, live)
+	-------------------------------------------------------------------------
+
+	-- Placeholder anchor; ReflowButtonsPanel re-anchors it.
+	local hotkeyTextCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABButtonsHotkeyTextCheckbox", {
+		anchor = { "TOPLEFT", macroTextCheckbox, "BOTTOMLEFT", 0, -14 },
+		label = "Toggle Hotkey Text",
+		onClick = function()
+			local checked = this:GetChecked() and true or false
+
+			ACAB:SetHotkeyTextEnabled(checked)
+			ACAB:RefreshButtonsPanel()
+		end,
+	})
+
+	panel.hotkeyTextCheckbox = hotkeyTextCheckbox
+
+	local hotkeyTitle = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+
+	hotkeyTitle:SetPoint("TOPLEFT", hotkeyTextCheckbox, "BOTTOMLEFT", 8, -10)
+	hotkeyTitle:SetText(FontSizeTitleText("Hotkey"))
+
+	panel.hotkeyTitle = hotkeyTitle
+
+	local hotkeySlider, hotkeyValueText, hotkeyResetButton = CreateFontSizeSlider(
+		panel, hotkeyTitle, "ACABButtonsHotkeyFontSizeSlider", "NATIVE_HOTKEY_FONT",
+		function(size) ACAB:SetHotkeyFontSize(size) end
+	)
+
+	panel.hotkeyValueText = hotkeyValueText
+	panel.hotkeySlider = hotkeySlider
+	panel.hotkeyResetButton = hotkeyResetButton
+
+	-- Placeholder anchor; ReflowButtonsPanel re-anchors it.
+	local countTextCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABButtonsCountTextCheckbox", {
+		anchor = { "TOPLEFT", hotkeyTextCheckbox, "BOTTOMLEFT", 0, -14 },
+		label = "Toggle Item Count Text",
+		onClick = function()
+			local checked = this:GetChecked() and true or false
+
+			ACAB:SetCountTextEnabled(checked)
+			ACAB:RefreshButtonsPanel()
+		end,
+	})
+
+	panel.countTextCheckbox = countTextCheckbox
+
+	local countTitle = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+
+	countTitle:SetPoint("TOPLEFT", countTextCheckbox, "BOTTOMLEFT", 8, -10)
+	countTitle:SetText(FontSizeTitleText("Item Count"))
+
+	panel.countTitle = countTitle
+
+	local countSlider, countValueText, countResetButton = CreateFontSizeSlider(
+		panel, countTitle, "ACABButtonsCountFontSizeSlider", "NATIVE_COUNT_FONT",
+		function(size) ACAB:SetCountFontSize(size) end
+	)
+
+	panel.countValueText = countValueText
+	panel.countSlider = countSlider
+	panel.countResetButton = countResetButton
+end
+
+
+-- Buttons panel, left column: global Spacing / Button size override checkboxes + sliders.
+local function BuildButtonsGlobalOverrideSection(panel)
+	-- OnClick is set below, once its slider exists.
+	local globalSpacingCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABButtonsGlobalSpacingCheckbox", {
+		anchor = { "TOPLEFT", panel.buttonStyleRow, "BOTTOMLEFT", 0, -6 },
+		label = "Toggle global Spacing",
+		tooltip = {
+			title = "Toggle global Spacing",
+			lines = {
+				"When enabled, disables the Option to set Spacing on " ..
+				"individual bars.",
+				"Instead shows a new Slider to set the Spacing globally for " ..
+				"every bar. Unlock a bar's own lock icon to exempt it.",
+			},
+		},
+	})
+
+	local globalSpacingTitle = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+
+	globalSpacingTitle:SetPoint("TOPLEFT", globalSpacingCheckbox, "BOTTOMLEFT", 8, -10)
+	globalSpacingTitle:SetText(RangeTitleText("Global Spacing", 0, ACAB.SPACING_MAX))
+
+	panel.globalSpacingTitle = globalSpacingTitle
+
+	-- Range and end labels are re-set by RefreshButtonsPanel.
+	local globalSpacingSlider, globalSpacingValueText, globalSpacingResetButton, globalSpacingSliderLow, globalSpacingSliderHigh =
+		CreateTitledSlider(panel, globalSpacingTitle, "ACABButtonsGlobalSpacingSlider", {
+			min = 0,
+			max = ACAB.SPACING_MAX,
+			step = ACAB.SPACING_STEP,
+			applyValue = function(value)
+				ACABDB.globalSpacingValue = value
+				ACAB:ApplyGlobalSpacing()
+			end,
+			resetValue = function() return 0 end,
+		})
+
+	globalSpacingCheckbox:SetScript("OnClick", GlobalOverrideOnClick(
+		"globalSpacingEnabled", function() ACAB:ApplyGlobalSpacing() end
+	))
+
+	panel.globalSpacingCheckbox = globalSpacingCheckbox
+	panel.globalSpacingSlider = globalSpacingSlider
+	panel.globalSpacingSliderLow = globalSpacingSliderLow
+	panel.globalSpacingSliderHigh = globalSpacingSliderHigh
+	panel.globalSpacingValueText = globalSpacingValueText
+	panel.globalSpacingResetButton = globalSpacingResetButton
+
+	-- Placeholder anchor; ReflowButtonsPanel re-anchors it.
+	local globalButtonSizeCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABButtonsGlobalButtonSizeCheckbox", {
+		anchor = { "TOPLEFT", globalSpacingCheckbox, "BOTTOMLEFT", 0, -14 },
+		label = "Toggle global Button size",
+		tooltip = {
+			title = "Toggle global Button size",
+			lines = {
+				"When enabled, disables the Option to set the Button size on " ..
+				"individual bars.",
+				"Instead shows a new Slider to set the Button size globally " ..
+				"for every bar. Unlock a bar's own lock icon to exempt it.",
+			},
+		},
+	})
+
+	local globalButtonSizeTitle = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+
+	globalButtonSizeTitle:SetPoint("TOPLEFT", globalButtonSizeCheckbox, "BOTTOMLEFT", 8, -10)
+	globalButtonSizeTitle:SetText(RangeTitleText("Global Button Size", ACAB.BUTTON_SIZE_MIN, ACAB.BUTTON_SIZE_MAX))
+
+	panel.globalButtonSizeTitle = globalButtonSizeTitle
+
+	local globalButtonSizeSlider, globalButtonSizeValueText, globalButtonSizeResetButton = CreateTitledSlider(
+		panel, globalButtonSizeTitle, "ACABButtonsGlobalButtonSizeSlider", {
+			min = ACAB.BUTTON_SIZE_MIN,
+			max = ACAB.BUTTON_SIZE_MAX,
+			step = 1,
+			applyValue = function(value)
+				ACABDB.globalButtonSizeValue = value
+				ACAB:ApplyGlobalButtonSize()
+			end,
+			resetValue = function() return ACAB.BUTTON_SIZE end,
+		})
+
+	globalButtonSizeCheckbox:SetScript("OnClick", GlobalOverrideOnClick(
+		"globalButtonSizeEnabled", function() ACAB:ApplyGlobalButtonSize() end
+	))
+
+	panel.globalButtonSizeCheckbox = globalButtonSizeCheckbox
+	panel.globalButtonSizeSlider = globalButtonSizeSlider
+	panel.globalButtonSizeValueText = globalButtonSizeValueText
+	panel.globalButtonSizeResetButton = globalButtonSizeResetButton
+end
+
+function ACAB:GetOrCreateButtonsPanel()
+	if not ACAB.settingsFrame then
+		ACAB:CreateSettingsFrame()
+	end
+
+	if ACAB.settingsFrame.buttonsPanel then
+		return ACAB.settingsFrame.buttonsPanel
+	end
+
+	local panel = CreateWideViewPanel("ACABSettingsButtonsScrollFrame", "buttonsScrollFrame", "Button Settings")
+
+	-- Left column: style + global overrides; right column: text toggles.
+	BuildButtonsStyleSection(panel)
+	BuildButtonsGlobalOverrideSection(panel)
+	BuildButtonsTextSection(panel)
+
+	panel:Hide()
+
+	ACAB.settingsFrame.buttonsPanel = panel
 
 	return panel
 end
@@ -1024,82 +1085,45 @@ function ACAB:RefreshEditModePanel()
 end
 
 -------------------------------------------------------------------------
--- General panel reflow: re-anchors the checkbox/slider stack so hidden optional sliders leave no gap
+-- Buttons panel reflow: re-anchors each column's stack so hidden optional sliders leave no gap
 -------------------------------------------------------------------------
 
--- Stack columns (x indent) and vertical gaps between entry kinds.
-local REFLOW_COLUMN_CHECKBOX = 0
-local REFLOW_COLUMN_SLIDER = 20
-local REFLOW_GAP_CHECKBOX_TO_SLIDER = -28
-local REFLOW_GAP_SLIDER_TO_CHECKBOX = -26
-local REFLOW_GAP_CHECKBOX_TO_CHECKBOX = -14
+-- Anchors frame below a text toggle's section: off its title when the slider shows, else off its checkbox.
+-- must anchor off the title, not the value text: a value text's left edge drifts with its digit count.
+local function AnchorBelowTextSection(frame, checkbox, title, slider, valueText, xOffset, collapsedY)
+	frame:ClearAllPoints()
 
--- entries: ordered { frame, column = REFLOW_COLUMN_*, isOptional }. The first entry's anchor is never
--- touched; a hidden isOptional entry is skipped entirely, collapsing its slot.
-local function ReflowStack(entries)
-	local prev = entries[1].frame
-	local prevColumn = entries[1].column
-	local i
-
-	for i = 2, table.getn(entries) do
-		local entry = entries[i]
-
-		if (not entry.isOptional) or entry.frame:IsShown() then
-			local gap
-
-			if prevColumn == REFLOW_COLUMN_SLIDER and entry.column == REFLOW_COLUMN_CHECKBOX then
-				gap = REFLOW_GAP_SLIDER_TO_CHECKBOX
-			elseif prevColumn == REFLOW_COLUMN_CHECKBOX and entry.column == REFLOW_COLUMN_SLIDER then
-				gap = REFLOW_GAP_CHECKBOX_TO_SLIDER
-			else
-				gap = REFLOW_GAP_CHECKBOX_TO_CHECKBOX
-			end
-
-			entry.frame:ClearAllPoints()
-			entry.frame:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", entry.column - prevColumn, gap)
-
-			prev = entry.frame
-			prevColumn = entry.column
-		end
-	end
-end
-
--- Deferred refit of the General view, only while it is the view on screen.
-local function RefitGeneralViewSoon()
-	if not ACAB.settingsFrame or ACAB.settingsFrame.currentView ~= "general" then return end
-
-	ACAB:DeferFit(function() ACAB:FitSettingsWindowToGeneralView() end)
-end
-
-function ACAB:ReflowGeneralOverrideSliders(panel)
-	ReflowStack({
-		{ frame = panel.globalSpacingCheckbox, column = REFLOW_COLUMN_CHECKBOX },
-		{ frame = panel.globalSpacingSlider, column = REFLOW_COLUMN_SLIDER, isOptional = true },
-		{ frame = panel.globalButtonSizeCheckbox, column = REFLOW_COLUMN_CHECKBOX },
-		{ frame = panel.globalButtonSizeSlider, column = REFLOW_COLUMN_SLIDER, isOptional = true },
-		{ frame = panel.bypassBar2DepCheckbox, column = REFLOW_COLUMN_CHECKBOX },
-	})
-
-	RefitGeneralViewSoon()
-end
-
--- Re-anchors hotkeyTitle below the macro section (off macroTitle, not the drifting macroValueText).
-function ACAB:ReflowGeneralHotkeySection(panel)
-	panel.hotkeyTitle:ClearAllPoints()
-
-	if panel.macroSlider:IsShown() then
-		panel.hotkeyTitle:SetPoint(
+	if slider:IsShown() then
+		frame:SetPoint(
 			"TOPLEFT",
-			panel.macroTitle,
+			title,
 			"BOTTOMLEFT",
-			0,
-			-12 - panel.macroSlider:GetHeight() - 2 - panel.macroValueText:GetHeight() - 18
+			xOffset - 8,
+			-12 - slider:GetHeight() - 2 - valueText:GetHeight() - 18
 		)
 	else
-		panel.hotkeyTitle:SetPoint("TOPLEFT", panel.macroTextCheckbox, "BOTTOMLEFT", 8, -22)
+		frame:SetPoint("TOPLEFT", checkbox, "BOTTOMLEFT", xOffset, collapsedY)
 	end
+end
 
-	RefitGeneralViewSoon()
+-- Deferred refit of the Buttons view, only while it is the view on screen.
+local function RefitButtonsViewSoon()
+	if not ACAB.settingsFrame or ACAB.settingsFrame.currentView ~= "buttons" then return end
+
+	ACAB:DeferFit(function() ACAB:FitSettingsWindowToButtonsView() end)
+end
+
+-- Re-anchors each toggle below the section above it, in both columns.
+function ACAB:ReflowButtonsPanel(panel)
+	AnchorBelowTextSection(panel.globalButtonSizeCheckbox, panel.globalSpacingCheckbox, panel.globalSpacingTitle,
+		panel.globalSpacingSlider, panel.globalSpacingValueText, 0, -14)
+
+	AnchorBelowTextSection(panel.hotkeyTextCheckbox, panel.macroTextCheckbox, panel.macroTitle,
+		panel.macroSlider, panel.macroValueText, 0, -14)
+	AnchorBelowTextSection(panel.countTextCheckbox, panel.hotkeyTextCheckbox, panel.hotkeyTitle,
+		panel.hotkeySlider, panel.hotkeyValueText, 0, -14)
+
+	RefitButtonsViewSoon()
 end
 
 function ACAB:RefreshGeneralPanel()
@@ -1109,6 +1133,16 @@ function ACAB:RefreshGeneralPanel()
 
 	-- The Setup Wizard already decided this; turning it on mid-wizard would reset every bar.
 	ACAB:LockControl(panel.useDefaultLayoutCheckbox, self:IsSetupWizardActive())
+
+	panel.bypassBar2DepCheckbox:SetChecked(ACABDB.bypassRightActionBar2Dependency == true)
+	panel.updateChannelCheckbox:SetChecked(ACAB:IsUpdateChannelEnabled())
+	panel.tintWholeButtonCheckbox:SetChecked(ACABDB.tintWholeButtonOnRange ~= false)
+	panel.mainBarPaginationCheckbox:SetChecked(ACABDB.defaultBarPaginationEnabled ~= false)
+	panel.mainBarStanceSwapCheckbox:SetChecked(ACABDB.defaultBarStanceSwapEnabled ~= false)
+end
+
+function ACAB:RefreshButtonsPanel()
+	local panel = self:GetOrCreateButtonsPanel()
 
 	-- Style and global override controls lock while Force Vanilla Layout Mode forces vanilla styling.
 	local vanillaBorderStyleLocked = ACABDB.useDefaultLayout ~= false
@@ -1143,9 +1177,10 @@ function ACAB:RefreshGeneralPanel()
 
 	ACAB:SetSliderValueSilently(panel.globalSpacingSlider, ACABDB.globalSpacingValue or 0, panel.globalSpacingValueText)
 
+	panel.globalSpacingTitle:SetShown(spacingDisplayed)
 	panel.globalSpacingSlider:SetShown(spacingDisplayed)
 	panel.globalSpacingValueText:SetShown(spacingDisplayed)
-	SetMouseLocked(panel.globalSpacingSlider, vanillaBorderStyleLocked)
+	panel.globalSpacingResetButton:SetShown(spacingDisplayed)
 
 	local buttonSizeDisplayed = ACABDB.globalButtonSizeEnabled == true and
 		not vanillaBorderStyleLocked
@@ -1155,18 +1190,10 @@ function ACAB:RefreshGeneralPanel()
 
 	ACAB:SetSliderValueSilently(panel.globalButtonSizeSlider, ACABDB.globalButtonSizeValue or ACAB.BUTTON_SIZE, panel.globalButtonSizeValueText)
 
+	panel.globalButtonSizeTitle:SetShown(buttonSizeDisplayed)
 	panel.globalButtonSizeSlider:SetShown(buttonSizeDisplayed)
 	panel.globalButtonSizeValueText:SetShown(buttonSizeDisplayed)
-	SetMouseLocked(panel.globalButtonSizeSlider, vanillaBorderStyleLocked)
-
-	-- Both sliders' shown state is final here - collapse/restore their gaps.
-	ACAB:ReflowGeneralOverrideSliders(panel)
-
-	panel.bypassBar2DepCheckbox:SetChecked(ACABDB.bypassRightActionBar2Dependency == true)
-	panel.updateChannelCheckbox:SetChecked(ACAB:IsUpdateChannelEnabled())
-	panel.tintWholeButtonCheckbox:SetChecked(ACABDB.tintWholeButtonOnRange ~= false)
-	panel.mainBarPaginationCheckbox:SetChecked(ACABDB.defaultBarPaginationEnabled ~= false)
-	panel.mainBarStanceSwapCheckbox:SetChecked(ACABDB.defaultBarStanceSwapEnabled ~= false)
+	panel.globalButtonSizeResetButton:SetShown(buttonSizeDisplayed)
 
 	-------------------------------------------------------------------------
 	-- Macro text toggle + font size
@@ -1186,11 +1213,30 @@ function ACAB:RefreshGeneralPanel()
 
 	ACAB:SetSliderValueSilently(panel.macroSlider, macroSize, panel.macroValueText)
 
-	ACAB:ReflowGeneralHotkeySection(panel)
+	-------------------------------------------------------------------------
+	-- Hotkey / Count text toggles + font size (unset falls back to the captured native size)
+	-------------------------------------------------------------------------
 
-	-------------------------------------------------------------------------
-	-- Hotkey / Count text font size (unset falls back to the captured native size)
-	-------------------------------------------------------------------------
+	local hotkeyTextEnabled = ACABDB.showHotkeyText ~= false
+
+	panel.hotkeyTextCheckbox:SetChecked(hotkeyTextEnabled)
+
+	panel.hotkeyTitle:SetShown(hotkeyTextEnabled)
+	panel.hotkeySlider:SetShown(hotkeyTextEnabled)
+	panel.hotkeyValueText:SetShown(hotkeyTextEnabled)
+	panel.hotkeyResetButton:SetShown(hotkeyTextEnabled)
+
+	local countTextEnabled = ACABDB.showCountText ~= false
+
+	panel.countTextCheckbox:SetChecked(countTextEnabled)
+
+	panel.countTitle:SetShown(countTextEnabled)
+	panel.countSlider:SetShown(countTextEnabled)
+	panel.countValueText:SetShown(countTextEnabled)
+	panel.countResetButton:SetShown(countTextEnabled)
+
+	-- Every optional slider's shown state is final here - collapse/restore their gaps.
+	ACAB:ReflowButtonsPanel(panel)
 
 	local hotkeyDefault = ACAB.NATIVE_HOTKEY_FONT and ACAB.NATIVE_HOTKEY_FONT.size
 	local hotkeySize = ACAB:ClampFontSize(ACABDB.hotkeyFontSize or hotkeyDefault)
@@ -1234,9 +1280,16 @@ function ACAB:ShowBarsView()
 end
 
 -- Full-width views in hide order: settingsFrame keys and the ACAB methods that build/refresh/fit each.
-local WIDE_VIEW_ORDER = { "general", "profiles", "editmode", "wizard" }
+local WIDE_VIEW_ORDER = { "buttons", "general", "profiles", "editmode", "wizard" }
 
 local WIDE_VIEWS = {
+	buttons = {
+		scrollFrame = "buttonsScrollFrame",
+		panel = "buttonsPanel",
+		getOrCreate = "GetOrCreateButtonsPanel",
+		refresh = "RefreshButtonsPanel",
+		fit = "FitSettingsWindowToButtonsView",
+	},
 	general = {
 		scrollFrame = "generalScrollFrame",
 		panel = "generalPanel",
@@ -1323,6 +1376,10 @@ local function ShowWideView(viewKey)
 
 	-- Fit runs after Show() so the measured rects are real.
 	ACAB:DeferFit(function() ACAB[view.fit](ACAB) end)
+end
+
+function ACAB:ShowButtonsView()
+	ShowWideView("buttons")
 end
 
 function ACAB:ShowGeneralView()

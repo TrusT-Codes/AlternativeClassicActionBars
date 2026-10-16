@@ -873,7 +873,7 @@ end
 -- Global border/spacing style
 -------------------------------------------------------------------------
 
--- ACABDB.buttonStyle values (General tab "Button Style" dropdown).
+-- ACABDB.buttonStyle values (Buttons tab "Button Style" dropdown).
 ACAB.BUTTON_STYLE_VANILLA = 0
 ACAB.BUTTON_STYLE_MODERN = 1
 ACAB.BUTTON_STYLE_DARK_VANILLA = 2
@@ -1882,6 +1882,7 @@ end
 
 -- /acab settings <page>: page name -> settings view or bar/element page.
 local SETTINGS_PAGE_ALIASES = {
+	buttons = { view = "buttons" },
 	general = { view = "general" },
 	profiles = { view = "profiles" },
 	editmode = { view = "editmode" },
@@ -1937,7 +1938,9 @@ function ACAB:OpenSettingsPageByName(name)
 	-- The running Setup Wizard owns the settings window's page.
 	if self:IsSetupWizardActive() then return end
 
-	if target.view == "general" then
+	if target.view == "buttons" then
+		self:ShowButtonsView()
+	elseif target.view == "general" then
 		self:ShowGeneralView()
 	elseif target.view == "profiles" then
 		self:ShowProfilesView()

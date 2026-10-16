@@ -97,7 +97,7 @@ Files: ExperienceBar.lua, Events.lua
 Files: Settings.lua
 - **Where:** `Settings.lua` — `ApplySettingsHeightFromCandidates`
 - **What:** After `SetVerticalScroll(0)` it does `scrollChildPanel:GetTop()`, then `GetBottom()` on every candidate, then `GetBottom()` on the General panel's static anchor chain, all discarded. This is the env §4.6 fix, and three "equivalent" rewrites all brought the bug back.
-- **Keep:** the block byte-for-byte, including the per-call `resolveNames` table and loop order. A new General-tab control hanging off an unmeasured static anchor needs that anchor added to `resolveNames`. Symptom if broken: toggling Global Spacing makes the controls below it unreachable.
+- **Keep:** the block byte-for-byte, including the per-call `resolveNames` table and loop order. A new Buttons- or General-tab control hanging off an unmeasured static anchor needs that anchor added to `resolveNames`. Symptom if broken: toggling Global Spacing makes the controls below it unreachable.
 - **Related:** `MeasureDeepestExtent` must stay a live-position delta (`referenceTop - frame:GetBottom()`), since the window is movable. The `*_CANDIDATE_NAMES` tables in `Settings.lua` feed this pass in order; keep them in order.
 
 ### Inline dropdown SetParent after CreateFrame

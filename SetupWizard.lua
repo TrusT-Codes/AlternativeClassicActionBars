@@ -121,9 +121,17 @@ local STEPS = {
 		kind = "page",
 		title = "General Settings",
 		short = "General",
-		hint = "Set up Page and Stance/Form swapping, button text and global sizing here - " ..
+		hint = "Set up Page and Stance/Form swapping here - " ..
 			"the next steps use these settings. Every change applies to your bars right away.",
 		show = function() ACAB:ShowGeneralView() end,
+	},
+	buttons = {
+		kind = "page",
+		title = "Button Settings",
+		short = "Buttons",
+		hint = "Set up button text and global sizing here - " ..
+			"the next steps use these settings. Every change applies to your bars right away.",
+		show = function() ACAB:ShowButtonsView() end,
 	},
 	mainbar = {
 		kind = "page",
@@ -214,6 +222,7 @@ local function BuildStepPath(state)
 	table.insert(path, "style")
 	table.insert(path, "layout")
 	table.insert(path, "general")
+	table.insert(path, "buttons")
 	table.insert(path, "mainbar")
 	table.insert(path, "extrabars")
 
@@ -353,7 +362,7 @@ end
 -- Step "style": vanilla vs modern button style.
 function ACABSetupWizardMixin:BuildStyleStep(panel)
 	local step, message = CreateStepFrame(panel,
-		"Choose a button style for your bars. You can change this later in the General settings."
+		"Choose a button style for your bars. You can change this later in the Buttons settings."
 	)
 
 	-- One style column: label, preview bar and Select button.

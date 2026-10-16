@@ -1540,6 +1540,11 @@ end
 function ACABButtonMixin:UpdateCount()
 	if not self.count then return end
 
+	if ACABDB and ACABDB.showCountText == false then
+		self.count:Hide()
+		return
+	end
+
 	local text = ""
 	local macroKind = self:GetMacroTargetKind()
 	if macroKind == "bag" then
@@ -1614,6 +1619,11 @@ end
 -- isn't another button's redirected key.
 function ACABButtonMixin:UpdateHotkeyText()
 	if not self.hotkey then return end
+
+	if ACABDB and ACABDB.showHotkeyText == false then
+		self.hotkey:Hide()
+		return
+	end
 
 	local key
 
@@ -2142,7 +2152,7 @@ function ACAB:CreateActionButton(parent, actionSlot, slotIndex)
 end
 
 -------------------------------------------------------------------------
--- Global hotkey/count/macro font size and macro text toggle
+-- Global hotkey/count/macro font size and text toggles
 -------------------------------------------------------------------------
 
 -- Saves a rounded font size and re-applies it (and re-truncates) on every pool button's regionKey FontString.
@@ -2188,5 +2198,25 @@ function ACAB:SetMacroTextEnabled(enabled)
 
 	ACAB:ForEachPoolButton(function(btn)
 		btn:UpdateMacroText()
+	end)
+end
+
+function ACAB:SetHotkeyTextEnabled(enabled)
+	self:EnsureDB()
+
+	ACABDB.showHotkeyText = enabled and true or false
+
+	ACAB:ForEachPoolButton(function(btn)
+		btn:UpdateHotkeyText()
+	end)
+end
+
+function ACAB:SetCountTextEnabled(enabled)
+	self:EnsureDB()
+
+	ACABDB.showCountText = enabled and true or false
+
+	ACAB:ForEachPoolButton(function(btn)
+		btn:UpdateCount()
 	end)
 end

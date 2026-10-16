@@ -698,14 +698,14 @@ function ACAB:InstallGroupLockGuard(control, isLocked, lockedText, onLockedClick
 	end
 end
 
--- Hidden, locked "<title>" lock icon right of slider, toggling the bar's cfg[unlockedKey] opt-out of the General
+-- Hidden, locked "<title>" lock icon right of slider, toggling the bar's cfg[unlockedKey] opt-out of the Buttons
 -- tab's global override; re-locking runs ACAB:<applyMethod>(bar). Shown/synced by RefreshBarPageGlobalOverrideGating.
 local function CreateGlobalOverrideLockButton(page, name, slider, title, unlockedKey, applyMethod)
 	local button = ACAB:CreateLockToggleButton(page, name, {
 		anchor = { "LEFT", slider, "RIGHT", 4, 0 },
 		tooltipTitle = title,
-		lockedLine = "Locked to the General tab's global " .. title .. ". Click to unlock and set an independent value for this bar.",
-		unlockedLine = "Unlocked - independent of the General tab's global " .. title .. ". Click to re-lock and sync it.",
+		lockedLine = "Locked to the Buttons tab's global " .. title .. ". Click to unlock and set an independent value for this bar.",
+		unlockedLine = "Unlocked - independent of the Buttons tab's global " .. title .. ". Click to re-lock and sync it.",
 		onClick = function()
 			local cfg = ACAB:GetBarConfig(page.barId)
 			if not cfg then return end
