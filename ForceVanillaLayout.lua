@@ -77,6 +77,11 @@ function ACAB:ApplyUseDefaultLayoutChange(checked)
 	ACAB:ApplyGlobalSpacing()
 	ACAB:ApplyGlobalButtonSize()
 	ACAB:RefreshGeneralPanel()
+
+	if ACAB.settingsFrame.buttonsPanel then
+		ACAB:RefreshButtonsPanel()
+	end
+
 	ACAB:RefreshAllBarPagesGlobalOverrideGating()
 
 	-- Styled-to-native Pet/Stance switch only takes effect after a reload, same as the Use Vanilla checkbox.
