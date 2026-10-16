@@ -26,7 +26,7 @@ ACAB (`AlternativeClassicActionBars`): Bartender2-style action bar addon for a m
 - Before writing a helper, grep `docs/symbols.txt` for an existing one. It's generated (`scripts/symbols.sh`, run by `verify.sh`): grep only, never read whole, never edit.
 
 ## Docs (when to read)
-- `scripts/docs-for.sh <files you touch>`: before editing. Prints the `known-problems.md` + `MISTAKES.md` entries for those files (`--no-general` skips `Files: *`). Don't read the two docs whole.
+- `scripts/docs-for.sh <files you touch>`: before editing. Prints the `known-problems.md` + `MISTAKES.md` entries for those files (`--general` adds `Files: *` entries; their rules are condensed in "Process rules"). Don't read the two docs whole.
 - `docs/known-problems.md`: quirks, must-stay orderings, tech debt. Code cites it as `see known-problems.md: "<title>"`; put findings there, not in WHY comments.
 - `MISTAKES.md`: solved mistakes (what / root cause / prevention). Add an entry for every new mistake.
 - **Every new entry in either doc gets a `Files: A.lua, B.lua` line under its heading (`Files: *` if general).**
@@ -51,3 +51,13 @@ Top-level (file-load-time) calls may only use earlier files; runtime calls go an
 - `Settings.lua` (inits `ACAB.simpleBarPageConfigs = {}`) loads before `SettingsBars.lua` and `SettingsSimplePages.lua` (top-level fill).
 - `SetupWizard.lua` loads before `Settings.lua`; calls settings files at runtime only.
 - `Events.lua` loads last among `.lua` files; `bindings.xml` declares `ACABBIND*`/`ACABPETBIND*`/`ACABSTANCEBIND*`.
+
+## Process rules (condensed `Files: *` entries; `docs-for.sh --general` prints the originals)
+- Live state beats code reading or retail memory: hand the user a `/run` first, not an agent. A guard that hides a wrong guess is not verification.
+- Binary string finds and retail designs are hypotheses until env §3/§4 or a live `type(x)` confirms them.
+- `/run` checks: set and restore `this`/`event` around native handler calls; ask which run a result came from.
+- Removing "debug-only" code changes behavior → restore it byte for byte, bisect one variable at a time.
+- One fix doesn't close a bug: re-run the original live check. Visual mismatch: compare with the addon disabled first.
+- Diagnostic traces: label every candidate entry point; first line is a build tag.
+- Code with backslashes: Edit/Write tools only, never a shell heredoc; grep texture paths after scripted edits.
+- Before switching branches: `git show --stat`.

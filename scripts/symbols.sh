@@ -21,5 +21,5 @@ FILES=$(grep -E '^[A-Za-z].*\.lua' AlternativeClassicActionBars.toc | tr -d '\r'
       }
     ' "$f"
   done
-} > docs/symbols.txt
+} | tr -d '\r' > docs/symbols.txt
 echo "symbols: $(($(wc -l < docs/symbols.txt) - 1)) entries -> docs/symbols.txt"

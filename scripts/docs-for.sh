@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # Prints every docs/known-problems.md and MISTAKES.md entry whose "Files:" line
-# names one of the given files (basename match) or is "Files: *".
+# names one of the given files (basename match); with --general, also "Files: *" entries.
 # Inside a matched entry, a top-level bullet tagged "<!-- Files: ... -->" prints only if it matches too.
-# Usage: scripts/docs-for.sh [--no-general] Button.lua [Core.lua ...]   (--no-general skips "*" entries)
+# Usage: scripts/docs-for.sh [--general] Button.lua [Core.lua ...]   (--general adds "*" entries)
 set -e
 root="$(cd "$(dirname "$0")/.." && pwd)"
-general=1
+general=0
 args=""
 for a in "$@"; do
-  if [ "$a" = "--no-general" ]; then general=0; else args="$args $(basename "$a")"; fi
+  if [ "$a" = "--general" ]; then general=1; else args="$args $(basename "$a")"; fi
 done
 if [ -z "$args" ]; then
-  echo "usage: $0 [--no-general] <File.lua> [File.lua ...]" >&2
+  echo "usage: $0 [--general] <File.lua> [File.lua ...]" >&2
   exit 1
 fi
 

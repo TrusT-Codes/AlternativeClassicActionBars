@@ -8,7 +8,7 @@ model: inherit
 You implement features and fixes in ACAB. `CLAUDE.md` and the `vanilla-wow-addon` skill hold the rules; load the skill first. This file only adds what's agent-specific.
 
 ## Before editing
-1. `bash scripts/docs-for.sh <every file in scope>` — read every entry it prints.
+1. `bash scripts/docs-for.sh <every file in scope>` — read every entry it prints (`--general` adds `Files: *` entries, condensed in CLAUDE.md "Process rules").
 2. `env §N`: read only the named sections, in the skill's `references/client-facts.md` + `docs/01-Environment-Capability-Analysis.md` (ACAB residue).
 3. Locate code via Grep / `docs/symbols.txt`, then Read with `offset`/`limit`. Reuse existing helpers.
 

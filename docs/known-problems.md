@@ -4,7 +4,7 @@ Read this when something doesn't behave the way the code suggests it should. It 
 
 - The `vanilla-wow-addon` skill's `references/client-facts.md` (plus ACAB residue in `docs/01-Environment-Capability-Analysis.md`, same § numbers) is the authority on *what the client APIs do*. This file covers *where that bites this codebase*. `env §N` points into those; a bare `§N` points into this file.
 - Entries name file + function, not line numbers. Grep the function name.
-- Every entry has a `Files:` line under its heading (`Files: *` = general). `scripts/docs-for.sh <file...>` prints the entries for the files you touch.
+- Every entry has a `Files:` line under its heading (`Files: *` = general). `scripts/docs-for.sh <file...>` prints the entries for the files you touch (`--general` adds `Files: *`).
 - Code comments point here as `see known-problems.md: "<entry title>"`. Keep those titles stable.
 - When a suspected bug is confirmed or fixed, move it (or delete it) and note the outcome in one line.
 
