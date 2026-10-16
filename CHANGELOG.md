@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.0-rc1
+
+### Features
+
+- New "Buttons" settings tab between Bars and General. The left side holds Button Style (moved from General), global Spacing and global Button size. The right side holds the Macro, Hotkey and Item Count text settings. `/acab settings buttons` opens it, and the Setup Wizard has a new Buttons step.
+- New "Toggle Hotkey Text" and "Toggle Item Count Text" checkboxes (on by default): turn them off to hide all keybind or item count text on your buttons, in every button style. Each text size slider shows only while its toggle is on, like "Toggle Macro Text".
+- The global Spacing and Button size sliders now match the text size sliders: a header with their range and a Reset button (Spacing resets to 0, Button size to 36).
+
 ## 1.3.2-rc1
 
 ### Features
