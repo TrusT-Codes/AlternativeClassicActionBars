@@ -64,3 +64,7 @@ New rules added (not in the old file): navigation rules, `docs/symbols.txt`, `sc
 ## Env doc → skill (follow-up decision: skill canonical)
 
 `docs/01-Environment-Capability-Analysis.md` (21 548 bytes) cut to ACAB residue (same § numbers). Every generic fact was already in the skill's `references/client-facts.md` except these six, added there: stock bars use slots outside 73–120 (§4.2); `/startattack` slot not current from auto-attack (§4.3); rect resolve not fixed by chat output/`GetName`/`IsShown` (§4.6); art LOW 5 / own elements LOW 10+ layering (§4.8); guarded frames need no `LOOT_CLOSED` reassert (§4.9); rested bonus ~75% of base XP (§4.13). ACAB names, code locations and raw live examples stay in the env doc.
+
+## Follow-up: file list moved
+
+The one-line-per-file list ("new Files #N" above) moved to `docs/architecture.md` "File index" (verbatim). CLAUDE.md keeps only a "Load order" section with the load-order constraints.

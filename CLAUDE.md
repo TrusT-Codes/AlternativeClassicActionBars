@@ -30,7 +30,7 @@ ACAB (`AlternativeClassicActionBars`): Bartender2-style action bar addon for a m
 - `docs/known-problems.md`: quirks, must-stay orderings, tech debt. Code cites it as `see known-problems.md: "<title>"`; put findings there, not in WHY comments.
 - `MISTAKES.md`: solved mistakes (what / root cause / prevention). Add an entry for every new mistake.
 - **Every new entry in either doc gets a `Files: A.lua, B.lua` line under its heading (`Files: *` if general).**
-- `docs/architecture.md`: full per-file descriptions, SavedVariables/profiles, canonical positions, Mixin capture order, same-name `CreateFrame`, slash commands, tooling detail, type-defs repo.
+- `docs/architecture.md`: file index + full per-file descriptions, SavedVariables/profiles, canonical positions, Mixin capture order, same-name `CreateFrame`, slash commands, tooling detail, type-defs repo.
 - `env §N` = skill `references/client-facts.md` §N (canonical client/mod facts: §3 reuse, §4 confirmed, §5 open) + ACAB residue in `docs/01-Environment-Capability-Analysis.md` §N. Read the named section only. New facts: generic → skill, ACAB-only → env doc.
 - `docs/release-checklist.md`: in-game test matrix for every release candidate.
 - `wow-api-type-definitions/`: gitignored GPLv3 clone, grep only, never copy. Trust: client-facts/env §4 > `UI_Turtle` FrameXML > `Client/*.d.lua` > general knowledge.
@@ -43,34 +43,11 @@ ACAB (`AlternativeClassicActionBars`): Bartender2-style action bar addon for a m
 - Capture native methods before `Mixin()`. `CreateFrame` with an existing name makes a second frame: create named frames once.
 - No addon work before login: pre-login handlers/hooks return early until `ACAB.loginSequenceDone` (or `ACAB.activeProfileName`).
 
-## Files (`.toc` order; detail in `docs/architecture.md`)
-Top-level (file-load-time) calls may only use earlier files; runtime calls go anywhere. New file: `.toc` + this list.
-1. `Core.lua` — ids/constants, snap, edit/hoverbind modes, fade, login sequence, `/acab` slash dispatch
-2. `UpdateCheck.lua` — version compare, peer version broadcast over addon messages + hidden channel
-3. `Database.lua` — SavedVariable lifecycle, `EnsureDB`, sanitizer, UI-scale check, profile system
-4. `ProfileIO.lua` — profile export/import (`TBVPROFILE1:`, hand-rolled parser). Runtime only
-5. `ProfileDialogs.lua` — create-profile + first-login dialogs. Runtime only
-6. `ElementEngine.lua` — element engine; **load before DefaultBars/NativeElements** (top-level guards)
-7. `DefaultBars.lua` — Main Bar paging/art, bars 1–5, Modern geometry; top-level `InstallReanchorGuard`
-8. `NativeElements.lua` — Bag Bar, Micro Menu, Key Ring, Latency/Cast Bar; top-level guard calls
-9. `PageIndicator.lua` — Page Indicator element. No top-level calls
-10. `Tooltip.lua` — Tooltip element (`GameTooltip` default-anchor redirect). No top-level calls
-11. `PetStanceBars.lua` — native-mode Pet/Stance Bars (cross-call each other's reflows)
-12. `ExperienceBar.lua` — Exp Bar position/colors, rested overlay, Better Exp Bar text
-13. `Bar.lua` — bar grid engine (custom + default-family bars); owns the slot allocator (pages 7–10)
-14. `LayoutGrid.lua` — Edit Layout grid overlay. Runtime only
-15. `ExtraBars.lua` — Extra Bars 6–9 policy. Runtime only
-16. `Button.lua` — slot-backed pool button; one event dispatcher + range ticker; slot changes via `Rebind`
-17. `HoverBind.lua` — hoverbind mode, custom slots via `bindings.xml`; top-level `customBindTargets = {}`
-18. `Minimap.lua` — minimap launcher button
-19. `Menu.lua` — minimap right-click menu (native `UIDropDownMenuTemplate`)
-20. `UIWidgets.lua` — Mixin widget kit: modern buttons, sliders, list rows, `ACAB.*_BACKDROP` tables
-21. `Dialog.lua` — `ACABDialogMixin` (global at load) + `ACAB:ShowDialog`
-22. `SetupWizard.lua` — setup wizard inside the settings window; calls settings files at runtime only
-23. `Settings.lua` — settings shell, height-fit, gating; inits `ACAB.simpleBarPageConfigs = {}`
-24. `SettingsBars.lua` — bar pages, shared page helpers, bar list. **Must load after Settings.lua**
-25. `ForceVanillaLayout.lua` — Force Vanilla Layout Mode toggle + reset. Runtime only
-26. `SettingsSimplePages.lua` — native-element pages. **After Settings.lua** (top-level fill), SettingsBars
-27. `SettingsGeneral.lua` — General/Profiles/Edit Mode tabs, `WIDE_VIEWS`, Export/Import/Copy dialogs
-28. `Events.lua` — addon-wide event frames. **Loads last** among `.lua` files (handlers call every file)
-29. `bindings.xml` — `ACABBIND1-48` / `ACABPETBIND1-10` / `ACABSTANCEBIND1-10` binding actions
+## Load order (`.toc`; file index + detail in `docs/architecture.md`)
+Top-level (file-load-time) calls may only use earlier files; runtime calls go anywhere. New file: `.toc` + `architecture.md`.
+- `ElementEngine.lua` loads before `DefaultBars.lua` / `NativeElements.lua` (their top-level guard calls).
+- `HoverBind.lua`'s top-level `customBindTargets = {}` runs before any button is created.
+- `Dialog.lua` defines the `ACABDialogMixin` global at load.
+- `Settings.lua` (inits `ACAB.simpleBarPageConfigs = {}`) loads before `SettingsBars.lua` and `SettingsSimplePages.lua` (top-level fill).
+- `SetupWizard.lua` loads before `Settings.lua`; calls settings files at runtime only.
+- `Events.lua` loads last among `.lua` files; `bindings.xml` declares `ACABBIND*`/`ACABPETBIND*`/`ACABSTANCEBIND*`.
