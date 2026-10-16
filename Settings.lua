@@ -1061,7 +1061,8 @@ local BAR_PAGE_TAIL_CANDIDATE_NAMES = { "noStancesText", "useVanillaStanceBarChe
 local GENERAL_CANDIDATE_NAMES = {
 	"useDefaultLayoutCheckbox", "tintWholeButtonCheckbox", "mainBarPaginationCheckbox", "mainBarStanceSwapCheckbox",
 	"macroTextCheckbox", "macroValueText", "macroResetButton",
-	"hotkeyValueText", "hotkeyResetButton", "countValueText", "countResetButton",
+	"hotkeyTextCheckbox", "hotkeyValueText", "hotkeyResetButton",
+	"countTextCheckbox", "countValueText", "countResetButton",
 	"buttonStyleRow", "globalSpacingCheckbox", "globalSpacingSlider", "globalSpacingValueText",
 	"globalButtonSizeCheckbox", "globalButtonSizeSlider", "globalButtonSizeValueText", "bypassBar2DepCheckbox",
 	"updateChannelCheckbox",
@@ -1136,8 +1137,8 @@ local function ApplySettingsHeightFromCandidates(candidateList, scrollFrame, scr
 	if scrollChildPanel.hotkeyTitle then
 		local resolveNames = {
 			"macroTextCheckbox", "macroTitle", "macroSlider", "macroValueText", "macroResetButton",
-			"hotkeyTitle", "hotkeySlider", "hotkeyValueText", "hotkeyResetButton",
-			"countTitle", "countSlider", "countValueText", "countResetButton",
+			"hotkeyTextCheckbox", "hotkeyTitle", "hotkeySlider", "hotkeyValueText", "hotkeyResetButton",
+			"countTextCheckbox", "countTitle", "countSlider", "countValueText", "countResetButton",
 			"buttonStyleRow",
 		}
 

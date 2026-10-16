@@ -257,7 +257,7 @@ local function BuildGeneralBarToggleSection(panel, checkbox)
 	return mainBarStanceSwapCheckbox
 end
 
--- General panel: macro text toggle and the Macro/Hotkey/Item Count text size sliders. Returns countTitle, countSlider, countValueText.
+-- General panel: Macro/Hotkey/Item Count text toggles and their text size sliders. Returns countTitle, countSlider, countValueText.
 local function BuildGeneralFontSizeSection(panel, mainBarStanceSwapCheckbox)
 	-------------------------------------------------------------------------
 	-- Macro text toggle + font size
@@ -290,13 +290,26 @@ local function BuildGeneralFontSizeSection(panel, mainBarStanceSwapCheckbox)
 	)
 
 	-------------------------------------------------------------------------
-	-- Hotkey / Item Count text font size (global, live)
+	-- Hotkey / Item Count text toggles + font size (global, live)
 	-------------------------------------------------------------------------
+
+	-- Placeholder anchor; ReflowGeneralHotkeySection re-anchors it.
+	local hotkeyTextCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABGeneralHotkeyTextCheckbox", {
+		anchor = { "TOPLEFT", macroTextCheckbox, "BOTTOMLEFT", 0, -14 },
+		label = "Toggle Hotkey Text",
+		onClick = function()
+			local checked = this:GetChecked() and true or false
+
+			ACAB:SetHotkeyTextEnabled(checked)
+			ACAB:RefreshGeneralPanel()
+		end,
+	})
+
+	panel.hotkeyTextCheckbox = hotkeyTextCheckbox
 
 	local hotkeyTitle = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 
-	-- Placeholder anchor; ReflowGeneralHotkeySection re-anchors it.
-	hotkeyTitle:SetPoint("TOPLEFT", macroTextCheckbox, "BOTTOMLEFT", 8, -22)
+	hotkeyTitle:SetPoint("TOPLEFT", hotkeyTextCheckbox, "BOTTOMLEFT", 8, -10)
 	hotkeyTitle:SetText(FontSizeTitleText("Hotkey"))
 
 	panel.hotkeyTitle = hotkeyTitle
@@ -310,17 +323,23 @@ local function BuildGeneralFontSizeSection(panel, mainBarStanceSwapCheckbox)
 	panel.hotkeySlider = hotkeySlider
 	panel.hotkeyResetButton = hotkeyResetButton
 
+	-- Placeholder anchor; ReflowGeneralHotkeySection re-anchors it.
+	local countTextCheckbox = ACAB:CreateLabeledCheckbox(panel, "ACABGeneralCountTextCheckbox", {
+		anchor = { "TOPLEFT", hotkeyTextCheckbox, "BOTTOMLEFT", 0, -14 },
+		label = "Toggle Item Count Text",
+		onClick = function()
+			local checked = this:GetChecked() and true or false
+
+			ACAB:SetCountTextEnabled(checked)
+			ACAB:RefreshGeneralPanel()
+		end,
+	})
+
+	panel.countTextCheckbox = countTextCheckbox
+
 	local countTitle = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 
-	-- must anchor off hotkeyTitle, not hotkeyValueText: a value text's left edge drifts with its digit count.
-	countTitle:SetPoint(
-		"TOPLEFT",
-		hotkeyTitle,
-		"BOTTOMLEFT",
-		0,
-		-12 - hotkeySlider:GetHeight() - 2 - hotkeyValueText:GetHeight() - 18
-	)
-
+	countTitle:SetPoint("TOPLEFT", countTextCheckbox, "BOTTOMLEFT", 8, -10)
 	countTitle:SetText(FontSizeTitleText("Item Count"))
 
 	panel.countTitle = countTitle
@@ -358,7 +377,7 @@ local function BuildGeneralBorderStyleSection(panel, countTitle, countSlider, co
 	local row, dropdown = ACAB:CreateDropdownRow(panel, nil, "Button Style:", 180, "ACABGeneralButtonStyleDropdown",
 		BuildButtonStyleOptions(false))
 
-	-- Anchored off countTitle (fixed X), not countValueText.
+	-- Placeholder anchor; ReflowGeneralHotkeySection re-anchors it.
 	row:SetPoint("TOPLEFT", countTitle, "BOTTOMLEFT", 0, -12 - countSlider:GetHeight() - 2 - countValueText:GetHeight() - 18)
 
 	dropdown.onSelect = function(value)
@@ -1083,21 +1102,32 @@ function ACAB:ReflowGeneralOverrideSliders(panel)
 	RefitGeneralViewSoon()
 end
 
--- Re-anchors hotkeyTitle below the macro section (off macroTitle, not the drifting macroValueText).
-function ACAB:ReflowGeneralHotkeySection(panel)
-	panel.hotkeyTitle:ClearAllPoints()
+-- Anchors frame below a text toggle's section: off its title when the slider shows, else off its checkbox.
+-- must anchor off the title, not the value text: a value text's left edge drifts with its digit count.
+local function AnchorBelowTextSection(frame, checkbox, title, slider, valueText, xOffset, collapsedY)
+	frame:ClearAllPoints()
 
-	if panel.macroSlider:IsShown() then
-		panel.hotkeyTitle:SetPoint(
+	if slider:IsShown() then
+		frame:SetPoint(
 			"TOPLEFT",
-			panel.macroTitle,
+			title,
 			"BOTTOMLEFT",
-			0,
-			-12 - panel.macroSlider:GetHeight() - 2 - panel.macroValueText:GetHeight() - 18
+			xOffset - 8,
+			-12 - slider:GetHeight() - 2 - valueText:GetHeight() - 18
 		)
 	else
-		panel.hotkeyTitle:SetPoint("TOPLEFT", panel.macroTextCheckbox, "BOTTOMLEFT", 8, -22)
+		frame:SetPoint("TOPLEFT", checkbox, "BOTTOMLEFT", xOffset, collapsedY)
 	end
+end
+
+-- Re-anchors the Hotkey / Item Count toggles and the Button Style row below the section above each.
+function ACAB:ReflowGeneralHotkeySection(panel)
+	AnchorBelowTextSection(panel.hotkeyTextCheckbox, panel.macroTextCheckbox, panel.macroTitle,
+		panel.macroSlider, panel.macroValueText, 0, -14)
+	AnchorBelowTextSection(panel.countTextCheckbox, panel.hotkeyTextCheckbox, panel.hotkeyTitle,
+		panel.hotkeySlider, panel.hotkeyValueText, 0, -14)
+	AnchorBelowTextSection(panel.buttonStyleRow, panel.countTextCheckbox, panel.countTitle,
+		panel.countSlider, panel.countValueText, 8, -22)
 
 	RefitGeneralViewSoon()
 end
@@ -1186,11 +1216,29 @@ function ACAB:RefreshGeneralPanel()
 
 	ACAB:SetSliderValueSilently(panel.macroSlider, macroSize, panel.macroValueText)
 
-	ACAB:ReflowGeneralHotkeySection(panel)
+	-------------------------------------------------------------------------
+	-- Hotkey / Count text toggles + font size (unset falls back to the captured native size)
+	-------------------------------------------------------------------------
 
-	-------------------------------------------------------------------------
-	-- Hotkey / Count text font size (unset falls back to the captured native size)
-	-------------------------------------------------------------------------
+	local hotkeyTextEnabled = ACABDB.showHotkeyText ~= false
+
+	panel.hotkeyTextCheckbox:SetChecked(hotkeyTextEnabled)
+
+	panel.hotkeyTitle:SetShown(hotkeyTextEnabled)
+	panel.hotkeySlider:SetShown(hotkeyTextEnabled)
+	panel.hotkeyValueText:SetShown(hotkeyTextEnabled)
+	panel.hotkeyResetButton:SetShown(hotkeyTextEnabled)
+
+	local countTextEnabled = ACABDB.showCountText ~= false
+
+	panel.countTextCheckbox:SetChecked(countTextEnabled)
+
+	panel.countTitle:SetShown(countTextEnabled)
+	panel.countSlider:SetShown(countTextEnabled)
+	panel.countValueText:SetShown(countTextEnabled)
+	panel.countResetButton:SetShown(countTextEnabled)
+
+	ACAB:ReflowGeneralHotkeySection(panel)
 
 	local hotkeyDefault = ACAB.NATIVE_HOTKEY_FONT and ACAB.NATIVE_HOTKEY_FONT.size
 	local hotkeySize = ACAB:ClampFontSize(ACABDB.hotkeyFontSize or hotkeyDefault)

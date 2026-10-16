@@ -901,7 +901,7 @@ local SANITIZE_BOOLEAN_KEYS = {
 	"expBarShowRestedPercent", "expBarShowRestedTotal", "bagBarOrientation", "stanceBarOrientation", "showMacroText",
 	"bagBarGroupUnlocked", "keyRingGroupUnlocked", "microMenuGroupUnlocked", "latencyBarGroupUnlocked",
 	"pageIndicatorGroupUnlocked", "hoverBindMode", "vanillaLayoutStacking", "pendingDefaultBarRecapture",
-	"pendingDisableExtraBars",
+	"pendingDisableExtraBars", "showHotkeyText", "showCountText",
 }
 
 local SANITIZE_NUMBER_KEYS = {
@@ -1747,6 +1747,9 @@ function ACAB:EnsureDB()
 		ACABDB.hoverBindMode = false
 		hasResetHoverBindModeThisSession = true
 	end
+
+	if ACABDB.showHotkeyText == nil then ACABDB.showHotkeyText = true end
+	if ACABDB.showCountText == nil then ACABDB.showCountText = true end
 
 	lastEnsuredDB = ACABDB
 end
