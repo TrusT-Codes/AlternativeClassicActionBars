@@ -1,6 +1,6 @@
 # Mistakes Log
 
-Solved mistakes, so they don't happen twice. Each entry has three parts: **what happened**, the **root cause**, and how to **prevent** it. Add new entries at the end of the matching section, each with a `Files:` line under its heading (`Files: *` for process/general entries; `scripts/docs-for.sh` reads it). Client facts live in `docs/01-Environment-Capability-Analysis.md` (`env §N`); code-level gotchas live in `docs/known-problems.md`.
+Solved mistakes, so they don't happen twice. Each entry has three parts: **what happened**, the **root cause**, and how to **prevent** it. Add new entries at the end of the matching section, each with a `Files:` line under its heading (`Files: *` for process/general entries; `scripts/docs-for.sh` reads it). Client facts live in the `vanilla-wow-addon` skill's `references/client-facts.md` plus ACAB residue in `docs/01-Environment-Capability-Analysis.md` (`env §N`, same § numbers); code-level gotchas live in `docs/known-problems.md`.
 
 ---
 

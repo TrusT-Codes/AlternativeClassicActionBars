@@ -2,7 +2,7 @@
 
 Read this when something doesn't behave the way the code suggests it should. It collects everything the 1.2.0 refactor pass found: suspected bugs nobody has confirmed yet, client quirks, code orderings that must stay as they are, and leftover tech debt.
 
-- `docs/01-Environment-Capability-Analysis.md` stays the authority on *what the client APIs do*. This file covers *where that bites this codebase*. `env §N` points into that doc; a bare `§N` points into this file.
+- The `vanilla-wow-addon` skill's `references/client-facts.md` (plus ACAB residue in `docs/01-Environment-Capability-Analysis.md`, same § numbers) is the authority on *what the client APIs do*. This file covers *where that bites this codebase*. `env §N` points into those; a bare `§N` points into this file.
 - Entries name file + function, not line numbers. Grep the function name.
 - Every entry has a `Files:` line under its heading (`Files: *` = general). `scripts/docs-for.sh <file...>` prints the entries for the files you touch.
 - Code comments point here as `see known-problems.md: "<entry title>"`. Keep those titles stable.

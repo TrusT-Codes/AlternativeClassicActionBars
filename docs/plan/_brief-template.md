@@ -12,7 +12,7 @@ Copy this skeleton for a new orchestrator/agent brief. Delete the hints in `<…
 
 ## Read first (nothing else whole)
 - `bash scripts/docs-for.sh <files in scope>` — every entry it prints.
-- Env doc sections: `env §<N.N>` (<why>), `env §<N.N>`. Only these.
+- `env §<N.N>` (<why>): skill `references/client-facts.md` + `docs/01-Environment-Capability-Analysis.md` residue, that section only.
 - Symbols: grep `docs/symbols.txt` for `<Name>`; Read code with `offset`/`limit` around hits.
 - `docs/architecture.md` section(s): <"Architecture" entry for X.lua / "Canonical positions" / …>, only if needed.
 

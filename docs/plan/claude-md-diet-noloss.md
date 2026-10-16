@@ -60,3 +60,7 @@ Every section and bold rule of the old `CLAUDE.md` (33 305 bytes, commit `d16659
 | `## Type definitions repo (local reference)` (clone URL, commit `72ab041`, **GPLv3**, FrameXML, d.lua **unverified**, **nothing** for the mods, trust order, `.luarc.json`) | new "Docs" (one line) + arch "Type definitions repo" (verbatim) |
 
 New rules added (not in the old file): navigation rules, `docs/symbols.txt`, `scripts/docs-for.sh`, `Files:` lines on every known-problems/MISTAKES entry, brief template, stage-by-exact-path in Commands.
+
+## Env doc → skill (follow-up decision: skill canonical)
+
+`docs/01-Environment-Capability-Analysis.md` (21 548 bytes) cut to ACAB residue (same § numbers). Every generic fact was already in the skill's `references/client-facts.md` except these six, added there: stock bars use slots outside 73–120 (§4.2); `/startattack` slot not current from auto-attack (§4.3); rect resolve not fixed by chat output/`GetName`/`IsShown` (§4.6); art LOW 5 / own elements LOW 10+ layering (§4.8); guarded frames need no `LOOT_CLOSED` reassert (§4.9); rested bonus ~75% of base XP (§4.13). ACAB names, code locations and raw live examples stay in the env doc.

@@ -31,9 +31,9 @@ ACAB (`AlternativeClassicActionBars`): Bartender2-style action bar addon for a m
 - `MISTAKES.md`: solved mistakes (what / root cause / prevention). Add an entry for every new mistake.
 - **Every new entry in either doc gets a `Files: A.lua, B.lua` line under its heading (`Files: *` if general).**
 - `docs/architecture.md`: full per-file descriptions, SavedVariables/profiles, canonical positions, Mixin capture order, same-name `CreateFrame`, slash commands, tooling detail, type-defs repo.
-- `docs/01-Environment-Capability-Analysis.md` (`env §N`): live-confirmed client/mod facts (§3 reuse, §4 confirmed, §5 open). Read the named section only; record new confirmed facts there.
+- `env §N` = skill `references/client-facts.md` §N (canonical client/mod facts: §3 reuse, §4 confirmed, §5 open) + ACAB residue in `docs/01-Environment-Capability-Analysis.md` §N. Read the named section only. New facts: generic → skill, ACAB-only → env doc.
 - `docs/release-checklist.md`: in-game test matrix for every release candidate.
-- `wow-api-type-definitions/`: gitignored GPLv3 clone, grep only, never copy. Trust: env §4 > `UI_Turtle` FrameXML > `Client/*.d.lua` > general knowledge.
+- `wow-api-type-definitions/`: gitignored GPLv3 clone, grep only, never copy. Trust: client-facts/env §4 > `UI_Turtle` FrameXML > `Client/*.d.lua` > general knowledge.
 - New briefs start from `docs/plan/_brief-template.md`.
 
 ## Core rules
