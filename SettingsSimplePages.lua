@@ -52,12 +52,29 @@ local EXP_BAR_TEXT_TOGGLES = {
 	{ name = "ShowRestedTotal", label = "Show Current Total Rested XP", dbKey = "expBarShowRestedTotal", field = "expBarShowRestedTotalCheckbox" },
 }
 
+-- Enables (or dims + disables mouse on) each control and its acabLabel.
+local function SetControlsInteractive(controls, interactive)
+	local alpha = interactive and 1 or 0.5
+	local i
+
+	for i = 1, table.getn(controls) do
+		local control = controls[i]
+		if control then
+			control:EnableMouse(interactive)
+			control:SetAlpha(alpha)
+
+			if control.acabLabel then
+				control.acabLabel:SetAlpha(alpha)
+			end
+		end
+	end
+end
+
 -- Enables (or dims + disables mouse on) every Better Experience Bar sub-control per its checkbox.
 local function ApplyBetterExpBarGating(page)
 	if not page or not page.betterExpBarCheckbox then return end
 
 	local interactive = page.betterExpBarCheckbox:GetChecked() and true or false
-	local alpha = interactive and 1 or 0.5
 	local controls = {
 		page.expBarShowLevelCheckbox,
 		page.expBarShowCurrentOverMaxCheckbox,
@@ -72,18 +89,80 @@ local function ApplyBetterExpBarGating(page)
 		page.expBarGlowPulseIntervalSlider,
 	}
 
-	local i
-	for i = 1, table.getn(controls) do
-		local control = controls[i]
-		if control then
-			control:EnableMouse(interactive)
-			control:SetAlpha(alpha)
+	SetControlsInteractive(controls, interactive)
+end
 
-			if control.acabLabel then
-				control.acabLabel:SetAlpha(alpha)
-			end
+-------------------------------------------------------------------------
+-- Reputation Bar page helpers
+-------------------------------------------------------------------------
+
+-- The 4 Better Reputation Bar text-segment toggles, in display order.
+local REP_BAR_TEXT_TOGGLES = {
+	{ name = "ShowName", label = "Show Faction Name", dbKey = "repBarShowName", field = "repBarShowNameCheckbox" },
+	{ name = "ShowStanding", label = "Show Standing", dbKey = "repBarShowStanding", field = "repBarShowStandingCheckbox" },
+	{ name = "ShowValues", label = "Show Current Rep / Max", dbKey = "repBarShowValues", field = "repBarShowValuesCheckbox" },
+	{ name = "ShowPercent", label = "Show Current % / Max", dbKey = "repBarShowPercent", field = "repBarShowPercentCheckbox" },
+}
+
+-- Height the Reputation Bar Color row takes while shown.
+local REP_BAR_COLOR_ROW_HEIGHT = 24 + 14
+
+-- Records the rows below the Reputation Bar Color swatch at their shown-layout anchors. Run once, after the Reset buttons exist.
+local function CaptureRepBarRowsBelowColor(page)
+	local frames = { page.repBarResetColorsButton, page.resetPositionButton, page.resetModernButton }
+	local i
+
+	page.repBarRowsBelowColor = {}
+
+	for i = 1, table.getn(frames) do
+		local frame = frames[i]
+
+		if frame then
+			local point, relativeTo, relativePoint, x, y = frame:GetPoint(1)
+
+			table.insert(page.repBarRowsBelowColor, {
+				frame = frame, point = point, relativeTo = relativeTo, relativePoint = relativePoint, x = x, y = y,
+			})
 		end
 	end
+end
+
+-- Shows the Reputation Bar Color row only while standing color is off; rows below close the gap.
+local function ApplyRepBarColorRowVisibility(page)
+	if not page.repBarRowsBelowColor then return end
+
+	local shown = ACABDB.repBarUseStandingColor == false
+	local offset = shown and 0 or REP_BAR_COLOR_ROW_HEIGHT
+	local i
+
+	page.repBarColorSwatch:SetShown(shown)
+	page.repBarColorSwatch.acabLabel:SetShown(shown)
+
+	for i = 1, table.getn(page.repBarRowsBelowColor) do
+		local row = page.repBarRowsBelowColor[i]
+
+		row.frame:ClearAllPoints()
+		row.frame:SetPoint(row.point, row.relativeTo, row.relativePoint, row.x, row.y + offset)
+	end
+end
+
+-- Enables (or dims + disables mouse on) every Better Reputation Bar sub-control per its checkbox.
+local function ApplyBetterRepBarGating(page)
+	if not page or not page.betterRepBarCheckbox then return end
+
+	local interactive = page.betterRepBarCheckbox:GetChecked() and true or false
+
+	SetControlsInteractive({
+		page.repBarShowNameCheckbox,
+		page.repBarShowStandingCheckbox,
+		page.repBarShowValuesCheckbox,
+		page.repBarShowPercentCheckbox,
+		page.repBarFontSizeSlider,
+		page.repBarUseStandingColorCheckbox,
+		page.repBarColorSwatch,
+		page.repBarTextColorSwatch,
+		page.repBarResetColorsButton,
+	}, interactive)
 end
 
 -------------------------------------------------------------------------
@@ -397,6 +476,113 @@ local function BuildExpBarPageSection(page, cursorY)
 	return pulseIntervalSliderY - 36
 end
 
+-- Reputation Bar page: Better Reputation Bar toggle, text size, text toggles and colors. Returns the Y below them.
+local function BuildRepBarPageSection(page, cursorY)
+	page.betterRepBarCheckbox = ACAB:CreateReflowCheckbox(page, "ACABSimplePageRepBarBetterCheckbox", cursorY, {
+		label = "Enable Better Reputation Bar",
+		tooltip = {
+			title = "Enable Better Reputation Bar",
+			lines = {
+				"Shows a customizable text line on the bar, lets you recolor " ..
+				"its fill, and lets you unlock it from the Experience Bar to " ..
+				"move/scale it on its own. Drop it on the Experience Bar's top " ..
+				"or bottom edge in Edit Layout mode to group them again.",
+			},
+		},
+		onClick = function()
+			ACAB:SetBetterRepBarEnabled(this:GetChecked() and true or false)
+			ACAB:RefreshBarSettingsPage("repbar")
+		end,
+	})
+
+	cursorY = cursorY - 24 - 14
+
+	local fontSizeTitleY = cursorY
+	local fontSizeSliderY = fontSizeTitleY - 26
+	ACAB:CreateReflowText(page, "GameFontNormal", ACAB.INDENT_SECTION, fontSizeTitleY,
+		"Overlay Text Size (" .. tostring(ACAB.FONT_SIZE_MIN) ..
+		" to " .. tostring(ACAB.FONT_SIZE_MAX) .. ")"
+	)
+
+	local fontSizeSlider, fontSizeValueText = ACAB:CreateReflowSlider(
+		page,
+		"ACABSimplePageRepBarFontSizeSlider",
+		fontSizeSliderY,
+		{
+			min = ACAB.FONT_SIZE_MIN,
+			max = ACAB.FONT_SIZE_MAX,
+			step = ACAB.FONT_SIZE_STEP,
+			lowText = tostring(ACAB.FONT_SIZE_MIN),
+			highText = tostring(ACAB.FONT_SIZE_MAX),
+			initialText = tostring(ACAB.FONT_SIZE_MIN),
+			round = RoundWhole,
+			format = tostring,
+			onChange = function(value, suppressApply)
+				if not suppressApply then
+					ACAB:SetRepBarFontSize(value)
+				end
+			end,
+		}
+	)
+
+	page.repBarFontSizeValueText = fontSizeValueText
+	page.repBarFontSizeSlider = fontSizeSlider
+	cursorY = fontSizeSliderY - 36
+
+	local ti
+	for ti = 1, table.getn(REP_BAR_TEXT_TOGGLES) do
+		local toggle = REP_BAR_TEXT_TOGGLES[ti]
+		local dbKey = toggle.dbKey
+
+		page[toggle.field] = ACAB:CreateReflowCheckbox(page, "ACABSimplePageRepBar" .. toggle.name .. "Checkbox", cursorY, {
+			label = toggle.label,
+			onClick = function()
+				ACABDB[dbKey] = this:GetChecked() and true or false
+				ACAB:UpdateBetterRepBarText()
+			end,
+		})
+
+		cursorY = cursorY - 24 - 6
+	end
+
+	cursorY = cursorY - 12
+	page.repBarTextColorSwatch = CreateExpBarColorRow(page, cursorY, "Overlay Text Color", "ACABSimplePageRepBarTextColorSwatch",
+		function() return ACABDB.repBarTextColor end,
+		function(r, g, b) ACAB:SetRepBarTextColor(r, g, b) end
+	)
+
+	cursorY = cursorY - 24 - 14
+	page.repBarUseStandingColorCheckbox = ACAB:CreateReflowCheckbox(page, "ACABSimplePageRepBarUseStandingColorCheckbox", cursorY, {
+		label = "Toggle current Standing Color",
+		tooltip = {
+			title = "Toggle current Standing Color",
+			lines = {
+				"When enabled, the bar uses the color of your current standing " ..
+				"(red, yellow, green). Disable it to pick your own Reputation Bar Color.",
+			},
+		},
+		onClick = function()
+			ACAB:SetRepBarUseStandingColor(this:GetChecked() and true or false)
+			ACAB:RefreshBarSettingsPage("repbar")
+			ACAB:DeferFit(function() ACAB:FitSettingsWindowToBarPage("repbar") end)
+		end,
+	})
+
+	cursorY = cursorY - 24 - 14
+	page.repBarColorSwatch = CreateExpBarColorRow(page, cursorY, "Reputation Bar Color", "ACABSimplePageRepBarColorSwatch",
+		function() return ACABDB.repBarColor end,
+		function(r, g, b) ACAB:SetRepBarColor(r, g, b) end
+	)
+
+	cursorY = cursorY - 24 - 14
+	page.repBarResetColorsButton = ACAB:CreateReflowResetButton(page, cursorY, "Reset Colors to Default", function()
+		ACAB:ResetRepBarColors()
+		ACAB:RefreshBarSettingsPage("repbar")
+	end)
+
+	return cursorY - 22 - 26
+end
+
 -- Simple page: Reset to Vanilla / Modern Layout buttons at resetY.
 local function BuildSimplePageResetButtons(page, key, config, resetY)
 	-- Must defer the page refresh one frame: the clamp range reads the element's new size.
@@ -418,12 +604,23 @@ local function BuildSimplePageGroupLockGuards(page, key, config)
 	local controlNames = config.hasSpacing and "Position/Spacing/Scale" or "Position/Scale"
 	local lockedText = config.title .. " is grouped with Main Bar while Gryphons / Background Art is enabled - its own " .. controlNames .. " controls are locked."
 
+	if key == "repbar" then
+		lockedText = "Reputation Bar follows the Experience Bar - its own Position/Scale controls are locked. " ..
+			"Enable Better Reputation Bar and click the lock icon to move/scale it on its own."
+	end
+
 	local function IsElementLocked()
 		return ACAB:IsElementGrouped(key)
 	end
 
 	local function OnLockedClick()
-		ACAB:HighlightMainBarArtModeDropdownFromElsewhere()
+		if key ~= "repbar" then
+			ACAB:HighlightMainBarArtModeDropdownFromElsewhere()
+		elseif ACABDB.betterRepBarEnabled then
+			ACAB:PulseHighlightRow(page, page.groupLockButton)
+		else
+			ACAB:PulseHighlightRow(page, page.betterRepBarCheckbox, 230)
+		end
 	end
 
 	local i
@@ -453,7 +650,17 @@ local function CreateSimpleBarPage(key)
 	title:SetText(config.title .. " Settings (Default)")
 
 	-- Group lock icon, top right.
-	if ACAB.GROUPABLE_SIMPLE_PAGES[key] then
+	if key == "repbar" then
+		page.groupLockButton = ACAB:CreateGroupLockButton(
+			page,
+			"ACABSimplePage" .. key .. "GroupLockButton",
+			{ "TOPRIGHT", ACAB.settingsFrame.contentPanel, "TOPRIGHT", -20, -14 },
+			config.title .. " Grouped with Experience Bar",
+			key,
+			"Anchored to the Experience Bar. Click to unlock and move/scale it independently.",
+			"Unlocked - independent of the Experience Bar. Click to re-lock it to the Experience Bar."
+		)
+	elseif ACAB.GROUPABLE_SIMPLE_PAGES[key] then
 		page.groupLockButton = ACAB:CreateGroupLockButton(
 			page,
 			"ACABSimplePage" .. key .. "GroupLockButton",
@@ -493,7 +700,15 @@ local function CreateSimpleBarPage(key)
 		cursorY = BuildExpBarPageSection(page, cursorY)
 	end
 
+	if key == "repbar" then
+		cursorY = BuildRepBarPageSection(page, cursorY)
+	end
+
 	BuildSimplePageResetButtons(page, key, config, cursorY)
+
+	if key == "repbar" then
+		CaptureRepBarRowsBelowColor(page)
+	end
 
 	-- Group lock guards must run once the Reset buttons exist.
 	if ACAB.GROUPABLE_SIMPLE_PAGES[key] then
@@ -642,6 +857,25 @@ function ACAB:RefreshSimpleBarPage(key)
 		end
 	end
 
+	-- Better Reputation Bar controls read their ACABDB fields directly.
+	if page.betterRepBarCheckbox then
+		page.betterRepBarCheckbox:SetChecked(ACABDB.betterRepBarEnabled == true)
+
+		local ri
+		for ri = 1, table.getn(REP_BAR_TEXT_TOGGLES) do
+			local toggle = REP_BAR_TEXT_TOGGLES[ri]
+			page[toggle.field]:SetChecked(ACABDB[toggle.dbKey] == true)
+		end
+
+		local repFontSize = ACAB:ClampFontSize(ACABDB.repBarFontSize or ACAB.REP_BAR_DEFAULT_FONT_SIZE)
+		ACAB:SetSliderValueSilently(page.repBarFontSizeSlider, repFontSize, page.repBarFontSizeValueText)
+
+		page.repBarUseStandingColorCheckbox:SetChecked(ACABDB.repBarUseStandingColor ~= false)
+		ACAB:SetColorSwatchColor(page.repBarColorSwatch, ACABDB.repBarColor)
+		ACAB:SetColorSwatchColor(page.repBarTextColorSwatch, ACABDB.repBarTextColor)
+		ApplyRepBarColorRowVisibility(page)
+	end
+
 	-- Pet Bar/Stance Bar/Cast Bar/Tooltip stay editable under Force Vanilla Layout Mode.
 	local skipLayoutLock = key == ACAB.PET_BAR_ID or key == ACAB.STANCE_BAR_ID or key == "castbar" or key == "tooltip"
 	ACAB:ApplyDefaultLayoutGating(page, skipLayoutLock or ACABDB.useDefaultLayout ~= true)
@@ -651,6 +885,10 @@ function ACAB:RefreshSimpleBarPage(key)
 	if page.betterExpBarCheckbox and not self:IsDefaultProfileActive() and
 		(skipLayoutLock or ACABDB.useDefaultLayout ~= true) then
 		ApplyBetterExpBarGating(page)
+	end
+
+	if page.betterRepBarCheckbox and not self:IsDefaultProfileActive() and ACABDB.useDefaultLayout ~= true then
+		ApplyBetterRepBarGating(page)
 	end
 
 	-- Mode checkboxes stay locked by Default Layout/Profile; must run after ApplyProfileLockGating.
@@ -833,6 +1071,24 @@ ACAB.simpleBarPageConfigs["expbar"] = ElementConfig("expBar", "ExpBar", {
 	extraMaxYPixels = 2,
 	reset = function() ACAB:ResetExpBarLayout() end,
 	resetModern = function() ACAB:ResetExpBarLayoutToModernBase() end,
+})
+
+-- Reputation Bar: Position/Scale only while Better Reputation Bar is on and unlocked from the Exp Bar.
+ACAB.simpleBarPageConfigs["repbar"] = ElementConfig("repBar", "RepBar", {
+	title = "Reputation Bar",
+	hasEnable = true,
+	hasScale = true,
+	getElementFrame = function() return getglobal(ACAB.REP_BAR_FRAME_NAME) end,
+	getPosition = function() return ACAB:GetRepBarPosition() end,
+	getScale = function()
+		if ACAB:IsRepBarFollowingExpBar() then
+			return ACABDB.expBarScale or 1
+		end
+
+		return ACABDB.repBarScale or 1
+	end,
+	reset = function() ACAB:ResetRepBarLayout() end,
+	resetModern = function() ACAB:ResetRepBarLayout() end,
 })
 
 -- Cast Bar: Position + Scale only, no Enable checkbox.

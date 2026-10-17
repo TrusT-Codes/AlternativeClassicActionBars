@@ -18,6 +18,7 @@ PageIndicator.lua
 Tooltip.lua
 PetStanceBars.lua
 ExperienceBar.lua
+ReputationBar.lua
 Bar.lua
 LayoutGrid.lua
 ExtraBars.lua

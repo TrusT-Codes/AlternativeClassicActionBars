@@ -902,6 +902,8 @@ local SANITIZE_BOOLEAN_KEYS = {
 	"bagBarGroupUnlocked", "keyRingGroupUnlocked", "microMenuGroupUnlocked", "latencyBarGroupUnlocked",
 	"pageIndicatorGroupUnlocked", "hoverBindMode", "vanillaLayoutStacking", "pendingDefaultBarRecapture",
 	"pendingDisableExtraBars", "showHotkeyText", "showCountText",
+	"repBarEnabled", "betterRepBarEnabled", "repBarGrouped", "repBarShowName", "repBarShowStanding",
+	"repBarShowValues", "repBarShowPercent", "repBarUseStandingColor",
 }
 
 local SANITIZE_NUMBER_KEYS = {
@@ -917,10 +919,12 @@ local SANITIZE_SCALE_KEYS = {
 	"mainBarPageIndicatorScale", "tooltipScale", "expBarScale", "latencyBarScale", "castBarScale", "keyRingScale",
 	"bagBarScale", "microMenuScale", "stanceBarScale",
 	"hotkeyFontSize", "countFontSize", "macroFontSize", "expBarFontSize", "customGridSize",
+	"repBarScale", "repBarFontSize",
 }
 
 local SANITIZE_COLOR_KEYS = {
 	"expBarTextColor", "expBarColorEarned", "expBarColorRested", "expBarNativeColorEarned", "expBarNativeColorRested",
+	"repBarColor", "repBarTextColor",
 }
 
 -- Per-bar cfg fields outside position/grid/slot; a wrong type drops only that field.
@@ -937,6 +941,7 @@ local SANITIZE_POSITION_KEYS = {
 	"expBarPosition", "tooltipPosition", "stanceBarPosition", "mainBarPageIndicatorPosition",
 	"bagBarNativeAnchor", "microMenuNativeAnchor", "keyRingNativeAnchor", "latencyBarNativeAnchor",
 	"castBarNativeAnchor", "expBarNativeAnchor", "stanceBarNativeAnchor", "mainBarPageIndicatorNativeAnchor",
+	"repBarPosition",
 }
 
 local function IsFiniteNumber(v)
@@ -1064,6 +1069,10 @@ function ACAB:SanitizeProfileData(data, issues)
 
 	if data.tooltipAnchorCorner ~= nil and type(data.tooltipAnchorCorner) ~= "string" then
 		Drop("tooltipAnchorCorner", "must be text")
+	end
+
+	if data.repBarGroupSide ~= nil and data.repBarGroupSide ~= "TOP" and data.repBarGroupSide ~= "BOTTOM" then
+		Drop("repBarGroupSide", "must be \"TOP\" or \"BOTTOM\"")
 	end
 
 	for i = 1, table.getn(SANITIZE_COLOR_KEYS) do
@@ -1750,6 +1759,22 @@ function ACAB:EnsureDB()
 
 	if ACABDB.showHotkeyText == nil then ACABDB.showHotkeyText = true end
 	if ACABDB.showCountText == nil then ACABDB.showCountText = true end
+
+	-- Reputation Bar; repBarPosition, repBarColor and repBarFontSize stay nil until first set.
+	if ACABDB.repBarEnabled == nil then ACABDB.repBarEnabled = true end
+	if ACABDB.betterRepBarEnabled == nil then ACABDB.betterRepBarEnabled = false end
+	if ACABDB.repBarGrouped == nil then ACABDB.repBarGrouped = true end
+	if ACABDB.repBarGroupSide == nil then ACABDB.repBarGroupSide = "TOP" end
+	if ACABDB.repBarScale == nil then ACABDB.repBarScale = 1 end
+	if ACABDB.repBarShowName == nil then ACABDB.repBarShowName = true end
+	if ACABDB.repBarShowStanding == nil then ACABDB.repBarShowStanding = true end
+	if ACABDB.repBarShowValues == nil then ACABDB.repBarShowValues = true end
+	if ACABDB.repBarShowPercent == nil then ACABDB.repBarShowPercent = true end
+	if ACABDB.repBarUseStandingColor == nil then ACABDB.repBarUseStandingColor = true end
+
+	if not ACABDB.repBarTextColor then
+		ACABDB.repBarTextColor = { r = 1, g = 1, b = 1 }
+	end
 
 	lastEnsuredDB = ACABDB
 end
