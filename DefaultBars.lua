@@ -618,6 +618,11 @@ local GROUPABLE_ELEMENTS = {
 local GROUPABLE_ELEMENT_ORDER = { "bagbar", "keyring", "micromenu", "latencybar", "pageindicator" }
 
 function ACAB:IsElementGroupUnlocked(elementKey)
+	-- Rep Bar groups with the Exp Bar, not Main Bar (ReputationBar.lua).
+	if elementKey == "repbar" then
+		return ACABDB.betterRepBarEnabled == true and not self:IsRepBarFollowingExpBar()
+	end
+
 	local element = GROUPABLE_ELEMENTS[elementKey]
 
 	return element ~= nil and ACABDB[element.unlockField] == true
@@ -625,6 +630,10 @@ end
 
 -- True while elementKey is anchored to Main Bar: Main Bar art is enabled and the element isn't unlocked.
 function ACAB:IsElementGrouped(elementKey)
+	if elementKey == "repbar" then
+		return ACABDB ~= nil and self:IsRepBarFollowingExpBar()
+	end
+
 	return GROUPABLE_ELEMENTS[elementKey] ~= nil
 		and ACABDB ~= nil
 		and self:IsMainBarArtEnabled()
@@ -847,6 +856,11 @@ end
 
 -- Flips elementKey's group lock - shared by the settings-page and edit-mode lock icons.
 function ACAB:ToggleElementGroupLock(elementKey)
+	if elementKey == "repbar" then
+		self:ToggleRepBarGroupLock()
+		return
+	end
+
 	local element = GROUPABLE_ELEMENTS[elementKey]
 	if not element then return end
 
@@ -1979,6 +1993,9 @@ function ACAB:ApplyDefaultLayoutEditVisual()
 	self:ApplyGroupedElementEditVisual("latencybar", getglobal(self.LATENCY_BAR_FRAME_NAME), ACABDB.latencyBarEnabled, show)
 	self:ApplyContainerOverlayVisual(getglobal(self.EXP_BAR_FRAME_NAME), ACABDB.expBarEnabled, show)
 
+	-- Grouped with the Exp Bar: no overlay, lock icon instead.
+	self:ApplyRepBarEditVisual(show)
+
 	self:ApplyContainerOverlayVisual(getglobal(self.CAST_BAR_FRAME_NAME), true, showAlwaysEditable)
 
 	-- Page Indicator has no enable flag of its own - gated on pagination instead.
@@ -2012,6 +2029,7 @@ function ACAB:ReassertNativeElementPositions()
 
 	self:ApplyLatencyBarPosition()
 
+	-- Also re-places the Rep Bar.
 	self:ApplyExpBarPosition()
 
 	self:ApplyCastBarPosition()

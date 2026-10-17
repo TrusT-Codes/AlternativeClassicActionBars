@@ -10,9 +10,17 @@ local ACAB = AlternativeClassicActionBars
 
 ACAB.EXP_BAR_FRAME_NAME = "MainMenuExpBar"
 
--- Blocks native re-shows (e.g. quest turn-in XP updates) while the Experience Bar is disabled.
+-- True at max level; prefers the level ReputationWatchBar_Update last laid out for (ACAB.expBarLayoutLevel).
+function ACAB:IsPlayerMaxLevel()
+	local level = self.expBarLayoutLevel or UnitLevel("player")
+
+	return level ~= nil and level >= MAX_PLAYER_LEVEL
+end
+
+-- Blocks native re-shows (e.g. quest turn-in XP updates) while the Experience Bar is disabled, and at max level.
+-- see known-problems.md: "Exp Bar stays hidden at max level"
 ACAB:InstallShowGuard(getglobal(ACAB.EXP_BAR_FRAME_NAME), function()
-	return ACABDB and ACABDB.expBarEnabled ~= false
+	return ACABDB and ACABDB.expBarEnabled ~= false and not ACAB:IsPlayerMaxLevel()
 end)
 
 -- Owns the native "XP current / max" FontString (there is no MainMenuExpText global on this client).
@@ -113,6 +121,9 @@ function ACAB:ApplyExpBarPosition()
 
 	-- Also fades the rested-glow child texture (it inherits this frame's alpha).
 	self:ApplyHoverOnlyState(frame, ACABDB.expBarHoverOnly, GetExpBarHoverDuration)
+
+	-- Rep Bar follows the Exp Bar's scale/spot.
+	self:ApplyRepBarPosition()
 end
 
 function ACAB:SetExpBarPosition(x, y)
@@ -126,6 +137,11 @@ function ACAB:SetExpBarEnabled(enabled)
 	local frame = getglobal(self.EXP_BAR_FRAME_NAME)
 
 	self:StoreElementEnabled("expBarEnabled", frame, enabled)
+
+	-- Show guard kept it hidden at max level; hide it in case it was shown before login.
+	if frame and enabled and self:IsPlayerMaxLevel() then
+		frame:Hide()
+	end
 
 	-- Must re-show explicitly, or the text overlay stays hidden after a disable/re-enable cycle.
 	if frame and frame.ACABTextOverlay then

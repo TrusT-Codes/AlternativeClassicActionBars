@@ -172,6 +172,12 @@ local POSITION_DRAG_KINDS = {
 		apply = "ApplyExpBarPosition",
 		capture = "CaptureExpBarPositionIfNeeded",
 	},
+	-- Free Better Reputation Bar only; its overlay is hidden while it follows the Exp Bar.
+	repBar = {
+		getPos = function() return ACABDB.repBarPosition end,
+		getFrame = function() return getglobal(ACAB.REP_BAR_FRAME_NAME) end,
+		apply = "ApplyRepBarPosition",
+	},
 	castBar = {
 		getPos = function() return ACABDB.castBarPosition end,
 		getFrame = function() return getglobal(ACAB.CAST_BAR_FRAME_NAME) end,

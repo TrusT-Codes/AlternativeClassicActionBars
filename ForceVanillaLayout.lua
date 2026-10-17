@@ -222,6 +222,10 @@ function ACAB:ResetAllElementsToVanillaLayout()
 		ACAB:ResetExpBarLayout()
 	end
 
+	if ACAB.ResetRepBarLayout then
+		ACAB:ResetRepBarLayout()
+	end
+
 	if ACAB.ResetPageIndicatorLayout then
 		ACAB:ResetPageIndicatorLayout()
 	end
