@@ -23,6 +23,14 @@ ACAB:InstallShowGuard(getglobal(ACAB.EXP_BAR_FRAME_NAME), function()
 	return ACABDB and ACABDB.expBarEnabled ~= false and not ACAB:IsPlayerMaxLevel()
 end)
 
+-- Native max-level art strip pinned to MainMenuBar; never shown, it stays behind wherever the Exp Bar moves.
+-- see known-problems.md: "Exp Bar stays hidden at max level"
+ACAB.EXP_MAX_LEVEL_BAR_FRAME_NAME = "MainMenuBarMaxLevelBar"
+
+ACAB:InstallShowGuard(getglobal(ACAB.EXP_MAX_LEVEL_BAR_FRAME_NAME), function()
+	return false
+end)
+
 -- Owns the native "XP current / max" FontString (there is no MainMenuExpText global on this client).
 ACAB.EXP_OVERLAY_FRAME_NAME = "MainMenuBarOverlayFrame"
 
@@ -141,6 +149,13 @@ function ACAB:SetExpBarEnabled(enabled)
 	-- Show guard kept it hidden at max level; hide it in case it was shown before login.
 	if frame and enabled and self:IsPlayerMaxLevel() then
 		frame:Hide()
+	end
+
+	-- Native code may have shown it before the guard was installed.
+	local maxLevelBar = getglobal(self.EXP_MAX_LEVEL_BAR_FRAME_NAME)
+
+	if maxLevelBar then
+		maxLevelBar:Hide()
 	end
 
 	-- Must re-show explicitly, or the text overlay stays hidden after a disable/re-enable cycle.

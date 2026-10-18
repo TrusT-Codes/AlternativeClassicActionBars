@@ -12,7 +12,7 @@
 
 ### Bugfixes
 
-- Fix a leftover Experience Bar showing at level 60: ACAB no longer re-shows the Experience Bar once the game has hidden it at max level.
+- Fix a small leftover bar showing at level 60 without a tracked reputation: Blizzard's max-level strip no longer stays behind at the old Experience Bar spot, and ACAB no longer re-shows the Experience Bar once the game has hidden it.
 
 ## 1.3.2-rc1
 
