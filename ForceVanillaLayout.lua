@@ -36,7 +36,14 @@ end
 -- switching on) runs the full reset-to-Vanilla-Layout cascade.
 function ACAB:ApplyUseDefaultLayoutChange(checked)
 	local wasDefault = ACABDB.useDefaultLayout == true
+
+	-- The Exp/Rep stack offset exists only under Force Vanilla Layout Mode: leaving keeps the bars where they are.
+	if wasDefault and not checked then
+		ACAB:BakeExpRepStackOffset()
+	end
+
 	ACABDB.useDefaultLayout = checked
+	ACAB:RefreshExpRepStackOffset()
 	ACAB:RefreshDefaultLayoutGatingOnAllPages()
 	ACAB:ApplyAllDefaultBars()
 
@@ -222,8 +229,8 @@ function ACAB:ResetAllElementsToVanillaLayout()
 		ACAB:ResetExpBarLayout()
 	end
 
-	if ACAB.ResetRepBarLayout then
-		ACAB:ResetRepBarLayout()
+	if ACAB.ResetRepBarToVanilla then
+		ACAB:ResetRepBarToVanilla()
 	end
 
 	if ACAB.ResetPageIndicatorLayout then

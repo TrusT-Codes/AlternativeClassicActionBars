@@ -7,6 +7,7 @@ local ACAB = AlternativeClassicActionBars
 ACAB.REP_BAR_FRAME_NAME = "ReputationWatchBar"
 ACAB.REP_BAR_STATUS_FRAME_NAME = "ReputationWatchStatusBar"
 ACAB.REP_BAR_NATIVE_TEXT_NAME = "ReputationWatchStatusBarText"
+ACAB.REP_BAR_NATIVE_TEXT_FRAME_NAME = "ReputationWatchBarOverlayFrame"
 
 -- Better Reputation Bar's default overlay text size and color.
 ACAB.REP_BAR_DEFAULT_FONT_SIZE = 10
@@ -46,13 +47,18 @@ local function GetRepBarFollowSide()
 	return "TOP"
 end
 
+-- True while the Exp Bar's spot is empty: hidden at max level, or disabled.
+local function IsExpBarSpotFree()
+	return ACAB:IsPlayerMaxLevel() or ACABDB.expBarEnabled == false
+end
+
 -- Anchors the Rep Bar to the Exp Bar at the Exp Bar's effective scale.
 local function ApplyRepBarFollowPosition(frame, expBar)
 	frame:SetScale(expBar:GetEffectiveScale() / UIParent:GetEffectiveScale())
 
 	local point, relativePoint, y
 
-	if ACAB:IsPlayerMaxLevel() then
+	if IsExpBarSpotFree() then
 		-- Takes the Exp Bar's spot, as native does at max level.
 		point, relativePoint, y = "TOP", "TOP", 0
 	else
@@ -73,6 +79,133 @@ local function ApplyRepBarFollowPosition(frame, expBar)
 	frame[REP_BAR_GUARD_FLAG] = nil
 end
 
+-- Exp Bar's strata/level, so MainMenuBarArtFrame (LOW, level 5) and its Gryphons draw over it like over the Exp Bar.
+local function ApplyRepBarStrata(frame, expBar)
+	frame:SetFrameStrata(expBar:GetFrameStrata())
+	frame:SetFrameLevel(expBar:GetFrameLevel())
+
+	-- Children follow the parent's strata; the text overlay stays above the art.
+	local statusBar = getglobal(ACAB.REP_BAR_STATUS_FRAME_NAME)
+
+	if statusBar and statusBar.ACABTextOverlay then
+		statusBar.ACABTextOverlay:SetFrameStrata("HIGH")
+	end
+
+	-- Native hover label's frame, same reason.
+	local nativeTextFrame = getglobal(ACAB.REP_BAR_NATIVE_TEXT_FRAME_NAME)
+
+	if nativeTextFrame then
+		nativeTextFrame:SetFrameStrata("HIGH")
+	end
+end
+
+-------------------------------------------------------------------------
+-- Vanilla stacking: Action Bar 1/2 and Extra Bar 1/2 sit right above whatever the Exp/Rep Bar occupy
+-------------------------------------------------------------------------
+
+-- True while the Rep Bar takes stack space: shown and following on top of the Exp Bar or in its free spot.
+local function IsRepBarStacked(frame)
+	return ACABDB.repBarEnabled ~= false and frame:IsShown() and ACAB:IsRepBarFollowingExpBar()
+		and (IsExpBarSpotFree() or GetRepBarFollowSide() == "TOP")
+end
+
+-- Stack height change (UIParent units) vs. the native baseline (Exp Bar shown, no Rep Bar) under Force Vanilla
+-- Layout Mode, else 0. Negative while the Exp Bar's spot is empty.
+local function ComputeExpRepStackOffset(frame, expBar)
+	if ACABDB.useDefaultLayout == false then return 0 end
+
+	local uiScale = UIParent:GetEffectiveScale()
+	local expHeight = (expBar:GetHeight() or 0) * expBar:GetEffectiveScale() / uiScale
+	local space = expHeight
+
+	if IsExpBarSpotFree() then
+		space = 0
+	end
+
+	if IsRepBarStacked(frame) then
+		local statusBar = getglobal(ACAB.REP_BAR_STATUS_FRAME_NAME)
+		local repHeight = statusBar and (statusBar:GetHeight() or 0) * statusBar:GetEffectiveScale() / uiScale or 0
+
+		space = space + repHeight
+	end
+
+	return space - expHeight
+end
+
+-- Extra Y (UIParent units) bar cfg is moved by: Action Bar 1/2 and default-positioned Extra Bar 1/2 only.
+function ACAB:GetExpRepStackOffset(cfg)
+	local offset = self.expRepStackOffset
+	if not offset or offset == 0 or not cfg then return 0 end
+
+	local id = cfg.id
+
+	if id == 2 or id == 3 then
+		return offset
+	end
+
+	if (id == self.EXTRA_BAR_ID_START or id == self.EXTRA_BAR_ID_START + 1) and cfg.usesDefaultPosition ~= false then
+		return offset
+	end
+
+	return 0
+end
+
+-- Stacked-element baselines (Stance/Pet/Cast Bar) add this to the Action Bars' native anchors.
+function ACAB:GetExpRepStackBaselineOffset()
+	return self.expRepStackOffset or 0
+end
+
+-- Leaving Force Vanilla Layout Mode: writes the offset into Action Bar 1/2 and Extra Bar 1/2's saved positions so
+-- nothing moves (Stance/Pet/Cast Bar reflows already saved it).
+function ACAB:BakeExpRepStackOffset()
+	local ids = { 2, 3, self.EXTRA_BAR_ID_START, self.EXTRA_BAR_ID_START + 1 }
+	local i
+
+	for i = 1, table.getn(ids) do
+		local bar = self.bars and self.bars[ids[i]]
+		local cfg = bar and bar.config
+		local lift = self:GetExpRepStackOffset(cfg)
+
+		if lift ~= 0 and self:IsCanonicalPosition(cfg) then
+			cfg.y = (cfg.y or 0) + lift
+		end
+	end
+
+	self.expRepStackOffset = 0
+end
+
+-- Recomputes the stack offset; on change re-places Action Bar 1/2, Extra Bar 1/2 and re-stacks Stance/Pet/Cast Bar.
+function ACAB:RefreshExpRepStackOffset()
+	if not self.repBarReady then return end
+
+	local frame = getglobal(self.REP_BAR_FRAME_NAME)
+	local expBar = getglobal(self.EXP_BAR_FRAME_NAME)
+	if not frame or not expBar then return end
+
+	local offset = ComputeExpRepStackOffset(frame, expBar)
+	if offset == (self.expRepStackOffset or 0) then return end
+
+	self.expRepStackOffset = offset
+
+	local ids = { 2, 3, self.EXTRA_BAR_ID_START, self.EXTRA_BAR_ID_START + 1 }
+	local i
+
+	for i = 1, table.getn(ids) do
+		local bar = self.bars and self.bars[ids[i]]
+
+		if bar and bar.config then
+			self:ApplyBarPosition(bar)
+		end
+	end
+
+	local bar2Cfg = ACABDB.defaultBars[2]
+	local bar3Cfg = ACABDB.defaultBars[3]
+
+	self:ReflowStanceBarForBar2Toggle(bar2Cfg and bar2Cfg.enabled)
+	self:ReflowPetBarForBar3Toggle(bar3Cfg and bar3Cfg.enabled)
+	self:ReflowCastBarForStackToggle()
+end
+
 -- Places the Rep Bar per its mode and ensures its edit-mode overlay. No-op before SetupRepBar.
 function ACAB:ApplyRepBarPosition()
 	if not self.repBarReady then return end
@@ -88,7 +221,10 @@ function ACAB:ApplyRepBarPosition()
 		self:ApplySavedPosition(frame, ACABDB.repBarPosition, REP_BAR_GUARD_FLAG)
 	end
 
+	ApplyRepBarStrata(frame, expBar)
+
 	self:EnsureContainerOverlay(frame, self.StartRepBarDrag, self.StopRepBarDrag, "repbar", self.SetRepBarScale, nil, "Reputation Bar")
+	self:RefreshExpRepStackOffset()
 end
 
 function ACAB:SetRepBarPosition(x, y)
@@ -115,6 +251,7 @@ function ACAB:SetRepBarEnabled(enabled)
 		ReputationWatchBar_Update()
 	else
 		self:SetElementShown(getglobal(self.REP_BAR_FRAME_NAME), false)
+		self:RefreshExpRepStackOffset()
 	end
 
 	self:ApplyRepBarEditVisual(self:CanDragDefaultLayout())
@@ -131,6 +268,22 @@ function ACAB:ResetRepBarLayout()
 
 	self:ApplyRepBarPosition()
 	self:ApplyRepBarEditVisual(self:CanDragDefaultLayout())
+end
+
+-- Force Vanilla Layout / "Keep Vanilla Layout": native look (Better Reputation Bar off), layout reset, enabled
+-- per the watched faction.
+function ACAB:ResetRepBarToVanilla()
+	self:EnsureDB()
+
+	ACABDB.repBarEnabled = GetWatchedFactionInfo() ~= nil
+
+	self:ResetRepBarLayout()
+	self:SetBetterRepBarEnabled(false)
+
+	-- Re-shows a bar hidden by a manual disable.
+	if ACABDB.repBarEnabled then
+		ReputationWatchBar_Update()
+	end
 end
 
 -------------------------------------------------------------------------
@@ -270,6 +423,9 @@ function ACAB:ApplyRepBarEditVisual(show)
 
 	local icon = EnsureRepBarLockIcon(frame)
 
+	-- Reasserted: ApplyRepBarStrata re-stratas its parent.
+	icon:SetFrameStrata("TOOLTIP")
+	icon:SetFrameLevel(200)
 	icon:ClearAllPoints()
 	icon:SetPoint("CENTER", frame, "CENTER", 0, 0)
 	icon:SetShown(show and ACABDB.betterRepBarEnabled and enabled)
@@ -524,6 +680,23 @@ end
 -- Login + native update hook
 -------------------------------------------------------------------------
 
+-- Watched faction name ("" for none) the Rep Bar's enabled state was last synced to this session.
+local lastWatchedFaction
+
+-- Enables the Rep Bar when a faction becomes watched, disables it when none is. A manual toggle holds until
+-- the watched faction changes again. Returns true if the enabled state was synced.
+local function SyncRepBarEnabledToWatchedFaction()
+	local name = GetWatchedFactionInfo()
+	local key = name or ""
+
+	if key == lastWatchedFaction then return false end
+
+	lastWatchedFaction = key
+	ACABDB.repBarEnabled = name ~= nil
+
+	return true
+end
+
 -- Login stage: reparents to UIParent (off MainMenuBar), re-runs the native layout and places/styles the bar.
 function ACAB:SetupRepBar()
 	local frame = getglobal(self.REP_BAR_FRAME_NAME)
@@ -533,6 +706,8 @@ function ACAB:SetupRepBar()
 
 	self.repBarReady = true
 	self.expBarLayoutLevel = UnitLevel("player")
+
+	SyncRepBarEnabledToWatchedFaction()
 
 	-- Native layout: shows the bar if a faction is watched, picks the max-level look, shows/hides the Exp Bar.
 	if ACABDB.repBarEnabled ~= false then
@@ -550,6 +725,18 @@ hooksecurefunc("ReputationWatchBar_Update", function(newLevel)
 	if not ACAB.loginSequenceDone then return end
 
 	ACAB.expBarLayoutLevel = newLevel or UnitLevel("player")
+
+	if SyncRepBarEnabledToWatchedFaction() then
+		-- The show guard blocked native's Show while it was still disabled.
+		if ACABDB.repBarEnabled then
+			getglobal(ACAB.REP_BAR_FRAME_NAME):Show()
+		end
+
+		if ACAB:IsSettingsFrameCreated() then
+			ACAB:RefreshBarList()
+			ACAB:RefreshBarSettingsPage("repbar")
+		end
+	end
 
 	ACAB:ApplyRepBarPosition()
 	ACAB:UpdateBetterRepBarText()

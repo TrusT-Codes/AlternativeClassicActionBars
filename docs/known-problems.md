@@ -96,6 +96,9 @@ Files: ReputationBar.lua, ExperienceBar.lua, DefaultBars.lua, SettingsBars.lua, 
 - **Native re-anchors on every update.** `ReputationWatchBar_Update` re-pins the bar to `MainMenuBar` (and at max level swaps to the 13-tall `ReputationXPBarTexture` look in the Exp Bar's spot). `InstallReanchorGuard` swallows that; every own placement sets `ACABApplyingRepBarPosition`. The post-hook re-places it.
 - **Reparented to UIParent at login** (`SetupRepBar`), so free-mode scale is its own `SetScale` like every other element. Follow mode copies the Exp Bar's effective scale.
 - **Follow offsets are a first guess** (`REP_BAR_SIDE_OFFSET_Y`: TOP -3 = native overlap, BOTTOM 0). Tune live against the native look.
+- **Strata copies the Exp Bar's** (`ApplyRepBarStrata`, every apply): LOW, below `MainMenuBarArtFrame`'s pinned level 5, so the Gryphons cover it. The text overlay, the native hover label's `ReputationWatchBarOverlayFrame` (both HIGH; the native label drew behind the bar otherwise) and the edit-mode lock icon (TOOLTIP) are reasserted after, since children follow the parent's strata.
+- **Enabled follows the watched faction.** `SyncRepBarEnabledToWatchedFaction` (login + every `ReputationWatchBar_Update`) sets `repBarEnabled` whenever the watched faction changes this session: none → off, any → on (and re-shows the bar, which the show guard blocked). A manual toggle holds until the next change. Login always syncs, so a manual "off" doesn't survive a relog while a faction is watched (profiles are shared across characters, tracking is per character).
+- **Vanilla stack offset is runtime-only.** Under Force Vanilla Layout Mode, Action Bar 1/2 and default-positioned Extra Bar 1/2 move by what the Exp/Rep Bars occupy vs. the native baseline (Exp Bar shown, no Rep Bar): + the Rep status bar's height while it's stacked on top, − the Exp Bar's height while its spot is empty (disabled or max level; a Rep Bar then takes that spot TOP-to-TOP). `ACAB.expRepStackOffset`, applied in `Bar.lua` `PositionBarFrame`, never written to cfg. `PositionBarFrame` must normalize a legacy position before lifting: `ResetDefaultBarLayout` restores the native anchor in legacy form, and the offset itself does not change, so nothing re-applies (live: Force Vanilla on ignored the Rep Bar until it was toggled). Stance/Pet/Cast Bar stack baselines add it too (`GetExpRepStackBaselineOffset`), and those reflows do write it into their saved positions. `RefreshExpRepStackOffset` re-places everything when it changes; it runs from `ApplyRepBarPosition` (also reached from every `ApplyExpBarPosition` and `SetExpBarEnabled`), the Rep Bar disable path and `ApplyUseDefaultLayoutChange`. Assumes the bars' native anchors were captured without a native rep offset. An Extra Bar dragged off its default spot bakes the lift into its cfg (`StopBarDrag`) so it doesn't drop. Custom profiles from the Vanilla wizard (`vanillaLayoutStacking`) don't get the lift: their bars can be dragged, and a lift outside the saved position would break snapping.
 - **Custom fill color needs `repBarUseStandingColor == false`.** Opening the color picker used to save the standing color as a custom one, so the fill stopped following standing changes. The guard now swaps colors only while "Toggle current Standing Color" is off; the swatch row is hidden (rows below shift up, `ApplyRepBarColorRowVisibility`) while it is on.
 - **`IsElementGrouped("repbar")` is true in native mode too** (Better Reputation Bar off), so the page's Position/Scale controls lock. The lock icon only shows while Better Reputation Bar is on.
 
@@ -141,13 +144,15 @@ Files: SettingsSimplePages.lua
 - **What:** Scale compensates stored x/y, so the handler must call `RefreshSimpleBarPage(key)`, which re-syncs X/Y before re-clamping. `RefreshSimplePositionSliderRange` alone makes the element jump.
 
 ### ResetAllElementsToVanillaLayout ordering
-Files: ForceVanillaLayout.lua, PetStanceBars.lua
+Files: ForceVanillaLayout.lua, PetStanceBars.lua, ReputationBar.lua
 - **Where:** `ForceVanillaLayout.lua` — `ACAB:ResetAllElementsToVanillaLayout`
 - **What:**
   - Each element resets layout before position, so position converts at the final size/scale.
   - Pet/Stance `useNative*` flags are forced before `CreatePetBarNativeContainer`/`CreateStanceBarContainer`. The "effective" checks only force native while `useDefaultLayout` is on, which isn't the wizard path.
   - `ReflowStanceBarForBar2Toggle` runs last.
   - New resets go after the flag block and before the final Stance reflow.
+  - `ResetRepBarToVanilla` runs after `ResetExpBarLayout` (it anchors to the Exp Bar) and turns Better Reputation Bar off.
+  - `ApplyUseDefaultLayoutChange` must call `BakeExpRepStackOffset` before clearing `useDefaultLayout`, or Action Bar 1/2 and Extra Bar 1/2 drop behind a shown Rep Bar when the mode is turned off.
 
 ### Scale reset writes scale directly, before resolving the native anchor
 Files: ElementEngine.lua, NativeElements.lua, Tooltip.lua, PetStanceBars.lua, ExperienceBar.lua

@@ -27,7 +27,7 @@ local function GetStackedBaselineY(self, stackBarId, stackBarEnabled, extraBarId
 
 	if not container then return nil end
 
-	return referenceY + self.PET_BAR_NATIVE_GAP + container:GetHeight()
+	return referenceY + self:GetExpRepStackBaselineOffset() + self.PET_BAR_NATIVE_GAP + container:GetHeight()
 end
 
 -- Styled mode: re-stacks barId's pool bar above stackBarId (+ extraBarId) while cfg.styledDefaultPosition is true.

@@ -169,6 +169,9 @@ function ACAB:SetExpBarEnabled(enabled)
 
 	-- Stops the glow pulse on disable and restarts it on enable.
 	self:ApplyExpBarRestedOverlay()
+
+	-- Rep Bar takes the freed spot; vanilla-stacked bars move down/up with it.
+	self:ApplyRepBarPosition()
 end
 
 -- Clamps, compensates the saved position around the bar's center, then applies the new scale.

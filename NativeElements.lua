@@ -694,7 +694,7 @@ function ACAB:GetCastBarBaselineY()
 		petPitch = petBar:GetHeight() or 0
 	end
 
-	return baseY + actionBarPitch + extraBarPitch + petPitch
+	return baseY + self:GetExpRepStackBaselineOffset() + actionBarPitch + extraBarPitch + petPitch
 end
 
 -- Moves Cast Bar's Y onto its stack baseline (Default Layout only). No-op once castBarUsesDefaultPosition is false.
