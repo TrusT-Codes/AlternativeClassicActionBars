@@ -14,6 +14,7 @@
 
 ### Bugfixes
 
+- Fix the game's rested XP marker on the Experience Bar sitting far off to the right of a scaled-down Experience Bar: it now scales and moves with the bar.
 - Fix a small leftover bar showing at level 60 without a tracked reputation: Blizzard's max-level strip no longer stays behind at the old Experience Bar spot, and ACAB no longer re-shows the Experience Bar once the game has hidden it.
 
 ## 1.3.2-rc1

@@ -94,6 +94,24 @@ local function EnsureExpBarBottomBorderStrip(frame)
 	return strip
 end
 
+-- Native rested marker; a MainMenuBar child that native code places in MainMenuExpBar units.
+-- see known-problems.md: "Native rested marker must be a child of the Exp Bar"
+ACAB.EXP_TICK_FRAME_NAME = "ExhaustionTick"
+
+-- Reparents the native rested marker to the Exp Bar (scales/moves/hides with it), 2 levels above its fill.
+local function AttachExhaustionTick(frame)
+	local tick = getglobal(ACAB.EXP_TICK_FRAME_NAME)
+	if not tick then return end
+
+	if tick:GetParent() ~= frame then
+		tick:SetParent(frame)
+	end
+
+	-- Reasserted every call: ApplyExpBarPosition re-strata/re-levels MainMenuExpBar.
+	tick:SetFrameStrata(frame:GetFrameStrata())
+	tick:SetFrameLevel(frame:GetFrameLevel() + 2)
+end
+
 -- Hover-only fade duration for ApplyHoverOnlyState.
 local function GetExpBarHoverDuration()
 	return ACABDB.expBarHoverDuration or 3
@@ -123,6 +141,8 @@ function ACAB:ApplyExpBarPosition()
 			frame:SetFrameLevel((latencyLevel > 0) and (latencyLevel - 1) or 0)
 		end
 	end
+
+	AttachExhaustionTick(frame)
 
 	self:EnsureContainerOverlay(frame, self.StartExpBarDrag, self.StopExpBarDrag, "expbar", self.SetExpBarScale, nil, "Experience Bar")
 	EnsureExpBarBottomBorderStrip(frame)
