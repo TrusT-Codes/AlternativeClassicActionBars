@@ -85,6 +85,7 @@ local SIMPLE_BAR_NAMES = {
 	micromenu = "Micro Menu",
 	latencybar = "Latency Bar",
 	expbar = "Experience Bar",
+	repbar = "Reputation Bar",
 	castbar = "Cast Bar",
 	tooltip = "Tooltip",
 }
@@ -923,6 +924,8 @@ ACAB.GROUPABLE_SIMPLE_PAGES = {
 	keyring = true,
 	micromenu = true,
 	latencybar = true,
+	-- Groups with the Experience Bar instead (ReputationBar.lua).
+	repbar = true,
 }
 
 -- Controls on a groupable simple page that lock while its element is grouped.
@@ -939,13 +942,13 @@ local GROUP_LOCK_TEXT_NAMES = {
 	"spacingTitle", "spacingValueText", "scaleTitle", "scaleValueText",
 }
 
--- Settings-page lock icon toggling elementKey's grouping with Main Bar. Starts locked.
-function ACAB:CreateGroupLockButton(page, name, anchor, tooltipTitle, elementKey)
+-- Settings-page lock icon toggling elementKey's grouping with Main Bar (lockedLine/unlockedLine override). Starts locked.
+function ACAB:CreateGroupLockButton(page, name, anchor, tooltipTitle, elementKey, lockedLine, unlockedLine)
 	local button = ACAB:CreateLockToggleButton(page, name, {
 		anchor = anchor,
 		tooltipTitle = tooltipTitle,
-		lockedLine = "Anchored to Main Bar while Gryphons / Background Art is enabled. Click to unlock and move/scale it independently.",
-		unlockedLine = "Unlocked - independent of Main Bar. Click to re-lock and snap back to its anchored position.",
+		lockedLine = lockedLine or "Anchored to Main Bar while Gryphons / Background Art is enabled. Click to unlock and move/scale it independently.",
+		unlockedLine = unlockedLine or "Unlocked - independent of Main Bar. Click to re-lock and snap back to its anchored position.",
 		onClick = function()
 			ACAB:ToggleElementGroupLock(elementKey)
 		end,
@@ -960,8 +963,17 @@ end
 local function RefreshGroupLockButton(button, elementKey, extraShow)
 	if not button then return end
 
+	-- Rep Bar can group only while Better Reputation Bar is on.
+	local canGroup
+
+	if elementKey == "repbar" then
+		canGroup = ACABDB.betterRepBarEnabled == true
+	else
+		canGroup = ACAB:IsMainBarArtEnabled()
+	end
+
 	button:SetShown(
-		ACAB:IsMainBarArtEnabled()
+		canGroup
 			and extraShow ~= false
 			and not ACAB:IsDefaultProfileActive()
 			and ACABDB.useDefaultLayout ~= true
@@ -1027,11 +1039,16 @@ end
 -- Pulses a gold highlight behind Main Bar's "Gryphons / Background Art" dropdown row, if that page is built.
 function ACAB:HighlightMainBarArtModeDropdown()
 	local page = ACAB.settingsFrame and ACAB.settingsFrame.pages and ACAB.settingsFrame.pages[1]
-	local row = page and page.mainBarArtModeRow
-	if not row then return end
+
+	ACAB:PulseHighlightRow(page, page and page.mainBarArtModeRow)
+end
+
+-- Pulses a gold highlight behind row on page (width overrides row's own width, e.g. checkbox + label).
+function ACAB:PulseHighlightRow(page, row, width)
+	if not page or not row then return end
 
 	if not row.acabHighlightStrip then
-		local strip = ACAB:CreateFadeStrip(page, row:GetWidth() + 16, row:GetHeight() + 10, { edgeFraction = 0.15 })
+		local strip = ACAB:CreateFadeStrip(page, (width or row:GetWidth()) + 16, row:GetHeight() + 10, { edgeFraction = 0.15 })
 		strip:SetPoint("LEFT", row, "LEFT", -8, 0)
 		strip:SetFadeColor(ACAB.UI_ACCENT_COLOR[1], ACAB.UI_ACCENT_COLOR[2], ACAB.UI_ACCENT_COLOR[3])
 		strip:SetPeakAlpha(0.55)

@@ -55,7 +55,7 @@ end
 ACAB.simpleBarPageConfigs = {}
 
 -- Every string-keyed simple page, in bar-list order.
-ACAB.SIMPLE_PAGE_KEYS = { "bagbar", "keyring", "micromenu", "latencybar", "expbar", "castbar", "tooltip" }
+ACAB.SIMPLE_PAGE_KEYS = { "bagbar", "keyring", "micromenu", "latencybar", "expbar", "repbar", "castbar", "tooltip" }
 
 -- Settings-page layout indents.
 ACAB.INDENT_SECTION = 18
@@ -863,6 +863,9 @@ local PROFILE_LOCK_CONTROL_NAMES = {
 	"expBarShowRestedPercentCheckbox", "expBarShowRestedTotalCheckbox",
 	"expBarFontSizeSlider", "earnedColorSwatch", "restedColorSwatch",
 	"expBarTextColorSwatch", "expBarGlowPulseIntervalSlider",
+	"betterRepBarCheckbox", "repBarShowNameCheckbox", "repBarShowStandingCheckbox",
+	"repBarShowValuesCheckbox", "repBarShowPercentCheckbox", "repBarFontSizeSlider",
+	"repBarUseStandingColorCheckbox", "repBarColorSwatch", "repBarTextColorSwatch",
 	"useVanillaPetBarCheckbox", "condenseEmptyPetSlotsCheckbox",
 	"animateAutoCastGlowCheckbox", "useVanillaStanceBarCheckbox",
 	"hoverOnlyCheckbox", "hoverDurationSlider",
@@ -1056,6 +1059,10 @@ local BAR_PAGE_CANDIDATE_NAMES = {
 	"expBarShowRestedPercentCheckbox", "expBarShowRestedTotalCheckbox",
 	"earnedColorSwatch", "restedColorSwatch", "expBarTextColorSwatch", "resetColorsButton",
 	"expBarGlowPulseIntervalSlider", "expBarGlowPulseIntervalValueText",
+	-- Reputation Bar page.
+	"betterRepBarCheckbox", "repBarFontSizeSlider", "repBarFontSizeValueText",
+	"repBarShowNameCheckbox", "repBarShowStandingCheckbox", "repBarShowValuesCheckbox", "repBarShowPercentCheckbox",
+	"repBarUseStandingColorCheckbox", "repBarColorSwatch", "repBarTextColorSwatch", "repBarResetColorsButton",
 }
 
 -- After the assignment rows and grid swatches.

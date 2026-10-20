@@ -291,6 +291,13 @@ function ACAB:GetAllSnapTargetBoxes(excludeElement)
 	AddSnapTargetBox(self, boxes, getglobal(self.LATENCY_BAR_FRAME_NAME), excludeElement, draggingMainBar)
 	AddSnapTargetBox(self, boxes, getglobal(self.EXP_BAR_FRAME_NAME), excludeElement, draggingMainBar)
 
+	-- Skipped while dragging the Exp Bar it follows (same feedback jitter as Main Bar followers).
+	local expBar = getglobal(self.EXP_BAR_FRAME_NAME)
+
+	if not (excludeElement ~= nil and excludeElement == expBar and self:IsRepBarFollowingExpBar()) then
+		AddSnapTargetBox(self, boxes, getglobal(self.REP_BAR_FRAME_NAME), excludeElement, draggingMainBar)
+	end
+
 	return boxes
 end
 
@@ -621,6 +628,7 @@ function ACAB:NormalizeAllPositionAnchors()
 	self:ApplyLatencyBarPosition()
 	self:ApplyPageIndicatorPosition()
 	self:ApplyExpBarPosition()
+	self:ApplyRepBarPosition()
 	self:ApplyCastBarPosition()
 	self:ApplyTooltipPosition()
 end
@@ -1815,6 +1823,11 @@ function ACAB:RunLoginSequence()
 		ACAB:ApplyBetterExpBarVisual()
 	end)
 
+	-- Must run after the Exp Bar is placed: the Rep Bar anchors to it.
+	RunLoginStage(failures, "reputation bar", function()
+		ACAB:SetupRepBar()
+	end)
+
 	RunLoginStage(failures, "blizzard art", function()
 		ACAB:ApplyBlizzardArtVisibility()
 	end)
@@ -1920,6 +1933,9 @@ local SETTINGS_PAGE_ALIASES = {
 	exp = { page = "expbar" },
 	expbar = { page = "expbar" },
 	experience = { page = "expbar" },
+	rep = { page = "repbar" },
+	repbar = { page = "repbar" },
+	reputation = { page = "repbar" },
 	cast = { page = "castbar" },
 	castbar = { page = "castbar" },
 	tooltip = { page = "tooltip" },

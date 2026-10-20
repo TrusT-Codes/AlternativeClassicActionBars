@@ -10,9 +10,25 @@ local ACAB = AlternativeClassicActionBars
 
 ACAB.EXP_BAR_FRAME_NAME = "MainMenuExpBar"
 
--- Blocks native re-shows (e.g. quest turn-in XP updates) while the Experience Bar is disabled.
+-- True at max level; prefers the level ReputationWatchBar_Update last laid out for (ACAB.expBarLayoutLevel).
+function ACAB:IsPlayerMaxLevel()
+	local level = self.expBarLayoutLevel or UnitLevel("player")
+
+	return level ~= nil and level >= MAX_PLAYER_LEVEL
+end
+
+-- Blocks native re-shows (e.g. quest turn-in XP updates) while the Experience Bar is disabled, and at max level.
+-- see known-problems.md: "Exp Bar stays hidden at max level"
 ACAB:InstallShowGuard(getglobal(ACAB.EXP_BAR_FRAME_NAME), function()
-	return ACABDB and ACABDB.expBarEnabled ~= false
+	return ACABDB and ACABDB.expBarEnabled ~= false and not ACAB:IsPlayerMaxLevel()
+end)
+
+-- Native max-level art strip pinned to MainMenuBar; never shown, it stays behind wherever the Exp Bar moves.
+-- see known-problems.md: "Exp Bar stays hidden at max level"
+ACAB.EXP_MAX_LEVEL_BAR_FRAME_NAME = "MainMenuBarMaxLevelBar"
+
+ACAB:InstallShowGuard(getglobal(ACAB.EXP_MAX_LEVEL_BAR_FRAME_NAME), function()
+	return false
 end)
 
 -- Owns the native "XP current / max" FontString (there is no MainMenuExpText global on this client).
@@ -78,6 +94,24 @@ local function EnsureExpBarBottomBorderStrip(frame)
 	return strip
 end
 
+-- Native rested marker; a MainMenuBar child that native code places in MainMenuExpBar units.
+-- see known-problems.md: "Native rested marker must be a child of the Exp Bar"
+ACAB.EXP_TICK_FRAME_NAME = "ExhaustionTick"
+
+-- Reparents the native rested marker to the Exp Bar (scales/moves/hides with it), 2 levels above its fill.
+local function AttachExhaustionTick(frame)
+	local tick = getglobal(ACAB.EXP_TICK_FRAME_NAME)
+	if not tick then return end
+
+	if tick:GetParent() ~= frame then
+		tick:SetParent(frame)
+	end
+
+	-- Reasserted every call: ApplyExpBarPosition re-strata/re-levels MainMenuExpBar.
+	tick:SetFrameStrata(frame:GetFrameStrata())
+	tick:SetFrameLevel(frame:GetFrameLevel() + 2)
+end
+
 -- Hover-only fade duration for ApplyHoverOnlyState.
 local function GetExpBarHoverDuration()
 	return ACABDB.expBarHoverDuration or 3
@@ -108,11 +142,16 @@ function ACAB:ApplyExpBarPosition()
 		end
 	end
 
+	AttachExhaustionTick(frame)
+
 	self:EnsureContainerOverlay(frame, self.StartExpBarDrag, self.StopExpBarDrag, "expbar", self.SetExpBarScale, nil, "Experience Bar")
 	EnsureExpBarBottomBorderStrip(frame)
 
 	-- Also fades the rested-glow child texture (it inherits this frame's alpha).
 	self:ApplyHoverOnlyState(frame, ACABDB.expBarHoverOnly, GetExpBarHoverDuration)
+
+	-- Rep Bar follows the Exp Bar's scale/spot.
+	self:ApplyRepBarPosition()
 end
 
 function ACAB:SetExpBarPosition(x, y)
@@ -127,6 +166,18 @@ function ACAB:SetExpBarEnabled(enabled)
 
 	self:StoreElementEnabled("expBarEnabled", frame, enabled)
 
+	-- Show guard kept it hidden at max level; hide it in case it was shown before login.
+	if frame and enabled and self:IsPlayerMaxLevel() then
+		frame:Hide()
+	end
+
+	-- Native code may have shown it before the guard was installed.
+	local maxLevelBar = getglobal(self.EXP_MAX_LEVEL_BAR_FRAME_NAME)
+
+	if maxLevelBar then
+		maxLevelBar:Hide()
+	end
+
 	-- Must re-show explicitly, or the text overlay stays hidden after a disable/re-enable cycle.
 	if frame and frame.ACABTextOverlay then
 		if enabled then
@@ -138,6 +189,9 @@ function ACAB:SetExpBarEnabled(enabled)
 
 	-- Stops the glow pulse on disable and restarts it on enable.
 	self:ApplyExpBarRestedOverlay()
+
+	-- Rep Bar takes the freed spot; vanilla-stacked bars move down/up with it.
+	self:ApplyRepBarPosition()
 end
 
 -- Clamps, compensates the saved position around the bar's center, then applies the new scale.

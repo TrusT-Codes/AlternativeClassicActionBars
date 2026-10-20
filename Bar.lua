@@ -110,8 +110,29 @@ local function SnapBarTopLeftToPixel(bar)
 end
 
 -- Places bar from its config at its current frame size, top-left pixel-aligned.
+-- Reused copy of a canonical bar position lifted by the Rep Bar stack offset.
+local liftedBarPos = {}
+
 local function PositionBarFrame(bar, barW, barH)
-	ACAB:ApplyPositionToFrame(bar, bar.config, "TOPLEFT", barW, barH)
+	local pos = bar.config
+	local lift = ACAB:GetExpRepStackOffset(pos)
+
+	-- Must normalize first: resets restore the native anchor in legacy form, which would skip the lift.
+	if lift ~= 0 then
+		ACAB:NormalizePositionAnchor(bar, pos, barW, barH, "TOPLEFT")
+	end
+
+	-- Runtime-only lift (never saved); canonical y is in UIParent units.
+	if lift ~= 0 and ACAB:IsCanonicalPosition(pos) then
+		liftedBarPos.point = pos.point
+		liftedBarPos.relativePoint = pos.relativePoint
+		liftedBarPos.visualCenter = pos.visualCenter
+		liftedBarPos.x = pos.x
+		liftedBarPos.y = (pos.y or 0) + lift
+		pos = liftedBarPos
+	end
+
+	ACAB:ApplyPositionToFrame(bar, pos, "TOPLEFT", barW, barH)
 	SnapBarTopLeftToPixel(bar)
 
 	bar.ACABPositionedWidth = barW
@@ -948,6 +969,13 @@ function ACAB:StopBarDrag(bar)
 	self:StopSharedDrag()
 
 	if bar.config then
+		-- An Extra Bar leaving its default spot keeps the Rep Bar lift it was dragged with.
+		local lift = self:GetExpRepStackOffset(bar.config)
+
+		if lift ~= 0 and self:IsExtraBarId(bar.config.id) and self:IsCanonicalPosition(bar.config) then
+			bar.config.y = (bar.config.y or 0) + lift
+		end
+
 		ClearDefaultPositionFlags(bar.config)
 
 		-- Syncs the Settings X/Y sliders.

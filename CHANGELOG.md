@@ -7,6 +7,15 @@
 - New "Buttons" settings tab between Bars and General. The left side holds Button Style (moved from General), global Spacing and global Button size. The right side holds the Macro, Hotkey and Item Count text settings. `/acab settings buttons` opens it, and the Setup Wizard has a new Buttons step.
 - New "Toggle Hotkey Text" and "Toggle Item Count Text" checkboxes (on by default): turn them off to hide all keybind or item count text on your buttons, in every button style. Each text size slider shows only while its toggle is on, like "Toggle Macro Text".
 - The global Spacing and Button size sliders now match the text size sliders: a header with their range and a Reset button (Spacing resets to 0, Button size to 36).
+- New Reputation Bar settings page (`/acab settings rep`). The Reputation Bar now follows the Experience Bar wherever you move or scale it: stacked on top of it like in vanilla, or in its spot at max level or while the Experience Bar is disabled. The Gryphons draw over its ends like over the Experience Bar, and its hover text shows on top.
+- The Reputation Bar turns on by itself when you track a reputation in the Reputation tab, and off when you stop tracking.
+- With Force Vanilla Layout Mode on, Action Bar 1/2, Extra Bar 1/2 and the Stance, Pet and Cast Bars move with the Experience and Reputation Bars: up to make room for a tracked reputation, down when the Experience Bar is disabled. Turning the mode on resets the Reputation Bar to the vanilla look (Better Reputation Bar off); turning it off keeps every bar where it is.
+- New "Enable Better Reputation Bar" option: an always-visible text line (faction name, standing, current/max, percent), text size and color, and a "Toggle current Standing Color" checkbox (on by default): turn it off to pick your own Reputation Bar Color. In Edit Layout mode, click its lock icon to unlock it from the Experience Bar and move/scale it on its own; drop it on the Experience Bar's top or bottom edge to group them again.
+
+### Bugfixes
+
+- Fix the game's rested XP marker on the Experience Bar sitting far off to the right of a scaled-down Experience Bar: it now scales and moves with the bar.
+- Fix a small leftover bar showing at level 60 without a tracked reputation: Blizzard's max-level strip no longer stays behind at the old Experience Bar spot, and ACAB no longer re-shows the Experience Bar once the game has hidden it.
 
 ## 1.3.2-rc1
 
